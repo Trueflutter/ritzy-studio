@@ -400,3 +400,31 @@ Feature status:
 Current canonical next slice:
 
 - `F-013 Product Search And Matching`
+
+### F-013 Closed: Product Search And Matching
+
+Implemented product grounding for selected concepts.
+
+Created:
+
+- product matching rubric in `packages/domain`
+- product matching tests
+- product grounding server action
+- draft shopping list creation/refresh
+- catalog-backed product cards on the concept page
+- warnings for missing dimensions and stale product data
+
+Verification passed:
+
+- `pnpm --filter @ritzy-studio/domain test`
+- `pnpm --filter @ritzy-studio/web lint`
+- `pnpm --filter @ritzy-studio/web typecheck`
+- `pnpm check`
+
+Feature status:
+
+- `F-013` marked `passes: true`.
+
+Current canonical next slice:
+
+- `F-014 Product Substitution Loop`

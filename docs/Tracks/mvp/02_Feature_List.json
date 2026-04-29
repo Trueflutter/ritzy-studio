@@ -227,7 +227,7 @@
       "summary": "Match approved concepts to real catalog products using rubric-driven hybrid search.",
       "boundaries": ["apps/web", "packages/domain", "packages/ai", "packages/db", "packages/ui"],
       "dependencies": ["F-008", "F-012"],
-      "passes": false,
+      "passes": true,
       "done_when": [
         "approved concept can trigger product grounding",
         "candidate products are ranked by the matching rubric",
@@ -235,7 +235,7 @@
         "missing dimensions and stale prices are visible",
         "no generated shopping facts come from image pixels"
       ],
-      "notes": "This is where concept-first becomes product-grounded."
+      "notes": "Selected concepts can trigger catalog grounding. Draft shopping list candidates are ranked from database product facts only."
     },
     {
       "id": "F-014",

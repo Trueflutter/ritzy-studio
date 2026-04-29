@@ -74,3 +74,4 @@ export type CreateProjectWithRoomInput = z.infer<typeof createProjectWithRoomSch
 export type DesignBriefInput = z.infer<typeof designBriefSchema>;
 
 export * from "./product-enrichment";
+export * from "./product-matching";

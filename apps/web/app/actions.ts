@@ -5,7 +5,13 @@ import {
   generateConceptRevision,
   generateInitialConcept
 } from "@ritzy-studio/ai";
-import { createProjectWithRoomSchema, designBriefSchema } from "@ritzy-studio/domain";
+import type { Database } from "@ritzy-studio/db";
+import {
+  createProjectWithRoomSchema,
+  designBriefSchema,
+  rankProductMatches,
+  type ProductMatchCandidate
+} from "@ritzy-studio/domain";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
@@ -612,6 +618,157 @@ export async function selectConceptAction(formData: FormData) {
   redirect(`${redirectPath}?message=${encodeURIComponent("Concept selected for sourcing.")}`);
 }
 
+export async function groundProductsAction(formData: FormData) {
+  const projectId = String(formData.get("projectId") ?? "");
+  const roomId = String(formData.get("roomId") ?? "");
+  const conceptId = String(formData.get("conceptId") ?? "");
+  const redirectPath = `/projects/${projectId}/rooms/${roomId}/concepts`;
+  const supabase = await createClient();
+  const {
+    data: { user },
+    error: userError
+  } = await supabase.auth.getUser();
+
+  if (userError || !user) {
+    redirect("/login");
+  }
+
+  const { data: project } = await supabase
+    .from("projects")
+    .select("id, budget_max_aed")
+    .eq("id", projectId)
+    .single();
+
+  const { data: room } = await supabase
+    .from("rooms")
+    .select("id, room_type")
+    .eq("id", roomId)
+    .eq("project_id", projectId)
+    .single();
+
+  const { data: concept } = await supabase
+    .from("concepts")
+    .select("id, title, description, status")
+    .eq("id", conceptId)
+    .eq("room_id", roomId)
+    .single();
+
+  if (!project || !room || !concept) {
+    redirect("/");
+  }
+
+  if (concept.status !== "selected") {
+    redirect(`${redirectPath}?message=${encodeURIComponent("Select a concept before product grounding.")}`);
+  }
+
+  const { data: measurements } = await supabase
+    .from("room_measurements")
+    .select("wall_length_cm, room_depth_cm")
+    .eq("room_id", roomId)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  const { data: products = [], error: productsError } = await supabase
+    .from("products")
+    .select(
+      `
+      *,
+      retailer:retailers(name),
+      dimensions:product_dimensions(width_cm, depth_cm, height_cm, source_text)
+    `
+    )
+    .not("price_aed", "is", null)
+    .not("primary_image_url", "is", null)
+    .limit(250);
+
+  if (productsError) {
+    throw new Error(productsError.message);
+  }
+
+  const candidates = (products ?? [])
+    .map(productToMatchCandidate)
+    .filter((candidate): candidate is ProductMatchCandidate => Boolean(candidate));
+
+  if (candidates.length === 0) {
+    redirect(`${redirectPath}?message=${encodeURIComponent("No catalog products are available yet. Run ingestion first.")}`);
+  }
+
+  const ranked = rankProductMatches({
+    roomType: room.room_type,
+    conceptText: `${concept.title}\n${concept.description ?? ""}`,
+    budgetMaxAed: project.budget_max_aed,
+    roomMeasurements: measurements
+      ? {
+          wallLengthCm: measurements.wall_length_cm,
+          roomDepthCm: measurements.room_depth_cm
+        }
+      : null,
+    candidates
+  }).slice(0, 12);
+
+  const { data: existingList } = await supabase
+    .from("shopping_lists")
+    .select("id")
+    .eq("room_id", roomId)
+    .eq("concept_id", conceptId)
+    .limit(1)
+    .maybeSingle();
+
+  const shoppingListResult = existingList
+    ? { data: existingList, error: null }
+    : await supabase
+        .from("shopping_lists")
+        .insert({
+          room_id: roomId,
+          concept_id: conceptId,
+          status: "draft"
+        })
+        .select("id")
+        .single();
+
+  if (shoppingListResult.error) {
+    throw new Error(shoppingListResult.error.message);
+  }
+
+  const shoppingListId = shoppingListResult.data.id;
+  await supabase.from("shopping_list_items").delete().eq("shopping_list_id", shoppingListId);
+
+  const items = ranked.map((match, index) => {
+    const unitPrice = match.salePriceAed ?? match.priceAed ?? 0;
+    return {
+      shopping_list_id: shoppingListId,
+      product_id: match.id,
+      category: match.categoryNormalized ?? "uncategorized",
+      quantity: 1,
+      unit_price_aed: unitPrice,
+      line_total_aed: unitPrice,
+      selection_reason: [match.selectionReason, ...match.warnings].join(" "),
+      dimension_fit_note: match.dimensionFitNote,
+      sort_order: index
+    };
+  });
+
+  const { error: itemError } = await supabase.from("shopping_list_items").insert(items);
+
+  if (itemError) {
+    throw new Error(itemError.message);
+  }
+
+  const estimatedTotal = items.reduce((sum, item) => sum + Number(item.line_total_aed ?? 0), 0);
+  await supabase
+    .from("shopping_lists")
+    .update({
+      estimated_total_aed: estimatedTotal,
+      updated_at: new Date().toISOString()
+    })
+    .eq("id", shoppingListId);
+  await supabase.from("rooms").update({ status: "sourcing" }).eq("id", roomId);
+
+  revalidatePath(redirectPath);
+  redirect(`${redirectPath}?message=${encodeURIComponent("Catalog products matched to the selected concept.")}`);
+}
+
 export async function reviseConceptAction(formData: FormData) {
   const projectId = String(formData.get("projectId") ?? "");
   const roomId = String(formData.get("roomId") ?? "");
@@ -851,4 +1008,49 @@ export async function reviseConceptAction(formData: FormData) {
 
   revalidatePath(redirectPath);
   redirect(`${redirectPath}?message=${encodeURIComponent("Revised concept generated.")}`);
+}
+
+type ProductRow = Database["public"]["Tables"]["products"]["Row"] & {
+  retailer: { name: string } | null;
+  dimensions:
+    | Array<{
+        width_cm: number | null;
+        depth_cm: number | null;
+        height_cm: number | null;
+        source_text: string | null;
+      }>
+    | null;
+};
+
+function productToMatchCandidate(product: ProductRow): ProductMatchCandidate | null {
+  if (!product.primary_image_url) {
+    return null;
+  }
+
+  return {
+    id: product.id,
+    name: product.name,
+    retailerName: product.retailer?.name ?? "Retailer",
+    canonicalUrl: product.canonical_url,
+    categoryNormalized: product.category_normalized,
+    priceAed: product.price_aed,
+    salePriceAed: product.sale_price_aed,
+    availability: product.availability,
+    primaryImageUrl: product.primary_image_url,
+    color: product.color,
+    material: product.material,
+    styleTags: product.style_tags,
+    colorTags: product.color_tags,
+    materialTags: product.material_tags,
+    roomTags: product.room_tags,
+    lastCheckedAt: product.last_checked_at,
+    dimensions: product.dimensions?.[0]
+      ? {
+          widthCm: product.dimensions[0].width_cm,
+          depthCm: product.dimensions[0].depth_cm,
+          heightCm: product.dimensions[0].height_cm,
+          sourceText: product.dimensions[0].source_text
+        }
+      : null
+  };
 }

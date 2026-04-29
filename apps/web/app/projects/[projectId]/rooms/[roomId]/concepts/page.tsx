@@ -5,6 +5,7 @@ import { notFound, redirect } from "next/navigation";
 
 import {
   generateInitialConceptAction,
+  groundProductsAction,
   reviseConceptAction,
   selectConceptAction
 } from "@/app/actions";
@@ -99,6 +100,34 @@ export default async function ConceptsPage({
       return { ...concept, signedUrl: data?.signedUrl ?? null };
     })
   );
+  const selectedConcept = conceptsWithImages.find((concept) => concept.status === "selected") ?? null;
+
+  const { data: shoppingList } = selectedConcept
+    ? await supabase
+        .from("shopping_lists")
+        .select("*")
+        .eq("room_id", roomId)
+        .eq("concept_id", selectedConcept.id)
+        .limit(1)
+        .maybeSingle()
+    : { data: null };
+
+  const { data: shoppingItems = [] } = shoppingList
+    ? await supabase
+        .from("shopping_list_items")
+        .select(
+          `
+          *,
+          product:products(
+            *,
+            retailer:retailers(name, domain),
+            dimensions:product_dimensions(width_cm, depth_cm, height_cm, source_text)
+          )
+        `
+        )
+        .eq("shopping_list_id", shoppingList.id)
+        .order("sort_order", { ascending: true })
+    : { data: [] };
 
   const canGenerate = Boolean(designBrief && roomPhoto);
 
@@ -253,7 +282,149 @@ export default async function ConceptsPage({
             </div>
           )}
         </div>
+
+        <section className="mt-16 border-t border-line pt-10">
+          <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_340px]">
+            <div>
+              <p className="font-body text-caption font-medium uppercase text-ink-muted">
+                N° 06 — Product Grounding
+              </p>
+              <h2 className="mt-4 font-display text-display-s font-light italic text-ink">
+                Match the selected concept to real catalog products.
+              </h2>
+              <p className="mt-4 max-w-[680px] font-body text-body-s text-ink-secondary">
+                Product cards use catalog records only: retailer, price, URL, dimensions, stock,
+                and warnings come from stored product data.
+              </p>
+            </div>
+
+            <aside className="border border-line bg-surface p-5 lg:self-start">
+              <p className="font-body text-caption font-medium uppercase text-ink-muted">
+                Sourcing Status
+              </p>
+              <div className="mt-3 h-px w-20 bg-ink" />
+              <p className="mt-6 font-display text-display-xs font-light italic text-ink">
+                {selectedConcept ? "selected concept ready" : "select a concept first"}
+              </p>
+              <form action={groundProductsAction} className="mt-8">
+                <input name="projectId" type="hidden" value={projectId} />
+                <input name="roomId" type="hidden" value={roomId} />
+                <input name="conceptId" type="hidden" value={selectedConcept?.id ?? ""} />
+                <Button className="w-full" disabled={!selectedConcept} type="submit">
+                  Match products
+                </Button>
+              </form>
+              {shoppingList ? (
+                <p className="mt-5 font-body text-body-s text-ink-secondary">
+                  Estimated catalog total: {formatAed(shoppingList.estimated_total_aed)}
+                </p>
+              ) : null}
+            </aside>
+          </div>
+
+          <div className="mt-8 grid gap-5 md:grid-cols-2 xl:grid-cols-3">
+            {shoppingItems && shoppingItems.length > 0 ? (
+              shoppingItems.map((item) => {
+                const product = item.product;
+                const dimensions = product?.dimensions?.[0];
+                const warningText = [item.dimension_fit_note, item.selection_reason]
+                  .filter(Boolean)
+                  .join(" ");
+
+                return (
+                  <article className="border border-line bg-surface p-4" key={item.id}>
+                    <div className="aspect-[4/3] overflow-hidden bg-page">
+                      {product?.primary_image_url ? (
+                        <Image
+                          alt={`${product.name} product image`}
+                          className="h-full w-full object-cover"
+                          height={600}
+                          unoptimized
+                          src={product.primary_image_url}
+                          width={800}
+                        />
+                      ) : (
+                        <div className="flex h-full items-center justify-center">
+                          <p className="font-display text-body-s italic text-error">
+                            image missing
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                    <p className="mt-5 font-body text-caption font-medium uppercase text-ink-muted">
+                      {product?.retailer?.name ?? "Retailer"} · {item.category}
+                    </p>
+                    <h3 className="mt-3 font-display text-display-xs font-light italic text-ink">
+                      {product?.name ?? "Product unavailable"}
+                    </h3>
+                    <div className="mt-4 space-y-2 font-body text-body-s text-ink-secondary">
+                      <p>
+                        Price: {formatAed(item.unit_price_aed)}
+                        {product?.sale_price_aed ? " sale" : ""}
+                      </p>
+                      <p>Availability: {product?.availability ?? "not available"}</p>
+                      <p>
+                        Dimensions:{" "}
+                        {dimensions?.source_text ??
+                          dimensionsText(dimensions?.width_cm, dimensions?.depth_cm, dimensions?.height_cm)}
+                      </p>
+                    </div>
+                    {warningText ? (
+                      <p className="mt-4 border border-line bg-page px-4 py-3 font-display text-body-s italic text-warning">
+                        {warningText}
+                      </p>
+                    ) : null}
+                    {product?.canonical_url ? (
+                      <a
+                        className="mt-5 inline-flex font-display text-button-quiet italic text-ink transition-colors hover:text-accent-deep"
+                        href={product.canonical_url}
+                        rel="noreferrer"
+                        target="_blank"
+                      >
+                        open retailer page →
+                      </a>
+                    ) : null}
+                  </article>
+                );
+              })
+            ) : (
+              <div className="border border-line bg-surface p-8 md:col-span-2 xl:col-span-3">
+                <p className="font-display text-display-xs font-light italic text-ink">
+                  No product matches yet.
+                </p>
+                <p className="mt-4 max-w-[560px] font-body text-body-s text-ink-secondary">
+                  Select a concept, then match products from the live catalog records already
+                  ingested into the system.
+                </p>
+              </div>
+            )}
+          </div>
+        </section>
       </section>
     </main>
   );
+}
+
+function formatAed(value: number | null | undefined) {
+  if (value === null || value === undefined) {
+    return "AED not available";
+  }
+
+  return `AED ${Number(value).toLocaleString("en-AE", {
+    maximumFractionDigits: 0
+  })}`;
+}
+
+function dimensionsText(
+  width: number | null | undefined,
+  depth: number | null | undefined,
+  height: number | null | undefined
+) {
+  const parts = [
+    width ? `W ${width}` : null,
+    depth ? `D ${depth}` : null,
+    height ? `H ${height}` : null
+  ].filter(Boolean);
+
+  return parts.length > 0 ? `${parts.join(" x ")} cm` : "not available";
 }

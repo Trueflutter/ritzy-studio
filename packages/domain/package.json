@@ -11,7 +11,7 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "tsx src/product-enrichment.test.ts"
+    "test": "tsx src/product-enrichment.test.ts && tsx src/product-matching.test.ts"
   },
   "devDependencies": {
     "@types/node": "^20",
