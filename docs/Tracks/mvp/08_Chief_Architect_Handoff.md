@@ -2,7 +2,7 @@
 
 ## Current State
 
-Ritzy Studio has completed the first sixteen MVP implementation slices.
+Ritzy Studio has completed the first seventeen MVP implementation slices.
 
 The repository now contains:
 
@@ -23,6 +23,7 @@ The repository now contains:
 - line-level product substitution for draft shopping list items
 - final grounded render generation with product reference images and render-job provenance
 - dedicated shopping list and cost estimate page
+- client presentation view with browser print/save-PDF export
 
 The locked design system exists at:
 
@@ -46,16 +47,14 @@ For visual implementation, `docs/Vision/05_Brand_and_Design_System.md` is locked
 
 ## Current Canonical Slice
 
-`F-017 Client Presentation And Export View`
+`F-018 MVP Hardening And Review Passes`
 
 Status: not started.
 
 Expected boundaries:
 
-- `apps/web`
-- `packages/domain`
-- `packages/db`
-- `packages/ui`
+- `cross-layer`
+- `docs`
 
 ## Locked Product Workflow
 
@@ -77,13 +76,14 @@ Expected boundaries:
 
 ## Suggested Next Action
 
-Begin F-017:
+Begin F-018:
 
-- build a client-ready presentation view
-- combine final render, selected concept, project/room context, and shopping list
-- include honest notes about SKU-exact visual limits and stale/missing product data
-- provide an export-friendly layout
-- preserve the design system and data-density rules
+- run final lint/typecheck/build/tests
+- run design guardian pass against `docs/Vision/05_Brand_and_Design_System.md`
+- run UX guardian pass on the full workflow
+- run code review pass
+- document any deferred live-runtime validation
+- update docs and handoff for MVP closure
 
 ## Open Questions
 

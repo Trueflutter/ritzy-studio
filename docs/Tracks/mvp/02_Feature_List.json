@@ -299,7 +299,7 @@
       "summary": "Build client-ready presentation view combining final render, design notes, and shopping list.",
       "boundaries": ["apps/web", "packages/ui", "packages/domain", "packages/db"],
       "dependencies": ["F-015", "F-016"],
-      "passes": false,
+      "passes": true,
       "done_when": [
         "presentation view shows final render and shopping list",
         "uncertainty and SKU caveats are visible but professionally worded",
@@ -307,7 +307,7 @@
         "presentation follows design blueprint",
         "founder/designer walk is completed or specifically deferred"
       ],
-      "notes": "Final export format must be confirmed before implementation."
+      "notes": "Implemented export-friendly browser/print view with print/save-PDF control. PDF/PPT generation remains out of scope unless explicitly requested."
     },
     {
       "id": "F-018",

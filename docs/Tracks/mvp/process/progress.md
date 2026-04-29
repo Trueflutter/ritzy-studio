@@ -510,3 +510,31 @@ Feature status:
 Current canonical next slice:
 
 - `F-017 Client Presentation And Export View`
+
+### F-017 Closed: Client Presentation And Export View
+
+Implemented the client presentation view.
+
+Created:
+
+- presentation route
+- print/save-PDF control
+- final render presentation area
+- selected concept narrative
+- selected products section
+- caveat notes for SKU exactness and stale product facts
+- shopping list link to presentation
+
+Verification passed:
+
+- `pnpm --filter @ritzy-studio/web lint`
+- `pnpm --filter @ritzy-studio/web typecheck`
+- `pnpm check`
+
+Feature status:
+
+- `F-017` marked `passes: true`.
+
+Current canonical next slice:
+
+- `F-018 MVP Hardening And Review Passes`

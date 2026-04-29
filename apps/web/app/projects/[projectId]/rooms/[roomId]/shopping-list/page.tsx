@@ -71,13 +71,22 @@ export default async function ShoppingListPage({
         <Link className="font-display text-[28px] font-light text-ink" href="/">
           Ri <span className="font-body text-caption font-medium uppercase text-ink-muted">Ritzy Studio</span>
         </Link>
-        <ButtonLink
-          href={`/projects/${projectId}/rooms/${roomId}/concepts`}
-          trailing="→"
-          variant="quiet"
-        >
-          back to concepts
-        </ButtonLink>
+        <div className="flex items-center gap-6">
+          <ButtonLink
+            href={`/projects/${projectId}/rooms/${roomId}/presentation`}
+            trailing="→"
+            variant="quiet"
+          >
+            presentation
+          </ButtonLink>
+          <ButtonLink
+            href={`/projects/${projectId}/rooms/${roomId}/concepts`}
+            trailing="→"
+            variant="quiet"
+          >
+            back to concepts
+          </ButtonLink>
+        </div>
       </header>
 
       <section className="mx-auto max-w-[1280px] px-5 py-12 md:px-8 lg:px-12 xl:px-16">
