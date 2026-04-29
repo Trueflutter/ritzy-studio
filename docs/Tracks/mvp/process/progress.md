@@ -206,3 +206,33 @@ Feature status:
 Current canonical next slice:
 
 - `F-006 Design Brief And Clarifying Questions`
+
+### F-006 Closed: Design Brief And Clarifying Questions
+
+Implemented protected brief capture and bounded clarifying-question generation.
+
+Created:
+
+- `/projects/[projectId]/rooms/[roomId]/brief`
+- `packages/prompts`
+- `packages/ai`
+- versioned clarifying-question prompt
+- OpenAI structured-output helper
+- server actions for saving briefs and clarification answers
+
+Verification passed:
+
+- `pnpm validate-env`
+- `pnpm lint`
+- `pnpm typecheck`
+- `pnpm build`
+- OpenAI structured-output smoke test
+- design-rule scan for forbidden UI styles
+
+Feature status:
+
+- `F-006` marked `passes: true`.
+
+Current canonical next slice:
+
+- `F-007 Room Analysis And Initial Concept Generation`

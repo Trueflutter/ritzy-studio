@@ -2,7 +2,7 @@
 
 ## Current State
 
-Ritzy Studio has completed the first implementation foundation slice.
+Ritzy Studio has completed the first six MVP implementation slices.
 
 The repository now contains:
 
@@ -10,8 +10,10 @@ The repository now contains:
 - pnpm workspace
 - Next.js TypeScript app in `apps/web`
 - `packages/config` environment validation
-- package boundary placeholders
-- root command documentation
+- Supabase auth, schema, RLS, and storage foundation
+- protected project, room, photo upload, and brief flows
+- `packages/prompts` and `packages/ai`
+- versioned OpenAI clarifying-question generation
 
 The locked design system exists at:
 
@@ -35,15 +37,16 @@ For visual implementation, `docs/Vision/05_Brand_and_Design_System.md` is locked
 
 ## Current Canonical Slice
 
-`F-006 Design Brief And Clarifying Questions`
+`F-007 Room Analysis And Initial Concept Generation`
 
 Status: not started.
 
 Expected boundaries:
 
 - `apps/web`
+- `packages/prompts`
+- `packages/ai`
 - `packages/db`
-- `packages/domain`
 - `packages/ui`
 
 ## Locked Product Workflow
@@ -66,15 +69,15 @@ Expected boundaries:
 
 ## Suggested Next Action
 
-Begin F-006:
+Begin F-007:
 
-- add protected design brief route after photo upload
-- capture style, color, budget, constraints, inspiration, and optional measurements
-- generate bounded clarifying questions if OpenAI key is available
-- persist design brief and clarifying questions
-- log prompt version/job metadata
+- verify current official OpenAI Image 2 / image editing capabilities before implementation
+- analyze uploaded room photos for fixed architecture and uncertainty
+- generate initial concept directions and images from room photos and saved brief
+- store generated image assets and concept records
+- log AI job metadata, prompt version, model, and uncertainty
 
 ## Open Questions
 
-- OpenAI key is needed before AI-backed clarifying question generation and later concept generation can be fully verified.
+- Confirm the hosted Supabase migration path before deploying beyond local development.
 - Confirm export format before F-017.

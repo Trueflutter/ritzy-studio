@@ -101,7 +101,7 @@
       "summary": "Capture design intent and generate targeted clarifying questions when needed.",
       "boundaries": ["apps/web", "packages/prompts", "packages/ai", "packages/domain", "packages/db"],
       "dependencies": ["F-005"],
-      "passes": false,
+      "passes": true,
       "done_when": [
         "designer can enter style, color, budget, constraints, inspiration, and measurements",
         "system can generate bounded clarifying questions",

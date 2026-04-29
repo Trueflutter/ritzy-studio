@@ -21,8 +21,10 @@
     "paths": {
       "@/*": ["./*"],
       "@ritzy-studio/config": ["../../packages/config/src/index.ts"],
+      "@ritzy-studio/ai": ["../../packages/ai/src/index.ts"],
       "@ritzy-studio/db": ["../../packages/db/src/index.ts"],
       "@ritzy-studio/domain": ["../../packages/domain/src/index.ts"],
+      "@ritzy-studio/prompts": ["../../packages/prompts/src/index.ts"],
       "@ritzy-studio/ui": ["../../packages/ui/src/index.ts"]
     }
   },

@@ -1,6 +1,10 @@
 import "dotenv/config";
 
 import { formatEnvError, parseServerEnv } from "@ritzy-studio/config";
+import { config } from "dotenv";
+import path from "node:path";
+
+config({ path: path.resolve(process.cwd(), "../../.env.local") });
 
 try {
   parseServerEnv(process.env);

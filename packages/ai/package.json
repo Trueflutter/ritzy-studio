@@ -1,0 +1,21 @@
+{
+  "name": "@ritzy-studio/ai",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@ritzy-studio/config": "workspace:*",
+    "@ritzy-studio/prompts": "workspace:*",
+    "openai": "^6.35.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "typescript": "^5.9.3"
+  }
+}

@@ -1,4 +1,8 @@
 import type { NextConfig } from "next";
+import { config } from "dotenv";
+import path from "node:path";
+
+config({ path: path.resolve(process.cwd(), "../../.env.local") });
 
 const nextConfig: NextConfig = {
   images: {
@@ -17,11 +21,13 @@ const nextConfig: NextConfig = {
     ]
   },
   transpilePackages: [
+    "@ritzy-studio/ai",
     "@ritzy-studio/config",
     "@ritzy-studio/db",
     "@ritzy-studio/domain",
+    "@ritzy-studio/prompts",
     "@ritzy-studio/ui"
-  ],
+  ]
 };
 
 export default nextConfig;

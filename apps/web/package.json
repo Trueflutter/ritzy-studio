@@ -11,9 +11,11 @@
     "validate-env": "tsx scripts/validate-env.ts"
   },
   "dependencies": {
+    "@ritzy-studio/ai": "workspace:*",
     "@ritzy-studio/config": "workspace:*",
     "@ritzy-studio/db": "workspace:*",
     "@ritzy-studio/domain": "workspace:*",
+    "@ritzy-studio/prompts": "workspace:*",
     "@ritzy-studio/ui": "workspace:*",
     "@supabase/ssr": "^0.10.2",
     "@supabase/supabase-js": "^2.89.0",

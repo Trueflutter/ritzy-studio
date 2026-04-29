@@ -123,7 +123,13 @@ export default async function RoomPhotosPage({
           <ButtonLink href="/" trailing="→" variant="quiet">
             skip — I&apos;ll add later
           </ButtonLink>
-          <Button disabled={signedAssets.length === 0}>Continue to brief</Button>
+          {signedAssets.length > 0 ? (
+            <ButtonLink href={`/projects/${projectId}/rooms/${roomId}/brief`}>
+              Continue to brief
+            </ButtonLink>
+          ) : (
+            <Button disabled>Continue to brief</Button>
+          )}
         </div>
       </section>
     </main>

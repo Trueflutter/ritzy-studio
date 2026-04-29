@@ -17,6 +17,9 @@ importers:
 
   apps/web:
     dependencies:
+      '@ritzy-studio/ai':
+        specifier: workspace:*
+        version: link:../../packages/ai
       '@ritzy-studio/config':
         specifier: workspace:*
         version: link:../../packages/config
@@ -26,6 +29,9 @@ importers:
       '@ritzy-studio/domain':
         specifier: workspace:*
         version: link:../../packages/domain
+      '@ritzy-studio/prompts':
+        specifier: workspace:*
+        version: link:../../packages/prompts
       '@ritzy-studio/ui':
         specifier: workspace:*
         version: link:../../packages/ui
@@ -73,6 +79,25 @@ importers:
         specifier: ^5
         version: 5.9.3
 
+  packages/ai:
+    dependencies:
+      '@ritzy-studio/config':
+        specifier: workspace:*
+        version: link:../config
+      '@ritzy-studio/prompts':
+        specifier: workspace:*
+        version: link:../prompts
+      openai:
+        specifier: ^6.35.0
+        version: 6.35.0(ws@8.20.0)(zod@4.3.6)
+    devDependencies:
+      '@types/node':
+        specifier: ^20
+        version: 20.19.39
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+
   packages/config:
     dependencies:
       zod:
@@ -100,6 +125,16 @@ importers:
     devDependencies:
       typescript:
         specifier: ^5
+        version: 5.9.3
+
+  packages/prompts:
+    dependencies:
+      zod:
+        specifier: ^4.2.1
+        version: 4.3.6
+    devDependencies:
+      typescript:
+        specifier: ^5.9.3
         version: 5.9.3
 
   packages/ui:
@@ -1891,6 +1926,18 @@ packages:
   object.values@1.2.1:
     resolution: {integrity: sha512-gXah6aZrcUxjWg2zR2MwouP2eHlCBzdV4pygudehaKXSGW4v2AsRQUK+lwwXhii6KFZcunEnmSUoYp5CXibxtA==}
     engines: {node: '>= 0.4'}
+
+  openai@6.35.0:
+    resolution: {integrity: sha512-L/skwIGnt5xQZHb0UfTu9uAUKbis3ehKypOuJKi20QvG7UStV6C8IC3myGYHcdiF4kms/bAvOJ9UqqNWqi8x/Q==}
+    hasBin: true
+    peerDependencies:
+      ws: ^8.18.0
+      zod: ^3.25 || ^4.0
+    peerDependenciesMeta:
+      ws:
+        optional: true
+      zod:
+        optional: true
 
   optionator@0.9.4:
     resolution: {integrity: sha512-6IpQ7mKUxRcZNLIObR0hz7lxsapSSIYNZJwXPGeF0mTVqGKFIXj1DQcMoT22S3ROcLyY/rz0PWaWZ9ayWmad9g==}
@@ -4064,6 +4111,11 @@ snapshots:
       call-bound: 1.0.4
       define-properties: 1.2.1
       es-object-atoms: 1.1.1
+
+  openai@6.35.0(ws@8.20.0)(zod@4.3.6):
+    optionalDependencies:
+      ws: 8.20.0
+      zod: 4.3.6
 
   optionator@0.9.4:
     dependencies:
