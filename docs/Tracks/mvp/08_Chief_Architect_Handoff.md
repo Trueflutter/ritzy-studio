@@ -2,7 +2,7 @@
 
 ## Current State
 
-Ritzy Studio has completed the first seventeen MVP implementation slices.
+Ritzy Studio has completed all eighteen MVP implementation slices.
 
 The repository now contains:
 
@@ -24,6 +24,7 @@ The repository now contains:
 - final grounded render generation with product reference images and render-job provenance
 - dedicated shopping list and cost estimate page
 - client presentation view with browser print/save-PDF export
+- completed hardening, design, UX, and code review passes
 
 The locked design system exists at:
 
@@ -47,14 +48,13 @@ For visual implementation, `docs/Vision/05_Brand_and_Design_System.md` is locked
 
 ## Current Canonical Slice
 
-`F-018 MVP Hardening And Review Passes`
+None. `F-001` through `F-018` are closed.
 
-Status: not started.
+Status: MVP implementation closed.
 
 Expected boundaries:
 
-- `cross-layer`
-- `docs`
+- No active implementation slice.
 
 ## Locked Product Workflow
 
@@ -76,16 +76,15 @@ Expected boundaries:
 
 ## Suggested Next Action
 
-Begin F-018:
+Operational bring-up:
 
-- run final lint/typecheck/build/tests
-- run design guardian pass against `docs/Vision/05_Brand_and_Design_System.md`
-- run UX guardian pass on the full workflow
-- run code review pass
-- document any deferred live-runtime validation
-- update docs and handoff for MVP closure
+- link this repo to the Supabase project
+- apply migrations
+- create the first authenticated designer account
+- run a seeded product ingestion for Home Centre, 2XL Home, and Chattels & More
+- walk one complete project from upload to presentation with the founder/designer
 
 ## Open Questions
 
-- Confirm the hosted Supabase migration path before deploying beyond local development.
-- F-017 can default to an export-friendly browser/print view unless a PDF/PPT export is explicitly required.
+- Supabase migrations are authored but not applied from this workspace because the project is not linked.
+- Confirm whether browser print/save-PDF is sufficient or whether native PDF/PPT export is needed next.

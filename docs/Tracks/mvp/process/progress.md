@@ -538,3 +538,36 @@ Feature status:
 Current canonical next slice:
 
 - `F-018 MVP Hardening And Review Passes`
+
+### F-018 Closed: MVP Hardening And Review Passes
+
+Completed final MVP hardening and review.
+
+Verification passed:
+
+- `pnpm --filter @ritzy-studio/domain test`
+- `pnpm --filter @ritzy-studio/prompts test`
+- `pnpm --filter @ritzy-studio/ai test`
+- `pnpm --filter @ritzy-studio/ingestion test`
+- `pnpm validate-env`
+- `pnpm check`
+
+Review passes completed:
+
+- Design Guardian
+- UX Guardian
+- Code Review
+
+Documented deferrals:
+
+- Supabase project is not linked locally, so migrations were not applied from this workspace.
+- Founder/designer walk is deferred until populated runtime data exists.
+- Live final render generation is deferred until a room, selected concept, product-backed shopping list, and final render inputs exist.
+
+Feature status:
+
+- `F-018` marked `passes: true`.
+
+Current canonical next slice:
+
+- None. MVP implementation feature list is closed.

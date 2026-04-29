@@ -317,7 +317,7 @@
       "summary": "Run final quality, reliability, UX, design, code review, and documentation closure for MVP.",
       "boundaries": ["cross-layer", "docs"],
       "dependencies": ["F-017"],
-      "passes": false,
+      "passes": true,
       "done_when": [
         "lint/type/build/tests pass or deferrals are documented",
         "design guardian pass completed",
@@ -326,7 +326,7 @@
         "known risks and open defects are documented",
         "progress log and handoff are current"
       ],
-      "notes": "MVP cannot be called ready with known blocking defects."
+      "notes": "Automated checks and review passes completed. Supabase project link/migration application and founder/designer walk are documented deferrals."
     }
   ]
 }
