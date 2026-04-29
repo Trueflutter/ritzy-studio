@@ -89,3 +89,31 @@ Feature status:
 Current canonical next slice:
 
 - `F-002 Locked Design Tokens And App Shell`
+
+### F-002 Closed: Locked Design Tokens And App Shell
+
+Implemented Quiet Gallery design tokens and foundational UI primitives.
+
+Created:
+
+- `packages/ui`
+- shared primitives for buttons, cards, panels, form fields, tabs, segmented controls, and chips
+- Tailwind 4 theme bindings for Ritzy tokens
+- Cormorant Garamond and DM Sans font configuration
+- minimal app-shell proof page in `apps/web/app/page.tsx`
+
+Verification passed:
+
+- `pnpm lint`
+- `pnpm typecheck`
+- `pnpm build`
+- `pnpm check`
+- design-rule scan for forbidden starter styles
+
+Feature status:
+
+- `F-002` marked `passes: true`.
+
+Current canonical next slice:
+
+- `F-003 Database Schema And Auth Foundation`

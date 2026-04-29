@@ -20,7 +20,8 @@
     ],
     "paths": {
       "@/*": ["./*"],
-      "@ritzy-studio/config": ["../../packages/config/src/index.ts"]
+      "@ritzy-studio/config": ["../../packages/config/src/index.ts"],
+      "@ritzy-studio/ui": ["../../packages/ui/src/index.ts"]
     }
   },
   "include": [

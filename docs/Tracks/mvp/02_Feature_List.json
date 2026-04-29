@@ -29,7 +29,7 @@
       "summary": "Implement the locked Quiet Gallery design tokens, typography setup, and app shell primitives.",
       "boundaries": ["apps/web", "packages/ui"],
       "dependencies": ["F-001"],
-      "passes": false,
+      "passes": true,
       "done_when": [
         "CSS variables or Tailwind tokens match docs/Vision/05_Brand_and_Design_System.md section 17",
         "fonts are configured with correct fallbacks",

@@ -35,14 +35,16 @@ For visual implementation, `docs/Vision/05_Brand_and_Design_System.md` is locked
 
 ## Current Canonical Slice
 
-`F-002 Locked Design Tokens And App Shell`
+`F-003 Database Schema And Auth Foundation`
 
 Status: not started.
 
 Expected boundaries:
 
-- `apps/web`
-- `packages/ui`
+- `packages/db`
+- `packages/domain`
+- `packages/config`
+- `cross-layer`
 
 ## Locked Product Workflow
 
@@ -64,14 +66,13 @@ Expected boundaries:
 
 ## Suggested Next Action
 
-Begin F-002:
+Begin F-003:
 
-- read `docs/Vision/05_Brand_and_Design_System.md` sections 4, 5, 6, 8, 17, 19, and 20
-- implement locked CSS variables/Tailwind tokens
-- install/configure Cormorant Garamond and DM Sans strategy
-- create base app shell primitives
-- keep UI scope minimal and foundational
-- run design compliance checklist
+- implement Supabase schema foundation
+- implement auth client/server helpers
+- document RLS/privacy posture
+- verify migrations or document exact blocker
+- generate or define schema types
 
 ## Open Questions
 
