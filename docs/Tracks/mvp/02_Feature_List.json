@@ -137,7 +137,7 @@
       "summary": "Let the designer critique selected concepts and generate refined variations.",
       "boundaries": ["apps/web", "packages/prompts", "packages/ai", "packages/db", "packages/ui"],
       "dependencies": ["F-007"],
-      "passes": false,
+      "passes": true,
       "done_when": [
         "designer can select a concept",
         "designer can submit critique",

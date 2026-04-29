@@ -2,7 +2,7 @@
 
 ## Current State
 
-Ritzy Studio has completed the first seven MVP implementation slices.
+Ritzy Studio has completed the first eight MVP implementation slices.
 
 The repository now contains:
 
@@ -15,6 +15,7 @@ The repository now contains:
 - `packages/prompts` and `packages/ai`
 - versioned OpenAI clarifying-question generation
 - initial OpenAI `gpt-image-2` concept generation
+- concept critique, selection, and revision generation
 
 The locked design system exists at:
 
@@ -38,17 +39,16 @@ For visual implementation, `docs/Vision/05_Brand_and_Design_System.md` is locked
 
 ## Current Canonical Slice
 
-`F-008 Concept Critique And Iteration Loop`
+`F-009 Product Catalog Schema And Adapter Framework`
 
 Status: not started.
 
 Expected boundaries:
 
-- `apps/web`
-- `packages/prompts`
-- `packages/ai`
 - `packages/db`
-- `packages/ui`
+- `packages/domain`
+- `packages/ingestion`
+- `packages/config`
 
 ## Locked Product Workflow
 
@@ -70,13 +70,13 @@ Expected boundaries:
 
 ## Suggested Next Action
 
-Begin F-008:
+Begin F-009:
 
-- let the designer select or critique a generated concept
-- store critique history
-- generate a revised variation from the original room photo, previous concept direction, and critique
-- keep approved qualities explicit and auditable
-- log AI job metadata for each iteration
+- implement retailer registry and ingestion run helpers
+- create `packages/ingestion`
+- define adapter interface for discovery, extraction, normalization, and compliance notes
+- add normalization tests for product facts and confidence handling
+- keep scope to framework/schema helpers; first real retailer adapter starts in F-010
 
 ## Open Questions
 

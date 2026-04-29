@@ -1,9 +1,13 @@
-import { Button, ButtonLink } from "@ritzy-studio/ui";
+import { Button, ButtonLink, Textarea } from "@ritzy-studio/ui";
 import Image from "next/image";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
-import { generateInitialConceptAction } from "@/app/actions";
+import {
+  generateInitialConceptAction,
+  reviseConceptAction,
+  selectConceptAction
+} from "@/app/actions";
 import { createClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
@@ -64,6 +68,22 @@ export default async function ConceptsPage({
     .select("*, primary_image_asset:room_assets(*)")
     .eq("room_id", roomId)
     .order("created_at", { ascending: false });
+
+  const conceptIds = (concepts ?? []).map((concept) => concept.id);
+  const { data: critiques = [] } = conceptIds.length
+    ? await supabase
+        .from("concept_critiques")
+        .select("*")
+        .in("concept_id", conceptIds)
+        .order("created_at", { ascending: true })
+    : { data: [] };
+
+  const critiquesByConcept = new Map<string, typeof critiques>();
+  for (const critique of critiques ?? []) {
+    const existing = critiquesByConcept.get(critique.concept_id) ?? [];
+    existing.push(critique);
+    critiquesByConcept.set(critique.concept_id, existing);
+  }
 
   const conceptsWithImages = await Promise.all(
     (concepts ?? []).map(async (concept) => {
@@ -174,6 +194,51 @@ export default async function ConceptsPage({
                     {concept.description}
                   </p>
                 ) : null}
+                <div className="mt-6 flex flex-col gap-4 border-t border-line pt-5 md:flex-row md:items-center md:justify-between">
+                  <form action={selectConceptAction}>
+                    <input name="projectId" type="hidden" value={projectId} />
+                    <input name="roomId" type="hidden" value={roomId} />
+                    <input name="conceptId" type="hidden" value={concept.id} />
+                    <Button
+                      disabled={concept.status === "selected"}
+                      type="submit"
+                      variant={concept.status === "selected" ? "secondary" : "primary"}
+                    >
+                      {concept.status === "selected" ? "Selected" : "Select concept"}
+                    </Button>
+                  </form>
+                </div>
+                <div className="mt-6 border-t border-line pt-5">
+                  <p className="font-body text-caption font-medium uppercase text-ink-muted">
+                    Critique And Revise
+                  </p>
+                  {(critiquesByConcept.get(concept.id) ?? []).length > 0 ? (
+                    <div className="mt-4 space-y-3">
+                      {(critiquesByConcept.get(concept.id) ?? []).map((critique) => (
+                        <p
+                          className="border border-line bg-page px-4 py-3 font-display text-body-s italic text-ink-secondary"
+                          key={critique.id}
+                        >
+                          {critique.critique_text}
+                        </p>
+                      ))}
+                    </div>
+                  ) : null}
+                  <form action={reviseConceptAction} className="mt-5">
+                    <input name="projectId" type="hidden" value={projectId} />
+                    <input name="roomId" type="hidden" value={roomId} />
+                    <input name="conceptId" type="hidden" value={concept.id} />
+                    <Textarea
+                      id={`critique-${concept.id}`}
+                      label="Designer critique"
+                      name="critique"
+                      placeholder="make the palette warmer, keep the sofa placement, reduce ornament..."
+                    />
+                    <Button className="w-full" type="submit" variant="secondary">
+                      Generate revision
+                    </Button>
+                  </form>
+                </div>
               </article>
             ))
           ) : (

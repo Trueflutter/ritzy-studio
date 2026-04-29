@@ -262,3 +262,27 @@ Feature status:
 Current canonical next slice:
 
 - `F-008 Concept Critique And Iteration Loop`
+
+### F-008 Closed: Concept Critique And Iteration Loop
+
+Implemented concept selection, critique storage, and revised concept generation.
+
+Created:
+
+- concept selection server action
+- critique/revision form on generated concept cards
+- versioned critique-revision prompt
+- OpenAI revision helper
+- child-concept generation via `parent_concept_id`
+
+Verification passed:
+
+- `pnpm check`
+
+Feature status:
+
+- `F-008` marked `passes: true`.
+
+Current canonical next slice:
+
+- `F-009 Product Catalog Schema And Adapter Framework`
