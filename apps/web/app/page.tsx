@@ -1,134 +1,130 @@
-import { Button, Card, Chip, Panel, SegmentedControl, Tab, Tabs, TextInput } from "@ritzy-studio/ui";
+import type { Database } from "@ritzy-studio/db";
+import { Button, ButtonLink, Card, Tab, Tabs } from "@ritzy-studio/ui";
+import Link from "next/link";
+import { redirect } from "next/navigation";
 
-const previewItems = [
-  {
-    label: "Concept",
-    title: "Initial concepts",
-    detail: "Room image and brief become visual directions before product matching."
-  },
-  {
-    label: "Source",
-    title: "Real products",
-    detail: "Approved concepts are grounded in UAE retailer products and verified URLs."
-  },
-  {
-    label: "Render",
-    title: "Client package",
-    detail: "Final renders and shopping lists stay visually connected but truth-separated."
+import { signOutAction } from "@/app/actions";
+import { createClient } from "@/lib/supabase/server";
+
+type Project = Database["public"]["Tables"]["projects"]["Row"];
+type Room = Database["public"]["Tables"]["rooms"]["Row"];
+
+export const dynamic = "force-dynamic";
+
+function formatBudget(project: Project) {
+  if (project.budget_min_aed && project.budget_max_aed) {
+    return `AED ${Number(project.budget_min_aed).toLocaleString()} – ${Number(project.budget_max_aed).toLocaleString()}`;
   }
-];
 
-export default function Home() {
+  if (project.budget_max_aed) {
+    return `up to AED ${Number(project.budget_max_aed).toLocaleString()}`;
+  }
+
+  return "budget not set";
+}
+
+export default async function DashboardPage() {
+  const supabase = await createClient();
+  const {
+    data: { user }
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    redirect("/login");
+  }
+
+  const { data: projectRows } = await supabase
+    .from("projects")
+    .select("*")
+    .order("updated_at", { ascending: false });
+  const projects = projectRows ?? [];
+
+  const projectIds = projects.map((project) => project.id);
+  const { data: roomRows } = projectIds.length
+    ? await supabase.from("rooms").select("*").in("project_id", projectIds)
+    : { data: [] as Room[] };
+  const rooms = roomRows ?? [];
+
+  const roomCountByProject = rooms.reduce<Record<string, number>>((counts, room) => {
+    counts[room.project_id] = (counts[room.project_id] ?? 0) + 1;
+    return counts;
+  }, {});
+
   return (
-    <main className="min-h-dvh bg-page px-5 py-16 text-ink md:px-8 lg:px-12 xl:px-16">
-      <div className="mx-auto grid min-h-[calc(100dvh-128px)] max-w-[1440px] border border-line bg-surface lg:grid-cols-[240px_minmax(0,1fr)]">
-        <aside className="hidden border-e border-line p-6 lg:block">
-          <p className="font-body text-caption font-medium uppercase text-ink-muted">Ritzy Studio</p>
-          <nav className="mt-16 space-y-4 font-body text-body-s text-ink-muted">
-            <p className="text-ink">Projects</p>
-            <p>Rooms</p>
-            <p>Catalog</p>
-            <p>Settings</p>
-          </nav>
-        </aside>
+    <main className="min-h-dvh bg-page text-ink">
+      <header className="flex min-h-20 items-center justify-between border-b border-line bg-surface px-5 md:px-8 lg:px-12 xl:px-16">
+        <Link className="font-display text-[28px] font-light text-ink" href="/">
+          Ri <span className="font-body text-caption font-medium uppercase text-ink-muted">Ritzy Studio</span>
+        </Link>
+        <div className="flex items-center gap-6">
+          <p className="hidden font-body text-caption font-medium uppercase text-ink-muted md:block">
+            work · concepts · sourcing · studio
+          </p>
+          <form action={signOutAction}>
+            <Button variant="quiet">sign out</Button>
+          </form>
+        </div>
+      </header>
 
-        <section className="flex min-h-full flex-col">
-          <header className="flex min-h-20 items-center justify-between border-b border-line px-5 md:px-8 lg:px-12">
-            <p className="font-body text-caption font-medium uppercase text-ink-muted">N° 002</p>
-            <Tabs aria-label="Foundation preview">
-              <Tab active>scaffold</Tab>
-              <Tab>tokens</Tab>
-              <Tab>shell</Tab>
-            </Tabs>
-          </header>
-
-          <div className="grid flex-1 gap-12 p-5 md:p-8 lg:grid-cols-[minmax(0,1fr)_360px] lg:p-12 xl:grid-cols-[minmax(0,1fr)_480px]">
-            <section className="flex flex-col justify-between">
-              <div className="max-w-[720px]">
-                <p className="mb-6 font-body text-caption font-medium uppercase text-ink-muted">
-                  Quiet Gallery
-                </p>
-                <h1 className="font-display text-display-l font-light leading-none tracking-[-0.015em] text-ink">
-                  Design system shell, ready for product work.
-                </h1>
-                <p className="mt-8 max-w-[66ch] font-body text-body-l leading-[1.7] text-ink-secondary">
-                  The app now has a locked visual foundation: square controls, hairline
-                  panels, restrained typography, and a calm operational layout for the
-                  upcoming project workflow.
-                </p>
-
-                <div className="mt-12 flex flex-wrap gap-4">
-                  <Button>Begin project</Button>
-                  <Button variant="secondary">Review system</Button>
-                  <Button trailing="→" variant="quiet">
-                    view handoff
-                  </Button>
-                </div>
-              </div>
-
-              <div className="mt-20 grid gap-6 md:grid-cols-3">
-                {previewItems.map((item, index) => (
-                  <Card className="p-6" key={item.title}>
-                    <p className="font-display text-[28px] italic leading-none text-accent-deep">
-                      {String(index + 1).padStart(2, "0")}
-                    </p>
-                    <p className="mt-8 font-body text-caption font-medium uppercase text-ink-muted">
-                      {item.label}
-                    </p>
-                    <h2 className="mt-5 font-display text-display-s font-light tracking-[-0.01em] text-ink">
-                      {item.title}
-                    </h2>
-                    <p className="mt-5 font-body text-body-s text-ink-secondary">{item.detail}</p>
-                  </Card>
-                ))}
-              </div>
-            </section>
-
-            <Panel className="p-8">
-              <p className="font-body text-caption font-medium uppercase text-ink-muted">
-                Component proof
-              </p>
-
-              <div className="mt-8">
-                <TextInput
-                  id="project-name"
-                  label="Project name"
-                  narrative
-                  placeholder="emirates hills living room"
-                />
-                <TextInput
-                  id="budget"
-                  label="Budget"
-                  placeholder="AED 85,000"
-                />
-              </div>
-
-              <div className="mt-8">
-                <SegmentedControl options={["Concept", "Source", "Render"]} value="Concept" />
-              </div>
-
-              <div className="mt-8 flex flex-wrap gap-3">
-                <Chip active>modern classic</Chip>
-                <Chip>warm neutral</Chip>
-                <Chip>verified</Chip>
-              </div>
-
-              <div className="mt-12 border-t border-line pt-8">
-                <p className="font-body text-caption font-medium uppercase text-ink-muted">
-                  Foundation status
-                </p>
-                <p className="mt-5 font-display text-display-s font-light italic text-ink">
-                  F-002 in progress
-                </p>
-                <p className="mt-5 font-body text-body-s text-ink-secondary">
-                  This screen is a constrained shell preview only. Real auth and project
-                  workflows begin in the following slices.
-                </p>
-              </div>
-            </Panel>
+      <section className="mx-auto max-w-[1440px] px-5 py-12 md:px-8 lg:px-12 xl:px-16">
+        <div className="flex flex-col gap-8 md:flex-row md:items-start md:justify-between">
+          <div>
+            <p className="font-body text-caption font-medium uppercase text-ink-muted">N° 01 — Studio</p>
+            <h1 className="mt-6 font-display text-display-l font-light leading-none tracking-[-0.015em] text-ink">
+              Projects, in progress
+            </h1>
           </div>
-        </section>
-      </div>
+          <ButtonLink href="/projects/new">Begin a project</ButtonLink>
+        </div>
+
+        <div className="mt-8 flex items-center justify-between">
+          <Tabs aria-label="Project status filters">
+            <Tab active>all</Tab>
+            <Tab>active</Tab>
+            <Tab>archived</Tab>
+          </Tabs>
+          <p className="font-body text-caption font-medium uppercase text-ink-muted">
+            {projects.length} projects
+          </p>
+        </div>
+
+        {projects.length === 0 ? (
+          <section className="mt-20 flex min-h-[420px] flex-col items-center justify-center border border-dashed border-line-strong bg-surface px-8 text-center">
+            <p className="font-display text-display-s font-light italic text-ink">
+              begin with a client room
+            </p>
+            <p className="mt-5 max-w-[48ch] font-body text-body-m text-ink-secondary">
+              Create a project and add the first room. Photo upload and brief capture follow in
+              the next workflow slices.
+            </p>
+            <ButtonLink className="mt-8" href="/projects/new" trailing="→" variant="quiet">
+              begin a project
+            </ButtonLink>
+          </section>
+        ) : (
+          <div className="mt-12 grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+            {projects.map((project) => (
+              <Card className="group" key={project.id}>
+                <div className="aspect-[4/3] border-b border-line bg-surface-subtle" />
+                <div className="p-6">
+                  <p className="font-body text-caption font-medium uppercase text-ink-muted">
+                    {project.location ?? "Dubai"}
+                  </p>
+                  <h2 className="mt-5 font-display text-display-s font-light tracking-[-0.01em] text-ink">
+                    {project.name}
+                  </h2>
+                  <p className="mt-4 font-body text-body-s text-ink-secondary">
+                    {roomCountByProject[project.id] ?? 0} rooms · {formatBudget(project)}
+                  </p>
+                  <p className="mt-8 font-display text-button-quiet italic text-accent-deep">
+                    open project →
+                  </p>
+                </div>
+              </Card>
+            ))}
+          </div>
+        )}
+      </section>
     </main>
   );
 }

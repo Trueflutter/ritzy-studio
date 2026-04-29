@@ -35,16 +35,16 @@ For visual implementation, `docs/Vision/05_Brand_and_Design_System.md` is locked
 
 ## Current Canonical Slice
 
-`F-004 Project And Room Creation`
+`F-005 Room Image Upload And Asset Storage`
 
 Status: not started.
 
 Expected boundaries:
 
 - `apps/web`
-- `packages/ui`
-- `packages/domain`
 - `packages/db`
+- `packages/domain`
+- `packages/ui`
 
 ## Locked Product Workflow
 
@@ -66,13 +66,14 @@ Expected boundaries:
 
 ## Suggested Next Action
 
-Begin F-004:
+Begin F-005:
 
-- build project dashboard and new project flow
-- require authenticated Supabase user for project operations
-- create server actions or route handlers for project/room creation
-- keep within design system project dashboard and new project blueprints
-- verify against local Supabase
+- add room photo upload UI
+- store original image assets in private Supabase Storage
+- persist room asset records
+- enforce storage path convention `<user-id>/<room-id>/<file-name>`
+- show upload progress/error/retry states where practical
+- keep scope to room assets only; no AI analysis yet
 
 ## Open Questions
 

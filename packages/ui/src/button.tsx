@@ -1,4 +1,4 @@
-import type { ButtonHTMLAttributes, ReactNode } from "react";
+import type { AnchorHTMLAttributes, ButtonHTMLAttributes, ReactNode } from "react";
 
 import { cx } from "./utils";
 
@@ -57,5 +57,41 @@ export function Button({
         </span>
       ) : null}
     </button>
+  );
+}
+
+type ButtonLinkProps = AnchorHTMLAttributes<HTMLAnchorElement> & {
+  variant?: ButtonVariant;
+  trailing?: ReactNode;
+};
+
+export function ButtonLink({
+  children,
+  className,
+  variant = "primary",
+  trailing,
+  ...props
+}: ButtonLinkProps) {
+  const isQuiet = variant === "quiet";
+
+  return (
+    <a
+      className={cx(
+        "inline-flex items-center justify-center border border-solid transition-colors duration-micro ease-standard focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--rs-focus-ring)]",
+        isQuiet
+          ? "h-auto border-transparent bg-transparent px-0 py-0 font-display text-button-quiet italic tracking-normal"
+          : "h-[52px] px-8 font-body text-button font-medium uppercase",
+        variantClasses[variant],
+        className
+      )}
+      {...props}
+    >
+      <span>{children}</span>
+      {trailing ? (
+        <span className="ms-2 text-[var(--rs-accent-deep)] transition-transform duration-standard ease-standard">
+          {trailing}
+        </span>
+      ) : null}
+    </a>
   );
 }

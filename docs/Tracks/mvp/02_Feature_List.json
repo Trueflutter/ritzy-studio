@@ -65,7 +65,7 @@
       "summary": "Build project dashboard, new project flow, and room creation using locked design blueprints.",
       "boundaries": ["apps/web", "packages/ui", "packages/domain", "packages/db"],
       "dependencies": ["F-002", "F-003"],
-      "passes": false,
+      "passes": true,
       "done_when": [
         "designer can create a project",
         "designer can add a room with room type and budget fields",

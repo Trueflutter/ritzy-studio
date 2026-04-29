@@ -1,4 +1,4 @@
-export { Button } from "./button";
+export { Button, ButtonLink } from "./button";
 export { Card, Panel } from "./card";
 export { Chip } from "./chip";
 export { Field, Label, Textarea, TextInput } from "./form";

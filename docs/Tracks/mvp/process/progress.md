@@ -151,3 +151,32 @@ Feature status:
 Current canonical next slice:
 
 - `F-004 Project And Room Creation`
+
+### F-004 Closed: Project And Room Creation
+
+Implemented authenticated project and room creation.
+
+Created:
+
+- `/login`
+- protected `/` dashboard
+- `/projects/new`
+- server actions for auth and project creation
+- project list and room count display
+- project-with-room domain schema
+
+Verification passed:
+
+- `pnpm check`
+- unauthenticated route redirect checks
+- login page render check
+- Supabase authenticated RLS smoke test for sign-up, project insert, room insert, project list, cleanup
+- design-rule scan for forbidden UI styles
+
+Feature status:
+
+- `F-004` marked `passes: true`.
+
+Current canonical next slice:
+
+- `F-005 Room Image Upload And Asset Storage`
