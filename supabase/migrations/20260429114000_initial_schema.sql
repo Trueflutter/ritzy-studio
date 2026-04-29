@@ -214,7 +214,7 @@ create table public.product_embeddings (
   product_id uuid not null references public.products(id) on delete cascade,
   embedding_type text not null,
   model text not null,
-  vector vector(1536),
+  vector extensions.vector(1536),
   source_hash text not null,
   created_at timestamptz not null default now(),
   unique (product_id, embedding_type, model, source_hash)
@@ -282,7 +282,7 @@ create index concepts_room_id_idx on public.concepts(room_id);
 create index products_retailer_id_idx on public.products(retailer_id);
 create index products_category_normalized_idx on public.products(category_normalized);
 create index shopping_lists_room_id_idx on public.shopping_lists(room_id);
-create index product_embeddings_vector_idx on public.product_embeddings using ivfflat (vector vector_cosine_ops) with (lists = 100);
+create index product_embeddings_vector_idx on public.product_embeddings using ivfflat (vector extensions.vector_cosine_ops) with (lists = 100);
 
 create trigger users_set_updated_at before update on public.users for each row execute function public.set_updated_at();
 create trigger projects_set_updated_at before update on public.projects for each row execute function public.set_updated_at();
