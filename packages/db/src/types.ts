@@ -610,8 +610,11 @@ export type Database = {
           error_message: string | null
           id: string
           input_asset_ids: string[]
+          input_summary: Json
           model: string | null
           output_asset_ids: string[]
+          product_ids: string[]
+          prompt_key: string | null
           prompt_version: string | null
           room_id: string
           shopping_list_id: string | null
@@ -624,8 +627,11 @@ export type Database = {
           error_message?: string | null
           id?: string
           input_asset_ids?: string[]
+          input_summary?: Json
           model?: string | null
           output_asset_ids?: string[]
+          product_ids?: string[]
+          prompt_key?: string | null
           prompt_version?: string | null
           room_id: string
           shopping_list_id?: string | null
@@ -638,8 +644,11 @@ export type Database = {
           error_message?: string | null
           id?: string
           input_asset_ids?: string[]
+          input_summary?: Json
           model?: string | null
           output_asset_ids?: string[]
+          product_ids?: string[]
+          prompt_key?: string | null
           prompt_version?: string | null
           room_id?: string
           shopping_list_id?: string | null

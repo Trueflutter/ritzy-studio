@@ -3,6 +3,7 @@
 import {
   generateClarifyingQuestions,
   generateConceptRevision,
+  generateFinalGroundedRender,
   generateInitialConcept
 } from "@ritzy-studio/ai";
 import type { Database } from "@ritzy-studio/db";
@@ -950,6 +951,202 @@ export async function substituteProductAction(formData: FormData) {
   redirect(`${redirectPath}?message=${encodeURIComponent(`Product swapped. Price impact: ${impactText}.`)}`);
 }
 
+export async function generateFinalRenderAction(formData: FormData) {
+  const projectId = String(formData.get("projectId") ?? "");
+  const roomId = String(formData.get("roomId") ?? "");
+  const conceptId = String(formData.get("conceptId") ?? "");
+  const shoppingListId = String(formData.get("shoppingListId") ?? "");
+  const redirectPath = `/projects/${projectId}/rooms/${roomId}/concepts`;
+  const supabase = await createClient();
+  const {
+    data: { user },
+    error: userError
+  } = await supabase.auth.getUser();
+
+  if (userError || !user) {
+    redirect("/login");
+  }
+
+  const { data: room } = await supabase
+    .from("rooms")
+    .select("id, room_type")
+    .eq("id", roomId)
+    .eq("project_id", projectId)
+    .single();
+
+  const { data: concept } = await supabase
+    .from("concepts")
+    .select("id, title, description, status")
+    .eq("id", conceptId)
+    .eq("room_id", roomId)
+    .single();
+
+  const { data: shoppingList } = await supabase
+    .from("shopping_lists")
+    .select("id")
+    .eq("id", shoppingListId)
+    .eq("room_id", roomId)
+    .eq("concept_id", conceptId)
+    .single();
+
+  if (!room || !concept || !shoppingList) {
+    redirect("/");
+  }
+
+  const { data: roomPhoto } = await supabase
+    .from("room_assets")
+    .select("*")
+    .eq("room_id", roomId)
+    .eq("asset_type", "room_photo")
+    .order("created_at", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+
+  if (!roomPhoto) {
+    redirect(`${redirectPath}?message=${encodeURIComponent("Upload a room photo before final rendering.")}`);
+  }
+
+  const { data: roomBlob, error: roomDownloadError } = await supabase.storage
+    .from("room-assets")
+    .download(roomPhoto.storage_path);
+
+  if (roomDownloadError || !roomBlob) {
+    redirect(`${redirectPath}?message=${encodeURIComponent("The original room photo could not be prepared for final rendering.")}`);
+  }
+
+  const { data: items = [] } = await supabase
+    .from("shopping_list_items")
+    .select(
+      `
+      *,
+      product:products(
+        *,
+        retailer:retailers(name),
+        dimensions:product_dimensions(width_cm, depth_cm, height_cm, source_text)
+      )
+    `
+    )
+    .eq("shopping_list_id", shoppingListId)
+    .order("sort_order", { ascending: true });
+
+  const selectedProducts = (items ?? []).filter((item) => item.product);
+
+  if (selectedProducts.length === 0) {
+    redirect(`${redirectPath}?message=${encodeURIComponent("Match products before final rendering.")}`);
+  }
+
+  const serviceSupabase = createServiceClient();
+  const productIds = selectedProducts.map((item) => item.product!.id);
+  const { data: renderJob, error: renderJobError } = await supabase
+    .from("render_jobs")
+    .insert({
+      room_id: roomId,
+      concept_id: conceptId,
+      shopping_list_id: shoppingListId,
+      status: "running",
+      input_asset_ids: [roomPhoto.id],
+      product_ids: productIds,
+      input_summary: {
+        productCount: selectedProducts.length,
+        conceptTitle: concept.title
+      }
+    })
+    .select("id")
+    .single();
+
+  if (renderJobError) {
+    throw new Error(renderJobError.message);
+  }
+
+  try {
+    const productsForRender = await Promise.all(
+      selectedProducts.slice(0, 8).map(async (item) => {
+        const product = item.product!;
+        const image = product.primary_image_url
+          ? await fetchRemoteImage(product.primary_image_url)
+          : null;
+        const dimensions = product.dimensions?.[0]?.source_text ?? null;
+
+        return {
+          name: product.name,
+          retailerName: product.retailer?.name ?? "Retailer",
+          category: item.category,
+          priceAed: item.unit_price_aed,
+          dimensions,
+          imageBytes: image?.bytes ?? null,
+          imageMimeType: image?.mimeType ?? null
+        };
+      })
+    );
+    const result = await generateFinalGroundedRender({
+      roomPhotoBytes: Buffer.from(await roomBlob.arrayBuffer()),
+      roomPhotoMimeType: roomPhoto.mime_type,
+      conceptTitle: concept.title,
+      conceptDescription: concept.description,
+      products: productsForRender
+    });
+    const renderPath = `${user.id}/${roomId}/final-${renderJob.id}.png`;
+    const { error: uploadError } = await serviceSupabase.storage
+      .from("generated-renders")
+      .upload(renderPath, Buffer.from(result.imageBase64, "base64"), {
+        contentType: "image/png",
+        upsert: true
+      });
+
+    if (uploadError) {
+      throw new Error(uploadError.message);
+    }
+
+    const { data: renderAsset, error: renderAssetError } = await supabase
+      .from("room_assets")
+      .insert({
+        room_id: roomId,
+        asset_type: "final_render",
+        storage_path: renderPath,
+        mime_type: "image/png",
+        is_primary: false
+      })
+      .select("id")
+      .single();
+
+    if (renderAssetError) {
+      throw new Error(renderAssetError.message);
+    }
+
+    await supabase
+      .from("render_jobs")
+      .update({
+        status: "succeeded",
+        completed_at: new Date().toISOString(),
+        prompt_key: result.promptKey,
+        prompt_version: result.promptVersion,
+        model: result.imageModel,
+        output_asset_ids: [renderAsset.id],
+        input_summary: {
+          productCount: selectedProducts.length,
+          productImageReferencesUsed: productsForRender.filter((product) => product.imageBytes).length,
+          revisedPrompt: result.revisedPrompt ?? null
+        }
+      })
+      .eq("id", renderJob.id);
+    await supabase.from("rooms").update({ status: "rendering" }).eq("id", roomId);
+  } catch (error) {
+    await supabase
+      .from("render_jobs")
+      .update({
+        status: "failed",
+        completed_at: new Date().toISOString(),
+        error_message: error instanceof Error ? error.message : "Final render generation failed."
+      })
+      .eq("id", renderJob.id);
+
+    redirect(`${redirectPath}?message=${encodeURIComponent("Final render failed. You can retry after checking product images.")}`);
+  }
+
+  revalidatePath(redirectPath);
+  redirect(`${redirectPath}?message=${encodeURIComponent("Final grounded render generated.")}`);
+}
+
 export async function reviseConceptAction(formData: FormData) {
   const projectId = String(formData.get("projectId") ?? "");
   const roomId = String(formData.get("roomId") ?? "");
@@ -1240,4 +1437,30 @@ function formatAedValue(value: number) {
   return `AED ${value.toLocaleString("en-AE", {
     maximumFractionDigits: 0
   })}`;
+}
+
+async function fetchRemoteImage(url: string) {
+  try {
+    const response = await fetch(url, {
+      headers: {
+        "user-agent": "RitzyStudioBot/0.1 (+https://ritzy-studio.local; final render references)"
+      }
+    });
+
+    if (!response.ok) {
+      return null;
+    }
+
+    const mimeType = response.headers.get("content-type")?.split(";")[0] ?? "image/jpeg";
+    if (!["image/jpeg", "image/png", "image/webp"].includes(mimeType)) {
+      return null;
+    }
+
+    return {
+      bytes: Buffer.from(await response.arrayBuffer()),
+      mimeType
+    };
+  } catch {
+    return null;
+  }
 }

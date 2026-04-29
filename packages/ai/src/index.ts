@@ -15,6 +15,7 @@ import {
   initialConceptJsonSchema,
   initialConceptPrompt,
   initialConceptResponseSchema,
+  finalGroundedRenderPrompt,
   productMetadataEnrichmentJsonSchema,
   productMetadataEnrichmentPrompt
 } from "@ritzy-studio/prompts";
@@ -126,6 +127,30 @@ export type EnrichAndEmbedProductResult = {
   sourceHash: string;
   enrichmentModel: string;
   embeddingModel: string;
+};
+
+export type GenerateFinalGroundedRenderInput = {
+  roomPhotoBytes: Buffer;
+  roomPhotoMimeType: string;
+  conceptTitle: string;
+  conceptDescription?: string | null;
+  products: Array<{
+    name: string;
+    retailerName: string;
+    category: string;
+    priceAed?: number | null;
+    dimensions?: string | null;
+    imageBytes?: Buffer | null;
+    imageMimeType?: string | null;
+  }>;
+};
+
+export type GenerateFinalGroundedRenderResult = {
+  promptKey: string;
+  promptVersion: string;
+  imageModel: string;
+  imageBase64: string;
+  revisedPrompt?: string | null;
 };
 
 export async function generateClarifyingQuestions(
@@ -536,6 +561,78 @@ export async function enrichAndEmbedProduct({
     sourceHash,
     enrichmentModel: enrichmentResult.model,
     embeddingModel: embedding.model
+  };
+}
+
+export async function generateFinalGroundedRender(
+  input: GenerateFinalGroundedRenderInput
+): Promise<GenerateFinalGroundedRenderResult> {
+  const env = parseServerEnv(process.env);
+  const client = new OpenAI({ apiKey: env.OPENAI_API_KEY });
+  const roomFile = await toFile(input.roomPhotoBytes, `room.${extensionForMime(input.roomPhotoMimeType)}`, {
+    type: input.roomPhotoMimeType
+  });
+  const productFiles = await Promise.all(
+    input.products
+      .filter((product) => product.imageBytes && product.imageMimeType)
+      .slice(0, 8)
+      .map((product, index) =>
+        toFile(
+          product.imageBytes as Buffer,
+          `product-${index}.${extensionForMime(product.imageMimeType as string)}`,
+          {
+            type: product.imageMimeType as string
+          }
+        )
+      )
+  );
+  const productSummary = input.products
+    .map((product, index) =>
+      [
+        `${index + 1}. ${product.category}: ${product.name}`,
+        `retailer: ${product.retailerName}`,
+        product.priceAed ? `price: AED ${product.priceAed}` : null,
+        product.dimensions ? `dimensions: ${product.dimensions}` : null
+      ]
+        .filter(Boolean)
+        .join("; ")
+    )
+    .join("\n");
+  const prompt = [
+    finalGroundedRenderPrompt.system,
+    "",
+    `Selected concept: ${input.conceptTitle}`,
+    input.conceptDescription ? `Concept notes: ${input.conceptDescription}` : null,
+    "",
+    "Selected catalog products:",
+    productSummary,
+    "",
+    "Generate a polished final client-facing room render. Keep the shopping list as the source of truth; the image is a best-effort visual composition."
+  ]
+    .filter(Boolean)
+    .join("\n");
+
+  const imageResponse = await client.images.edit({
+    model: env.OPENAI_IMAGE_MODEL,
+    image: [roomFile, ...productFiles],
+    prompt,
+    size: "1536x1024",
+    quality: "medium",
+    output_format: "png"
+  });
+  const firstImage = imageResponse.data?.[0];
+  const imageBase64 = firstImage?.b64_json;
+
+  if (!imageBase64) {
+    throw new Error("OpenAI final render generation returned no image data.");
+  }
+
+  return {
+    promptKey: finalGroundedRenderPrompt.key,
+    promptVersion: finalGroundedRenderPrompt.version,
+    imageModel: env.OPENAI_IMAGE_MODEL,
+    imageBase64,
+    revisedPrompt: firstImage.revised_prompt ?? null
   };
 }
 

@@ -263,7 +263,7 @@
       "summary": "Generate final renders using selected products, original room image, and approved concept.",
       "boundaries": ["apps/web", "packages/prompts", "packages/ai", "packages/db", "packages/ui"],
       "dependencies": ["F-014"],
-      "passes": false,
+      "passes": true,
       "done_when": [
         "selected products are passed as references where supported",
         "render job stores product and prompt provenance",
@@ -271,7 +271,7 @@
         "render output is stored and reviewable",
         "failure/retry behavior is implemented"
       ],
-      "notes": "Final render is best-effort visual; shopping list remains source of truth."
+      "notes": "Final render action uses original room photo first and selected product image references where fetchable. Shopping list remains source of truth."
     },
     {
       "id": "F-016",

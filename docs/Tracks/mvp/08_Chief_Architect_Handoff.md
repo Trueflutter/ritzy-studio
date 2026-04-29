@@ -2,7 +2,7 @@
 
 ## Current State
 
-Ritzy Studio has completed the first fourteen MVP implementation slices.
+Ritzy Studio has completed the first fifteen MVP implementation slices.
 
 The repository now contains:
 
@@ -21,6 +21,7 @@ The repository now contains:
 - product enrichment prompt, text embedding helper, and enrichment provenance schema
 - selected-concept product grounding with draft shopping list candidates
 - line-level product substitution for draft shopping list items
+- final grounded render generation with product reference images and render-job provenance
 
 The locked design system exists at:
 
@@ -44,7 +45,7 @@ For visual implementation, `docs/Vision/05_Brand_and_Design_System.md` is locked
 
 ## Current Canonical Slice
 
-`F-015 Final Grounded Render Generation`
+`F-016 Shopping List And Cost Estimate`
 
 Status: not started.
 
@@ -52,8 +53,7 @@ Expected boundaries:
 
 - `apps/web`
 - `apps/web`
-- `packages/prompts`
-- `packages/ai`
+- `packages/domain`
 - `packages/db`
 - `packages/ui`
 
@@ -77,13 +77,13 @@ Expected boundaries:
 
 ## Suggested Next Action
 
-Begin F-015:
+Begin F-016:
 
-- generate final grounded renders from selected concept, original room photo, and selected shopping list products
-- pass selected product images as references where supported
-- store render job product and prompt provenance
-- make SKU-exactness limits visible in UI
-- implement failure/retry behavior
+- create a data-dense shopping list and cost estimate view
+- show product name, retailer, category, price, dimensions, image, URL, and availability where available
+- keep stale and missing data visible
+- calculate totals from selected product records only
+- follow design system section 13 for data-dense UI
 
 ## Open Questions
 

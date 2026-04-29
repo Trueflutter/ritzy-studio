@@ -4,6 +4,7 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
 import {
+  generateFinalRenderAction,
   generateInitialConceptAction,
   groundProductsAction,
   reviseConceptAction,
@@ -129,6 +130,35 @@ export default async function ConceptsPage({
         .eq("shopping_list_id", shoppingList.id)
         .order("sort_order", { ascending: true })
     : { data: [] };
+  const { data: finalRenderAssets = [] } = selectedConcept
+    ? await supabase
+        .from("room_assets")
+        .select("*")
+        .eq("room_id", roomId)
+        .eq("asset_type", "final_render")
+        .order("created_at", { ascending: false })
+        .limit(4)
+    : { data: [] };
+  const finalRenders = await Promise.all(
+    (finalRenderAssets ?? []).map(async (asset) => {
+      const { data } = await supabase.storage
+        .from("generated-renders")
+        .createSignedUrl(asset.storage_path, 60 * 60);
+
+      return { ...asset, signedUrl: data?.signedUrl ?? null };
+    })
+  );
+  const { data: latestRenderJob } = selectedConcept
+    ? await supabase
+        .from("render_jobs")
+        .select("status, error_message, completed_at")
+        .eq("room_id", roomId)
+        .eq("concept_id", selectedConcept.id)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle()
+    : { data: null };
+  const shoppingItemsList = shoppingItems ?? [];
 
   const canGenerate = Boolean(designBrief && roomPhoto);
 
@@ -324,8 +354,8 @@ export default async function ConceptsPage({
           </div>
 
           <div className="mt-8 grid gap-5 md:grid-cols-2 xl:grid-cols-3">
-            {shoppingItems && shoppingItems.length > 0 ? (
-              shoppingItems.map((item) => {
+            {shoppingItemsList.length > 0 ? (
+              shoppingItemsList.map((item) => {
                 const product = item.product;
                 const dimensions = product?.dimensions?.[0];
                 const warningText = [item.dimension_fit_note, item.selection_reason]
@@ -426,6 +456,94 @@ export default async function ConceptsPage({
                 <p className="mt-4 max-w-[560px] font-body text-body-s text-ink-secondary">
                   Select a concept, then match products from the live catalog records already
                   ingested into the system.
+                </p>
+              </div>
+            )}
+          </div>
+        </section>
+
+        <section className="mt-16 border-t border-line pt-10">
+          <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_340px]">
+            <div>
+              <p className="font-body text-caption font-medium uppercase text-ink-muted">
+                N° 07 — Final Render
+              </p>
+              <h2 className="mt-4 font-display text-display-s font-light italic text-ink">
+                Generate the client-facing grounded render.
+              </h2>
+              <p className="mt-4 max-w-[680px] font-body text-body-s text-ink-secondary">
+                The render uses the selected product images as visual references where available.
+                It is not a guarantee of exact SKU reproduction; the shopping list remains the
+                source of truth.
+              </p>
+              {latestRenderJob?.status === "failed" ? (
+                <p className="mt-5 border border-line bg-surface px-4 py-3 font-display text-body-s italic text-error">
+                  {latestRenderJob.error_message ?? "Final render failed."}
+                </p>
+              ) : null}
+            </div>
+
+            <aside className="border border-line bg-surface p-5 lg:self-start">
+              <p className="font-body text-caption font-medium uppercase text-ink-muted">
+                Render Status
+              </p>
+              <div className="mt-3 h-px w-20 bg-ink" />
+              <p className="mt-6 font-display text-display-xs font-light italic text-ink">
+                {shoppingList && shoppingItemsList.length > 0 ? "shopping list ready" : "match products first"}
+              </p>
+              <form action={generateFinalRenderAction} className="mt-8">
+                <input name="projectId" type="hidden" value={projectId} />
+                <input name="roomId" type="hidden" value={roomId} />
+                <input name="conceptId" type="hidden" value={selectedConcept?.id ?? ""} />
+                <input name="shoppingListId" type="hidden" value={shoppingList?.id ?? ""} />
+                <Button
+                  className="w-full"
+                  disabled={!selectedConcept || !shoppingList || shoppingItemsList.length === 0}
+                  type="submit"
+                >
+                  Generate final render
+                </Button>
+              </form>
+              {latestRenderJob ? (
+                <p className="mt-5 font-body text-body-s text-ink-secondary">
+                  Latest job: {latestRenderJob.status}
+                </p>
+              ) : null}
+            </aside>
+          </div>
+
+          <div className="mt-8 grid gap-6 md:grid-cols-2">
+            {finalRenders.length > 0 ? (
+              finalRenders.map((render) => (
+                <article className="border border-line bg-surface p-4" key={render.id}>
+                  <div className="flex aspect-[3/2] items-center justify-center bg-page">
+                    {render.signedUrl ? (
+                      <Image
+                        alt="Final grounded room render"
+                        className="h-full w-full object-cover"
+                        height={768}
+                        unoptimized
+                        src={render.signedUrl}
+                        width={1152}
+                      />
+                    ) : (
+                      <p className="font-display text-body-s italic text-error">
+                        final render could not load
+                      </p>
+                    )}
+                  </div>
+                  <p className="mt-4 font-body text-caption font-medium uppercase text-ink-muted">
+                    Final render · {new Date(render.created_at).toLocaleDateString("en-AE")}
+                  </p>
+                </article>
+              ))
+            ) : (
+              <div className="border border-line bg-surface p-8 md:col-span-2">
+                <p className="font-display text-display-xs font-light italic text-ink">
+                  No final render yet.
+                </p>
+                <p className="mt-4 max-w-[560px] font-body text-body-s text-ink-secondary">
+                  Generate after product matching and substitution are complete.
                 </p>
               </div>
             )}

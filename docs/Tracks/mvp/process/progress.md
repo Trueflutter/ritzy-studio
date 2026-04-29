@@ -455,3 +455,32 @@ Feature status:
 Current canonical next slice:
 
 - `F-015 Final Grounded Render Generation`
+
+### F-015 Closed: Final Grounded Render Generation
+
+Implemented final grounded render generation.
+
+Created:
+
+- final grounded render prompt
+- OpenAI final render helper
+- render job provenance migration
+- final render server action
+- product image reference fetching
+- final render review UI
+- failure/retry path through repeatable generation
+
+Verification passed:
+
+- `pnpm --filter @ritzy-studio/ai typecheck`
+- `pnpm --filter @ritzy-studio/web lint`
+- `pnpm --filter @ritzy-studio/web typecheck`
+- `pnpm check`
+
+Feature status:
+
+- `F-015` marked `passes: true`.
+
+Current canonical next slice:
+
+- `F-016 Shopping List And Cost Estimate`
