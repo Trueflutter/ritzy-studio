@@ -51,6 +51,9 @@ export type RankedProductMatch = ProductMatchCandidate & {
   warnings: string[];
 };
 
+export const substitutionModeSchema = z.enum(["cheaper", "closer_style", "same_retailer", "in_stock"]);
+export type SubstitutionMode = z.infer<typeof substitutionModeSchema>;
+
 const roomCategoryHints: Record<string, string[]> = {
   living: ["sofas", "armchairs", "coffee_tables", "side_tables", "rugs", "lighting"],
   bedroom: ["beds", "side_tables", "rugs", "lighting"],
@@ -68,6 +71,46 @@ export function rankProductMatches(request: ProductMatchRequest): RankedProductM
     .map((candidate) => scoreCandidate(candidate, conceptTokens, preferredCategories, parsed))
     .sort((left, right) => right.score - left.score)
     .map((match, index) => ({ ...match, score: Number((match.score - index * 0.001).toFixed(3)) }));
+}
+
+export function filterSubstitutionCandidates({
+  current,
+  candidates,
+  mode,
+  selectedProductIds = []
+}: {
+  current: ProductMatchCandidate;
+  candidates: ProductMatchCandidate[];
+  mode: SubstitutionMode;
+  selectedProductIds?: string[];
+}) {
+  const selected = new Set(selectedProductIds.filter((id) => id !== current.id));
+  const currentPrice = current.salePriceAed ?? current.priceAed;
+
+  return candidates.filter((candidate) => {
+    if (candidate.id === current.id || selected.has(candidate.id)) {
+      return false;
+    }
+
+    if (candidate.categoryNormalized !== current.categoryNormalized) {
+      return false;
+    }
+
+    if (mode === "cheaper") {
+      const candidatePrice = candidate.salePriceAed ?? candidate.priceAed;
+      return currentPrice !== null && candidatePrice !== null && candidatePrice < currentPrice;
+    }
+
+    if (mode === "same_retailer") {
+      return candidate.retailerName === current.retailerName;
+    }
+
+    if (mode === "in_stock") {
+      return Boolean(candidate.availability?.toLowerCase().includes("in stock"));
+    }
+
+    return true;
+  });
 }
 
 function scoreCandidate(

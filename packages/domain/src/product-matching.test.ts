@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 
-import { rankProductMatches, type ProductMatchCandidate } from "./product-matching";
+import {
+  filterSubstitutionCandidates,
+  rankProductMatches,
+  type ProductMatchCandidate
+} from "./product-matching";
 
 const now = new Date().toISOString();
 const base: ProductMatchCandidate = {
@@ -65,5 +69,38 @@ assert.equal(ranked[0].name, "Ivory Fabric Sofa");
 assert.ok(ranked[0].selectionReason.includes("category fits"));
 assert.equal(ranked[0].dimensionFitNote, "verified against entered room measurements");
 assert.ok(ranked[1].warnings.some((warning) => warning.includes("Above")));
+
+const alternatives = filterSubstitutionCandidates({
+  current: ranked[0],
+  candidates: [
+    ranked[0],
+    {
+      ...ranked[0],
+      id: "00000000-0000-4000-8000-000000000004",
+      name: "Cheaper Sofa",
+      priceAed: 3000
+    },
+    {
+      ...ranked[0],
+      id: "00000000-0000-4000-8000-000000000005",
+      name: "Already Selected Sofa",
+      priceAed: 2800
+    },
+    {
+      ...ranked[0],
+      id: "00000000-0000-4000-8000-000000000006",
+      name: "Wrong Category",
+      categoryNormalized: "rugs",
+      priceAed: 1000
+    }
+  ],
+  mode: "cheaper",
+  selectedProductIds: ["00000000-0000-4000-8000-000000000005"]
+});
+
+assert.deepEqual(
+  alternatives.map((candidate) => candidate.name),
+  ["Cheaper Sofa"]
+);
 
 console.log("product matching tests passed");

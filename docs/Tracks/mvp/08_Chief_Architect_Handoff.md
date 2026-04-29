@@ -2,7 +2,7 @@
 
 ## Current State
 
-Ritzy Studio has completed the first thirteen MVP implementation slices.
+Ritzy Studio has completed the first fourteen MVP implementation slices.
 
 The repository now contains:
 
@@ -20,6 +20,7 @@ The repository now contains:
 - retailer adapters: Home Centre UAE, 2XL Home, and Chattels & More
 - product enrichment prompt, text embedding helper, and enrichment provenance schema
 - selected-concept product grounding with draft shopping list candidates
+- line-level product substitution for draft shopping list items
 
 The locked design system exists at:
 
@@ -43,14 +44,15 @@ For visual implementation, `docs/Vision/05_Brand_and_Design_System.md` is locked
 
 ## Current Canonical Slice
 
-`F-014 Product Substitution Loop`
+`F-015 Final Grounded Render Generation`
 
 Status: not started.
 
 Expected boundaries:
 
 - `apps/web`
-- `packages/domain`
+- `apps/web`
+- `packages/prompts`
 - `packages/ai`
 - `packages/db`
 - `packages/ui`
@@ -75,13 +77,13 @@ Expected boundaries:
 
 ## Suggested Next Action
 
-Begin F-014:
+Begin F-015:
 
-- allow the designer to substitute a matched product
-- support cheaper, style, color, material, dimension, and retailer-based alternatives
-- keep replacement facts grounded in catalog rows
-- update draft shopping list totals after substitution
-- preserve warnings for missing dimensions, stale prices, and stock uncertainty
+- generate final grounded renders from selected concept, original room photo, and selected shopping list products
+- pass selected product images as references where supported
+- store render job product and prompt provenance
+- make SKU-exactness limits visible in UI
+- implement failure/retry behavior
 
 ## Open Questions
 

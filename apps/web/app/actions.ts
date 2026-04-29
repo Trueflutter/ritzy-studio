@@ -9,7 +9,9 @@ import type { Database } from "@ritzy-studio/db";
 import {
   createProjectWithRoomSchema,
   designBriefSchema,
+  filterSubstitutionCandidates,
   rankProductMatches,
+  substitutionModeSchema,
   type ProductMatchCandidate
 } from "@ritzy-studio/domain";
 import { revalidatePath } from "next/cache";
@@ -769,6 +771,185 @@ export async function groundProductsAction(formData: FormData) {
   redirect(`${redirectPath}?message=${encodeURIComponent("Catalog products matched to the selected concept.")}`);
 }
 
+export async function substituteProductAction(formData: FormData) {
+  const projectId = String(formData.get("projectId") ?? "");
+  const roomId = String(formData.get("roomId") ?? "");
+  const shoppingListId = String(formData.get("shoppingListId") ?? "");
+  const itemId = String(formData.get("itemId") ?? "");
+  const mode = substitutionModeSchema.parse(String(formData.get("mode") ?? "cheaper"));
+  const redirectPath = `/projects/${projectId}/rooms/${roomId}/concepts`;
+  const supabase = await createClient();
+  const {
+    data: { user },
+    error: userError
+  } = await supabase.auth.getUser();
+
+  if (userError || !user) {
+    redirect("/login");
+  }
+
+  const { data: project } = await supabase
+    .from("projects")
+    .select("id, budget_max_aed")
+    .eq("id", projectId)
+    .single();
+
+  const { data: room } = await supabase
+    .from("rooms")
+    .select("id, room_type")
+    .eq("id", roomId)
+    .eq("project_id", projectId)
+    .single();
+
+  const { data: shoppingList } = await supabase
+    .from("shopping_lists")
+    .select("id, concept_id")
+    .eq("id", shoppingListId)
+    .eq("room_id", roomId)
+    .single();
+
+  const { data: item } = await supabase
+    .from("shopping_list_items")
+    .select(
+      `
+      *,
+      product:products(
+        *,
+        retailer:retailers(name),
+        dimensions:product_dimensions(width_cm, depth_cm, height_cm, source_text)
+      )
+    `
+    )
+    .eq("id", itemId)
+    .eq("shopping_list_id", shoppingListId)
+    .single();
+
+  if (!project || !room || !shoppingList?.concept_id || !item?.product) {
+    redirect("/");
+  }
+
+  const { data: concept } = await supabase
+    .from("concepts")
+    .select("id, title, description")
+    .eq("id", shoppingList.concept_id)
+    .eq("room_id", roomId)
+    .single();
+
+  if (!concept) {
+    redirect("/");
+  }
+
+  const { data: measurements } = await supabase
+    .from("room_measurements")
+    .select("wall_length_cm, room_depth_cm")
+    .eq("room_id", roomId)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  const { data: selectedItems = [] } = await supabase
+    .from("shopping_list_items")
+    .select("product_id")
+    .eq("shopping_list_id", shoppingListId);
+
+  const { data: products = [], error: productsError } = await supabase
+    .from("products")
+    .select(
+      `
+      *,
+      retailer:retailers(name),
+      dimensions:product_dimensions(width_cm, depth_cm, height_cm, source_text)
+    `
+    )
+    .not("price_aed", "is", null)
+    .not("primary_image_url", "is", null)
+    .limit(250);
+
+  if (productsError) {
+    throw new Error(productsError.message);
+  }
+
+  const currentCandidate = productToMatchCandidate(item.product as ProductRow);
+  const candidates = (products ?? [])
+    .map(productToMatchCandidate)
+    .filter((candidate): candidate is ProductMatchCandidate => Boolean(candidate));
+
+  if (!currentCandidate) {
+    redirect(`${redirectPath}?message=${encodeURIComponent("The current product cannot be substituted yet.")}`);
+  }
+
+  const alternatives = filterSubstitutionCandidates({
+    current: currentCandidate,
+    candidates,
+    mode,
+    selectedProductIds: (selectedItems ?? []).map((selected) => selected.product_id)
+  });
+
+  const ranked = rankProductMatches({
+    roomType: room.room_type,
+    conceptText: `${concept.title}\n${concept.description ?? ""}`,
+    budgetMaxAed: project.budget_max_aed,
+    roomMeasurements: measurements
+      ? {
+          wallLengthCm: measurements.wall_length_cm,
+          roomDepthCm: measurements.room_depth_cm
+        }
+      : null,
+    candidates: alternatives
+  });
+  const replacement = ranked[0];
+
+  if (!replacement) {
+    redirect(`${redirectPath}?message=${encodeURIComponent("No suitable replacement found for that line yet.")}`);
+  }
+
+  const previousPrice = Number(item.line_total_aed ?? item.unit_price_aed ?? 0);
+  const unitPrice = replacement.salePriceAed ?? replacement.priceAed ?? 0;
+  const priceImpact = unitPrice - previousPrice;
+
+  const { error: updateError } = await supabase
+    .from("shopping_list_items")
+    .update({
+      product_id: replacement.id,
+      category: replacement.categoryNormalized ?? item.category,
+      unit_price_aed: unitPrice,
+      line_total_aed: unitPrice,
+      selection_reason: [replacement.selectionReason, ...replacement.warnings].join(" "),
+      dimension_fit_note: replacement.dimensionFitNote,
+      updated_at: new Date().toISOString()
+    })
+    .eq("id", item.id);
+
+  if (updateError) {
+    throw new Error(updateError.message);
+  }
+
+  const { data: updatedItems = [] } = await supabase
+    .from("shopping_list_items")
+    .select("line_total_aed")
+    .eq("shopping_list_id", shoppingListId);
+  const estimatedTotal = (updatedItems ?? []).reduce(
+    (sum, updatedItem) => sum + Number(updatedItem.line_total_aed ?? 0),
+    0
+  );
+
+  await supabase
+    .from("shopping_lists")
+    .update({
+      estimated_total_aed: estimatedTotal,
+      updated_at: new Date().toISOString()
+    })
+    .eq("id", shoppingListId);
+
+  const impactText =
+    priceImpact === 0
+      ? "no price change"
+      : `${priceImpact > 0 ? "+" : "-"}${formatAedValue(Math.abs(priceImpact))}`;
+
+  revalidatePath(redirectPath);
+  redirect(`${redirectPath}?message=${encodeURIComponent(`Product swapped. Price impact: ${impactText}.`)}`);
+}
+
 export async function reviseConceptAction(formData: FormData) {
   const projectId = String(formData.get("projectId") ?? "");
   const roomId = String(formData.get("roomId") ?? "");
@@ -1053,4 +1234,10 @@ function productToMatchCandidate(product: ProductRow): ProductMatchCandidate | n
         }
       : null
   };
+}
+
+function formatAedValue(value: number) {
+  return `AED ${value.toLocaleString("en-AE", {
+    maximumFractionDigits: 0
+  })}`;
 }

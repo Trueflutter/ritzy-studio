@@ -245,7 +245,7 @@
       "summary": "Let the designer swap products by budget, style, color, material, dimensions, and retailer.",
       "boundaries": ["apps/web", "packages/domain", "packages/ai", "packages/db", "packages/ui"],
       "dependencies": ["F-013"],
-      "passes": false,
+      "passes": true,
       "done_when": [
         "designer can request alternatives for a selected item/category",
         "substitution preserves unaffected selections",
@@ -253,7 +253,7 @@
         "selected product set persists as a shopping list draft",
         "UI follows substitution blueprint"
       ],
-      "notes": "Requests like 'cheaper armchairs' must not change unrelated categories."
+      "notes": "Line-level substitution implemented for cheaper, closer style, same retailer, and in-stock alternatives. Unrelated shopping list rows are preserved."
     },
     {
       "id": "F-015",

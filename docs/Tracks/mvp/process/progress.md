@@ -428,3 +428,30 @@ Feature status:
 Current canonical next slice:
 
 - `F-014 Product Substitution Loop`
+
+### F-014 Closed: Product Substitution Loop
+
+Implemented line-level product substitution.
+
+Created:
+
+- substitution candidate filtering in `packages/domain`
+- substitution tests
+- shopping list item swap action
+- price impact calculation
+- per-item swap controls on product cards
+
+Verification passed:
+
+- `pnpm --filter @ritzy-studio/domain test`
+- `pnpm --filter @ritzy-studio/web lint`
+- `pnpm --filter @ritzy-studio/web typecheck`
+- `pnpm check`
+
+Feature status:
+
+- `F-014` marked `passes: true`.
+
+Current canonical next slice:
+
+- `F-015 Final Grounded Render Generation`

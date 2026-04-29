@@ -7,7 +7,8 @@ import {
   generateInitialConceptAction,
   groundProductsAction,
   reviseConceptAction,
-  selectConceptAction
+  selectConceptAction,
+  substituteProductAction
 } from "@/app/actions";
 import { createClient } from "@/lib/supabase/server";
 
@@ -383,6 +384,36 @@ export default async function ConceptsPage({
                       >
                         open retailer page →
                       </a>
+                    ) : null}
+                    {shoppingList ? (
+                      <form action={substituteProductAction} className="mt-5 border-t border-line pt-5">
+                        <input name="projectId" type="hidden" value={projectId} />
+                        <input name="roomId" type="hidden" value={roomId} />
+                        <input name="shoppingListId" type="hidden" value={shoppingList.id} />
+                        <input name="itemId" type="hidden" value={item.id} />
+                        <label
+                          className="mb-3 block font-body text-caption font-medium uppercase text-ink-muted"
+                          htmlFor={`mode-${item.id}`}
+                        >
+                          Swap request
+                        </label>
+                        <select
+                          className="h-[52px] w-full border border-line-strong bg-transparent px-4 font-body text-body-s text-ink focus:outline focus:outline-2 focus:outline-offset-2 focus:outline-ring"
+                          id={`mode-${item.id}`}
+                          name="mode"
+                        >
+                          <option value="cheaper">cheaper option</option>
+                          <option value="closer_style">closer style</option>
+                          <option value="same_retailer">same retailer</option>
+                          <option value="in_stock">in stock only</option>
+                        </select>
+                        <Button className="mt-4 w-full" type="submit" variant="secondary">
+                          Swap this item
+                        </Button>
+                        <p className="mt-3 font-body text-caption text-ink-muted">
+                          Only this line changes.
+                        </p>
+                      </form>
                     ) : null}
                   </article>
                 );
