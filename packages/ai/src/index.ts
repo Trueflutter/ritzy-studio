@@ -2,9 +2,12 @@ import { parseServerEnv } from "@ritzy-studio/config";
 import {
   clarifyingQuestionsJsonSchema,
   clarifyingQuestionsPrompt,
-  clarifyingQuestionsResponseSchema
+  clarifyingQuestionsResponseSchema,
+  initialConceptJsonSchema,
+  initialConceptPrompt,
+  initialConceptResponseSchema
 } from "@ritzy-studio/prompts";
-import OpenAI from "openai";
+import OpenAI, { toFile } from "openai";
 
 export type GenerateClarifyingQuestionsInput = {
   roomType: string;
@@ -30,6 +33,54 @@ export type GenerateClarifyingQuestionsResult = {
     question: string;
     reason: string;
   }>;
+};
+
+export type GenerateInitialConceptInput = {
+  roomType: string;
+  roomPhotoUrl: string;
+  roomPhotoBytes: Buffer;
+  roomPhotoMimeType: string;
+  styleNotes?: string | null;
+  colorNotes?: string | null;
+  budgetNotes?: string | null;
+  functionalRequirements?: string | null;
+  avoidNotes?: string | null;
+  inspirationNotes?: string | null;
+  clarifyingAnswers?: Array<{
+    question: string;
+    answer: string;
+  }>;
+  measurements?: {
+    wallLengthCm?: number | null;
+    roomDepthCm?: number | null;
+    ceilingHeightCm?: number | null;
+    notes?: string | null;
+  } | null;
+};
+
+export type GenerateInitialConceptResult = {
+  promptKey: string;
+  promptVersion: string;
+  textModel: string;
+  imageModel: string;
+  analysis: {
+    detectedRoomType: string;
+    fixedArchitecture: string[];
+    editableZones: string[];
+    fixedElementsToPreserve: string[];
+    lightingNotes: string[];
+    uncertaintyNotes: string[];
+  };
+  concept: {
+    title: string;
+    rationale: string;
+    generationPrompt: string;
+    preserveList: string[];
+    allowedChangeList: string[];
+    uncertaintyNote: string;
+  };
+  imageBase64: string;
+  revisedPrompt?: string | null;
 };
 
 export async function generateClarifyingQuestions(
@@ -68,4 +119,108 @@ export async function generateClarifyingQuestions(
     model: env.OPENAI_TEXT_MODEL,
     questions: parsed.questions
   };
+}
+
+export async function generateInitialConcept(
+  input: GenerateInitialConceptInput
+): Promise<GenerateInitialConceptResult> {
+  const env = parseServerEnv(process.env);
+  const client = new OpenAI({ apiKey: env.OPENAI_API_KEY });
+
+  const brief = {
+    roomType: input.roomType,
+    styleNotes: input.styleNotes,
+    colorNotes: input.colorNotes,
+    budgetNotes: input.budgetNotes,
+    functionalRequirements: input.functionalRequirements,
+    avoidNotes: input.avoidNotes,
+    inspirationNotes: input.inspirationNotes,
+    clarifyingAnswers: input.clarifyingAnswers ?? [],
+    measurements: input.measurements
+  };
+
+  const directionResponse = await client.responses.create({
+    model: env.OPENAI_TEXT_MODEL,
+    input: [
+      {
+        role: "system",
+        content: initialConceptPrompt.system
+      },
+      {
+        role: "user",
+        content: [
+          {
+            type: "input_text",
+            text: JSON.stringify(brief)
+          },
+          {
+            type: "input_image",
+            image_url: input.roomPhotoUrl,
+            detail: "high"
+          }
+        ]
+      }
+    ],
+    text: {
+      format: {
+        type: "json_schema",
+        name: "ritzy_initial_concept",
+        schema: initialConceptJsonSchema,
+        strict: true
+      }
+    }
+  });
+
+  const direction = initialConceptResponseSchema.parse(JSON.parse(directionResponse.output_text));
+  const roomFile = await toFile(input.roomPhotoBytes, `room.${extensionForMime(input.roomPhotoMimeType)}`, {
+    type: input.roomPhotoMimeType
+  });
+
+  const imagePrompt = [
+    direction.concept.generationPrompt,
+    "",
+    "Use the uploaded room photo as the base image.",
+    "Preserve visible architecture, walls, windows, doors, ceiling details, AC vents, sockets, built-ins, and fixed bathroom fixtures where present.",
+    "Redesign movable furniture, lighting, textiles, accessories, and decor according to the concept direction.",
+    "Keep the result realistic and residential. Do not add text labels, prices, product names, or retailer claims."
+  ].join("\n");
+
+  const imageResponse = await client.images.edit({
+    model: env.OPENAI_IMAGE_MODEL,
+    image: roomFile,
+    prompt: imagePrompt,
+    size: "1536x1024",
+    quality: "medium",
+    output_format: "png"
+  });
+
+  const firstImage = imageResponse.data?.[0];
+  const imageBase64 = firstImage?.b64_json;
+
+  if (!imageBase64) {
+    throw new Error("OpenAI image generation returned no image data.");
+  }
+
+  return {
+    promptKey: initialConceptPrompt.key,
+    promptVersion: initialConceptPrompt.version,
+    textModel: env.OPENAI_TEXT_MODEL,
+    imageModel: env.OPENAI_IMAGE_MODEL,
+    analysis: direction.roomAnalysis,
+    concept: direction.concept,
+    imageBase64,
+    revisedPrompt: firstImage.revised_prompt ?? null
+  };
+}
+
+function extensionForMime(mimeType: string) {
+  if (mimeType === "image/png") {
+    return "png";
+  }
+
+  if (mimeType === "image/webp") {
+    return "webp";
+  }
+
+  return "jpg";
 }

@@ -236,3 +236,29 @@ Feature status:
 Current canonical next slice:
 
 - `F-007 Room Analysis And Initial Concept Generation`
+
+### F-007 Closed: Room Analysis And Initial Concept Generation
+
+Implemented initial room analysis and concept image generation.
+
+Created:
+
+- `/projects/[projectId]/rooms/[roomId]/concepts`
+- versioned room-analysis and concept-direction prompt
+- OpenAI `gpt-image-2` image generation/edit helper
+- server action for initial concept generation
+- private generated render storage flow
+
+Verification passed:
+
+- official OpenAI docs check for current image model and image edit capability
+- `pnpm check`
+- OpenAI `gpt-image-2` low-quality smoke test
+
+Feature status:
+
+- `F-007` marked `passes: true`.
+
+Current canonical next slice:
+
+- `F-008 Concept Critique And Iteration Loop`

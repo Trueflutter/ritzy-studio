@@ -119,7 +119,7 @@
       "summary": "Analyze room photos and brief, then generate initial concept directions and images.",
       "boundaries": ["apps/web", "packages/prompts", "packages/ai", "packages/db", "packages/ui"],
       "dependencies": ["F-006"],
-      "passes": false,
+      "passes": true,
       "done_when": [
         "room analysis identifies fixed architecture and uncertainty",
         "designer can generate bounded initial concepts",

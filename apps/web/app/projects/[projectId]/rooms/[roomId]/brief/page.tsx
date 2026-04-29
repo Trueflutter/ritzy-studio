@@ -196,7 +196,14 @@ export default async function DesignBriefPage({
               <ButtonLink href={`/projects/${projectId}/rooms/${roomId}/photos`} variant="quiet">
                 back to photos
               </ButtonLink>
-              <Button type="submit">Generate concepts</Button>
+              <div className="flex flex-col gap-4 md:flex-row md:items-center">
+                {designBrief ? (
+                  <ButtonLink href={`/projects/${projectId}/rooms/${roomId}/concepts`} variant="secondary">
+                    open concepts
+                  </ButtonLink>
+                ) : null}
+                <Button type="submit">Generate concepts</Button>
+              </div>
             </div>
           </form>
         </div>

@@ -2,7 +2,7 @@
 
 ## Current State
 
-Ritzy Studio has completed the first six MVP implementation slices.
+Ritzy Studio has completed the first seven MVP implementation slices.
 
 The repository now contains:
 
@@ -14,6 +14,7 @@ The repository now contains:
 - protected project, room, photo upload, and brief flows
 - `packages/prompts` and `packages/ai`
 - versioned OpenAI clarifying-question generation
+- initial OpenAI `gpt-image-2` concept generation
 
 The locked design system exists at:
 
@@ -37,7 +38,7 @@ For visual implementation, `docs/Vision/05_Brand_and_Design_System.md` is locked
 
 ## Current Canonical Slice
 
-`F-007 Room Analysis And Initial Concept Generation`
+`F-008 Concept Critique And Iteration Loop`
 
 Status: not started.
 
@@ -69,13 +70,13 @@ Expected boundaries:
 
 ## Suggested Next Action
 
-Begin F-007:
+Begin F-008:
 
-- verify current official OpenAI Image 2 / image editing capabilities before implementation
-- analyze uploaded room photos for fixed architecture and uncertainty
-- generate initial concept directions and images from room photos and saved brief
-- store generated image assets and concept records
-- log AI job metadata, prompt version, model, and uncertainty
+- let the designer select or critique a generated concept
+- store critique history
+- generate a revised variation from the original room photo, previous concept direction, and critique
+- keep approved qualities explicit and auditable
+- log AI job metadata for each iteration
 
 ## Open Questions
 
