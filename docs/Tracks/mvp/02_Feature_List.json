@@ -281,7 +281,7 @@
       "summary": "Create accurate shopping list output from selected product records.",
       "boundaries": ["apps/web", "packages/domain", "packages/db", "packages/ui"],
       "dependencies": ["F-014"],
-      "passes": false,
+      "passes": true,
       "done_when": [
         "shopping list shows product name, retailer, category, price, dimensions, image, URL, and availability where available",
         "estimated total is calculated",
@@ -289,7 +289,7 @@
         "line items are sourced from selected product records only",
         "data-dense UI follows design system section 13"
       ],
-      "notes": "Can run in parallel with F-015 only if explicitly assigned."
+      "notes": "Dedicated shopping list page implemented. Totals and line-item facts are read from selected product records and shopping list rows."
     },
     {
       "id": "F-017",

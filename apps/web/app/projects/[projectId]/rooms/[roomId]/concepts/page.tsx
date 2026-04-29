@@ -350,6 +350,15 @@ export default async function ConceptsPage({
                   Estimated catalog total: {formatAed(shoppingList.estimated_total_aed)}
                 </p>
               ) : null}
+              {shoppingList ? (
+                <ButtonLink
+                  className="mt-5 w-full"
+                  href={`/projects/${projectId}/rooms/${roomId}/shopping-list`}
+                  variant="quiet"
+                >
+                  open shopping list
+                </ButtonLink>
+              ) : null}
             </aside>
           </div>
 

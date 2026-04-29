@@ -484,3 +484,29 @@ Feature status:
 Current canonical next slice:
 
 - `F-016 Shopping List And Cost Estimate`
+
+### F-016 Closed: Shopping List And Cost Estimate
+
+Implemented the catalog-backed shopping list page.
+
+Created:
+
+- dedicated shopping list route
+- data-dense line-item table
+- estimated total display
+- stale/missing data warnings
+- concepts page link to shopping list
+
+Verification passed:
+
+- `pnpm --filter @ritzy-studio/web lint`
+- `pnpm --filter @ritzy-studio/web typecheck`
+- `pnpm check`
+
+Feature status:
+
+- `F-016` marked `passes: true`.
+
+Current canonical next slice:
+
+- `F-017 Client Presentation And Export View`

@@ -2,7 +2,7 @@
 
 ## Current State
 
-Ritzy Studio has completed the first fifteen MVP implementation slices.
+Ritzy Studio has completed the first sixteen MVP implementation slices.
 
 The repository now contains:
 
@@ -22,6 +22,7 @@ The repository now contains:
 - selected-concept product grounding with draft shopping list candidates
 - line-level product substitution for draft shopping list items
 - final grounded render generation with product reference images and render-job provenance
+- dedicated shopping list and cost estimate page
 
 The locked design system exists at:
 
@@ -45,13 +46,12 @@ For visual implementation, `docs/Vision/05_Brand_and_Design_System.md` is locked
 
 ## Current Canonical Slice
 
-`F-016 Shopping List And Cost Estimate`
+`F-017 Client Presentation And Export View`
 
 Status: not started.
 
 Expected boundaries:
 
-- `apps/web`
 - `apps/web`
 - `packages/domain`
 - `packages/db`
@@ -77,15 +77,15 @@ Expected boundaries:
 
 ## Suggested Next Action
 
-Begin F-016:
+Begin F-017:
 
-- create a data-dense shopping list and cost estimate view
-- show product name, retailer, category, price, dimensions, image, URL, and availability where available
-- keep stale and missing data visible
-- calculate totals from selected product records only
-- follow design system section 13 for data-dense UI
+- build a client-ready presentation view
+- combine final render, selected concept, project/room context, and shopping list
+- include honest notes about SKU-exact visual limits and stale/missing product data
+- provide an export-friendly layout
+- preserve the design system and data-density rules
 
 ## Open Questions
 
 - Confirm the hosted Supabase migration path before deploying beyond local development.
-- Confirm export format before F-017.
+- F-017 can default to an export-friendly browser/print view unless a PDF/PPT export is explicitly required.
