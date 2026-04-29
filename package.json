@@ -1,0 +1,22 @@
+{
+  "name": "ritzy-studio",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@10.32.1",
+  "scripts": {
+    "dev": "pnpm --filter @ritzy-studio/web dev",
+    "build": "pnpm --filter @ritzy-studio/web build",
+    "lint": "pnpm --filter @ritzy-studio/web lint",
+    "typecheck": "pnpm --filter @ritzy-studio/web typecheck",
+    "validate-env": "pnpm --filter @ritzy-studio/web validate-env",
+    "check": "pnpm lint && pnpm typecheck && pnpm build"
+  },
+  "engines": {
+    "node": ">=22.0.0",
+    "pnpm": ">=10.0.0"
+  },
+  "devDependencies": {
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3"
+  }
+}

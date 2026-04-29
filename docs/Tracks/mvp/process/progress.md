@@ -54,7 +54,38 @@ Verification:
 
 Open founder confirmations before or during F-001:
 
-- Confirm whether Supabase is approved as the MVP backend.
-- Confirm whether auth is required immediately or single-user mode is acceptable for first scaffold.
-- Confirm first retailer adapter target: Home Centre, 2XL, or Chattels & More.
+- Supabase approved as MVP backend/database/storage/auth stack.
+- Auth approved from the start.
+- Home Centre approved as the first retailer adapter target.
 - Confirm final export format before F-017.
+
+### F-001 Closed: Project Scaffold And Environment Validation
+
+Implemented the initial pnpm monorepo scaffold and Next.js TypeScript web app.
+
+Created:
+
+- `package.json`
+- `pnpm-workspace.yaml`
+- `pnpm-lock.yaml`
+- `.env.example`
+- `README.md`
+- `apps/web`
+- `packages/config`
+- placeholder package boundaries for `ai`, `db`, `domain`, `ingestion`, `prompts`, and `ui`
+
+Verification passed:
+
+- `pnpm lint`
+- `pnpm typecheck`
+- `pnpm validate-env` with dummy non-secret values
+- `pnpm build`
+- `pnpm check`
+
+Feature status:
+
+- `F-001` marked `passes: true`.
+
+Current canonical next slice:
+
+- `F-002 Locked Design Tokens And App Shell`

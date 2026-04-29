@@ -2,7 +2,16 @@
 
 ## Current State
 
-Ritzy Studio is pre-implementation. The repository currently contains documentation and one retained style exploration.
+Ritzy Studio has completed the first implementation foundation slice.
+
+The repository now contains:
+
+- documentation control layer
+- pnpm workspace
+- Next.js TypeScript app in `apps/web`
+- `packages/config` environment validation
+- package boundary placeholders
+- root command documentation
 
 The locked design system exists at:
 
@@ -26,15 +35,14 @@ For visual implementation, `docs/Vision/05_Brand_and_Design_System.md` is locked
 
 ## Current Canonical Slice
 
-`F-001 Project Scaffold And Environment Validation`
+`F-002 Locked Design Tokens And App Shell`
 
 Status: not started.
 
 Expected boundaries:
 
 - `apps/web`
-- `packages/config`
-- `docs`
+- `packages/ui`
 
 ## Locked Product Workflow
 
@@ -56,18 +64,15 @@ Expected boundaries:
 
 ## Suggested Next Action
 
-Begin F-001:
+Begin F-002:
 
-- scaffold Next.js TypeScript app
-- create target package directories
-- add environment validation
-- document baseline commands
-- create F-001 verification doc
-- update progress and feature list only after verification
+- read `docs/Vision/05_Brand_and_Design_System.md` sections 4, 5, 6, 8, 17, 19, and 20
+- implement locked CSS variables/Tailwind tokens
+- install/configure Cormorant Garamond and DM Sans strategy
+- create base app shell primitives
+- keep UI scope minimal and foundational
+- run design compliance checklist
 
 ## Open Questions
 
-- Confirm Supabase as backend before creating migrations.
-- Confirm auth requirement for first implementation.
-- Confirm first retailer ingestion target before F-010.
 - Confirm export format before F-017.

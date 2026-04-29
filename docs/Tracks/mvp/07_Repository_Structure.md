@@ -2,7 +2,28 @@
 
 ## Current State
 
-The repository currently contains documentation and style exploration assets only. Application scaffold has not been created.
+The repository contains the initial pnpm workspace and Next.js scaffold.
+
+Current implemented structure:
+
+```text
+apps/
+  web/
+    app/
+    public/
+    scripts/
+packages/
+  ai/
+  config/
+  db/
+  domain/
+  ingestion/
+  prompts/
+  ui/
+docs/
+  Vision/
+  Tracks/
+```
 
 ## Target Structure
 

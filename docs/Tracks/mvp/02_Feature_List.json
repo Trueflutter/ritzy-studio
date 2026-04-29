@@ -11,7 +11,7 @@
       "summary": "Create the application scaffold, package layout, environment validation, and baseline developer commands.",
       "boundaries": ["apps/web", "packages/config", "docs"],
       "dependencies": [],
-      "passes": false,
+      "passes": true,
       "done_when": [
         "Next.js TypeScript app scaffold exists",
         "target repository structure is created or intentionally adjusted in docs",

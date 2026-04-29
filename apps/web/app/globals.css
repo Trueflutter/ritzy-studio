@@ -1,0 +1,27 @@
+@import "tailwindcss";
+
+:root {
+  --rs-page: #f2ede4;
+  --rs-surface: #fbf8f2;
+  --rs-border: rgba(31, 31, 29, 0.08);
+  --rs-text: #1f1f1d;
+  --rs-text-secondary: #36352f;
+  --rs-text-muted: #6f6963;
+}
+
+@theme inline {
+  --font-display: "Cormorant Garamond", "Cormorant", "EB Garamond", "Times New Roman", serif;
+  --font-ui: "DM Sans", "Söhne", -apple-system, "Segoe UI", "Helvetica Neue", sans-serif;
+  --text-caption: 11px;
+}
+
+body {
+  min-height: 100dvh;
+  background: var(--rs-page);
+  color: var(--rs-text);
+  font-family: "DM Sans", "Söhne", -apple-system, "Segoe UI", "Helvetica Neue", sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
