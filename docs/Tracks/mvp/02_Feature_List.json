@@ -191,7 +191,7 @@
       "summary": "Add two more retailer adapters from the feasible MVP list.",
       "boundaries": ["packages/ingestion", "packages/db", "packages/domain"],
       "dependencies": ["F-010"],
-      "passes": false,
+      "passes": true,
       "done_when": [
         "at least three total retailers can be ingested",
         "adapter-specific compliance notes exist",
@@ -199,7 +199,7 @@
         "failed products do not break full ingestion run",
         "ingestion verification docs show sample product records"
       ],
-      "notes": "Do not add Marina Home without approval or an approved data source."
+      "notes": "Implemented 2XL Home and Chattels & More adapters. Marina Home remains excluded without approval or an approved data source."
     },
     {
       "id": "F-012",

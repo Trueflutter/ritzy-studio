@@ -340,3 +340,31 @@ Feature status:
 Current canonical next slice:
 
 - `F-011 Additional Retailer Ingestion Adapters`
+
+### F-011 Closed: Additional Retailer Ingestion Adapters
+
+Implemented two additional retailer adapters.
+
+Created:
+
+- `2xlhome-ae` adapter
+- `chattels-and-more-ae` adapter
+- adapter parser tests for both retailers
+- sample extraction verification notes
+
+Verification passed:
+
+- light robots/category/product probing for both retailers
+- `pnpm --filter @ritzy-studio/ingestion test`
+- `pnpm --filter @ritzy-studio/ingestion typecheck`
+- live one-product extraction smoke tests for both adapters
+- `pnpm typecheck`
+- `pnpm check`
+
+Feature status:
+
+- `F-011` marked `passes: true`.
+
+Current canonical next slice:
+
+- `F-012 Product Enrichment And Embeddings`
