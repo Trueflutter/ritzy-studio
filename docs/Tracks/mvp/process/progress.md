@@ -117,3 +117,37 @@ Feature status:
 Current canonical next slice:
 
 - `F-003 Database Schema And Auth Foundation`
+
+### F-003 Closed: Database Schema And Auth Foundation
+
+Implemented the Supabase database/auth foundation.
+
+Created:
+
+- `supabase/config.toml`
+- `supabase/migrations/20260429114000_initial_schema.sql`
+- `packages/db`
+- generated Supabase database types
+- `packages/domain`
+- Supabase browser/server/proxy helpers in `apps/web`
+- RLS/privacy posture doc
+
+Verification passed:
+
+- `supabase start`
+- `supabase db reset`
+- generated local Supabase types
+- confirmed 19 public tables exist
+- confirmed RLS enabled on all 19 public tables
+- confirmed private storage buckets exist
+- `pnpm typecheck`
+- `pnpm check`
+- `pnpm validate-env` with dummy non-secret values
+
+Feature status:
+
+- `F-003` marked `passes: true`.
+
+Current canonical next slice:
+
+- `F-004 Project And Room Creation`

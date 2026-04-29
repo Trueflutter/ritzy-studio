@@ -35,16 +35,16 @@ For visual implementation, `docs/Vision/05_Brand_and_Design_System.md` is locked
 
 ## Current Canonical Slice
 
-`F-003 Database Schema And Auth Foundation`
+`F-004 Project And Room Creation`
 
 Status: not started.
 
 Expected boundaries:
 
-- `packages/db`
+- `apps/web`
+- `packages/ui`
 - `packages/domain`
-- `packages/config`
-- `cross-layer`
+- `packages/db`
 
 ## Locked Product Workflow
 
@@ -66,13 +66,13 @@ Expected boundaries:
 
 ## Suggested Next Action
 
-Begin F-003:
+Begin F-004:
 
-- implement Supabase schema foundation
-- implement auth client/server helpers
-- document RLS/privacy posture
-- verify migrations or document exact blocker
-- generate or define schema types
+- build project dashboard and new project flow
+- require authenticated Supabase user for project operations
+- create server actions or route handlers for project/room creation
+- keep within design system project dashboard and new project blueprints
+- verify against local Supabase
 
 ## Open Questions
 

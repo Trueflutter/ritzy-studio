@@ -47,7 +47,7 @@
       "summary": "Create database schema foundation for users, projects, rooms, assets, jobs, retailers, products, and shopping lists.",
       "boundaries": ["packages/db", "packages/domain", "packages/config", "cross-layer"],
       "dependencies": ["F-001"],
-      "passes": false,
+      "passes": true,
       "done_when": [
         "database schema covers MVP entities from docs/Tracks/mvp/03_Data_Model.md",
         "auth strategy is implemented or explicitly deferred as single-user mode",

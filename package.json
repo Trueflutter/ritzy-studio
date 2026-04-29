@@ -7,7 +7,7 @@
     "dev": "pnpm --filter @ritzy-studio/web dev",
     "build": "pnpm --filter @ritzy-studio/web build",
     "lint": "pnpm --filter @ritzy-studio/web lint",
-    "typecheck": "pnpm --filter @ritzy-studio/web typecheck",
+    "typecheck": "pnpm -r --if-present typecheck",
     "validate-env": "pnpm --filter @ritzy-studio/web validate-env",
     "check": "pnpm lint && pnpm typecheck && pnpm build"
   },
