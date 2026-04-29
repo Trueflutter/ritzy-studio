@@ -127,6 +127,28 @@ importers:
         specifier: ^5
         version: 5.9.3
 
+  packages/ingestion:
+    dependencies:
+      '@ritzy-studio/db':
+        specifier: workspace:*
+        version: link:../db
+      '@supabase/supabase-js':
+        specifier: ^2.89.0
+        version: 2.105.1
+      zod:
+        specifier: ^4.2.1
+        version: 4.3.6
+    devDependencies:
+      '@types/node':
+        specifier: ^20
+        version: 20.19.39
+      tsx:
+        specifier: ^4.21.0
+        version: 4.21.0
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+
   packages/prompts:
     dependencies:
       zod:

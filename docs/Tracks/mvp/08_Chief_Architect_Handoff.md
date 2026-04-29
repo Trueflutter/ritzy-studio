@@ -2,7 +2,7 @@
 
 ## Current State
 
-Ritzy Studio has completed the first eight MVP implementation slices.
+Ritzy Studio has completed the first nine MVP implementation slices.
 
 The repository now contains:
 
@@ -16,6 +16,7 @@ The repository now contains:
 - versioned OpenAI clarifying-question generation
 - initial OpenAI `gpt-image-2` concept generation
 - concept critique, selection, and revision generation
+- catalog ingestion package, adapter contract, normalization, and ingestion run helper
 
 The locked design system exists at:
 
@@ -39,16 +40,15 @@ For visual implementation, `docs/Vision/05_Brand_and_Design_System.md` is locked
 
 ## Current Canonical Slice
 
-`F-009 Product Catalog Schema And Adapter Framework`
+`F-010 First Retailer Ingestion Adapter`
 
 Status: not started.
 
 Expected boundaries:
 
+- `packages/ingestion`
 - `packages/db`
 - `packages/domain`
-- `packages/ingestion`
-- `packages/config`
 
 ## Locked Product Workflow
 
@@ -70,13 +70,13 @@ Expected boundaries:
 
 ## Suggested Next Action
 
-Begin F-009:
+Begin F-010:
 
-- implement retailer registry and ingestion run helpers
-- create `packages/ingestion`
-- define adapter interface for discovery, extraction, normalization, and compliance notes
-- add normalization tests for product facts and confidence handling
-- keep scope to framework/schema helpers; first real retailer adapter starts in F-010
+- implement the Home Centre adapter first, per founder instruction
+- lightly re-check Home Centre public pages, robots, structured data, and frontend payloads before coding selectors
+- ingest product URLs and facts through the F-009 adapter framework
+- capture name, image, price, product URL, category, dimensions/availability/material/color where available
+- document compliance notes and sample verification records
 
 ## Open Questions
 

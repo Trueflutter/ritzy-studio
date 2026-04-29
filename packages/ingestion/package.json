@@ -1,0 +1,23 @@
+{
+  "name": "@ritzy-studio/ingestion",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "tsx src/normalization.test.ts"
+  },
+  "dependencies": {
+    "@ritzy-studio/db": "workspace:*",
+    "@supabase/supabase-js": "^2.89.0",
+    "zod": "^4.2.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3"
+  }
+}

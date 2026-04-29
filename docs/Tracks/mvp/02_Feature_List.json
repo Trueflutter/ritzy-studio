@@ -155,7 +155,7 @@
       "summary": "Implement retailer registry, product catalog persistence, ingestion run logging, and adapter interfaces.",
       "boundaries": ["packages/db", "packages/domain", "packages/ingestion", "packages/config"],
       "dependencies": ["F-003"],
-      "passes": false,
+      "passes": true,
       "done_when": [
         "retailer/product schema is implemented",
         "adapter interface supports discovery, extraction, normalization, and confidence",

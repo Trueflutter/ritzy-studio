@@ -286,3 +286,29 @@ Feature status:
 Current canonical next slice:
 
 - `F-009 Product Catalog Schema And Adapter Framework`
+
+### F-009 Closed: Product Catalog Schema And Adapter Framework
+
+Implemented the catalog ingestion framework.
+
+Created:
+
+- `packages/ingestion`
+- adapter interface
+- product normalization helpers
+- ingestion run helper
+- normalization tests
+
+Verification passed:
+
+- `pnpm --filter @ritzy-studio/ingestion test`
+- `pnpm typecheck`
+- `pnpm check`
+
+Feature status:
+
+- `F-009` marked `passes: true`.
+
+Current canonical next slice:
+
+- `F-010 First Retailer Ingestion Adapter`
