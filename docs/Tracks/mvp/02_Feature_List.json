@@ -1,0 +1,332 @@
+{
+  "track": "mvp",
+  "source_of_truth": true,
+  "sequencing_rule": "Start with the first feature where passes is false unless the founder explicitly overrides sequence.",
+  "features": [
+    {
+      "id": "F-001",
+      "sequence": 1,
+      "phase": "foundation",
+      "title": "Project Scaffold And Environment Validation",
+      "summary": "Create the application scaffold, package layout, environment validation, and baseline developer commands.",
+      "boundaries": ["apps/web", "packages/config", "docs"],
+      "dependencies": [],
+      "passes": false,
+      "done_when": [
+        "Next.js TypeScript app scaffold exists",
+        "target repository structure is created or intentionally adjusted in docs",
+        "environment variables are validated without exposing secrets",
+        "baseline lint/type/build commands are documented and runnable",
+        "feature verification doc is created"
+      ],
+      "notes": "Do not implement product UI beyond minimal scaffold."
+    },
+    {
+      "id": "F-002",
+      "sequence": 2,
+      "phase": "foundation",
+      "title": "Locked Design Tokens And App Shell",
+      "summary": "Implement the locked Quiet Gallery design tokens, typography setup, and app shell primitives.",
+      "boundaries": ["apps/web", "packages/ui"],
+      "dependencies": ["F-001"],
+      "passes": false,
+      "done_when": [
+        "CSS variables or Tailwind tokens match docs/Vision/05_Brand_and_Design_System.md section 17",
+        "fonts are configured with correct fallbacks",
+        "base layout uses Bone/Paper/Ochre palette",
+        "button, input, card, tab, and panel primitives follow section 8",
+        "design compliance checklist is run"
+      ],
+      "notes": "No dark mode. No alternate theme."
+    },
+    {
+      "id": "F-003",
+      "sequence": 3,
+      "phase": "foundation",
+      "title": "Database Schema And Auth Foundation",
+      "summary": "Create database schema foundation for users, projects, rooms, assets, jobs, retailers, products, and shopping lists.",
+      "boundaries": ["packages/db", "packages/domain", "packages/config", "cross-layer"],
+      "dependencies": ["F-001"],
+      "passes": false,
+      "done_when": [
+        "database schema covers MVP entities from docs/Tracks/mvp/03_Data_Model.md",
+        "auth strategy is implemented or explicitly deferred as single-user mode",
+        "RLS/privacy posture is documented if Supabase is used",
+        "migration verification succeeds",
+        "generated DB types or schema types are available"
+      ],
+      "notes": "If auth is deferred, record explicit founder approval in progress.md."
+    },
+    {
+      "id": "F-004",
+      "sequence": 4,
+      "phase": "project-workflow",
+      "title": "Project And Room Creation",
+      "summary": "Build project dashboard, new project flow, and room creation using locked design blueprints.",
+      "boundaries": ["apps/web", "packages/ui", "packages/domain", "packages/db"],
+      "dependencies": ["F-002", "F-003"],
+      "passes": false,
+      "done_when": [
+        "designer can create a project",
+        "designer can add a room with room type and budget fields",
+        "dashboard lists projects",
+        "UX follows design system sections 9 and 19",
+        "targeted tests or manual verification cover the flow"
+      ],
+      "notes": "Keep scope to project and room metadata; no uploads yet."
+    },
+    {
+      "id": "F-005",
+      "sequence": 5,
+      "phase": "project-workflow",
+      "title": "Room Image Upload And Asset Storage",
+      "summary": "Allow room photo uploads, storage, thumbnails, upload states, and image display.",
+      "boundaries": ["apps/web", "packages/db", "packages/domain", "packages/ui"],
+      "dependencies": ["F-004"],
+      "passes": false,
+      "done_when": [
+        "designer can upload one or more room photos",
+        "original assets are private or access-controlled",
+        "upload progress, failure, and retry states exist",
+        "room image display follows design system image rules",
+        "uploaded assets are connected to rooms"
+      ],
+      "notes": "No AI analysis in this slice."
+    },
+    {
+      "id": "F-006",
+      "sequence": 6,
+      "phase": "briefing",
+      "title": "Design Brief And Clarifying Questions",
+      "summary": "Capture design intent and generate targeted clarifying questions when needed.",
+      "boundaries": ["apps/web", "packages/prompts", "packages/ai", "packages/domain", "packages/db"],
+      "dependencies": ["F-005"],
+      "passes": false,
+      "done_when": [
+        "designer can enter style, color, budget, constraints, inspiration, and measurements",
+        "system can generate bounded clarifying questions",
+        "answers are stored in structured form",
+        "prompt version is logged",
+        "UI follows design brief blueprint"
+      ],
+      "notes": "Questions must be useful and bounded; no excessive interrogation."
+    },
+    {
+      "id": "F-007",
+      "sequence": 7,
+      "phase": "concept-generation",
+      "title": "Room Analysis And Initial Concept Generation",
+      "summary": "Analyze room photos and brief, then generate initial concept directions and images.",
+      "boundaries": ["apps/web", "packages/prompts", "packages/ai", "packages/db", "packages/ui"],
+      "dependencies": ["F-006"],
+      "passes": false,
+      "done_when": [
+        "room analysis identifies fixed architecture and uncertainty",
+        "designer can generate bounded initial concepts",
+        "generated concept images are stored and displayed",
+        "AI job metadata is logged",
+        "concept UI follows design system sections 9, 10, 12, and 19"
+      ],
+      "notes": "Concepts do not claim real product availability."
+    },
+    {
+      "id": "F-008",
+      "sequence": 8,
+      "phase": "concept-generation",
+      "title": "Concept Critique And Iteration Loop",
+      "summary": "Let the designer critique selected concepts and generate refined variations.",
+      "boundaries": ["apps/web", "packages/prompts", "packages/ai", "packages/db", "packages/ui"],
+      "dependencies": ["F-007"],
+      "passes": false,
+      "done_when": [
+        "designer can select a concept",
+        "designer can submit critique",
+        "critique history is stored",
+        "revised concepts preserve approved qualities unless changed",
+        "iteration jobs are bounded and logged"
+      ],
+      "notes": "This closes the concept-first stage."
+    },
+    {
+      "id": "F-009",
+      "sequence": 9,
+      "phase": "catalog",
+      "title": "Product Catalog Schema And Adapter Framework",
+      "summary": "Implement retailer registry, product catalog persistence, ingestion run logging, and adapter interfaces.",
+      "boundaries": ["packages/db", "packages/domain", "packages/ingestion", "packages/config"],
+      "dependencies": ["F-003"],
+      "passes": false,
+      "done_when": [
+        "retailer/product schema is implemented",
+        "adapter interface supports discovery, extraction, normalization, and confidence",
+        "ingestion runs are logged",
+        "robots/terms notes can be stored per retailer",
+        "unit tests cover normalization basics"
+      ],
+      "notes": "No designer-facing manual CSV path."
+    },
+    {
+      "id": "F-010",
+      "sequence": 10,
+      "phase": "catalog",
+      "title": "First Retailer Ingestion Adapter",
+      "summary": "Implement the first automated retailer adapter using public product data sources.",
+      "boundaries": ["packages/ingestion", "packages/db", "packages/domain"],
+      "dependencies": ["F-009"],
+      "passes": false,
+      "done_when": [
+        "one approved retailer adapter ingests product URLs and product facts",
+        "name, image, price, retailer, product URL, and category are captured where available",
+        "dimensions/availability/material/color are captured or marked missing",
+        "rate limiting and caching are implemented",
+        "legal/compliance notes are documented"
+      ],
+      "notes": "Recommended first candidates: Home Centre, 2XL, or Chattels & More."
+    },
+    {
+      "id": "F-011",
+      "sequence": 11,
+      "phase": "catalog",
+      "title": "Additional Retailer Ingestion Adapters",
+      "summary": "Add two more retailer adapters from the feasible MVP list.",
+      "boundaries": ["packages/ingestion", "packages/db", "packages/domain"],
+      "dependencies": ["F-010"],
+      "passes": false,
+      "done_when": [
+        "at least three total retailers can be ingested",
+        "adapter-specific compliance notes exist",
+        "field confidence is recorded consistently",
+        "failed products do not break full ingestion run",
+        "ingestion verification docs show sample product records"
+      ],
+      "notes": "Do not add Marina Home without approval or an approved data source."
+    },
+    {
+      "id": "F-012",
+      "sequence": 12,
+      "phase": "catalog",
+      "title": "Product Enrichment And Embeddings",
+      "summary": "Normalize categories, enrich style/color/material tags, and create product embeddings for search.",
+      "boundaries": ["packages/ai", "packages/prompts", "packages/domain", "packages/db"],
+      "dependencies": ["F-011"],
+      "passes": false,
+      "done_when": [
+        "product enrichment prompt follows prompt architecture",
+        "enriched fields never invent factual product data",
+        "product text embeddings are stored",
+        "source hashes prevent unnecessary re-enrichment",
+        "tests cover confidence and missing-data behavior"
+      ],
+      "notes": "Image embeddings can be added here or deferred if cost/risk is documented."
+    },
+    {
+      "id": "F-013",
+      "sequence": 13,
+      "phase": "product-grounding",
+      "title": "Product Search And Matching",
+      "summary": "Match approved concepts to real catalog products using rubric-driven hybrid search.",
+      "boundaries": ["apps/web", "packages/domain", "packages/ai", "packages/db", "packages/ui"],
+      "dependencies": ["F-008", "F-012"],
+      "passes": false,
+      "done_when": [
+        "approved concept can trigger product grounding",
+        "candidate products are ranked by the matching rubric",
+        "designer sees real product cards with price, retailer, URL, and warnings",
+        "missing dimensions and stale prices are visible",
+        "no generated shopping facts come from image pixels"
+      ],
+      "notes": "This is where concept-first becomes product-grounded."
+    },
+    {
+      "id": "F-014",
+      "sequence": 14,
+      "phase": "product-grounding",
+      "title": "Product Substitution Loop",
+      "summary": "Let the designer swap products by budget, style, color, material, dimensions, and retailer.",
+      "boundaries": ["apps/web", "packages/domain", "packages/ai", "packages/db", "packages/ui"],
+      "dependencies": ["F-013"],
+      "passes": false,
+      "done_when": [
+        "designer can request alternatives for a selected item/category",
+        "substitution preserves unaffected selections",
+        "price impact is visible",
+        "selected product set persists as a shopping list draft",
+        "UI follows substitution blueprint"
+      ],
+      "notes": "Requests like 'cheaper armchairs' must not change unrelated categories."
+    },
+    {
+      "id": "F-015",
+      "sequence": 15,
+      "phase": "final-render",
+      "title": "Final Grounded Render Generation",
+      "summary": "Generate final renders using selected products, original room image, and approved concept.",
+      "boundaries": ["apps/web", "packages/prompts", "packages/ai", "packages/db", "packages/ui"],
+      "dependencies": ["F-014"],
+      "passes": false,
+      "done_when": [
+        "selected products are passed as references where supported",
+        "render job stores product and prompt provenance",
+        "UI states final render may not exactly match SKU",
+        "render output is stored and reviewable",
+        "failure/retry behavior is implemented"
+      ],
+      "notes": "Final render is best-effort visual; shopping list remains source of truth."
+    },
+    {
+      "id": "F-016",
+      "sequence": 16,
+      "phase": "client-output",
+      "title": "Shopping List And Cost Estimate",
+      "summary": "Create accurate shopping list output from selected product records.",
+      "boundaries": ["apps/web", "packages/domain", "packages/db", "packages/ui"],
+      "dependencies": ["F-014"],
+      "passes": false,
+      "done_when": [
+        "shopping list shows product name, retailer, category, price, dimensions, image, URL, and availability where available",
+        "estimated total is calculated",
+        "stale/missing data is visible",
+        "line items are sourced from selected product records only",
+        "data-dense UI follows design system section 13"
+      ],
+      "notes": "Can run in parallel with F-015 only if explicitly assigned."
+    },
+    {
+      "id": "F-017",
+      "sequence": 17,
+      "phase": "client-output",
+      "title": "Client Presentation And Export View",
+      "summary": "Build client-ready presentation view combining final render, design notes, and shopping list.",
+      "boundaries": ["apps/web", "packages/ui", "packages/domain", "packages/db"],
+      "dependencies": ["F-015", "F-016"],
+      "passes": false,
+      "done_when": [
+        "presentation view shows final render and shopping list",
+        "uncertainty and SKU caveats are visible but professionally worded",
+        "export/share strategy is implemented or explicitly deferred",
+        "presentation follows design blueprint",
+        "founder/designer walk is completed or specifically deferred"
+      ],
+      "notes": "Final export format must be confirmed before implementation."
+    },
+    {
+      "id": "F-018",
+      "sequence": 18,
+      "phase": "hardening",
+      "title": "MVP Hardening And Review Passes",
+      "summary": "Run final quality, reliability, UX, design, code review, and documentation closure for MVP.",
+      "boundaries": ["cross-layer", "docs"],
+      "dependencies": ["F-017"],
+      "passes": false,
+      "done_when": [
+        "lint/type/build/tests pass or deferrals are documented",
+        "design guardian pass completed",
+        "UX guardian pass completed",
+        "code review pass completed",
+        "known risks and open defects are documented",
+        "progress log and handoff are current"
+      ],
+      "notes": "MVP cannot be called ready with known blocking defects."
+    }
+  ]
+}

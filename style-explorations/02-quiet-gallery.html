@@ -1,0 +1,371 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Ritzy Studio — Direction 02 · Quiet Gallery</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;1,300;1,400&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bone:        #F2EDE4;
+    --bone-warm:   #EBE3D4;
+    --paper:       #FBF8F2;
+    --charcoal:    #1F1F1D;
+    --charcoal-2:  #36352F;
+    --warm-grey:   #8A8175;
+    --warm-grey-l: #C7BFB1;
+    --ochre:       #B58E5A;
+    --ochre-deep:  #8C6A3E;
+    --hair:        #1F1F1D14;
+
+    --display: "Cormorant Garamond", "Times New Roman", serif;
+    --body:    "DM Sans", system-ui, sans-serif;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { background: var(--bone); color: var(--charcoal); font-family: var(--body); -webkit-font-smoothing: antialiased; }
+
+  .frame { max-width: 1180px; margin: 0 auto; padding: 56px 64px 96px; }
+
+  /* ── Top bar ── */
+  .topbar { display: grid; grid-template-columns: auto 1fr auto; gap: 48px; align-items: center; padding-bottom: 80px; }
+  .mark { display: flex; align-items: center; gap: 14px; }
+  .monogram {
+    width: 38px; height: 38px;
+    background: transparent; color: var(--charcoal); border: 1px solid var(--charcoal);
+    display: grid; place-items: center;
+    font-family: var(--display); font-weight: 500; font-size: 18px; letter-spacing: -0.06em;
+  }
+  .wordmark { font-family: var(--body); font-weight: 400; font-size: 13px; letter-spacing: 0.42em; text-transform: uppercase; color: var(--charcoal); }
+  .topbar nav { justify-self: center; }
+  nav ul { list-style: none; display: flex; gap: 44px; }
+  nav a { font-size: 12px; letter-spacing: 0.16em; text-transform: lowercase; color: var(--warm-grey); text-decoration: none; font-weight: 400; position: relative; }
+  nav a::after { content:""; position:absolute; left:0; right:0; bottom:-6px; height:1px; background: var(--charcoal); transform: scaleX(0); transform-origin: left; transition: transform 320ms ease; }
+  nav a:hover { color: var(--charcoal); }
+  nav a:hover::after { transform: scaleX(1); }
+  .lang { font-size: 11px; letter-spacing: 0.32em; text-transform: uppercase; color: var(--warm-grey); }
+
+  /* ── Hero ── */
+  .hero { display: grid; grid-template-columns: 1fr; gap: 0; padding: 24px 0 96px; }
+  .index-row { display: flex; justify-content: space-between; align-items: baseline; padding-bottom: 36px; border-bottom: 1px solid var(--hair); }
+  .idx { font-family: var(--display); font-size: 13px; letter-spacing: 0.4em; text-transform: uppercase; color: var(--warm-grey); }
+  .index-row .right { font-family: var(--display); font-style: italic; font-size: 14px; color: var(--warm-grey); }
+
+  h1.display {
+    font-family: var(--display);
+    font-weight: 300;
+    font-size: clamp(72px, 11vw, 168px);
+    line-height: 0.92;
+    letter-spacing: -0.02em;
+    margin-top: 64px;
+    max-width: 14ch;
+  }
+  h1.display em { font-style: italic; font-weight: 300; }
+  .lede { font-family: var(--body); font-weight: 300; font-size: 17px; line-height: 1.7; max-width: 48ch; color: var(--charcoal-2); margin-top: 56px; }
+  .lede::first-letter {
+    font-family: var(--display); font-style: italic; font-weight: 400;
+    font-size: 64px; line-height: 0.8; float: left; padding: 8px 12px 0 0; color: var(--ochre-deep);
+  }
+
+  /* ── Sections ── */
+  section { padding: 96px 0; border-top: 1px solid var(--hair); }
+  .sec-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 64px; }
+  .sec-num { font-family: var(--body); font-size: 11px; letter-spacing: 0.4em; text-transform: uppercase; color: var(--warm-grey); font-weight: 500; }
+  h2 { font-family: var(--display); font-weight: 300; font-size: clamp(36px, 4.5vw, 56px); letter-spacing: -0.015em; line-height: 1; max-width: 16ch; }
+  h2 em { font-style: italic; }
+
+  /* ── Type stack ── */
+  .type-stack > div {
+    padding: 32px 0;
+    border-bottom: 1px solid var(--hair);
+    display: grid; grid-template-columns: 220px 1fr; gap: 64px; align-items: baseline;
+  }
+  .type-stack > div:first-child { border-top: 1px solid var(--hair); }
+  .type-meta { font-size: 10.5px; letter-spacing: 0.32em; text-transform: uppercase; color: var(--warm-grey); font-weight: 500; }
+  .t-h1 { font-family: var(--display); font-weight: 300; font-size: 84px; line-height: 0.95; letter-spacing: -0.02em; }
+  .t-h2 { font-family: var(--display); font-style: italic; font-weight: 300; font-size: 44px; line-height: 1.05; }
+  .t-h3 { font-family: var(--display); font-weight: 500; font-size: 28px; letter-spacing: -0.005em; }
+  .t-body { font-size: 15.5px; line-height: 1.75; max-width: 56ch; color: var(--charcoal-2); font-weight: 400; }
+  .t-cap  { font-size: 11px; letter-spacing: 0.36em; text-transform: uppercase; color: var(--warm-grey); font-weight: 500; }
+
+  /* ── Palette ── */
+  .palette { display: grid; grid-template-columns: repeat(8, 1fr); gap: 0; border: 1px solid var(--hair); }
+  .swatch { aspect-ratio: 3/4; padding: 16px 14px; display: flex; flex-direction: column; justify-content: space-between; position: relative; }
+  .swatch + .swatch { border-left: 1px solid var(--hair); }
+  .swatch .name { font-family: var(--display); font-size: 17px; font-weight: 400; }
+  .swatch .hex  { font-size: 10px; letter-spacing: 0.18em; text-transform: uppercase; opacity: 0.7; }
+  .sw-bone     { background: var(--bone);      color: var(--charcoal); }
+  .sw-paper    { background: var(--paper);     color: var(--charcoal); }
+  .sw-bonew    { background: var(--bone-warm); color: var(--charcoal); }
+  .sw-greyl    { background: var(--warm-grey-l); color: var(--charcoal); }
+  .sw-grey     { background: var(--warm-grey); color: var(--paper); }
+  .sw-ochre    { background: var(--ochre);     color: var(--paper); }
+  .sw-ochred   { background: var(--ochre-deep); color: var(--paper); }
+  .sw-charcoal { background: var(--charcoal);  color: var(--bone); }
+
+  /* ── Buttons ── */
+  .btn-row { display: flex; flex-wrap: wrap; gap: 18px; align-items: center; }
+  .btn { font-family: var(--body); font-size: 12.5px; letter-spacing: 0.18em; text-transform: uppercase; font-weight: 500; padding: 18px 32px; cursor: pointer; transition: all 320ms cubic-bezier(.2,.7,.2,1); display: inline-flex; align-items: center; gap: 14px; border: 1px solid transparent; border-radius: 0; }
+  .btn-primary   { background: var(--charcoal); color: var(--bone); border-color: var(--charcoal); }
+  .btn-primary:hover { background: transparent; color: var(--charcoal); }
+  .btn-secondary { background: transparent; color: var(--charcoal); border-color: var(--charcoal); }
+  .btn-secondary:hover { background: var(--charcoal); color: var(--bone); }
+  .btn-quiet     { background: transparent; color: var(--charcoal); border: 0; padding: 18px 0; font-style: italic; font-family: var(--display); text-transform: none; letter-spacing: 0; font-size: 18px; font-weight: 400; }
+  .btn-quiet::after { content: " →"; transition: transform 320ms ease; display: inline-block; margin-left: 6px; font-style: normal; }
+  .btn-quiet:hover::after { transform: translateX(6px); }
+  .btn .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--ochre); }
+
+  /* ── Concept + list ── */
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0; border: 1px solid var(--hair); }
+  .grid-2 > * + * { border-left: 1px solid var(--hair); }
+  .card { padding: 0; background: var(--paper); display: flex; flex-direction: column; }
+  .card-img {
+    aspect-ratio: 5/4;
+    background:
+      linear-gradient(155deg, rgba(255,255,255,0.4), transparent 40%),
+      linear-gradient(180deg, #E8DECB 0%, #C9B690 100%);
+    position: relative;
+    border-bottom: 1px solid var(--hair);
+  }
+  .card-img::after {
+    content:""; position:absolute; inset: 0;
+    background:
+      radial-gradient(ellipse at 25% 30%, rgba(255,255,255,0.5), transparent 55%),
+      radial-gradient(ellipse at 80% 75%, rgba(31,31,29,0.18), transparent 55%);
+  }
+  .card-img .ix {
+    position: absolute; bottom: 18px; left: 18px;
+    font-family: var(--display); font-style: italic; font-size: 28px; color: var(--paper);
+  }
+  .card-body { padding: 36px 32px 32px; flex: 1; display: flex; flex-direction: column; }
+  .card-meta { font-size: 10.5px; letter-spacing: 0.36em; text-transform: uppercase; color: var(--warm-grey); font-weight: 500; margin-bottom: 22px; display: flex; justify-content: space-between; }
+  .card-title { font-family: var(--display); font-weight: 300; font-size: 44px; line-height: 1; letter-spacing: -0.015em; margin-bottom: 8px; }
+  .card-title em { font-style: italic; }
+  .card-desc { font-size: 14.5px; line-height: 1.75; color: var(--charcoal-2); margin: 16px 0 28px; max-width: 38ch; }
+  .card-foot { margin-top: auto; padding-top: 20px; border-top: 1px solid var(--hair); display: flex; justify-content: space-between; align-items: baseline; }
+  .price-line { display: flex; align-items: baseline; gap: 8px; }
+  .price { font-family: var(--display); font-style: italic; font-size: 28px; font-weight: 400; }
+  .price .cur { font-style: normal; font-family: var(--body); font-size: 11px; letter-spacing: 0.32em; text-transform: uppercase; color: var(--warm-grey); margin-right: 6px; }
+
+  /* List */
+  .list { padding: 36px 32px; }
+  .list-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 28px; padding-bottom: 18px; border-bottom: 1px solid var(--hair); }
+  .list-head h3 { font-family: var(--display); font-weight: 300; font-size: 32px; letter-spacing: -0.01em; }
+  .list-head .meta { font-size: 11px; letter-spacing: 0.32em; text-transform: uppercase; color: var(--warm-grey); font-weight: 500; }
+  .li { display: grid; grid-template-columns: 28px 1fr auto; gap: 18px; padding: 16px 0; border-bottom: 1px solid var(--hair); align-items: baseline; }
+  .li:last-child { border-bottom: 0; }
+  .li-num { font-family: var(--display); font-style: italic; color: var(--warm-grey); font-size: 14px; }
+  .li-name { font-size: 14.5px; font-weight: 400; color: var(--charcoal); margin-bottom: 4px; letter-spacing: -0.005em; }
+  .li-meta { font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--warm-grey); font-weight: 400; }
+  .li-price { font-family: var(--display); font-size: 18px; font-weight: 400; }
+
+  .total { display: flex; justify-content: space-between; align-items: baseline; padding-top: 20px; margin-top: 8px; border-top: 1px solid var(--charcoal); }
+  .total .lab { font-size: 11px; letter-spacing: 0.36em; text-transform: uppercase; font-weight: 500; }
+  .total .val { font-family: var(--display); font-style: italic; font-size: 32px; font-weight: 400; }
+
+  /* Form */
+  .form-block { display: grid; grid-template-columns: 1fr 1fr; gap: 64px; align-items: start; }
+  .field { padding: 28px 0; border-bottom: 1px solid var(--charcoal); transition: border 200ms ease; }
+  .field label { display: block; font-size: 10.5px; letter-spacing: 0.36em; text-transform: uppercase; color: var(--warm-grey); font-weight: 500; margin-bottom: 14px; }
+  .field input { width: 100%; border: 0; outline: 0; background: transparent; font-family: var(--display); font-style: italic; font-weight: 300; font-size: 36px; color: var(--charcoal); letter-spacing: -0.01em; line-height: 1; }
+  .field input::placeholder { color: var(--warm-grey-l); }
+
+  .chips { display: flex; flex-wrap: wrap; gap: 10px; }
+  .chip { padding: 10px 18px; font-size: 12.5px; letter-spacing: 0.04em; border: 1px solid var(--warm-grey-l); background: transparent; cursor: pointer; font-weight: 400; transition: all 240ms ease; color: var(--charcoal-2); border-radius: 999px; font-family: var(--body); }
+  .chip:hover { border-color: var(--charcoal); color: var(--charcoal); }
+  .chip.active { background: var(--charcoal); color: var(--paper); border-color: var(--charcoal); }
+  .chip .it { font-family: var(--display); font-style: italic; }
+
+  .colophon { margin-top: 96px; padding-top: 28px; border-top: 1px solid var(--hair); display: flex; justify-content: space-between; font-size: 11px; letter-spacing: 0.36em; text-transform: uppercase; color: var(--warm-grey); font-weight: 500; }
+  .colophon em { font-family: var(--display); font-style: italic; text-transform: none; letter-spacing: 0; font-size: 14px; color: var(--charcoal); font-weight: 300; }
+
+  @media (max-width: 900px) {
+    .frame { padding: 32px 24px 64px; }
+    .topbar, .grid-2, .form-block, .type-stack > div { grid-template-columns: 1fr; gap: 24px; }
+    .grid-2 > * + * { border-left: 0; border-top: 1px solid var(--hair); }
+    .palette { grid-template-columns: repeat(4, 1fr); }
+    .palette .swatch:nth-child(5) { border-left: 0; border-top: 1px solid var(--hair); }
+  }
+</style>
+</head>
+<body>
+<div class="frame">
+
+  <div class="topbar">
+    <div class="mark">
+      <div class="monogram">Ri</div>
+      <div class="wordmark">Ritzy &nbsp;·&nbsp; Studio</div>
+    </div>
+    <nav><ul>
+      <li><a href="#">work</a></li>
+      <li><a href="#">concepts</a></li>
+      <li><a href="#">sourcing</a></li>
+      <li><a href="#">studio</a></li>
+    </ul></nav>
+    <span class="lang">EN · AR</span>
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="index-row">
+      <span class="idx">N° 02 — Quiet Gallery</span>
+      <span class="right"><em>a study in restraint</em></span>
+    </div>
+    <h1 class="display">Slow rooms,<br><em>sourced</em> in&nbsp;Dubai.</h1>
+    <p class="lede">A gallery's hush, brought to a working tool. The room remains the subject; the interface steps aside. Cormorant Garamond holds the hand-drafted feel of an architect's notebook, while DM Sans keeps the captions and prices clear and modern. Generous breathing room, hairline rules, a single warm ochre when something matters.</p>
+  </div>
+
+  <!-- Typography -->
+  <section>
+    <div class="sec-head">
+      <span class="sec-num">01 · Typography</span>
+      <h2>One serif, <em>spoken softly.</em></h2>
+    </div>
+    <div class="type-stack">
+      <div>
+        <span class="type-meta">Display · Cormorant 300</span>
+        <div class="t-h1">A villa in Al&nbsp;Barari</div>
+      </div>
+      <div>
+        <span class="type-meta">Italic · Cormorant 300i</span>
+        <div class="t-h2">"Living room — south facing"</div>
+      </div>
+      <div>
+        <span class="type-meta">Heading · Cormorant 500</span>
+        <div class="t-h3">Concept 02 of 03 · Quiet Levantine</div>
+      </div>
+      <div>
+        <span class="type-meta">Body · DM Sans 400</span>
+        <div class="t-body">Upload a photo of the actual room. Ritzy preserves the architecture — walls, vents, dimensions — and sources real pieces from Marina Home, The Odd Piece, Pan Emirates, and Home Centre to match the direction you choose.</div>
+      </div>
+      <div>
+        <span class="type-meta">Caption · DM Sans 500</span>
+        <div class="t-cap">Estimated total · AED 38,400</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Palette -->
+  <section>
+    <div class="sec-head">
+      <span class="sec-num">02 · Palette</span>
+      <h2>Bone, ink, and a single <em>ochre.</em></h2>
+    </div>
+    <div class="palette">
+      <div class="swatch sw-paper"><span class="name">Paper</span><span class="hex">#FBF8F2</span></div>
+      <div class="swatch sw-bone"><span class="name">Bone</span><span class="hex">#F2EDE4</span></div>
+      <div class="swatch sw-bonew"><span class="name">Linen</span><span class="hex">#EBE3D4</span></div>
+      <div class="swatch sw-greyl"><span class="name">Ash</span><span class="hex">#C7BFB1</span></div>
+      <div class="swatch sw-grey"><span class="name">Stone</span><span class="hex">#8A8175</span></div>
+      <div class="swatch sw-ochre"><span class="name">Ochre</span><span class="hex">#B58E5A</span></div>
+      <div class="swatch sw-ochred"><span class="name">Burnt</span><span class="hex">#8C6A3E</span></div>
+      <div class="swatch sw-charcoal"><span class="name">Ink</span><span class="hex">#1F1F1D</span></div>
+    </div>
+  </section>
+
+  <!-- Buttons -->
+  <section>
+    <div class="sec-head">
+      <span class="sec-num">03 · Buttons</span>
+      <h2>Hard edges, <em>generous</em> padding.</h2>
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-primary">Generate concept <span class="dot"></span></button>
+      <button class="btn btn-secondary">Upload room photo</button>
+      <button class="btn btn-quiet">view shopping list</button>
+    </div>
+  </section>
+
+  <!-- Concept + list -->
+  <section>
+    <div class="sec-head">
+      <span class="sec-num">04 · In&nbsp;context</span>
+      <h2>A room and its <em>sourced</em> pieces.</h2>
+    </div>
+    <div class="grid-2">
+
+      <article class="card">
+        <div class="card-img">
+          <span class="ix">02 / 03</span>
+        </div>
+        <div class="card-body">
+          <div class="card-meta">
+            <span>Living room · Emirates Hills</span>
+            <span>Concept</span>
+          </div>
+          <h3 class="card-title">Quiet <em>Levantine</em></h3>
+          <p class="card-desc">Travertine coffee table, oak slat console, a low bouclé sofa in oat. Linen drapes lifted to ceiling height to honour the window line.</p>
+          <div class="card-foot">
+            <div class="price-line"><span class="price"><span class="cur">AED</span>38,400</span></div>
+            <button class="btn btn-quiet" style="padding:0; font-size:15px;">source pieces</button>
+          </div>
+        </div>
+      </article>
+
+      <div class="list">
+        <div class="list-head">
+          <h3>Shopping list</h3>
+          <span class="meta">12 pieces</span>
+        </div>
+        <div class="li">
+          <span class="li-num">i.</span>
+          <div><div class="li-name">Bouclé three-seat sofa</div><div class="li-meta">Marina Home · 240 × 98 cm</div></div>
+          <span class="li-price">14,200</span>
+        </div>
+        <div class="li">
+          <span class="li-num">ii.</span>
+          <div><div class="li-name">Travertine coffee table</div><div class="li-meta">The Odd Piece · ⌀ 110 cm</div></div>
+          <span class="li-price">5,900</span>
+        </div>
+        <div class="li">
+          <span class="li-num">iii.</span>
+          <div><div class="li-name">Alabaster floor lamp</div><div class="li-meta">West Elm · 168 cm</div></div>
+          <span class="li-price">2,750</span>
+        </div>
+        <div class="li">
+          <span class="li-num">iv.</span>
+          <div><div class="li-name">Wool berber rug</div><div class="li-meta">Pan Emirates · 240 × 170</div></div>
+          <span class="li-price">3,400</span>
+        </div>
+        <div class="total">
+          <span class="lab">Estimated total · AED</span>
+          <span class="val">38,400</span>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- Form + chips -->
+  <section>
+    <div class="sec-head">
+      <span class="sec-num">05 · Inputs</span>
+      <h2>One line, <em>open</em> below.</h2>
+    </div>
+    <div class="form-block">
+      <div class="field">
+        <label for="brief">Describe the direction</label>
+        <input id="brief" placeholder="warm minimal, oak, brushed brass…" />
+      </div>
+      <div class="chips">
+        <button class="chip active">warm minimal</button>
+        <button class="chip"><span class="it">quiet</span> levantine</button>
+        <button class="chip">mid-century</button>
+        <button class="chip">coastal calm</button>
+        <button class="chip">soft japandi</button>
+        <button class="chip"><span class="it">art-deco</span> revival</button>
+      </div>
+    </div>
+  </section>
+
+  <div class="colophon">
+    <span>N° 02 — Ritzy Studio</span>
+    <em>Quiet Gallery</em>
+    <span>Cormorant × DM Sans</span>
+  </div>
+
+</div>
+</body>
+</html>
