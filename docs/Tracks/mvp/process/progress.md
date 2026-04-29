@@ -312,3 +312,31 @@ Feature status:
 Current canonical next slice:
 
 - `F-010 First Retailer Ingestion Adapter`
+
+### F-010 Closed: First Retailer Ingestion Adapter
+
+Implemented the Home Centre UAE ingestion adapter.
+
+Created:
+
+- `homecentre-ae` adapter
+- category product URL discovery
+- product JSON-LD/meta extraction
+- Home Centre adapter tests
+- compliance notes for public-page ingestion
+
+Verification passed:
+
+- light Home Centre robots/sitemap/category/product probing
+- `pnpm --filter @ritzy-studio/ingestion test`
+- live one-product extraction smoke test
+- `pnpm typecheck`
+- `pnpm check`
+
+Feature status:
+
+- `F-010` marked `passes: true`.
+
+Current canonical next slice:
+
+- `F-011 Additional Retailer Ingestion Adapters`

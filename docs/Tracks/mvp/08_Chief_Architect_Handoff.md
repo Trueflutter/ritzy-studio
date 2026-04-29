@@ -2,7 +2,7 @@
 
 ## Current State
 
-Ritzy Studio has completed the first nine MVP implementation slices.
+Ritzy Studio has completed the first ten MVP implementation slices.
 
 The repository now contains:
 
@@ -17,6 +17,7 @@ The repository now contains:
 - initial OpenAI `gpt-image-2` concept generation
 - concept critique, selection, and revision generation
 - catalog ingestion package, adapter contract, normalization, and ingestion run helper
+- first retailer adapter: Home Centre UAE
 
 The locked design system exists at:
 
@@ -40,7 +41,7 @@ For visual implementation, `docs/Vision/05_Brand_and_Design_System.md` is locked
 
 ## Current Canonical Slice
 
-`F-010 First Retailer Ingestion Adapter`
+`F-011 Additional Retailer Ingestion Adapters`
 
 Status: not started.
 
@@ -70,13 +71,13 @@ Expected boundaries:
 
 ## Suggested Next Action
 
-Begin F-010:
+Begin F-011:
 
-- implement the Home Centre adapter first, per founder instruction
-- lightly re-check Home Centre public pages, robots, structured data, and frontend payloads before coding selectors
-- ingest product URLs and facts through the F-009 adapter framework
-- capture name, image, price, product URL, category, dimensions/availability/material/color where available
-- document compliance notes and sample verification records
+- add two more retailer adapters from the feasible MVP list
+- preserve the same light-probing and compliance-note discipline used for Home Centre
+- likely next candidates: 2XL Home and Chattels & More, unless live probing shows a cleaner public data surface elsewhere
+- keep adapter write scope inside `packages/ingestion`
+- document sample product records for each adapter
 
 ## Open Questions
 

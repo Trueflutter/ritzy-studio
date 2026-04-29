@@ -173,7 +173,7 @@
       "summary": "Implement the first automated retailer adapter using public product data sources.",
       "boundaries": ["packages/ingestion", "packages/db", "packages/domain"],
       "dependencies": ["F-009"],
-      "passes": false,
+      "passes": true,
       "done_when": [
         "one approved retailer adapter ingests product URLs and product facts",
         "name, image, price, retailer, product URL, and category are captured where available",
