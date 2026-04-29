@@ -2,7 +2,7 @@
 
 ## Current State
 
-Ritzy Studio has completed the first eleven MVP implementation slices.
+Ritzy Studio has completed the first twelve MVP implementation slices.
 
 The repository now contains:
 
@@ -18,6 +18,7 @@ The repository now contains:
 - concept critique, selection, and revision generation
 - catalog ingestion package, adapter contract, normalization, and ingestion run helper
 - retailer adapters: Home Centre UAE, 2XL Home, and Chattels & More
+- product enrichment prompt, text embedding helper, and enrichment provenance schema
 
 The locked design system exists at:
 
@@ -41,16 +42,17 @@ For visual implementation, `docs/Vision/05_Brand_and_Design_System.md` is locked
 
 ## Current Canonical Slice
 
-`F-012 Product Enrichment And Embeddings`
+`F-013 Product Search And Matching`
 
 Status: not started.
 
 Expected boundaries:
 
-- `packages/ai`
-- `packages/prompts`
+- `apps/web`
 - `packages/domain`
+- `packages/ai`
 - `packages/db`
+- `packages/ui`
 
 ## Locked Product Workflow
 
@@ -72,13 +74,13 @@ Expected boundaries:
 
 ## Suggested Next Action
 
-Begin F-012:
+Begin F-013:
 
-- add product enrichment prompts and services
-- derive style, room, color, and material search tags without inventing factual product data
-- add product text embeddings for search
-- store enrichment provenance/source hashes to avoid unnecessary rework
-- cover missing-data and confidence behavior with tests
+- let an approved concept trigger product grounding
+- rank candidate products with a hybrid rubric using catalog facts, tags, dimensions, budget, and vector search where available
+- show real product cards with price, retailer, URL, availability, dimensions, and warnings
+- keep missing dimensions and stale price warnings visible
+- ensure shopping facts come only from catalog records, not generated images
 
 ## Open Questions
 

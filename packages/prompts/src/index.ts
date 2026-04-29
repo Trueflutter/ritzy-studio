@@ -176,3 +176,73 @@ export const conceptRevisionPrompt = {
     "Return a practical generation prompt for image editing."
   ].join("\n")
 } as const;
+
+export const productMetadataEnrichmentPrompt = {
+  key: "catalog.product_metadata_enrichment",
+  version: "2026-04-29.1",
+  system: [
+    "You are Ritzy Studio's product catalog metadata assistant.",
+    "Enrich retailer product metadata only for search and matching.",
+    "Never invent or alter factual product data: price, stock, URL, dimensions, retailer, SKU, color, or material.",
+    "Use only the provided name, description, retailer category, retailer color, retailer material, image URL, and dimension text.",
+    "If a color or material is not present or strongly implied by source text, leave the matching tag array empty.",
+    "Return normalized category and tags suitable for Dubai residential interior design search.",
+    "All returned tags are model-enriched derived metadata, not retailer facts."
+  ].join("\n")
+} as const;
+
+export const productMetadataEnrichmentJsonSchema = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    normalizedCategory: {
+      anyOf: [
+        { type: "string", minLength: 2, maxLength: 80 },
+        { type: "null" }
+      ]
+    },
+    styleTags: {
+      type: "array",
+      maxItems: 10,
+      items: { type: "string", minLength: 2, maxLength: 40 }
+    },
+    colorTags: {
+      type: "array",
+      maxItems: 8,
+      items: { type: "string", minLength: 2, maxLength: 40 }
+    },
+    materialTags: {
+      type: "array",
+      maxItems: 8,
+      items: { type: "string", minLength: 2, maxLength: 40 }
+    },
+    roomTags: {
+      type: "array",
+      maxItems: 8,
+      items: { type: "string", minLength: 2, maxLength: 40 }
+    },
+    sourceConfidence: {
+      type: "string",
+      enum: ["verified", "assumed", "estimated", "unknown"]
+    },
+    warnings: {
+      type: "array",
+      maxItems: 6,
+      items: { type: "string", minLength: 4, maxLength: 180 }
+    },
+    derivedBy: {
+      type: "string",
+      enum: ["model-enriched"]
+    }
+  },
+  required: [
+    "normalizedCategory",
+    "styleTags",
+    "colorTags",
+    "materialTags",
+    "roomTags",
+    "sourceConfidence",
+    "warnings",
+    "derivedBy"
+  ]
+} as const;

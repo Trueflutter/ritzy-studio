@@ -1,14 +1,26 @@
 import { parseServerEnv } from "@ritzy-studio/config";
+import type { Database } from "@ritzy-studio/db";
+import {
+  buildProductSearchText,
+  productEnrichmentInputSchema,
+  productEnrichmentResponseSchema,
+  type ProductEnrichmentInput,
+  type ProductEnrichmentResponse
+} from "@ritzy-studio/domain";
 import {
   clarifyingQuestionsJsonSchema,
   clarifyingQuestionsPrompt,
   clarifyingQuestionsResponseSchema,
+  conceptRevisionPrompt,
   initialConceptJsonSchema,
   initialConceptPrompt,
   initialConceptResponseSchema,
-  conceptRevisionPrompt
+  productMetadataEnrichmentJsonSchema,
+  productMetadataEnrichmentPrompt
 } from "@ritzy-studio/prompts";
+import { createHash } from "node:crypto";
 import OpenAI, { toFile } from "openai";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
 export type GenerateClarifyingQuestionsInput = {
   roomType: string;
@@ -90,6 +102,30 @@ export type GenerateConceptRevisionInput = GenerateInitialConceptInput & {
     description?: string | null;
   };
   critique: string;
+};
+
+export type GenerateProductEnrichmentResult = {
+  promptKey: string;
+  promptVersion: string;
+  model: string;
+  sourceHash: string;
+  enrichment: ProductEnrichmentResponse;
+};
+
+export type ProductEmbeddingResult = {
+  model: string;
+  embeddingType: "product_text";
+  sourceHash: string;
+  vector: number[];
+  searchText: string;
+};
+
+export type EnrichAndEmbedProductResult = {
+  productId: string;
+  status: "created" | "skipped";
+  sourceHash: string;
+  enrichmentModel: string;
+  embeddingModel: string;
 };
 
 export async function generateClarifyingQuestions(
@@ -327,4 +363,247 @@ function extensionForMime(mimeType: string) {
   }
 
   return "jpg";
+}
+
+export async function generateProductEnrichment(
+  input: ProductEnrichmentInput
+): Promise<GenerateProductEnrichmentResult> {
+  const env = parseServerEnv(process.env);
+  const client = new OpenAI({ apiKey: env.OPENAI_API_KEY });
+  const parsedInput = productEnrichmentInputSchema.parse(input);
+  const sourceHash = createProductEnrichmentSourceHash(parsedInput);
+
+  const response = await client.responses.create({
+    model: env.OPENAI_TEXT_MODEL,
+    input: [
+      {
+        role: "system",
+        content: productMetadataEnrichmentPrompt.system
+      },
+      {
+        role: "user",
+        content: JSON.stringify(parsedInput)
+      }
+    ],
+    text: {
+      format: {
+        type: "json_schema",
+        name: "ritzy_product_metadata_enrichment",
+        schema: productMetadataEnrichmentJsonSchema,
+        strict: true
+      }
+    }
+  });
+
+  return {
+    promptKey: productMetadataEnrichmentPrompt.key,
+    promptVersion: productMetadataEnrichmentPrompt.version,
+    model: env.OPENAI_TEXT_MODEL,
+    sourceHash,
+    enrichment: productEnrichmentResponseSchema.parse(JSON.parse(response.output_text))
+  };
+}
+
+export async function generateProductTextEmbedding(
+  input: ProductEnrichmentInput,
+  enrichment: ProductEnrichmentResponse
+): Promise<ProductEmbeddingResult> {
+  const env = parseServerEnv(process.env);
+  const client = new OpenAI({ apiKey: env.OPENAI_API_KEY });
+  const parsedInput = productEnrichmentInputSchema.parse(input);
+  const parsedEnrichment = productEnrichmentResponseSchema.parse(enrichment);
+  const sourceHash = createProductEnrichmentSourceHash(parsedInput);
+  const searchText = buildProductSearchText(parsedInput, parsedEnrichment);
+
+  const response = await client.embeddings.create({
+    model: env.OPENAI_EMBEDDING_MODEL,
+    input: searchText
+  });
+  const vector = response.data[0]?.embedding;
+
+  if (!vector?.length) {
+    throw new Error("OpenAI embedding generation returned no vector.");
+  }
+
+  return {
+    model: env.OPENAI_EMBEDDING_MODEL,
+    embeddingType: "product_text",
+    sourceHash,
+    vector,
+    searchText
+  };
+}
+
+export async function enrichAndEmbedProduct({
+  supabase,
+  productId,
+  force = false
+}: {
+  supabase: SupabaseClient<Database>;
+  productId: string;
+  force?: boolean;
+}): Promise<EnrichAndEmbedProductResult> {
+  const env = parseServerEnv(process.env);
+  const { data: product, error: productError } = await supabase
+    .from("products")
+    .select("*")
+    .eq("id", productId)
+    .single();
+
+  if (productError) {
+    throw new Error(productError.message);
+  }
+
+  const [
+    { data: retailer, error: retailerError },
+    { data: dimensions, error: dimensionsError }
+  ] = await Promise.all([
+    supabase.from("retailers").select("name").eq("id", product.retailer_id).maybeSingle(),
+    supabase.from("product_dimensions").select("*").eq("product_id", product.id).maybeSingle()
+  ]);
+
+  if (retailerError) {
+    throw new Error(retailerError.message);
+  }
+
+  if (dimensionsError) {
+    throw new Error(dimensionsError.message);
+  }
+
+  const input = productRowToEnrichmentInput(product, retailer?.name ?? null, dimensions ?? null);
+  const sourceHash = createProductEnrichmentSourceHash(input);
+
+  if (!force && product.enrichment_source_hash === sourceHash) {
+    const { data: existingEmbedding } = await supabase
+      .from("product_embeddings")
+      .select("id")
+      .eq("product_id", product.id)
+      .eq("embedding_type", "product_text")
+      .eq("model", env.OPENAI_EMBEDDING_MODEL)
+      .eq("source_hash", sourceHash)
+      .maybeSingle();
+
+    if (existingEmbedding) {
+      return {
+        productId: product.id,
+        status: "skipped",
+        sourceHash,
+        enrichmentModel: product.enrichment_model ?? env.OPENAI_TEXT_MODEL,
+        embeddingModel: env.OPENAI_EMBEDDING_MODEL
+      };
+    }
+  }
+
+  const enrichmentResult = await generateProductEnrichment(input);
+  const embedding = await generateProductTextEmbedding(input, enrichmentResult.enrichment);
+
+  const { error: updateError } = await supabase
+    .from("products")
+    .update({
+      category_normalized: enrichmentResult.enrichment.normalizedCategory ?? product.category_normalized,
+      style_tags: enrichmentResult.enrichment.styleTags,
+      color_tags: enrichmentResult.enrichment.colorTags,
+      material_tags: enrichmentResult.enrichment.materialTags,
+      room_tags: enrichmentResult.enrichment.roomTags,
+      enrichment_source_hash: sourceHash,
+      enrichment_model: enrichmentResult.model,
+      enriched_at: new Date().toISOString()
+    })
+    .eq("id", product.id);
+
+  if (updateError) {
+    throw new Error(updateError.message);
+  }
+
+  const { error: embeddingError } = await supabase.from("product_embeddings").upsert(
+    {
+      product_id: product.id,
+      embedding_type: embedding.embeddingType,
+      model: embedding.model,
+      vector: formatPgVector(embedding.vector),
+      source_hash: sourceHash
+    },
+    { onConflict: "product_id,embedding_type,model,source_hash" }
+  );
+
+  if (embeddingError) {
+    throw new Error(embeddingError.message);
+  }
+
+  return {
+    productId: product.id,
+    status: "created",
+    sourceHash,
+    enrichmentModel: enrichmentResult.model,
+    embeddingModel: embedding.model
+  };
+}
+
+export function createProductEnrichmentSourceHash(input: ProductEnrichmentInput) {
+  const parsed = productEnrichmentInputSchema.parse(input);
+  return createHash("sha256").update(stableStringify(productEnrichmentSourcePayload(parsed))).digest("hex");
+}
+
+export function formatPgVector(vector: number[]) {
+  return `[${vector.join(",")}]`;
+}
+
+function productRowToEnrichmentInput(
+  product: Database["public"]["Tables"]["products"]["Row"],
+  retailerName: string | null,
+  dimensions: Database["public"]["Tables"]["product_dimensions"]["Row"] | null
+): ProductEnrichmentInput {
+  return {
+    productId: product.id,
+    retailerName,
+    name: product.name,
+    description: product.description,
+    categoryRaw: product.category_raw,
+    categoryNormalized: product.category_normalized,
+    color: product.color,
+    material: product.material,
+    priceAed: product.price_aed,
+    salePriceAed: product.sale_price_aed,
+    availability: product.availability,
+    primaryImageUrl: product.primary_image_url,
+    dimensions: dimensions
+      ? {
+          widthCm: dimensions.width_cm,
+          depthCm: dimensions.depth_cm,
+          heightCm: dimensions.height_cm,
+          diameterCm: dimensions.diameter_cm,
+          sourceText: dimensions.source_text
+        }
+      : null
+  };
+}
+
+function stableStringify(value: unknown): string {
+  if (Array.isArray(value)) {
+    return `[${value.map(stableStringify).join(",")}]`;
+  }
+
+  if (value && typeof value === "object") {
+    return `{${Object.entries(value as Record<string, unknown>)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, nested]) => `${JSON.stringify(key)}:${stableStringify(nested)}`)
+      .join(",")}}`;
+  }
+
+  return JSON.stringify(value);
+}
+
+function productEnrichmentSourcePayload(input: ProductEnrichmentInput) {
+  return {
+    productId: input.productId ?? null,
+    retailerName: input.retailerName ?? null,
+    name: input.name,
+    description: input.description ?? null,
+    categoryRaw: input.categoryRaw ?? null,
+    categoryNormalized: input.categoryNormalized ?? null,
+    color: input.color ?? null,
+    material: input.material ?? null,
+    primaryImageUrl: input.primaryImageUrl ?? null,
+    dimensions: input.dimensions ?? null
+  };
 }

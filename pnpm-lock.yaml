@@ -84,9 +84,18 @@ importers:
       '@ritzy-studio/config':
         specifier: workspace:*
         version: link:../config
+      '@ritzy-studio/db':
+        specifier: workspace:*
+        version: link:../db
+      '@ritzy-studio/domain':
+        specifier: workspace:*
+        version: link:../domain
       '@ritzy-studio/prompts':
         specifier: workspace:*
         version: link:../prompts
+      '@supabase/supabase-js':
+        specifier: ^2.89.0
+        version: 2.105.1
       openai:
         specifier: ^6.35.0
         version: 6.35.0(ws@8.20.0)(zod@4.3.6)
@@ -123,6 +132,12 @@ importers:
         specifier: ^4.1.13
         version: 4.3.6
     devDependencies:
+      '@types/node':
+        specifier: ^20
+        version: 20.19.39
+      tsx:
+        specifier: ^4.21.0
+        version: 4.21.0
       typescript:
         specifier: ^5
         version: 5.9.3
@@ -155,6 +170,12 @@ importers:
         specifier: ^4.2.1
         version: 4.3.6
     devDependencies:
+      '@types/node':
+        specifier: ^20
+        version: 20.19.39
+      tsx:
+        specifier: ^4.21.0
+        version: 4.21.0
       typescript:
         specifier: ^5.9.3
         version: 5.9.3

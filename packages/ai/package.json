@@ -7,11 +7,15 @@
     ".": "./src/index.ts"
   },
   "scripts": {
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "tsx src/product-enrichment.test.ts"
   },
   "dependencies": {
     "@ritzy-studio/config": "workspace:*",
+    "@ritzy-studio/db": "workspace:*",
+    "@ritzy-studio/domain": "workspace:*",
     "@ritzy-studio/prompts": "workspace:*",
+    "@supabase/supabase-js": "^2.89.0",
     "openai": "^6.35.0"
   },
   "devDependencies": {

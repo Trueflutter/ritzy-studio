@@ -464,14 +464,19 @@ export type Database = {
           category_normalized: string | null
           category_raw: string | null
           color: string | null
+          color_tags: string[]
           created_at: string
           currency: string
           data_confidence: Database["public"]["Enums"]["confidence_level"]
           description: string | null
+          enriched_at: string | null
+          enrichment_model: string | null
+          enrichment_source_hash: string | null
           external_sku: string | null
           id: string
           last_checked_at: string | null
           material: string | null
+          material_tags: string[]
           name: string
           price_aed: number | null
           primary_image_url: string | null
@@ -487,14 +492,19 @@ export type Database = {
           category_normalized?: string | null
           category_raw?: string | null
           color?: string | null
+          color_tags?: string[]
           created_at?: string
           currency?: string
           data_confidence?: Database["public"]["Enums"]["confidence_level"]
           description?: string | null
+          enriched_at?: string | null
+          enrichment_model?: string | null
+          enrichment_source_hash?: string | null
           external_sku?: string | null
           id?: string
           last_checked_at?: string | null
           material?: string | null
+          material_tags?: string[]
           name: string
           price_aed?: number | null
           primary_image_url?: string | null
@@ -510,14 +520,19 @@ export type Database = {
           category_normalized?: string | null
           category_raw?: string | null
           color?: string | null
+          color_tags?: string[]
           created_at?: string
           currency?: string
           data_confidence?: Database["public"]["Enums"]["confidence_level"]
           description?: string | null
+          enriched_at?: string | null
+          enrichment_model?: string | null
+          enrichment_source_hash?: string | null
           external_sku?: string | null
           id?: string
           last_checked_at?: string | null
           material?: string | null
+          material_tags?: string[]
           name?: string
           price_aed?: number | null
           primary_image_url?: string | null
@@ -1161,4 +1176,3 @@ export const Constants = {
     },
   },
 } as const
-

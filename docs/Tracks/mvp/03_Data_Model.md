@@ -197,7 +197,12 @@ Key fields:
 - `color`
 - `material`
 - `style_tags`
+- `color_tags`
+- `material_tags`
 - `room_tags`
+- `enrichment_source_hash`
+- `enrichment_model`
+- `enriched_at`
 - `data_confidence`
 - `last_checked_at`
 - `created_at`

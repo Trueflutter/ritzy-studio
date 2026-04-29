@@ -209,7 +209,7 @@
       "summary": "Normalize categories, enrich style/color/material tags, and create product embeddings for search.",
       "boundaries": ["packages/ai", "packages/prompts", "packages/domain", "packages/db"],
       "dependencies": ["F-011"],
-      "passes": false,
+      "passes": true,
       "done_when": [
         "product enrichment prompt follows prompt architecture",
         "enriched fields never invent factual product data",
@@ -217,7 +217,7 @@
         "source hashes prevent unnecessary re-enrichment",
         "tests cover confidence and missing-data behavior"
       ],
-      "notes": "Image embeddings can be added here or deferred if cost/risk is documented."
+      "notes": "Text embeddings implemented with text-embedding-3-small. Image embeddings deferred; product images remain factual references for later grounded render work."
     },
     {
       "id": "F-013",

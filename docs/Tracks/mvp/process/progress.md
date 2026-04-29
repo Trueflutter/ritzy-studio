@@ -368,3 +368,35 @@ Feature status:
 Current canonical next slice:
 
 - `F-012 Product Enrichment And Embeddings`
+
+### F-012 Closed: Product Enrichment And Embeddings
+
+Implemented product enrichment and text embedding support.
+
+Created:
+
+- product metadata enrichment prompt
+- enrichment input/output domain schemas
+- product search text builder
+- stable enrichment source hashes
+- OpenAI text embedding helper
+- product enrichment and embedding storage helper
+- product provenance migration
+- focused prompt/domain/AI tests
+
+Verification passed:
+
+- `pnpm --filter @ritzy-studio/domain test`
+- `pnpm --filter @ritzy-studio/prompts test`
+- `pnpm --filter @ritzy-studio/ai test`
+- `pnpm --filter @ritzy-studio/ai typecheck`
+- `pnpm typecheck`
+- `pnpm check`
+
+Feature status:
+
+- `F-012` marked `passes: true`.
+
+Current canonical next slice:
+
+- `F-013 Product Search And Matching`
