@@ -35,7 +35,7 @@ For visual implementation, `docs/Vision/05_Brand_and_Design_System.md` is locked
 
 ## Current Canonical Slice
 
-`F-005 Room Image Upload And Asset Storage`
+`F-006 Design Brief And Clarifying Questions`
 
 Status: not started.
 
@@ -66,15 +66,15 @@ Expected boundaries:
 
 ## Suggested Next Action
 
-Begin F-005:
+Begin F-006:
 
-- add room photo upload UI
-- store original image assets in private Supabase Storage
-- persist room asset records
-- enforce storage path convention `<user-id>/<room-id>/<file-name>`
-- show upload progress/error/retry states where practical
-- keep scope to room assets only; no AI analysis yet
+- add protected design brief route after photo upload
+- capture style, color, budget, constraints, inspiration, and optional measurements
+- generate bounded clarifying questions if OpenAI key is available
+- persist design brief and clarifying questions
+- log prompt version/job metadata
 
 ## Open Questions
 
+- OpenAI key is needed before AI-backed clarifying question generation and later concept generation can be fully verified.
 - Confirm export format before F-017.

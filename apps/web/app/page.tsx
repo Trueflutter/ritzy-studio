@@ -103,25 +103,34 @@ export default async function DashboardPage() {
           </section>
         ) : (
           <div className="mt-12 grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-            {projects.map((project) => (
-              <Card className="group" key={project.id}>
-                <div className="aspect-[4/3] border-b border-line bg-surface-subtle" />
-                <div className="p-6">
-                  <p className="font-body text-caption font-medium uppercase text-ink-muted">
-                    {project.location ?? "Dubai"}
-                  </p>
-                  <h2 className="mt-5 font-display text-display-s font-light tracking-[-0.01em] text-ink">
-                    {project.name}
-                  </h2>
-                  <p className="mt-4 font-body text-body-s text-ink-secondary">
-                    {roomCountByProject[project.id] ?? 0} rooms · {formatBudget(project)}
-                  </p>
-                  <p className="mt-8 font-display text-button-quiet italic text-accent-deep">
-                    open project →
-                  </p>
-                </div>
-              </Card>
-            ))}
+            {projects.map((project) => {
+              const firstRoom = rooms.find((room) => room.project_id === project.id);
+              const href = firstRoom
+                ? `/projects/${project.id}/rooms/${firstRoom.id}/photos`
+                : "/projects/new";
+
+              return (
+                <Link href={href} key={project.id}>
+                  <Card className="group h-full transition-colors duration-micro ease-standard hover:bg-surface-subtle">
+                    <div className="aspect-[4/3] border-b border-line bg-surface-subtle" />
+                    <div className="p-6">
+                      <p className="font-body text-caption font-medium uppercase text-ink-muted">
+                        {project.location ?? "Dubai"}
+                      </p>
+                      <h2 className="mt-5 font-display text-display-s font-light tracking-[-0.01em] text-ink">
+                        {project.name}
+                      </h2>
+                      <p className="mt-4 font-body text-body-s text-ink-secondary">
+                        {roomCountByProject[project.id] ?? 0} rooms · {formatBudget(project)}
+                      </p>
+                      <p className="mt-8 font-display text-button-quiet italic text-accent-deep">
+                        open project →
+                      </p>
+                    </div>
+                  </Card>
+                </Link>
+              );
+            })}
           </div>
         )}
       </section>

@@ -109,17 +109,21 @@ export async function createProjectWithRoomAction(formData: FormData) {
     throw new Error(projectError.message);
   }
 
-  const { error: roomError } = await supabase.from("rooms").insert({
-    project_id: project.id,
-    name: parsed.roomName,
-    room_type: parsed.roomType,
-    status: "draft"
-  });
+  const { data: room, error: roomError } = await supabase
+    .from("rooms")
+    .insert({
+      project_id: project.id,
+      name: parsed.roomName,
+      room_type: parsed.roomType,
+      status: "draft"
+    })
+    .select("id")
+    .single();
 
   if (roomError) {
     throw new Error(roomError.message);
   }
 
   revalidatePath("/");
-  redirect("/");
+  redirect(`/projects/${project.id}/rooms/${room.id}/photos`);
 }

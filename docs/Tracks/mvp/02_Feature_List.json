@@ -83,7 +83,7 @@
       "summary": "Allow room photo uploads, storage, thumbnails, upload states, and image display.",
       "boundaries": ["apps/web", "packages/db", "packages/domain", "packages/ui"],
       "dependencies": ["F-004"],
-      "passes": false,
+      "passes": true,
       "done_when": [
         "designer can upload one or more room photos",
         "original assets are private or access-controlled",

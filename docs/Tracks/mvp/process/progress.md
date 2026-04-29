@@ -180,3 +180,29 @@ Feature status:
 Current canonical next slice:
 
 - `F-005 Room Image Upload And Asset Storage`
+
+### F-005 Closed: Room Image Upload And Asset Storage
+
+Implemented protected room photo upload and private asset storage.
+
+Created:
+
+- `/projects/[projectId]/rooms/[roomId]/photos`
+- `RoomPhotoUploader`
+- signed URL display for existing room photos
+- project-card links into the photo step
+
+Verification passed:
+
+- `pnpm check`
+- unauthenticated route redirect check
+- Supabase authenticated storage/RLS smoke test
+- design-rule scan for forbidden UI styles
+
+Feature status:
+
+- `F-005` marked `passes: true`.
+
+Current canonical next slice:
+
+- `F-006 Design Brief And Clarifying Questions`
