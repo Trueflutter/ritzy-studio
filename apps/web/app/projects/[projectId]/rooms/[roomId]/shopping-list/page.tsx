@@ -1,9 +1,10 @@
-import { ButtonLink } from "@ritzy-studio/ui";
+import { ButtonLink, SubmitButton } from "@ritzy-studio/ui";
 import Image from "next/image";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
 import { createClient } from "@/lib/supabase/server";
+import { createHomeownerRoomUnlockCheckoutAction } from "@/app/actions";
 
 export const dynamic = "force-dynamic";
 
@@ -64,6 +65,13 @@ export default async function ShoppingListPage({
         .order("sort_order", { ascending: true })
     : { data: [] };
   const listItems = items ?? [];
+  const currentEstimateAed =
+    listItems.length > 0
+      ? listItems.reduce((total, item) => total + currentLineTotalAed(item), 0)
+      : shoppingList?.estimated_total_aed;
+  const { data: canAccessCommerce = false } = await supabase.rpc("can_access_room_commerce", {
+    room_id: roomId
+  });
 
   return (
     <main className="min-h-dvh bg-page text-ink">
@@ -71,20 +79,27 @@ export default async function ShoppingListPage({
         <Link className="font-display text-[28px] font-light text-ink" href="/">
           Ri <span className="font-body text-caption font-medium uppercase text-ink-muted">Ritzy Studio</span>
         </Link>
-        <div className="flex items-center gap-6">
+        <div className="flex flex-wrap items-center justify-end gap-3">
           <ButtonLink
-            href={`/projects/${projectId}/rooms/${roomId}/presentation`}
+            href="/"
             trailing="→"
-            variant="quiet"
+            variant="secondary"
           >
-            presentation
+            Studio
           </ButtonLink>
           <ButtonLink
             href={`/projects/${projectId}/rooms/${roomId}/concepts`}
             trailing="→"
-            variant="quiet"
+            variant="secondary"
           >
-            back to concepts
+            Concepts
+          </ButtonLink>
+          <ButtonLink
+            href={`/projects/${projectId}/rooms/${roomId}/presentation`}
+            trailing="→"
+            variant="primary"
+          >
+            Presentation
           </ButtonLink>
         </div>
       </header>
@@ -113,11 +128,28 @@ export default async function ShoppingListPage({
             </p>
             <div className="mt-3 h-px w-20 bg-ink" />
             <p className="mt-6 font-display text-display-xs font-light italic text-ink">
-              {formatAed(shoppingList?.estimated_total_aed)}
+              {formatAed(currentEstimateAed)}
             </p>
             <p className="mt-4 font-body text-body-s text-ink-secondary">
               {listItems.length} catalog item{listItems.length === 1 ? "" : "s"} in draft.
             </p>
+            {!canAccessCommerce ? (
+              <form action={createHomeownerRoomUnlockCheckoutAction} className="mt-6 border-t border-line pt-5">
+                <input name="projectId" type="hidden" value={projectId} />
+                <input name="roomId" type="hidden" value={roomId} />
+                <p className="mb-5 font-body text-body-s text-ink-secondary">
+                  Unlock retailer links, eligible partner discounts, and the final room plan for
+                  AED 100.
+                </p>
+                <SubmitButton className="w-full" pendingLabel="Opening secure checkout...">
+                  Unlock room
+                </SubmitButton>
+              </form>
+            ) : (
+              <p className="mt-6 border-t border-line pt-5 font-display text-body-s italic text-success">
+                Room commerce unlocked.
+              </p>
+            )}
           </aside>
         </div>
 
@@ -190,7 +222,7 @@ export default async function ShoppingListPage({
                         {item.category}
                       </td>
                       <td className="px-4 py-4 font-body text-body-s text-ink-secondary">
-                        {formatAed(item.line_total_aed)}
+                        {formatAed(currentLineTotalAed(item))}
                       </td>
                       <td className="px-4 py-4 font-body text-body-s text-ink-secondary">
                         {dimensions?.source_text ??
@@ -258,6 +290,24 @@ function dimensionsText(
   return parts.length > 0 ? `${parts.join(" x ")} cm` : "not available";
 }
 
+function currentLineTotalAed(item: {
+  quantity: number | null;
+  line_total_aed: number | null;
+  product:
+    | {
+        sale_price_aed: number | null;
+        price_aed: number | null;
+      }
+    | null;
+}) {
+  const unitPrice = item.product?.sale_price_aed ?? item.product?.price_aed;
+  if (unitPrice !== null && unitPrice !== undefined) {
+    return unitPrice * (item.quantity ?? 1);
+  }
+
+  return item.line_total_aed ?? 0;
+}
+
 function warningsFor(
   item: { dimension_fit_note: string | null; selection_reason: string | null },
   product:
@@ -268,8 +318,9 @@ function warningsFor(
     | null
 ) {
   const warnings: string[] = [];
+  const hasCatalogDimensions = Boolean(product?.dimensions?.[0]?.source_text);
 
-  if (!product?.dimensions?.[0]?.source_text) {
+  if (!hasCatalogDimensions && !item.dimension_fit_note) {
     warnings.push("Dimensions missing.");
   }
 
@@ -277,7 +328,14 @@ function warningsFor(
     warnings.push("Price or stock may be stale.");
   }
 
-  if (item.dimension_fit_note && !item.dimension_fit_note.startsWith("verified")) {
+  const staleMissingDimensionNote =
+    hasCatalogDimensions && item.dimension_fit_note?.toLowerCase().includes("dimensions missing");
+
+  if (
+    item.dimension_fit_note &&
+    !item.dimension_fit_note.startsWith("verified") &&
+    !staleMissingDimensionNote
+  ) {
     warnings.push(item.dimension_fit_note);
   }
 

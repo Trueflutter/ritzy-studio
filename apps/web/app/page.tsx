@@ -33,6 +33,16 @@ export default async function DashboardPage() {
     redirect("/login");
   }
 
+  const { data: profile } = await supabase
+    .from("user_profiles")
+    .select("intended_mode")
+    .eq("user_id", user.id)
+    .maybeSingle();
+
+  if (!profile || profile.intended_mode === "unknown") {
+    redirect("/onboarding");
+  }
+
   const { data: projectRows } = await supabase
     .from("projects")
     .select("*")
@@ -61,7 +71,9 @@ export default async function DashboardPage() {
             work · concepts · sourcing · studio
           </p>
           <form action={signOutAction}>
-            <Button variant="quiet">sign out</Button>
+            <Button type="submit" variant="quiet">
+              sign out
+            </Button>
           </form>
         </div>
       </header>

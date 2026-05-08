@@ -27,3 +27,5 @@ yarn-debug.log*
 .turbo/
 .vercel/
 .supabase/
+tmp-*
+.vercel

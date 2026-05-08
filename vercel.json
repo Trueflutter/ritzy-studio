@@ -1,4 +1,6 @@
 {
-  "$schema": "https://openapi.vercel.sh/vercel.json",
-  "regions": ["bom1"]
+  "buildCommand": "pnpm --filter @ritzy-studio/web build",
+  "framework": "nextjs",
+  "installCommand": "pnpm install --frozen-lockfile",
+  "outputDirectory": "apps/web/.next"
 }

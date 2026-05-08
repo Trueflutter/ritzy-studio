@@ -53,13 +53,13 @@ export function RoomPhotoUploader({
   const [lastFile, setLastFile] = useState<File | null>(null);
   const [status, setStatus] = useState<UploadStatus>("idle");
   const [message, setMessage] = useState<string>("place a photograph here");
+  const [progress, setProgress] = useState<{ current: number; total: number } | null>(null);
   const [isPending, startTransition] = useTransition();
   const router = useRouter();
 
-  async function uploadFile(file: File) {
+  async function uploadFile(file: File, isPrimary: boolean) {
     setLastFile(file);
     setStatus("uploading");
-    setMessage("placing photograph...");
 
     const supabase = createClient();
     const extension = file.name.split(".").pop() ?? "jpg";
@@ -77,7 +77,7 @@ export function RoomPhotoUploader({
     if (uploadError) {
       setStatus("error");
       setMessage(uploadError.message);
-      return;
+      return false;
     }
 
     const { error: rowError } = await supabase.from("room_assets").insert({
@@ -87,17 +87,35 @@ export function RoomPhotoUploader({
       mime_type: file.type,
       width_px: size.width,
       height_px: size.height,
-      is_primary: existingCount === 0
+      is_primary: isPrimary
     } satisfies Database["public"]["Tables"]["room_assets"]["Insert"]);
 
     if (rowError) {
       setStatus("error");
       setMessage(rowError.message);
-      return;
+      return false;
     }
 
     setStatus("complete");
     setMessage("photograph placed");
+    return true;
+  }
+
+  async function uploadFiles(files: File[]) {
+    let uploadedCount = existingCount;
+    setProgress({ current: 0, total: files.length });
+
+    for (const [index, file] of files.entries()) {
+      setMessage(`placing photograph ${index + 1} of ${files.length}...`);
+      setProgress({ current: index + 1, total: files.length });
+      const uploaded = await uploadFile(file, uploadedCount === 0);
+      if (!uploaded) {
+        break;
+      }
+      uploadedCount += 1;
+    }
+
+    setProgress(null);
     startTransition(() => router.refresh());
   }
 
@@ -109,10 +127,9 @@ export function RoomPhotoUploader({
         multiple
         onChange={(event) => {
           const files = Array.from(event.target.files ?? []);
-          void files.reduce(
-            (previous, file) => previous.then(() => uploadFile(file)),
-            Promise.resolve()
-          );
+          if (files.length > 0) {
+            void uploadFiles(files);
+          }
           event.target.value = "";
         }}
         ref={inputRef}
@@ -121,6 +138,7 @@ export function RoomPhotoUploader({
 
       <button
         className="flex aspect-[4/3] w-full flex-col items-center justify-center border border-dashed border-line-strong bg-surface text-center transition-colors duration-micro ease-standard hover:border-accent-deep focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--rs-focus-ring)]"
+        disabled={status === "uploading" || isPending}
         onClick={() => inputRef.current?.click()}
         type="button"
       >
@@ -131,7 +149,19 @@ export function RoomPhotoUploader({
           JPG, PNG, or WEBP · up to 10 MB
         </span>
         {status === "uploading" || isPending ? (
-          <span className="mt-6 h-px w-32 bg-accent" />
+          <span className="mt-6 w-48" aria-live="polite">
+            <span className="block h-px w-full bg-line">
+              <span
+                className="block h-px bg-accent transition-[width] duration-standard ease-standard"
+                style={{
+                  width: progress ? `${Math.max(10, (progress.current / progress.total) * 100)}%` : "100%"
+                }}
+              />
+            </span>
+            <span className="mt-3 block font-body text-caption font-medium uppercase text-ink-muted">
+              {progress ? `${progress.current} of ${progress.total}` : "refreshing"}
+            </span>
+          </span>
         ) : null}
       </button>
 
@@ -139,7 +169,7 @@ export function RoomPhotoUploader({
         <div className="mt-4 border-t border-error pt-4">
           <p className="font-display text-body-s italic text-error">{message}</p>
           {lastFile ? (
-            <Button className="mt-4" onClick={() => void uploadFile(lastFile)} variant="secondary">
+            <Button className="mt-4" onClick={() => void uploadFile(lastFile, existingCount === 0)} variant="secondary">
               Retry
             </Button>
           ) : null}

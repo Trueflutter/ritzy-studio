@@ -51,15 +51,60 @@ export type RankedProductMatch = ProductMatchCandidate & {
   warnings: string[];
 };
 
+export type RoomProductRole = {
+  category: string;
+  label: string;
+  quantity: number;
+  required: boolean;
+  visualBrief?: string;
+};
+
 export const substitutionModeSchema = z.enum(["cheaper", "closer_style", "same_retailer", "in_stock"]);
 export type SubstitutionMode = z.infer<typeof substitutionModeSchema>;
 
 const roomCategoryHints: Record<string, string[]> = {
-  living: ["sofas", "armchairs", "coffee_tables", "side_tables", "rugs", "lighting"],
-  bedroom: ["beds", "side_tables", "rugs", "lighting"],
-  dining: ["dining_tables", "chairs", "lighting", "rugs"],
-  bathroom: ["mirrors", "lighting"],
-  default: ["sofas", "armchairs", "coffee_tables", "side_tables", "rugs", "lighting"]
+  living: ["sofas", "armchairs", "coffee_tables", "side_tables", "rugs", "lighting", "wall_art", "decor"],
+  bedroom: ["beds", "side_tables", "rugs", "lighting", "wall_art", "decor"],
+  dining: ["dining_tables", "chairs", "side_tables", "rugs", "lighting", "wall_art", "decor"],
+  bathroom: ["mirrors", "lighting", "decor"],
+  default: ["sofas", "armchairs", "coffee_tables", "side_tables", "rugs", "lighting", "wall_art", "decor"]
+};
+
+const roomProductRoles: Record<string, RoomProductRole[]> = {
+  living: [
+    { category: "sofas", label: "anchor seating", quantity: 1, required: true },
+    { category: "armchairs", label: "accent chairs", quantity: 2, required: true },
+    { category: "coffee_tables", label: "coffee table", quantity: 1, required: true },
+    { category: "side_tables", label: "side table", quantity: 1, required: false },
+    { category: "rugs", label: "rug", quantity: 1, required: true },
+    { category: "lighting", label: "lighting", quantity: 1, required: false },
+    { category: "wall_art", label: "wall art", quantity: 1, required: false },
+    { category: "decor", label: "decor accent", quantity: 2, required: false }
+  ],
+  bedroom: [
+    { category: "beds", label: "bed", quantity: 1, required: true },
+    { category: "side_tables", label: "bedside tables", quantity: 2, required: true },
+    { category: "rugs", label: "rug", quantity: 1, required: false },
+    { category: "lighting", label: "bedside lighting", quantity: 2, required: false },
+    { category: "wall_art", label: "wall art", quantity: 1, required: false },
+    { category: "decor", label: "decor accent", quantity: 2, required: false }
+  ],
+  dining: [
+    { category: "dining_tables", label: "dining table", quantity: 1, required: true },
+    { category: "chairs", label: "dining chairs", quantity: 6, required: true },
+    { category: "rugs", label: "rug", quantity: 1, required: false },
+    { category: "lighting", label: "pendant lighting", quantity: 1, required: false },
+    { category: "wall_art", label: "wall art", quantity: 1, required: false },
+    { category: "decor", label: "table decor", quantity: 2, required: false }
+  ],
+  default: [
+    { category: "sofas", label: "anchor seating", quantity: 1, required: true },
+    { category: "armchairs", label: "accent chairs", quantity: 2, required: false },
+    { category: "coffee_tables", label: "coffee table", quantity: 1, required: false },
+    { category: "rugs", label: "rug", quantity: 1, required: false },
+    { category: "lighting", label: "lighting", quantity: 1, required: false },
+    { category: "decor", label: "decor accent", quantity: 2, required: false }
+  ]
 };
 
 export function rankProductMatches(request: ProductMatchRequest): RankedProductMatch[] {
@@ -71,6 +116,107 @@ export function rankProductMatches(request: ProductMatchRequest): RankedProductM
     .map((candidate) => scoreCandidate(candidate, conceptTokens, preferredCategories, parsed))
     .sort((left, right) => right.score - left.score)
     .map((match, index) => ({ ...match, score: Number((match.score - index * 0.001).toFixed(3)) }));
+}
+
+export function composeRoomProductSet({
+  ranked,
+  roomType,
+  desiredRoles,
+  limit = 12
+}: {
+  ranked: RankedProductMatch[];
+  roomType: string;
+  desiredRoles?: RoomProductRole[];
+  limit?: number;
+}) {
+  const roles = normalizeDesiredRoles(desiredRoles).concat(
+    productRolesForRoom(roomType).filter(
+      (role) => !normalizeDesiredRoles(desiredRoles).some((desired) => desired.category === role.category)
+    )
+  );
+  const allowedCategories = new Set(categoriesForRoom(roomType));
+  const selected: RankedProductMatch[] = [];
+  const selectedIds = new Set<string>();
+
+  for (const role of roles) {
+    const match = ranked.find(
+      (candidate) => candidate.categoryNormalized === role.category && !selectedIds.has(candidate.id)
+    );
+
+    if (!match) {
+      continue;
+    }
+
+    selected.push({
+      ...match,
+      selectionReason: [
+        `room role: ${role.label}`,
+        role.visualBrief ? `concept cue: ${role.visualBrief}` : null,
+        match.selectionReason
+      ]
+        .filter(Boolean)
+        .join("; ")
+    });
+    selectedIds.add(match.id);
+
+    if (selected.length >= limit) {
+      return selected;
+    }
+  }
+
+  const categoryCounts = new Map<string, number>();
+  for (const match of selected) {
+    categoryCounts.set(match.categoryNormalized ?? "uncategorized", 1);
+  }
+
+  for (const match of ranked) {
+    if (selectedIds.has(match.id)) {
+      continue;
+    }
+
+    const category = match.categoryNormalized ?? "uncategorized";
+    if (!allowedCategories.has(category)) {
+      continue;
+    }
+
+    const existingCount = categoryCounts.get(category) ?? 0;
+    if (existingCount >= 2) {
+      continue;
+    }
+
+    selected.push(match);
+    selectedIds.add(match.id);
+    categoryCounts.set(category, existingCount + 1);
+
+    if (selected.length >= limit) {
+      break;
+    }
+  }
+
+  return selected;
+}
+
+function normalizeDesiredRoles(roles: RoomProductRole[] | undefined) {
+  return (roles ?? [])
+    .filter((role) => role.category && role.label)
+    .map((role) => ({
+      ...role,
+      quantity: Math.max(1, Math.min(role.quantity || 1, 12))
+    }));
+}
+
+export function productRolesForRoom(roomType: string) {
+  const lower = roomType.toLowerCase();
+  const match = Object.entries(roomProductRoles).find(([key]) => lower.includes(key));
+  return match?.[1] ?? roomProductRoles.default;
+}
+
+export function quantityForProductCategory(roomType: string, category: string | null) {
+  if (!category) {
+    return 1;
+  }
+
+  return productRolesForRoom(roomType).find((role) => role.category === category)?.quantity ?? 1;
 }
 
 export function filterSubstitutionCandidates({

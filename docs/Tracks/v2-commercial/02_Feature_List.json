@@ -1,0 +1,205 @@
+{
+  "track": "v2-commercial",
+  "source_of_truth": true,
+  "sequencing_rule": "Start with the first feature where passes is false unless the founder explicitly overrides sequence.",
+  "features": [
+    {
+      "id": "V2-001",
+      "sequence": 1,
+      "phase": "planning",
+      "title": "Commercial V2 Documentation And Decision Lock",
+      "summary": "Create the V2 decision pack, PRD, data model, pricing/entitlement model, retailer attribution plan, prompt architecture, latency/cost budget, and repository impact plan.",
+      "boundaries": ["docs"],
+      "dependencies": [],
+      "passes": true,
+      "done_when": [
+        "V2 docs exist under docs/Tracks/v2-commercial",
+        "homeowner AED 100 room unlock is specified",
+        "designer USD 99/month subscription is specified",
+        "retailer attribution model is specified",
+        "founder open questions are listed"
+      ],
+      "notes": "Approved by founder on 2026-05-04. No UI or schema implementation in this slice."
+    },
+    {
+      "id": "V2-002",
+      "sequence": 2,
+      "phase": "commercial-foundation",
+      "title": "User Mode And Entitlement Schema",
+      "summary": "Extend auth/domain data to distinguish homeowner, designer, subscription, room unlock, and entitlement states.",
+      "boundaries": ["packages/db", "packages/domain", "apps/web"],
+      "dependencies": ["V2-001"],
+      "passes": true,
+      "done_when": [
+        "user profiles store intended mode",
+        "room unlock and subscription entitlement tables exist",
+        "server-side entitlement helpers exist",
+        "RLS/privacy posture is updated",
+        "migration verification succeeds"
+      ],
+      "notes": "Completed on 2026-05-04. Payment provider intentionally deferred to V2-005."
+    },
+    {
+      "id": "V2-003",
+      "sequence": 3,
+      "phase": "onboarding",
+      "title": "Role-Based Entry And Homeowner Guided Flow",
+      "summary": "Build first-run role selection and the simplified homeowner room creation/onboarding path.",
+      "boundaries": ["apps/web", "packages/ui", "packages/domain"],
+      "dependencies": ["V2-002"],
+      "passes": true,
+      "done_when": [
+        "new users choose homeowner or designer mode",
+        "homeowner can create a room without client/project complexity",
+        "designer users are routed to the existing project workflow",
+        "UX follows locked design system",
+        "browser verification covers both paths"
+      ],
+      "notes": "Completed on 2026-05-04. Visual style preference capture remains V2-004."
+    },
+    {
+      "id": "V2-004",
+      "sequence": 4,
+      "phase": "onboarding",
+      "title": "Visual Style Quiz And Preference Capture",
+      "summary": "Replace jargon-heavy style entry for homeowners with image-led style cards, color choices, mood choices, and plain-language preference capture.",
+      "boundaries": ["apps/web", "packages/ui", "packages/domain", "packages/prompts"],
+      "dependencies": ["V2-003"],
+      "passes": true,
+      "done_when": [
+        "style cards include image, title, and plain-language description",
+        "users can select multiple liked styles",
+        "users can mark styles/colors to avoid",
+        "preferences map into structured design brief data",
+        "designer mode can still use advanced notes"
+      ],
+      "notes": "Completed on 2026-05-04. Style card imagery uses editorial interior references; future production pass should replace with owned/licensed assets."
+    },
+    {
+      "id": "V2-005",
+      "sequence": 5,
+      "phase": "billing",
+      "title": "Billing Provider Integration",
+      "summary": "Implement homeowner room unlock payment and designer subscription checkout.",
+      "boundaries": ["apps/web", "packages/db", "packages/domain", "packages/config", "cross-layer"],
+      "dependencies": ["V2-002", "V2-003"],
+      "passes": true,
+      "done_when": [
+        "homeowner can pay AED 100 for a room unlock",
+        "designer can subscribe at USD 99/month",
+        "webhook updates entitlements idempotently",
+        "failed/cancelled payment states are visible",
+        "billing secrets are server-only"
+      ],
+      "notes": "Completed with Stripe Checkout on 2026-05-08. Public deployed webhook still needs Stripe dashboard configuration for the Vercel domain."
+    },
+    {
+      "id": "V2-006",
+      "sequence": 6,
+      "phase": "paywall",
+      "title": "Shopping Preview And Unlock UX",
+      "summary": "Create locked shopping-list preview and paid unlock surfaces.",
+      "boundaries": ["apps/web", "packages/ui", "packages/domain"],
+      "dependencies": ["V2-005"],
+      "passes": false,
+      "done_when": [
+        "unpaid homeowners see a useful but gated shopping preview",
+        "paid homeowners see exact unlocked shopping links",
+        "designers with active subscription bypass homeowner room paywall",
+        "locked states clearly explain value",
+        "server-side checks prevent URL leakage"
+      ],
+      "notes": "Founder must approve exact SKU visibility before payment."
+    },
+    {
+      "id": "V2-007",
+      "sequence": 7,
+      "phase": "retailer-platform",
+      "title": "Retailer Partnership And Feed Model",
+      "summary": "Add retailer partnership, campaign, feed, and code-pool data structures.",
+      "boundaries": ["packages/db", "packages/domain", "packages/ingestion"],
+      "dependencies": ["V2-001", "V2-002"],
+      "passes": false,
+      "done_when": [
+        "retailer partnerships can store data access route and commercial status",
+        "discount campaigns can be configured per retailer",
+        "code pools or auto-discount rules can be stored",
+        "feed ingestion records source and permission metadata",
+        "existing catalog adapters still work"
+      ],
+      "notes": "Build for retailer-provided feeds first, public extraction fallback second."
+    },
+    {
+      "id": "V2-008",
+      "sequence": 8,
+      "phase": "retailer-platform",
+      "title": "Tracked Retailer Redirects",
+      "summary": "Replace direct product URLs in unlocked experiences with signed Ritzy redirect links.",
+      "boundaries": ["apps/web", "packages/db", "packages/domain"],
+      "dependencies": ["V2-006", "V2-007"],
+      "passes": false,
+      "done_when": [
+        "unlocked product links use signed Ritzy redirect URLs",
+        "redirect endpoint validates entitlement",
+        "outbound click events are recorded",
+        "affiliate/campaign parameters are attached where configured",
+        "expired or unavailable products fail gracefully"
+      ],
+      "notes": "This is required before any retailer-facing attribution promise."
+    },
+    {
+      "id": "V2-009",
+      "sequence": 9,
+      "phase": "retailer-platform",
+      "title": "Discount Code Assignment",
+      "summary": "Assign eligible discount codes or auto-discount links to paid room unlocks and subscribed designer rooms.",
+      "boundaries": ["apps/web", "packages/db", "packages/domain"],
+      "dependencies": ["V2-007", "V2-008"],
+      "passes": false,
+      "done_when": [
+        "discount eligibility is retailer-specific",
+        "unique codes can be assigned from a code pool",
+        "codes can expire or be marked consumed",
+        "UI shows discount terms clearly",
+        "no discount is shown when campaign coverage is absent"
+      ],
+      "notes": "Avoid global public codes unless a retailer explicitly accepts leakage."
+    },
+    {
+      "id": "V2-010",
+      "sequence": 10,
+      "phase": "reporting",
+      "title": "Retailer Attribution Reporting",
+      "summary": "Create internal reporting exports for retailer clicks, unlocks, codes, and imported conversions.",
+      "boundaries": ["apps/web", "packages/db", "packages/domain"],
+      "dependencies": ["V2-008", "V2-009"],
+      "passes": false,
+      "done_when": [
+        "admins can export retailer click report",
+        "admins can export discount-code assignment report",
+        "conversion imports can be stored",
+        "reports reconcile clicks to products and rooms",
+        "privacy-sensitive user data is minimized"
+      ],
+      "notes": "Self-serve retailer dashboard is deferred unless explicitly approved."
+    },
+    {
+      "id": "V2-011",
+      "sequence": 11,
+      "phase": "quality",
+      "title": "Commercial UX End-To-End QA",
+      "summary": "Run homeowner, designer, paywall, redirect, and discount QA passes.",
+      "boundaries": ["cross-layer"],
+      "dependencies": ["V2-003", "V2-004", "V2-005", "V2-006", "V2-008", "V2-009"],
+      "passes": false,
+      "done_when": [
+        "homeowner free-to-paid room journey is browser-verified",
+        "designer subscription journey is browser-verified",
+        "locked shopping links cannot be accessed without entitlement",
+        "retailer redirects record attribution",
+        "design guardian and UX guardian passes are documented"
+      ],
+      "notes": "Must include mobile and desktop screenshots."
+    }
+  ]
+}

@@ -4,22 +4,37 @@ import {
   generateClarifyingQuestions,
   generateConceptRevision,
   generateFinalGroundedRender,
-  generateInitialConcept
+  generateInitialConcept,
+  sourceProductsFromConcept
 } from "@ritzy-studio/ai";
 import type { Database } from "@ritzy-studio/db";
 import {
+  createHomeownerRoomSchema,
   createProjectWithRoomSchema,
   designBriefSchema,
+  composeRoomProductSet,
   filterSubstitutionCandidates,
+  quantityForProductCategory,
   rankProductMatches,
+  setUserModeSchema,
   substitutionModeSchema,
+  visualStyleOptions,
+  visualStyleSummary,
+  type RankedProductMatch,
   type ProductMatchCandidate
 } from "@ritzy-studio/domain";
 import { revalidatePath } from "next/cache";
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
 import { createServiceClient } from "@/lib/supabase/service";
 import { createClient } from "@/lib/supabase/server";
+import {
+  appUrl,
+  DESIGNER_MONTHLY_AMOUNT_USD,
+  getStripe,
+  HOMEOWNER_ROOM_UNLOCK_AMOUNT_AED
+} from "@/lib/billing/stripe";
 
 function optionalString(formData: FormData, key: string) {
   const value = String(formData.get(key) ?? "").trim();
@@ -34,6 +49,14 @@ function optionalNumber(formData: FormData, key: string) {
 
   const number = Number(value);
   return Number.isFinite(number) ? number : undefined;
+}
+
+async function currentAppUrl() {
+  const requestHeaders = await headers();
+  const host = requestHeaders.get("x-forwarded-host") ?? requestHeaders.get("host");
+  const proto = requestHeaders.get("x-forwarded-proto") ?? "http";
+
+  return host ? `${proto}://${host}` : appUrl();
 }
 
 export async function signInAction(formData: FormData) {
@@ -51,7 +74,7 @@ export async function signInAction(formData: FormData) {
   }
 
   revalidatePath("/", "layout");
-  redirect("/");
+  redirect("/onboarding");
 }
 
 export async function signUpAction(formData: FormData) {
@@ -83,6 +106,350 @@ export async function signOutAction() {
   await supabase.auth.signOut();
   revalidatePath("/", "layout");
   redirect("/login");
+}
+
+export async function setUserModeAction(formData: FormData) {
+  const parsed = setUserModeSchema.parse({
+    intendedMode: String(formData.get("intendedMode") ?? "unknown")
+  });
+  const supabase = await createClient();
+  const {
+    data: { user },
+    error: userError
+  } = await supabase.auth.getUser();
+
+  if (userError || !user) {
+    redirect("/login");
+  }
+
+  const { error: profileError } = await supabase.from("user_profiles").upsert({
+    user_id: user.id,
+    display_name: user.user_metadata?.name ?? user.email ?? null,
+    intended_mode: parsed.intendedMode,
+    onboarding_completed_at: new Date().toISOString()
+  });
+
+  if (profileError) {
+    redirect(`/onboarding?message=${encodeURIComponent(profileError.message)}`);
+  }
+
+  if (parsed.intendedMode === "designer" || parsed.intendedMode === "both") {
+    const { error: designerError } = await supabase.from("designer_accounts").upsert(
+      {
+        owner_user_id: user.id,
+        subscription_status: "incomplete",
+        plan_key: "designer_monthly_usd_99"
+      },
+      { onConflict: "owner_user_id" }
+    );
+
+    if (designerError) {
+      redirect(`/onboarding?message=${encodeURIComponent(designerError.message)}`);
+    }
+  }
+
+  revalidatePath("/", "layout");
+  redirect(parsed.intendedMode === "designer" || parsed.intendedMode === "both" ? "/" : "/onboarding");
+}
+
+export async function createHomeownerRoomAction(formData: FormData) {
+  const parsed = createHomeownerRoomSchema.parse({
+    roomName: String(formData.get("roomName") ?? "").trim(),
+    roomType: String(formData.get("roomType") ?? "").trim(),
+    location: optionalString(formData, "location"),
+    budgetMaxAed: optionalNumber(formData, "budgetMaxAed")
+  });
+  const supabase = await createClient();
+  const {
+    data: { user },
+    error: userError
+  } = await supabase.auth.getUser();
+
+  if (userError || !user) {
+    redirect("/login");
+  }
+
+  const now = new Date().toISOString();
+  const { error: profileError } = await supabase.from("user_profiles").upsert({
+    user_id: user.id,
+    display_name: user.user_metadata?.name ?? user.email ?? null,
+    intended_mode: "homeowner",
+    onboarding_completed_at: now
+  });
+
+  if (profileError) {
+    redirect(`/onboarding?message=${encodeURIComponent(profileError.message)}`);
+  }
+
+  const { data: project, error: projectError } = await supabase
+    .from("projects")
+    .insert({
+      owner_user_id: user.id,
+      name: parsed.projectName,
+      location: parsed.location ?? "Dubai",
+      budget_max_aed: parsed.budgetMaxAed ?? null,
+      status: "active"
+    })
+    .select("id")
+    .single();
+
+  if (projectError || !project) {
+    redirect(`/onboarding?message=${encodeURIComponent(projectError?.message ?? "Project could not be created.")}`);
+  }
+
+  const { data: room, error: roomError } = await supabase
+    .from("rooms")
+    .insert({
+      project_id: project.id,
+      name: parsed.roomName,
+      room_type: parsed.roomType,
+      status: "draft"
+    })
+    .select("id")
+    .single();
+
+  if (roomError || !room) {
+    redirect(`/onboarding?message=${encodeURIComponent(roomError?.message ?? "Room could not be created.")}`);
+  }
+
+  const serviceSupabase = createServiceClient();
+  await serviceSupabase.from("entitlement_events").insert({
+    user_id: user.id,
+    room_id: room.id,
+    event_type: "user_mode_set",
+    source: "onboarding",
+    metadata_json: {
+      intended_mode: "homeowner"
+    }
+  });
+
+  revalidatePath("/", "layout");
+  redirect(`/projects/${project.id}/rooms/${room.id}/photos?message=${encodeURIComponent("Room created. Upload photographs to begin.")}`);
+}
+
+export async function createHomeownerRoomUnlockCheckoutAction(formData: FormData) {
+  const projectId = String(formData.get("projectId") ?? "");
+  const roomId = String(formData.get("roomId") ?? "");
+  const redirectPath = `/projects/${projectId}/rooms/${roomId}/shopping-list`;
+  const supabase = await createClient();
+  const {
+    data: { user },
+    error: userError
+  } = await supabase.auth.getUser();
+
+  if (userError || !user) {
+    redirect("/login");
+  }
+
+  const { data: room } = await supabase
+    .from("rooms")
+    .select("id, name, project:projects(id, name)")
+    .eq("id", roomId)
+    .eq("project_id", projectId)
+    .single();
+
+  if (!room) {
+    redirect("/");
+  }
+
+  const stripe = getStripe();
+  const serviceSupabase = createServiceClient();
+  const baseUrl = await currentAppUrl();
+  const session = await stripe.checkout.sessions.create({
+    mode: "payment",
+    customer_email: user.email ?? undefined,
+    line_items: [
+      {
+        quantity: 1,
+        price_data: {
+          currency: "aed",
+          unit_amount: HOMEOWNER_ROOM_UNLOCK_AMOUNT_AED,
+          product_data: {
+            name: `Ritzy Studio room unlock — ${room.name}`,
+            description: "Unlock retailer links, eligible partner discounts, and final room plan."
+          }
+        }
+      }
+    ],
+    metadata: {
+      type: "room_unlock",
+      user_id: user.id,
+      room_id: roomId,
+      project_id: projectId
+    },
+    success_url: `${baseUrl}${redirectPath}?message=${encodeURIComponent("Room unlock payment complete.")}`,
+    cancel_url: `${baseUrl}${redirectPath}?message=${encodeURIComponent("Room unlock payment cancelled.")}`
+  });
+
+  const { error: unlockError } = await serviceSupabase.from("room_unlocks").upsert(
+    {
+      room_id: roomId,
+      user_id: user.id,
+      status: "pending",
+      price_aed: 100,
+      billing_provider: "stripe",
+      billing_checkout_id: session.id
+    },
+    { onConflict: "room_id,user_id" }
+  );
+
+  if (unlockError) {
+    redirect(`${redirectPath}?message=${encodeURIComponent(unlockError.message)}`);
+  }
+
+  if (!session.url) {
+    redirect(`${redirectPath}?message=${encodeURIComponent("Stripe checkout could not be created.")}`);
+  }
+
+  redirect(session.url);
+}
+
+export async function createDesignerSubscriptionCheckoutAction() {
+  const supabase = await createClient();
+  const {
+    data: { user },
+    error: userError
+  } = await supabase.auth.getUser();
+
+  if (userError || !user) {
+    redirect("/login");
+  }
+
+  const serviceSupabase = createServiceClient();
+  const { data: designerAccount, error: designerError } = await serviceSupabase
+    .from("designer_accounts")
+    .upsert(
+      {
+        owner_user_id: user.id,
+        subscription_status: "incomplete",
+        plan_key: "designer_monthly_usd_99"
+      },
+      { onConflict: "owner_user_id" }
+    )
+    .select("id")
+    .single();
+
+  if (designerError || !designerAccount) {
+    redirect(`/onboarding?message=${encodeURIComponent(designerError?.message ?? "Designer account could not be prepared.")}`);
+  }
+
+  const stripe = getStripe();
+  const baseUrl = await currentAppUrl();
+  const session = await stripe.checkout.sessions.create({
+    mode: "subscription",
+    customer_email: user.email ?? undefined,
+    line_items: [
+      {
+        quantity: 1,
+        price_data: {
+          currency: "usd",
+          unit_amount: DESIGNER_MONTHLY_AMOUNT_USD,
+          recurring: {
+            interval: "month"
+          },
+          product_data: {
+            name: "Ritzy Studio Designer",
+            description: "Professional project workflow, product-grounded renders, and client presentations."
+          }
+        }
+      }
+    ],
+    metadata: {
+      type: "designer_subscription",
+      user_id: user.id,
+      designer_account_id: designerAccount.id
+    },
+    subscription_data: {
+      metadata: {
+        user_id: user.id,
+        designer_account_id: designerAccount.id,
+        plan_key: "designer_monthly_usd_99"
+      }
+    },
+    success_url: `${baseUrl}/?message=${encodeURIComponent("Designer subscription activated.")}`,
+    cancel_url: `${baseUrl}/onboarding?message=${encodeURIComponent("Designer subscription checkout cancelled.")}`
+  });
+
+  if (!session.url) {
+    redirect(`/onboarding?message=${encodeURIComponent("Stripe checkout could not be created.")}`);
+  }
+
+  redirect(session.url);
+}
+
+export async function deleteRoomPhotoAction(formData: FormData) {
+  const projectId = String(formData.get("projectId") ?? "");
+  const roomId = String(formData.get("roomId") ?? "");
+  const assetId = String(formData.get("assetId") ?? "");
+  const redirectPath = `/projects/${projectId}/rooms/${roomId}/photos`;
+  const supabase = await createClient();
+  const {
+    data: { user },
+    error: userError
+  } = await supabase.auth.getUser();
+
+  if (userError || !user) {
+    redirect("/login");
+  }
+
+  const { data: room } = await supabase
+    .from("rooms")
+    .select("id")
+    .eq("id", roomId)
+    .eq("project_id", projectId)
+    .single();
+
+  if (!room) {
+    redirect("/");
+  }
+
+  const { data: asset, error: assetError } = await supabase
+    .from("room_assets")
+    .select("id, storage_path, is_primary")
+    .eq("id", assetId)
+    .eq("room_id", roomId)
+    .eq("asset_type", "room_photo")
+    .single();
+
+  if (assetError || !asset) {
+    redirect(`${redirectPath}?message=${encodeURIComponent("The photograph could not be found.")}`);
+  }
+
+  const { error: storageError } = await supabase.storage
+    .from("room-assets")
+    .remove([asset.storage_path]);
+
+  if (storageError) {
+    redirect(`${redirectPath}?message=${encodeURIComponent(storageError.message)}`);
+  }
+
+  const { error: deleteError } = await supabase
+    .from("room_assets")
+    .delete()
+    .eq("id", asset.id)
+    .eq("room_id", roomId);
+
+  if (deleteError) {
+    redirect(`${redirectPath}?message=${encodeURIComponent(deleteError.message)}`);
+  }
+
+  if (asset.is_primary) {
+    const { data: nextAsset } = await supabase
+      .from("room_assets")
+      .select("id")
+      .eq("room_id", roomId)
+      .eq("asset_type", "room_photo")
+      .order("created_at", { ascending: true })
+      .limit(1)
+      .maybeSingle();
+
+    if (nextAsset) {
+      await supabase.from("room_assets").update({ is_primary: true }).eq("id", nextAsset.id);
+    }
+  }
+
+  revalidatePath(redirectPath);
+  redirect(`${redirectPath}?message=${encodeURIComponent("Photograph removed.")}`);
 }
 
 export async function createProjectWithRoomAction(formData: FormData) {
@@ -148,6 +515,8 @@ export async function saveDesignBriefAction(formData: FormData) {
     projectId: String(formData.get("projectId") ?? ""),
     roomId: String(formData.get("roomId") ?? ""),
     roomType: String(formData.get("roomType") ?? ""),
+    styleSlugs: formData.getAll("styleSlugs").map(String),
+    avoidStyleSlugs: formData.getAll("avoidStyleSlugs").map(String),
     styleNotes: optionalString(formData, "styleNotes"),
     colorNotes: optionalString(formData, "colorNotes"),
     budgetNotes: optionalString(formData, "budgetNotes"),
@@ -188,7 +557,40 @@ export async function saveDesignBriefAction(formData: FormData) {
     parsed.ceilingHeightCm !== undefined ||
     parsed.measurementNotes !== undefined;
 
+  const selectedStyleSummary = visualStyleSummary(parsed.styleSlugs);
+  const avoidedStyleSummary = parsed.avoidStyleSlugs.length
+    ? visualStyleOptions
+        .filter((option) => parsed.avoidStyleSlugs.includes(option.slug))
+        .map((option) => option.name)
+        .join(", ")
+    : null;
+  const resolvedStyleNotes = [
+    selectedStyleSummary ? `Selected visual styles: ${selectedStyleSummary}` : null,
+    parsed.styleNotes ?? null,
+    avoidedStyleSummary ? `Avoid styles: ${avoidedStyleSummary}.` : null
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+
   const structuredJson = {
+    visualPreferences: {
+      likedStyleSlugs: parsed.styleSlugs,
+      avoidedStyleSlugs: parsed.avoidStyleSlugs,
+      likedStyles: visualStyleOptions
+        .filter((option) => parsed.styleSlugs.includes(option.slug))
+        .map((option) => ({
+          slug: option.slug,
+          name: option.name,
+          description: option.description,
+          tags: option.tags
+        })),
+      avoidedStyles: visualStyleOptions
+        .filter((option) => parsed.avoidStyleSlugs.includes(option.slug))
+        .map((option) => ({
+          slug: option.slug,
+          name: option.name
+        }))
+    },
     measurements: hasMeasurements
       ? {
           wallLengthCm: parsed.wallLengthCm ?? null,
@@ -211,7 +613,7 @@ export async function saveDesignBriefAction(formData: FormData) {
 
   const briefPayload = {
     room_id: parsed.roomId,
-    style_notes: parsed.styleNotes ?? null,
+    style_notes: resolvedStyleNotes || null,
     color_notes: parsed.colorNotes ?? null,
     budget_notes: parsed.budgetNotes ?? null,
     functional_requirements: parsed.functionalRequirements ?? null,
@@ -256,7 +658,7 @@ export async function saveDesignBriefAction(formData: FormData) {
   const serviceSupabase = createServiceClient();
   const inputSummary = {
     roomType: parsed.roomType,
-    styleNotes: parsed.styleNotes ?? null,
+    styleNotes: resolvedStyleNotes || null,
     colorNotes: parsed.colorNotes ?? null,
     budgetNotes: parsed.budgetNotes ?? null,
     hasMeasurements
@@ -282,7 +684,7 @@ export async function saveDesignBriefAction(formData: FormData) {
   try {
     const result = await generateClarifyingQuestions({
       roomType: parsed.roomType,
-      styleNotes: parsed.styleNotes,
+      styleNotes: resolvedStyleNotes || undefined,
       colorNotes: parsed.colorNotes,
       budgetNotes: parsed.budgetNotes,
       functionalRequirements: parsed.functionalRequirements,
@@ -651,7 +1053,7 @@ export async function groundProductsAction(formData: FormData) {
 
   const { data: concept } = await supabase
     .from("concepts")
-    .select("id, title, description, status")
+    .select("id, title, description, status, primary_image_asset:room_assets(*)")
     .eq("id", conceptId)
     .eq("room_id", roomId)
     .single();
@@ -697,9 +1099,10 @@ export async function groundProductsAction(formData: FormData) {
     redirect(`${redirectPath}?message=${encodeURIComponent("No catalog products are available yet. Run ingestion first.")}`);
   }
 
+  const baseConceptText = `${concept.title}\n${concept.description ?? ""}`;
   const ranked = rankProductMatches({
     roomType: room.room_type,
-    conceptText: `${concept.title}\n${concept.description ?? ""}`,
+    conceptText: baseConceptText,
     budgetMaxAed: project.budget_max_aed,
     roomMeasurements: measurements
       ? {
@@ -708,7 +1111,62 @@ export async function groundProductsAction(formData: FormData) {
         }
       : null,
     candidates
-  }).slice(0, 12);
+  });
+  const conceptImageAsset = Array.isArray(concept.primary_image_asset)
+    ? concept.primary_image_asset[0]
+    : concept.primary_image_asset;
+  const { data: conceptSignedImage } = conceptImageAsset?.storage_path
+    ? await supabase.storage
+        .from("generated-renders")
+        .createSignedUrl(conceptImageAsset.storage_path, 60 * 30)
+    : { data: null };
+  const sourcingResult = conceptSignedImage?.signedUrl
+    ? await sourceProductsFromConcept({
+        roomType: room.room_type,
+        conceptTitle: concept.title,
+        conceptDescription: concept.description,
+        conceptImageUrl: conceptSignedImage.signedUrl,
+        candidates: shortlistSourcingCandidates(ranked).slice(0, 16).map(matchToSourcingCandidate)
+      }).catch(() => null)
+    : null;
+  const visualConceptText = [
+    baseConceptText,
+    ...(sourcingResult?.needs.map(
+      (need) => `${need.roleLabel}: ${need.visualBrief}`
+    ) ?? [])
+  ].join("\n");
+  const visualRanked = rankProductMatches({
+    roomType: room.room_type,
+    conceptText: visualConceptText,
+    budgetMaxAed: project.budget_max_aed,
+    roomMeasurements: measurements
+      ? {
+          wallLengthCm: measurements.wall_length_cm,
+          roomDepthCm: measurements.room_depth_cm
+        }
+      : null,
+    candidates
+  });
+  const visualRankedById = new Map(visualRanked.map((match) => [match.id, match]));
+  const sourceSelectionsById = new Map(
+    (sourcingResult?.selectedProducts ?? []).map((selection) => [selection.productId, selection])
+  );
+  const visuallySelected = (sourcingResult?.selectedProducts ?? [])
+    .map((selection) => visualRankedById.get(selection.productId))
+    .filter((match): match is RankedProductMatch => Boolean(match));
+  const composedSet = composeRoomProductSet({
+    ranked: visualRanked,
+    roomType: room.room_type,
+    desiredRoles: sourcingResult?.needs.map((need) => ({
+      category: normalizeSourcingCategory(need.category, need.roleLabel),
+      label: need.roleLabel,
+      quantity: need.quantity,
+      required: need.priority === "required",
+      visualBrief: need.visualBrief
+    })),
+    limit: 12
+  });
+  const roomProductSet = dedupeMatches([...visuallySelected, ...composedSet]).slice(0, 12);
 
   const { data: existingList } = await supabase
     .from("shopping_lists")
@@ -737,16 +1195,26 @@ export async function groundProductsAction(formData: FormData) {
   const shoppingListId = shoppingListResult.data.id;
   await supabase.from("shopping_list_items").delete().eq("shopping_list_id", shoppingListId);
 
-  const items = ranked.map((match, index) => {
+  const items = roomProductSet.map((match, index) => {
     const unitPrice = match.salePriceAed ?? match.priceAed ?? 0;
+    const sourceSelection = sourceSelectionsById.get(match.id);
+    const quantity =
+      sourceSelection?.quantity ?? quantityForProductCategory(room.room_type, match.categoryNormalized);
     return {
       shopping_list_id: shoppingListId,
       product_id: match.id,
       category: match.categoryNormalized ?? "uncategorized",
-      quantity: 1,
+      quantity,
       unit_price_aed: unitPrice,
-      line_total_aed: unitPrice,
-      selection_reason: [match.selectionReason, ...match.warnings].join(" "),
+      line_total_aed: unitPrice * quantity,
+      selection_reason: [
+        sourceSelection?.visualMatchReason ? `visual match: ${sourceSelection.visualMatchReason}` : null,
+        sourceSelection?.mismatchNote ? `mismatch: ${sourceSelection.mismatchNote}` : null,
+        match.selectionReason,
+        ...match.warnings.filter((warning) => warning !== match.dimensionFitNote)
+      ]
+        .filter(Boolean)
+        .join(" "),
       dimension_fit_note: match.dimensionFitNote,
       sort_order: index
     };
@@ -915,7 +1383,10 @@ export async function substituteProductAction(formData: FormData) {
       category: replacement.categoryNormalized ?? item.category,
       unit_price_aed: unitPrice,
       line_total_aed: unitPrice,
-      selection_reason: [replacement.selectionReason, ...replacement.warnings].join(" "),
+      selection_reason: [
+        replacement.selectionReason,
+        ...replacement.warnings.filter((warning) => warning !== replacement.dimensionFitNote)
+      ].join(" "),
       dimension_fit_note: replacement.dimensionFitNote,
       updated_at: new Date().toISOString()
     })
@@ -976,7 +1447,7 @@ export async function generateFinalRenderAction(formData: FormData) {
 
   const { data: concept } = await supabase
     .from("concepts")
-    .select("id, title, description, status")
+    .select("id, title, description, status, primary_image_asset:room_assets(*)")
     .eq("id", conceptId)
     .eq("room_id", roomId)
     .single();
@@ -1013,6 +1484,14 @@ export async function generateFinalRenderAction(formData: FormData) {
   if (roomDownloadError || !roomBlob) {
     redirect(`${redirectPath}?message=${encodeURIComponent("The original room photo could not be prepared for final rendering.")}`);
   }
+  const conceptImageAsset = Array.isArray(concept.primary_image_asset)
+    ? concept.primary_image_asset[0]
+    : concept.primary_image_asset;
+  const { data: conceptBlob } = conceptImageAsset?.storage_path
+    ? await supabase.storage
+        .from("generated-renders")
+        .download(conceptImageAsset.storage_path)
+    : { data: null };
 
   const { data: items = [] } = await supabase
     .from("shopping_list_items")
@@ -1071,6 +1550,8 @@ export async function generateFinalRenderAction(formData: FormData) {
           name: product.name,
           retailerName: product.retailer?.name ?? "Retailer",
           category: item.category,
+          roleLabel: roleLabelFromSelectionReason(item.selection_reason) ?? item.category,
+          visualMatchReason: item.selection_reason,
           priceAed: item.unit_price_aed,
           dimensions,
           imageBytes: image?.bytes ?? null,
@@ -1081,6 +1562,8 @@ export async function generateFinalRenderAction(formData: FormData) {
     const result = await generateFinalGroundedRender({
       roomPhotoBytes: Buffer.from(await roomBlob.arrayBuffer()),
       roomPhotoMimeType: roomPhoto.mime_type,
+      conceptImageBytes: conceptBlob ? Buffer.from(await conceptBlob.arrayBuffer()) : null,
+      conceptImageMimeType: conceptImageAsset?.mime_type ?? null,
       conceptTitle: concept.title,
       conceptDescription: concept.description,
       products: productsForRender
@@ -1431,6 +1914,115 @@ function productToMatchCandidate(product: ProductRow): ProductMatchCandidate | n
         }
       : null
   };
+}
+
+function shortlistSourcingCandidates(ranked: RankedProductMatch[]) {
+  const byCategory = new Map<string, RankedProductMatch[]>();
+
+  for (const match of ranked) {
+    const category = match.categoryNormalized ?? "uncategorized";
+    const categoryMatches = byCategory.get(category) ?? [];
+    if (categoryMatches.length < 4) {
+      categoryMatches.push(match);
+      byCategory.set(category, categoryMatches);
+    }
+  }
+
+  return Array.from(byCategory.values())
+    .flat()
+    .sort((left, right) => right.score - left.score)
+    .slice(0, 36);
+}
+
+function matchToSourcingCandidate(match: RankedProductMatch) {
+  return {
+    id: match.id,
+    name: match.name,
+    retailerName: match.retailerName,
+    category: match.categoryNormalized,
+    priceAed: match.priceAed,
+    salePriceAed: match.salePriceAed,
+    availability: match.availability,
+    color: match.color,
+    material: match.material,
+    primaryImageUrl: match.primaryImageUrl,
+    dimensions: match.dimensions?.sourceText ?? null,
+    searchTags: [
+      match.categoryNormalized,
+      match.color,
+      match.material,
+      ...match.styleTags,
+      ...match.colorTags,
+      ...match.materialTags,
+      ...match.roomTags
+    ].filter((tag): tag is string => Boolean(tag))
+  };
+}
+
+function dedupeMatches(matches: RankedProductMatch[]) {
+  const seen = new Set<string>();
+  const deduped: RankedProductMatch[] = [];
+
+  for (const match of matches) {
+    if (seen.has(match.id)) {
+      continue;
+    }
+
+    seen.add(match.id);
+    deduped.push(match);
+  }
+
+  return deduped;
+}
+
+function normalizeSourcingCategory(category: string, roleLabel: string) {
+  const text = `${category} ${roleLabel}`.toLowerCase();
+
+  if (text.includes("armchair") || text.includes("chair") || text.includes("lounge")) {
+    return "armchairs";
+  }
+
+  if (text.includes("sofa") || text.includes("sectional") || text.includes("seating")) {
+    return "sofas";
+  }
+
+  if (text.includes("coffee")) {
+    return "coffee_tables";
+  }
+
+  if (text.includes("side") || text.includes("occasional")) {
+    return "side_tables";
+  }
+
+  if (text.includes("rug") || text.includes("flatweave")) {
+    return "rugs";
+  }
+
+  if (text.includes("wall") || text.includes("art") || text.includes("canvas")) {
+    return "wall_art";
+  }
+
+  if (text.includes("lamp") || text.includes("light") || text.includes("pendant")) {
+    return "lighting";
+  }
+
+  if (text.includes("mirror")) {
+    return "mirrors";
+  }
+
+  if (text.includes("decor") || text.includes("vase") || text.includes("cushion")) {
+    return "decor";
+  }
+
+  if (text.includes("console") || text.includes("storage")) {
+    return "consoles";
+  }
+
+  return category.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
+}
+
+function roleLabelFromSelectionReason(selectionReason: string | null) {
+  return selectionReason?.match(/room role: ([^;]+)/)?.[1]?.trim() ?? null;
 }
 
 function formatAedValue(value: number) {

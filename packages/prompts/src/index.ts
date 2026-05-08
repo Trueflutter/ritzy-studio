@@ -55,12 +55,14 @@ export type ClarifyingQuestionsResponse = z.infer<typeof clarifyingQuestionsResp
 
 export const initialConceptPrompt = {
   key: "concept.initial_room_analysis",
-  version: "2026-04-29.1",
+  version: "2026-05-04.1",
   system: [
     "You are Ritzy Studio's senior interior concept architect.",
     "Analyze the uploaded residential room photo and the saved designer brief.",
     "Identify visible fixed architecture and uncertainty plainly.",
     "Create one initial concept direction suitable for image editing.",
+    "The image direction must read as a photorealistic interior-design photograph, not an illustration, sketch, collage, CGI showroom, or mood board.",
+    "Specify camera-realistic materials, natural shadows, physically plausible scale, believable furniture placement, and residential lens perspective.",
     "Do not claim real product availability or exact SKU matching.",
     "Do not infer exact dimensions from a photo; use only provided measurements as verified.",
     "Keep the output practical for a Dubai residential interior designer."
@@ -164,14 +166,113 @@ export const initialConceptJsonSchema = {
 
 export type InitialConceptResponse = z.infer<typeof initialConceptResponseSchema>;
 
+export const conceptProductSourcingPrompt = {
+  key: "sourcing.concept_visual_product_match",
+  version: "2026-05-04.1",
+  system: [
+    "You are Ritzy Studio's visual product sourcing assistant.",
+    "Use the approved concept image as the visual source of truth.",
+    "First identify the visible movable product roles that materially define the design: seating, tables, rug, lighting, wall art, decor, storage, and mirrors.",
+    "Then choose the closest available catalog candidates from the provided product list.",
+    "Select only product IDs that appear in the provided candidate list.",
+    "Prioritize visual similarity to the concept image: category, silhouette, color family, material, scale, and style.",
+    "Do not invent products, prices, retailer facts, dimensions, or URLs.",
+    "If a role has no close candidate, choose the nearest available candidate and explain the mismatch honestly."
+  ].join("\n")
+} as const;
+
+export const conceptProductNeedSchema = z.object({
+  category: z.string().min(2).max(80),
+  roleLabel: z.string().min(2).max(80),
+  visualBrief: z.string().min(8).max(260),
+  quantity: z.number().int().positive().max(12),
+  priority: z.enum(["required", "supporting"])
+});
+
+export const conceptProductSelectionSchema = z.object({
+  productId: z.uuid(),
+  category: z.string().min(2).max(80),
+  roleLabel: z.string().min(2).max(80),
+  quantity: z.number().int().positive().max(12),
+  visualMatchReason: z.string().min(8).max(260),
+  mismatchNote: z.string().max(220).nullable()
+});
+
+export const conceptProductSourcingResponseSchema = z.object({
+  needs: z.array(conceptProductNeedSchema).min(1).max(12),
+  selectedProducts: z.array(conceptProductSelectionSchema).min(1).max(12),
+  missingRoles: z.array(z.string().min(2).max(140)).max(8)
+});
+
+export const conceptProductSourcingJsonSchema = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    needs: {
+      type: "array",
+      minItems: 1,
+      maxItems: 12,
+      items: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          category: { type: "string", minLength: 2, maxLength: 80 },
+          roleLabel: { type: "string", minLength: 2, maxLength: 80 },
+          visualBrief: { type: "string", minLength: 8, maxLength: 260 },
+          quantity: { type: "integer", minimum: 1, maximum: 12 },
+          priority: { type: "string", enum: ["required", "supporting"] }
+        },
+        required: ["category", "roleLabel", "visualBrief", "quantity", "priority"]
+      }
+    },
+    selectedProducts: {
+      type: "array",
+      minItems: 1,
+      maxItems: 12,
+      items: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          productId: { type: "string", format: "uuid" },
+          category: { type: "string", minLength: 2, maxLength: 80 },
+          roleLabel: { type: "string", minLength: 2, maxLength: 80 },
+          quantity: { type: "integer", minimum: 1, maximum: 12 },
+          visualMatchReason: { type: "string", minLength: 8, maxLength: 260 },
+          mismatchNote: {
+            anyOf: [{ type: "string", maxLength: 220 }, { type: "null" }]
+          }
+        },
+        required: [
+          "productId",
+          "category",
+          "roleLabel",
+          "quantity",
+          "visualMatchReason",
+          "mismatchNote"
+        ]
+      }
+    },
+    missingRoles: {
+      type: "array",
+      maxItems: 8,
+      items: { type: "string", minLength: 2, maxLength: 140 }
+    }
+  },
+  required: ["needs", "selectedProducts", "missingRoles"]
+} as const;
+
+export type ConceptProductNeed = z.infer<typeof conceptProductNeedSchema>;
+export type ConceptProductSourcingResponse = z.infer<typeof conceptProductSourcingResponseSchema>;
+
 export const conceptRevisionPrompt = {
   key: "concept.revision_from_critique",
-  version: "2026-04-29.1",
+  version: "2026-05-04.1",
   system: [
     "You are Ritzy Studio's concept revision assistant.",
     "Use the original room photo, previous concept, and designer critique to create one revised concept direction.",
     "Preserve approved qualities from the previous concept unless the critique explicitly changes them.",
     "Keep the room architecture stable and identify uncertainty plainly.",
+    "The revised image direction must read as a photorealistic interior-design photograph, not an illustration, sketch, collage, CGI showroom, or mood board.",
     "Do not claim real product availability or exact SKU matching.",
     "Return a practical generation prompt for image editing."
   ].join("\n")
@@ -249,13 +350,15 @@ export const productMetadataEnrichmentJsonSchema = {
 
 export const finalGroundedRenderPrompt = {
   key: "render.final_grounded_room",
-  version: "2026-04-29.1",
+  version: "2026-05-04.1",
   system: [
     "You are Ritzy Studio's final grounded render assistant.",
-    "Create a realistic residential interior render from the original room photo and selected product references.",
+    "Create a photorealistic residential interior design image from the original room photo and selected product references.",
     "The first input image is the original room and must anchor the room architecture.",
     "Additional input images are selected catalog product references.",
     "Preserve visible walls, windows, doors, ceiling details, AC vents, sockets, built-ins, and fixed fixtures where present.",
+    "Use natural daylight or believable warm interior lighting, correct shadows, realistic material texture, physically plausible furniture scale, and a camera perspective consistent with the source photo.",
+    "Avoid illustration, watercolor, CGI showroom smoothness, over-sharpened render artifacts, warped furniture, impossible reflections, and fantasy architecture.",
     "Use selected product images as visual references, but do not claim exact SKU reproduction.",
     "Do not add labels, price tags, retailer logos, watermarks, or shopping-list text."
   ].join("\n")

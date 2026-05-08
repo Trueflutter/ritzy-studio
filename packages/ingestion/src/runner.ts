@@ -87,20 +87,42 @@ export async function runCatalogIngestion({
           stats.products_updated += 1;
         }
 
+        const { error: dimensionsDeleteError } = await supabase
+          .from("product_dimensions")
+          .delete()
+          .eq("product_id", upsertedProduct.id);
+        if (dimensionsDeleteError) {
+          throw new Error(dimensionsDeleteError.message);
+        }
+
+        const { error: imagesDeleteError } = await supabase
+          .from("product_images")
+          .delete()
+          .eq("product_id", upsertedProduct.id);
+        if (imagesDeleteError) {
+          throw new Error(imagesDeleteError.message);
+        }
+
         if (normalized.dimensions) {
-          await supabase.from("product_dimensions").insert({
+          const { error: dimensionsInsertError } = await supabase.from("product_dimensions").insert({
             product_id: upsertedProduct.id,
             ...normalized.dimensions
           });
+          if (dimensionsInsertError) {
+            throw new Error(dimensionsInsertError.message);
+          }
         }
 
         if (normalized.images.length > 0) {
-          await supabase.from("product_images").insert(
+          const { error: imagesInsertError } = await supabase.from("product_images").insert(
             normalized.images.map((image) => ({
               product_id: upsertedProduct.id,
               ...image
             }))
           );
+          if (imagesInsertError) {
+            throw new Error(imagesInsertError.message);
+          }
         }
       } catch {
         stats.products_failed += 1;

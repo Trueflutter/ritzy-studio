@@ -1,19 +1,23 @@
-import { Button, ButtonLink } from "@ritzy-studio/ui";
+import { Button, ButtonLink, SubmitButton } from "@ritzy-studio/ui";
 import Image from "next/image";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
 import { createClient } from "@/lib/supabase/server";
+import { deleteRoomPhotoAction } from "@/app/actions";
 import { RoomPhotoUploader } from "./room-photo-uploader";
 
 export const dynamic = "force-dynamic";
 
 export default async function RoomPhotosPage({
-  params
+  params,
+  searchParams
 }: {
   params: Promise<{ projectId: string; roomId: string }>;
+  searchParams: Promise<{ message?: string }>;
 }) {
   const { projectId, roomId } = await params;
+  const { message } = await searchParams;
   const supabase = await createClient();
   const {
     data: { user }
@@ -87,6 +91,12 @@ export default async function RoomPhotosPage({
           {project.name} · {room.name} · {room.room_type}
         </p>
 
+        {message ? (
+          <p className="mt-8 border border-line bg-surface px-4 py-3 font-display text-body-s italic text-ink-secondary">
+            {message}
+          </p>
+        ) : null}
+
         <div className="mt-12">
           <RoomPhotoUploader existingCount={signedAssets.length} roomId={roomId} userId={user.id} />
         </div>
@@ -114,6 +124,14 @@ export default async function RoomPhotosPage({
                 <figcaption className="mt-3 font-body text-caption-tight font-medium uppercase text-ink-muted">
                   photograph {String(index + 1).padStart(2, "0")}
                 </figcaption>
+                <form action={deleteRoomPhotoAction} className="mt-3">
+                  <input name="projectId" type="hidden" value={projectId} />
+                  <input name="roomId" type="hidden" value={roomId} />
+                  <input name="assetId" type="hidden" value={asset.id} />
+                  <SubmitButton className="h-10 w-full px-4" pendingLabel="Removing..." variant="destructive">
+                    Remove
+                  </SubmitButton>
+                </form>
               </figure>
             ))}
           </div>

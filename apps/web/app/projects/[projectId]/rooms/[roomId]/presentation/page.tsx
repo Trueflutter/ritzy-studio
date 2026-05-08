@@ -90,6 +90,10 @@ export default async function PresentationPage({
         .order("sort_order", { ascending: true })
     : { data: [] };
   const listItems = items ?? [];
+  const currentEstimateAed =
+    listItems.length > 0
+      ? listItems.reduce((total, item) => total + currentLineTotalAed(item), 0)
+      : shoppingList?.estimated_total_aed;
 
   return (
     <main className="min-h-dvh bg-surface text-ink print:bg-surface">
@@ -97,13 +101,23 @@ export default async function PresentationPage({
         <Link className="font-display text-[28px] font-light text-ink" href="/">
           Ri <span className="font-body text-caption font-medium uppercase text-ink-muted">Ritzy Studio</span>
         </Link>
-        <div className="flex items-center gap-6">
+        <div className="flex flex-wrap items-center justify-end gap-3">
+          <ButtonLink href="/" trailing="→" variant="secondary">
+            Studio
+          </ButtonLink>
+          <ButtonLink
+            href={`/projects/${projectId}/rooms/${roomId}/concepts`}
+            trailing="→"
+            variant="secondary"
+          >
+            Concepts
+          </ButtonLink>
           <ButtonLink
             href={`/projects/${projectId}/rooms/${roomId}/shopping-list`}
             trailing="→"
-            variant="quiet"
+            variant="primary"
           >
-            shopping list
+            Shopping list
           </ButtonLink>
           <PrintButton />
         </div>
@@ -129,7 +143,7 @@ export default async function PresentationPage({
               Estimate
             </p>
             <p className="mt-5 font-display text-display-xs font-light italic text-ink">
-              {formatAed(shoppingList?.estimated_total_aed)}
+              {formatAed(currentEstimateAed)}
             </p>
             <p className="mt-4 font-body text-body-s text-ink-secondary">
               {listItems.length} selected catalog item{listItems.length === 1 ? "" : "s"}.
@@ -214,7 +228,7 @@ export default async function PresentationPage({
                       </p>
                     </div>
                     <div className="font-body text-body-s text-ink-secondary md:text-right">
-                      <p>{formatAed(item.line_total_aed)}</p>
+                      <p>{formatAed(currentLineTotalAed(item))}</p>
                       {product?.canonical_url ? (
                         <a
                           className="mt-2 inline-flex font-display text-button-quiet italic text-ink print:hidden"
@@ -276,4 +290,22 @@ function dimensionsText(
   ].filter(Boolean);
 
   return parts.length > 0 ? `${parts.join(" x ")} cm` : "not available";
+}
+
+function currentLineTotalAed(item: {
+  quantity: number | null;
+  line_total_aed: number | null;
+  product:
+    | {
+        sale_price_aed: number | null;
+        price_aed: number | null;
+      }
+    | null;
+}) {
+  const unitPrice = item.product?.sale_price_aed ?? item.product?.price_aed;
+  if (unitPrice !== null && unitPrice !== undefined) {
+    return unitPrice * (item.quantity ?? 1);
+  }
+
+  return item.line_total_aed ?? 0;
 }

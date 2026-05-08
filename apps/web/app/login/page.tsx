@@ -1,8 +1,8 @@
-import { Button, Panel, TextInput } from "@ritzy-studio/ui";
+import { Panel } from "@ritzy-studio/ui";
 import { redirect } from "next/navigation";
 
-import { signInAction, signUpAction } from "@/app/actions";
 import { createClient } from "@/lib/supabase/server";
+import { AccessForm } from "./access-form";
 
 export const dynamic = "force-dynamic";
 
@@ -50,24 +50,7 @@ export default async function LoginPage({
             </p>
           ) : null}
 
-          <form action={signInAction} className="mt-10">
-            <TextInput id="signin-email" label="Email" name="email" required type="email" />
-            <TextInput id="signin-password" label="Password" name="password" required type="password" />
-            <Button className="mt-4 w-full" type="submit">
-              Sign in
-            </Button>
-          </form>
-
-          <div className="my-10 border-t border-line" />
-
-          <form action={signUpAction}>
-            <TextInput id="signup-name" label="Name" name="name" />
-            <TextInput id="signup-email" label="Email" name="email" required type="email" />
-            <TextInput id="signup-password" label="Password" name="password" required type="password" />
-            <Button className="mt-4 w-full" type="submit" variant="secondary">
-              Create account
-            </Button>
-          </form>
+          <AccessForm />
         </Panel>
       </section>
     </main>

@@ -571,3 +571,108 @@ Feature status:
 Current canonical next slice:
 
 - None. MVP implementation feature list is closed.
+
+### Post-F-018 UX QA Pass: Uploaded Photo And Long-Action Friction
+
+Ran an end-to-end browser QA pass using a sample Dubai living-room project.
+
+Created:
+
+- `docs/Tracks/mvp/process/UX-QA-2026-05-04.md`
+
+Fixed:
+
+- missing uploaded-photo removal flow
+- missing button-level pending states for long server actions
+- weak primary-button hover treatment
+- misleading brief CTA copy
+- duplicate product dimension warnings
+- false-positive dimension parsing from product names and URLs
+
+Runtime verification completed:
+
+- sign in
+- project creation
+- photo removal
+- brief save and clarifying-question generation
+- initial concept generation
+- concept selection
+- light Home Centre ingestion
+- product matching
+- product substitution empty-result handling
+- final render generation
+
+Remaining carry-over:
+
+- Long AI actions should move to background jobs with polling before serious client use.
+- Product coverage depends on scheduled ingestion; a tiny catalog sample over-selects one category.
+
+### Post-F-018 Founder UX QA Patch: Auth, Buttons, Product Kit, Photorealism
+
+Addressed founder review findings from the local concepts page.
+
+Fixed:
+
+- login now uses a single access form with a returning-user/create-account mode switch
+- dashboard sign-out button now submits correctly
+- quiet links and buttons have less cramped spacing/focus treatment
+- primary/secondary actions have stronger visual weight
+- product matching now composes a room kit across required roles before adding alternates
+- Home Centre ingestion samples across categories first instead of filling the sample from sofas only
+- Home Centre categories now include rugs, wall art, decor, cushions, lighting, coffee tables, side tables, armchairs, sofas, beds, and dining tables
+- category normalization distinguishes armchairs from sofas and side tables from uncategorized products
+- ingestion refreshes dimensions and images instead of accumulating stale duplicate rows
+- image generation prompts now demand photorealistic interior photography
+- OpenAI image edits now request `quality: high` and `input_fidelity: high`
+
+Runtime verification:
+
+- login mode toggle verified in browser
+- sign-out and re-login verified in browser
+- current QA project rematched to sofa, armchairs, coffee table, side table, rug, wall art, decor, and alternates
+- light Home Centre ingestion run completed with 24 products seen, 24 updated, 0 failed
+
+### Post-F-018 Visual Grounding Patch: Concept Image To Shopping List To Final Render
+
+Addressed founder review that product list items did not sufficiently match the approved concept/final render.
+
+Fixed:
+
+- approved concept image is now used as a visual source of truth during product matching
+- visual sourcing assistant extracts visible room product roles and visual briefs from the concept image
+- candidate product image URLs are included in the sourcing pass
+- product lines store visual match and mismatch reasoning when the catalog only has a near substitute
+- final render generation now receives the original room photo, approved concept image, and selected product references
+- final render prompt now forbids introducing alternate main furniture/decor not represented in the shopping list
+- `gpt-image-2` compatibility fixed by omitting unsupported `input_fidelity`
+
+Runtime verification:
+
+- current QA project product matching produced visual match/mismatch notes
+- final render retry completed with latest render job `succeeded`
+
+### Post-F-018 Founder UX QA Patch: Shopping Navigation And Home Centre Dimensions
+
+Addressed founder review from the shopping-list page.
+
+Fixed:
+
+- shopping-list header now has clear `Studio`, `Concepts`, and primary `Presentation` navigation
+- presentation header now has clear `Studio`, `Concepts`, and primary `Shopping list` navigation
+- non-quiet button labels now have explicit spacing before trailing arrows
+- Home Centre adapter now extracts visible `Width (cm)`, `Depth (cm)`, `Height (cm)`, and material values from product pages
+- Home Centre adapter test now covers visible detail blocks
+- ingestion runner now checks product dimension/image delete and insert errors instead of silently continuing
+- shopping-list and presentation prices now prefer refreshed catalog sale/current prices before falling back to stored draft line totals
+- shopping-list warnings now suppress stale missing-dimension notes once catalog dimensions are present
+
+Runtime verification:
+
+- real Hester 3-Seater Fabric Sofa page extracted `W 245 x D 114 x H 87 cm`
+- light Home Centre refresh completed with 36 products seen, 11 created, 25 updated, 0 failed
+- current QA shopping-list row for Hester shows `W 245 x D 114 x H 87 cm`
+- browser verified header links expose `Studio`, `Concepts`, and `Presentation`
+- `pnpm --filter @ritzy-studio/ingestion test` passed
+- `pnpm --filter @ritzy-studio/web lint` passed
+- `pnpm --filter @ritzy-studio/web typecheck` passed
+- `pnpm check` passed

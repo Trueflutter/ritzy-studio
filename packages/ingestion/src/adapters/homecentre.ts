@@ -10,6 +10,11 @@ const DEFAULT_CATEGORY_URLS = [
   "https://www.homecentre.com/ae/en/c/furniture-sofaandseating-armchairs",
   "https://www.homecentre.com/ae/en/c/furniture-livingroom-coffeetables",
   "https://www.homecentre.com/ae/en/c/furniture-livingroom-sideandendtables",
+  "https://www.homecentre.com/ae/en/c/household-rugsandcarpets-rugs",
+  "https://www.homecentre.com/ae/en/c/household-walldecorandmirrors-wallart",
+  "https://www.homecentre.com/ae/en/c/household-decor-vasesandflowers-vases",
+  "https://www.homecentre.com/ae/en/c/household-cushionsandthrows-filledcushions-decorativecushions",
+  "https://www.homecentre.com/ae/en/c/lighting-tablelamps",
   "https://www.homecentre.com/ae/en/c/furniture-bedroom-beds",
   "https://www.homecentre.com/ae/en/c/furniture-diningroom-diningtables"
 ];
@@ -39,15 +44,29 @@ export const homeCentreAdapter: CatalogAdapter = {
   discoverProducts: async function* ({ limit, categories } = {}) {
     const categoryUrls = categories?.length ? categories : DEFAULT_CATEGORY_URLS;
     let yielded = 0;
+    const urlsByCategory: Array<{
+      categoryUrl: string;
+      urls: string[];
+    }> = [];
 
     for (const categoryUrl of categoryUrls) {
       const html = await fetchText(categoryUrl);
       const urls = parseProductUrlsFromCategoryHtml(html);
+      urlsByCategory.push({ categoryUrl, urls });
+    }
 
-      for (const url of urls) {
+    const maxCategoryDepth = Math.max(...urlsByCategory.map((category) => category.urls.length), 0);
+
+    for (let index = 0; index < maxCategoryDepth; index += 1) {
+      for (const category of urlsByCategory) {
+        const url = category.urls[index];
+        if (!url) {
+          continue;
+        }
+
         yield {
           url,
-          categoryHint: categoryUrl,
+          categoryHint: category.categoryUrl,
           source: "category_page"
         };
 
@@ -125,8 +144,11 @@ export function parseHomeCentreProductHtml(
       images[0] ?? meta["product:image"] ?? meta["og:image"] ?? meta["twitter:image:src"] ?? null,
     imageUrls: [...images, ...additionalImages],
     color: stringValue(product.color) ?? meta["product:color"] ?? null,
-    material: null,
-    dimensionsText: [stringValue(product.name), canonicalUrl].filter(Boolean).join(" ")
+    material:
+      extractAttributeValue(html, "Upholstery Material") ??
+      extractAttributeValue(html, "Frame material") ??
+      null,
+    dimensionsText: extractDimensionsText(html) ?? stringValue(product.name) ?? null
   };
 }
 
@@ -225,6 +247,35 @@ function imageValues(value: unknown) {
 
   const single = stringValue(value);
   return single ? [single] : [];
+}
+
+function extractDimensionsText(html: string) {
+  const width = extractAttributeValue(html, "Width (cm)");
+  const depth = extractAttributeValue(html, "Depth (cm)");
+  const height = extractAttributeValue(html, "Height (cm)");
+
+  if (!width && !depth && !height) {
+    return null;
+  }
+
+  return [
+    width ? `W ${width}` : null,
+    depth ? `D ${depth}` : null,
+    height ? `H ${height}` : null
+  ]
+    .filter(Boolean)
+    .join(" x ")
+    .concat(" cm");
+}
+
+function extractAttributeValue(html: string, label: string) {
+  const escapedLabel = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/\s+/g, "\\s+");
+  const pattern = new RegExp(
+    `>${escapedLabel}<\\/div>[\\s\\S]{0,260}?<div[^>]*>([^<]+)<\\/div>`,
+    "i"
+  );
+  const match = html.match(pattern);
+  return match?.[1] ? decodeHtml(match[1]).trim() : null;
 }
 
 function stringValue(value: unknown) {

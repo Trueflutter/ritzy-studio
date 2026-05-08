@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { userIntendedModeSchema } from "./entitlements";
+
 export const confidenceLevelSchema = z.enum(["verified", "assumed", "estimated", "unknown"]);
 
 export const projectStatusSchema = z.enum(["draft", "active", "archived"]);
@@ -49,10 +51,28 @@ export const createProjectWithRoomSchema = z
     }
   );
 
+export const setUserModeSchema = z.object({
+  intendedMode: userIntendedModeSchema
+});
+
+export const createHomeownerRoomSchema = z
+  .object({
+    roomName: z.string().min(1),
+    roomType: z.string().min(1),
+    location: z.string().optional(),
+    budgetMaxAed: z.number().nonnegative().optional()
+  })
+  .transform((value) => ({
+    ...value,
+    projectName: `${value.roomName} redesign`
+  }));
+
 export const designBriefSchema = z.object({
   projectId: z.uuid(),
   roomId: z.uuid(),
   roomType: z.string().min(1),
+  styleSlugs: z.array(z.string()).default([]),
+  avoidStyleSlugs: z.array(z.string()).default([]),
   styleNotes: z.string().max(2000).optional(),
   colorNotes: z.string().max(1200).optional(),
   budgetNotes: z.string().max(1200).optional(),
@@ -72,6 +92,10 @@ export type CreateProjectInput = z.infer<typeof createProjectSchema>;
 export type CreateRoomInput = z.infer<typeof createRoomSchema>;
 export type CreateProjectWithRoomInput = z.infer<typeof createProjectWithRoomSchema>;
 export type DesignBriefInput = z.infer<typeof designBriefSchema>;
+export type SetUserModeInput = z.infer<typeof setUserModeSchema>;
+export type CreateHomeownerRoomInput = z.infer<typeof createHomeownerRoomSchema>;
 
 export * from "./product-enrichment";
 export * from "./product-matching";
+export * from "./entitlements";
+export * from "./style-preferences";

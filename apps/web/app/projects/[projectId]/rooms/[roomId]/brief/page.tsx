@@ -1,4 +1,6 @@
-import { Button, ButtonLink, TextInput, Textarea } from "@ritzy-studio/ui";
+import { visualStyleOptions } from "@ritzy-studio/domain";
+import { ButtonLink, SubmitButton, TextInput, Textarea } from "@ritzy-studio/ui";
+import Image from "next/image";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
@@ -67,6 +69,14 @@ export default async function DesignBriefPage({
     .maybeSingle();
 
   const answeredCount = (questions ?? []).filter((question) => question.status === "answered").length;
+  const selectedStyleSlugs = stringArrayFromStructuredJson(
+    designBrief?.structured_json,
+    "likedStyleSlugs"
+  );
+  const avoidedStyleSlugs = stringArrayFromStructuredJson(
+    designBrief?.structured_json,
+    "avoidedStyleSlugs"
+  );
 
   return (
     <main className="min-h-dvh bg-page text-ink">
@@ -106,6 +116,74 @@ export default async function DesignBriefPage({
             <input name="projectId" type="hidden" value={projectId} />
             <input name="roomId" type="hidden" value={roomId} />
             <input name="roomType" type="hidden" value={room.room_type} />
+
+            <section className="mb-12 border border-line bg-surface">
+              <div className="border-b border-line p-5">
+                <p className="font-body text-caption font-medium uppercase text-ink-muted">
+                  Visual Style
+                </p>
+                <h2 className="mt-4 font-display text-display-s font-light italic text-ink">
+                  Choose the rooms that feel closest.
+                </h2>
+                <p className="mt-4 max-w-[62ch] font-body text-body-s text-ink-secondary">
+                  Pick one or more directions. The names are only shortcuts; the images and plain
+                  language carry the actual brief.
+                </p>
+              </div>
+              <div className="grid gap-px bg-line md:grid-cols-2 xl:grid-cols-3">
+                {visualStyleOptions.map((style) => {
+                  const checked = selectedStyleSlugs.includes(style.slug);
+                  const avoided = avoidedStyleSlugs.includes(style.slug);
+
+                  return (
+                    <article className="bg-surface p-4" key={style.slug}>
+                      <label className="group block cursor-pointer">
+                        <input
+                          className="peer sr-only"
+                          defaultChecked={checked}
+                          name="styleSlugs"
+                          type="checkbox"
+                          value={style.slug}
+                        />
+                        <span className="block border border-line bg-page transition-colors duration-standard ease-standard peer-checked:border-ink peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-offset-4 peer-focus-visible:outline-ring">
+                          <span className="relative block aspect-[4/3] overflow-hidden bg-surface-subtle">
+                            <Image
+                              alt={`${style.name} interior style reference`}
+                              className="h-full w-full object-cover transition-transform duration-standard ease-standard group-hover:scale-[1.02]"
+                              height={360}
+                              unoptimized
+                              src={styleImageUrl(style.slug)}
+                              width={480}
+                            />
+                          </span>
+                          <span className="block p-4">
+                            <span className="font-display text-body-l font-light italic text-ink">
+                              {style.name}
+                            </span>
+                            <span className="mt-2 block font-body text-body-s text-ink-secondary">
+                              {style.description}
+                            </span>
+                            <span className="mt-4 inline-flex font-body text-caption font-medium uppercase text-accent-deep">
+                              {checked ? "Selected" : "Select"}
+                            </span>
+                          </span>
+                        </span>
+                      </label>
+                      <label className="mt-3 flex items-start gap-3 border-t border-line pt-3 font-body text-body-s text-ink-secondary">
+                        <input
+                          className="mt-1 size-4 accent-[var(--rs-primary)]"
+                          defaultChecked={avoided}
+                          name="avoidStyleSlugs"
+                          type="checkbox"
+                          value={style.slug}
+                        />
+                        Not this direction
+                      </label>
+                    </article>
+                  );
+                })}
+              </div>
+            </section>
 
             <Textarea
               defaultValue={designBrief?.style_notes ?? ""}
@@ -202,7 +280,9 @@ export default async function DesignBriefPage({
                     open concepts
                   </ButtonLink>
                 ) : null}
-                <Button type="submit">Generate concepts</Button>
+                <SubmitButton pendingLabel="Saving brief and preparing questions...">
+                  Save brief
+                </SubmitButton>
               </div>
             </div>
           </form>
@@ -238,9 +318,9 @@ export default async function DesignBriefPage({
                   />
                 </div>
               ))}
-              <Button className="w-full" type="submit" variant="secondary">
+              <SubmitButton className="w-full" pendingLabel="Saving answers..." variant="secondary">
                 Save answers
-              </Button>
+              </SubmitButton>
             </form>
           ) : (
             <div className="mt-8 border-t border-line pt-6">
@@ -254,4 +334,39 @@ export default async function DesignBriefPage({
       </section>
     </main>
   );
+}
+
+function stringArrayFromStructuredJson(value: unknown, key: "likedStyleSlugs" | "avoidedStyleSlugs") {
+  if (!value || typeof value !== "object" || !("visualPreferences" in value)) {
+    return [];
+  }
+
+  const visualPreferences = (value as { visualPreferences?: unknown }).visualPreferences;
+  if (!visualPreferences || typeof visualPreferences !== "object" || !(key in visualPreferences)) {
+    return [];
+  }
+
+  const possibleValues = (visualPreferences as Record<string, unknown>)[key];
+  return Array.isArray(possibleValues)
+    ? possibleValues.filter((item): item is string => typeof item === "string")
+    : [];
+}
+
+function styleImageUrl(slug: string) {
+  const images: Record<string, string> = {
+    "warm-minimal":
+      "https://images.unsplash.com/photo-1618221195710-dd6b41faaea6?auto=format&fit=crop&w=960&q=80",
+    "modern-organic":
+      "https://images.unsplash.com/photo-1600607687939-ce8a6c25118c?auto=format&fit=crop&w=960&q=80",
+    "quiet-luxury":
+      "https://images.unsplash.com/photo-1616486338812-3dadae4b4ace?auto=format&fit=crop&w=960&q=80",
+    "classic-contemporary":
+      "https://images.unsplash.com/photo-1600210492486-724fe5c67fb0?auto=format&fit=crop&w=960&q=80",
+    "coastal-light":
+      "https://images.unsplash.com/photo-1615874694520-474822394e73?auto=format&fit=crop&w=960&q=80",
+    "earthy-rustic":
+      "https://images.unsplash.com/photo-1617103996702-96ff29b1c467?auto=format&fit=crop&w=960&q=80"
+  };
+
+  return images[slug] ?? images["warm-minimal"];
 }

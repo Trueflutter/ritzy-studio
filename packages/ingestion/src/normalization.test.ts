@@ -26,7 +26,9 @@ assert.deepEqual(parseDimensionsCm("80 x 45 x 36 cm"), {
 });
 
 assert.equal(normalizeCategory("Living Room Sofa"), "sofas");
-assert.equal(normalizeCategory("Decorative Object"), null);
+assert.equal(normalizeCategory("Decorative Object"), "decor");
+assert.equal(normalizeCategory("Wall Art"), "wall_art");
+assert.equal(normalizeCategory("Rugs & Carpets"), "rugs");
 
 const normalized = normalizeProductCandidate({
   canonicalUrl: "https://example.com/products/sofa",

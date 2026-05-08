@@ -1,4 +1,4 @@
-import { Button, ButtonLink, Panel, TextInput } from "@ritzy-studio/ui";
+import { ButtonLink, Panel, SubmitButton, TextInput } from "@ritzy-studio/ui";
 import { redirect } from "next/navigation";
 
 import { createProjectWithRoomAction } from "@/app/actions";
@@ -83,7 +83,7 @@ export default async function NewProjectPage() {
               <ButtonLink href="/" trailing="→" variant="quiet">
                 cancel
               </ButtonLink>
-              <Button type="submit">Continue</Button>
+              <SubmitButton pendingLabel="Creating project...">Continue</SubmitButton>
             </div>
           </form>
         </Panel>

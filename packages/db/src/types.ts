@@ -234,6 +234,59 @@ export type Database = {
           },
         ]
       }
+      designer_accounts: {
+        Row: {
+          billing_customer_id: string | null
+          business_name: string | null
+          cancel_at: string | null
+          created_at: string
+          current_period_end: string | null
+          current_period_start: string | null
+          id: string
+          owner_user_id: string
+          plan_key: string
+          subscription_status: Database["public"]["Enums"]["subscription_status"]
+          trial_ends_at: string | null
+          updated_at: string
+        }
+        Insert: {
+          billing_customer_id?: string | null
+          business_name?: string | null
+          cancel_at?: string | null
+          created_at?: string
+          current_period_end?: string | null
+          current_period_start?: string | null
+          id?: string
+          owner_user_id: string
+          plan_key?: string
+          subscription_status?: Database["public"]["Enums"]["subscription_status"]
+          trial_ends_at?: string | null
+          updated_at?: string
+        }
+        Update: {
+          billing_customer_id?: string | null
+          business_name?: string | null
+          cancel_at?: string | null
+          created_at?: string
+          current_period_end?: string | null
+          current_period_start?: string | null
+          id?: string
+          owner_user_id?: string
+          plan_key?: string
+          subscription_status?: Database["public"]["Enums"]["subscription_status"]
+          trial_ends_at?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "designer_accounts_owner_user_id_fkey"
+            columns: ["owner_user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       design_briefs: {
         Row: {
           avoid_notes: string | null
@@ -280,6 +333,71 @@ export type Database = {
             columns: ["room_id"]
             isOneToOne: false
             referencedRelation: "rooms"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      entitlement_events: {
+        Row: {
+          created_at: string
+          event_type: Database["public"]["Enums"]["entitlement_event_type"]
+          id: string
+          metadata_json: Json
+          room_id: string | null
+          room_unlock_id: string | null
+          source: string
+          subscription_id: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          event_type: Database["public"]["Enums"]["entitlement_event_type"]
+          id?: string
+          metadata_json?: Json
+          room_id?: string | null
+          room_unlock_id?: string | null
+          source: string
+          subscription_id?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          event_type?: Database["public"]["Enums"]["entitlement_event_type"]
+          id?: string
+          metadata_json?: Json
+          room_id?: string | null
+          room_unlock_id?: string | null
+          source?: string
+          subscription_id?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "entitlement_events_room_id_fkey"
+            columns: ["room_id"]
+            isOneToOne: false
+            referencedRelation: "rooms"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "entitlement_events_room_unlock_id_fkey"
+            columns: ["room_unlock_id"]
+            isOneToOne: false
+            referencedRelation: "room_unlocks"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "entitlement_events_subscription_id_fkey"
+            columns: ["subscription_id"]
+            isOneToOne: false
+            referencedRelation: "subscriptions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "entitlement_events_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
             referencedColumns: ["id"]
           },
         ]
@@ -815,6 +933,66 @@ export type Database = {
           },
         ]
       }
+      room_unlocks: {
+        Row: {
+          billing_checkout_id: string | null
+          billing_payment_id: string | null
+          billing_provider: string | null
+          created_at: string
+          expires_at: string | null
+          id: string
+          price_aed: number
+          room_id: string
+          status: Database["public"]["Enums"]["room_unlock_status"]
+          unlocked_at: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          billing_checkout_id?: string | null
+          billing_payment_id?: string | null
+          billing_provider?: string | null
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          price_aed?: number
+          room_id: string
+          status?: Database["public"]["Enums"]["room_unlock_status"]
+          unlocked_at?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          billing_checkout_id?: string | null
+          billing_payment_id?: string | null
+          billing_provider?: string | null
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          price_aed?: number
+          room_id?: string
+          status?: Database["public"]["Enums"]["room_unlock_status"]
+          unlocked_at?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "room_unlocks_room_id_fkey"
+            columns: ["room_id"]
+            isOneToOne: false
+            referencedRelation: "rooms"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "room_unlocks_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       rooms: {
         Row: {
           created_at: string
@@ -961,6 +1139,72 @@ export type Database = {
           },
         ]
       }
+      subscriptions: {
+        Row: {
+          amount_usd: number
+          billing_interval: string
+          created_at: string
+          current_period_end: string | null
+          current_period_start: string | null
+          designer_account_id: string | null
+          id: string
+          plan_key: string
+          provider: string
+          provider_customer_id: string | null
+          provider_subscription_id: string | null
+          status: Database["public"]["Enums"]["subscription_status"]
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          amount_usd?: number
+          billing_interval?: string
+          created_at?: string
+          current_period_end?: string | null
+          current_period_start?: string | null
+          designer_account_id?: string | null
+          id?: string
+          plan_key: string
+          provider: string
+          provider_customer_id?: string | null
+          provider_subscription_id?: string | null
+          status?: Database["public"]["Enums"]["subscription_status"]
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          amount_usd?: number
+          billing_interval?: string
+          created_at?: string
+          current_period_end?: string | null
+          current_period_start?: string | null
+          designer_account_id?: string | null
+          id?: string
+          plan_key?: string
+          provider?: string
+          provider_customer_id?: string | null
+          provider_subscription_id?: string | null
+          status?: Database["public"]["Enums"]["subscription_status"]
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "subscriptions_designer_account_id_fkey"
+            columns: ["designer_account_id"]
+            isOneToOne: false
+            referencedRelation: "designer_accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "subscriptions_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       users: {
         Row: {
           created_at: string
@@ -988,11 +1232,61 @@ export type Database = {
         }
         Relationships: []
       }
+      user_profiles: {
+        Row: {
+          country: string | null
+          created_at: string
+          currency_preference: string
+          display_name: string | null
+          intended_mode: Database["public"]["Enums"]["user_intended_mode"]
+          onboarding_completed_at: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          country?: string | null
+          created_at?: string
+          currency_preference?: string
+          display_name?: string | null
+          intended_mode?: Database["public"]["Enums"]["user_intended_mode"]
+          onboarding_completed_at?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          country?: string | null
+          created_at?: string
+          currency_preference?: string
+          display_name?: string | null
+          intended_mode?: Database["public"]["Enums"]["user_intended_mode"]
+          onboarding_completed_at?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_profiles_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: true
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
+      can_access_room_commerce: { Args: { room_id: string }; Returns: boolean }
+      has_active_designer_subscription: {
+        Args: { user_id: string }
+        Returns: boolean
+      }
+      has_active_room_unlock: {
+        Args: { room_id: string; user_id: string }
+        Returns: boolean
+      }
       is_concept_owner: { Args: { concept_id: string }; Returns: boolean }
       is_design_brief_owner: {
         Args: { design_brief_id: string }
@@ -1015,10 +1309,22 @@ export type Database = {
         | "final_render"
       concept_status: "draft" | "generated" | "selected" | "rejected"
       confidence_level: "verified" | "assumed" | "estimated" | "unknown"
+      entitlement_event_type:
+        | "user_mode_set"
+        | "room_unlock_created"
+        | "room_unlock_activated"
+        | "room_unlock_refunded"
+        | "room_unlock_revoked"
+        | "subscription_created"
+        | "subscription_activated"
+        | "subscription_cancelled"
+        | "subscription_expired"
+        | "admin_adjustment"
       measurement_source: "manual" | "floor_plan" | "annotation" | "estimated"
       project_status: "draft" | "active" | "archived"
       question_status: "open" | "answered" | "skipped"
       retailer_status: "active" | "paused" | "blocked" | "candidate"
+      room_unlock_status: "pending" | "active" | "refunded" | "expired" | "revoked"
       room_status:
         | "draft"
         | "briefing"
@@ -1027,6 +1333,14 @@ export type Database = {
         | "rendering"
         | "complete"
       shopping_list_status: "draft" | "approved" | "archived"
+      subscription_status:
+        | "trialing"
+        | "active"
+        | "past_due"
+        | "cancelled"
+        | "expired"
+        | "incomplete"
+      user_intended_mode: "homeowner" | "designer" | "both" | "unknown"
       user_role: "owner" | "designer" | "admin"
     }
     CompositeTypes: {
@@ -1168,10 +1482,23 @@ export const Constants = {
       ],
       concept_status: ["draft", "generated", "selected", "rejected"],
       confidence_level: ["verified", "assumed", "estimated", "unknown"],
+      entitlement_event_type: [
+        "user_mode_set",
+        "room_unlock_created",
+        "room_unlock_activated",
+        "room_unlock_refunded",
+        "room_unlock_revoked",
+        "subscription_created",
+        "subscription_activated",
+        "subscription_cancelled",
+        "subscription_expired",
+        "admin_adjustment",
+      ],
       measurement_source: ["manual", "floor_plan", "annotation", "estimated"],
       project_status: ["draft", "active", "archived"],
       question_status: ["open", "answered", "skipped"],
       retailer_status: ["active", "paused", "blocked", "candidate"],
+      room_unlock_status: ["pending", "active", "refunded", "expired", "revoked"],
       room_status: [
         "draft",
         "briefing",
@@ -1181,6 +1508,15 @@ export const Constants = {
         "complete",
       ],
       shopping_list_status: ["draft", "approved", "archived"],
+      subscription_status: [
+        "trialing",
+        "active",
+        "past_due",
+        "cancelled",
+        "expired",
+        "incomplete",
+      ],
+      user_intended_mode: ["homeowner", "designer", "both", "unknown"],
       user_role: ["owner", "designer", "admin"],
     },
   },

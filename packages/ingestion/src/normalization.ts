@@ -21,20 +21,40 @@ const rawProductSchema = z.object({
 });
 
 const categoryMap = new Map<string, string>([
+  ["armchair", "armchairs"],
+  ["armchairs", "armchairs"],
+  ["sofa & seating > armchairs", "armchairs"],
+  ["side & end", "side_tables"],
+  ["side and end", "side_tables"],
+  ["side table", "side_tables"],
+  ["sideandendtable", "side_tables"],
+  ["chair", "chairs"],
+  ["chairs", "chairs"],
+  ["coffee table", "coffee_tables"],
+  ["coffeetable", "coffee_tables"],
   ["sofa", "sofas"],
   ["sofas", "sofas"],
-  ["armchair", "armchairs"],
-  ["chair", "chairs"],
-  ["coffee table", "coffee_tables"],
-  ["side table", "side_tables"],
   ["bed", "beds"],
   ["rug", "rugs"],
+  ["rugs", "rugs"],
   ["carpet", "rugs"],
   ["dining table", "dining_tables"],
   ["console", "consoles"],
+  ["wall art", "wall_art"],
+  ["wallart", "wall_art"],
+  ["wall decor", "wall_art"],
+  ["wall décor", "wall_art"],
+  ["wall accent", "wall_art"],
+  ["photo frame", "wall_art"],
   ["lighting", "lighting"],
   ["lamp", "lighting"],
-  ["mirror", "mirrors"]
+  ["lamps", "lighting"],
+  ["mirror", "mirrors"],
+  ["decorative cushion", "decor"],
+  ["cushion", "decor"],
+  ["vase", "decor"],
+  ["decor", "decor"],
+  ["décor", "decor"]
 ]);
 
 export function normalizeProductCandidate(input: RawProductCandidate): NormalizedProductRecord {
@@ -108,7 +128,7 @@ export function normalizeCategory(value: string | null | undefined): string | nu
     return null;
   }
 
-  const lower = value.toLowerCase();
+  const lower = value.toLowerCase().replace(/&/g, "and").replace(/\s+/g, " ");
   for (const [needle, normalized] of categoryMap) {
     if (lower.includes(needle)) {
       return normalized;
@@ -141,7 +161,28 @@ export function parseDimensionsCm(value: string | null): {
     return multiplyDimensions(labeled, unitMultiplier);
   }
 
+  const hasDimensionSignal =
+    /\b(cm|mm|inch|in)\b/.test(lower) || /\d+(?:\.\d+)?\s*[x×]\s*\d+(?:\.\d+)?/.test(lower);
+
+  if (!hasDimensionSignal) {
+    return null;
+  }
+
   const numbers = lower.match(/\d+(?:\.\d+)?/g)?.map(Number) ?? [];
+  const hasExplicitJoiner = /\d+(?:\.\d+)?\s*[x×]\s*\d+(?:\.\d+)?/.test(lower);
+
+  if (hasExplicitJoiner && numbers.length >= 2) {
+    return multiplyDimensions(
+      {
+        width_cm: numbers[0],
+        depth_cm: numbers[1],
+        height_cm: numbers[2] ?? null,
+        diameter_cm: null
+      },
+      unitMultiplier
+    );
+  }
+
   if (numbers.length >= 3) {
     return multiplyDimensions(
       {

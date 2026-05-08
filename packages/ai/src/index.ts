@@ -11,6 +11,9 @@ import {
   clarifyingQuestionsJsonSchema,
   clarifyingQuestionsPrompt,
   clarifyingQuestionsResponseSchema,
+  conceptProductSourcingJsonSchema,
+  conceptProductSourcingPrompt,
+  conceptProductSourcingResponseSchema,
   conceptRevisionPrompt,
   initialConceptJsonSchema,
   initialConceptPrompt,
@@ -132,12 +135,16 @@ export type EnrichAndEmbedProductResult = {
 export type GenerateFinalGroundedRenderInput = {
   roomPhotoBytes: Buffer;
   roomPhotoMimeType: string;
+  conceptImageBytes?: Buffer | null;
+  conceptImageMimeType?: string | null;
   conceptTitle: string;
   conceptDescription?: string | null;
   products: Array<{
     name: string;
     retailerName: string;
     category: string;
+    roleLabel?: string | null;
+    visualMatchReason?: string | null;
     priceAed?: number | null;
     dimensions?: string | null;
     imageBytes?: Buffer | null;
@@ -151,6 +158,51 @@ export type GenerateFinalGroundedRenderResult = {
   imageModel: string;
   imageBase64: string;
   revisedPrompt?: string | null;
+};
+
+export type ConceptProductSourcingCandidate = {
+  id: string;
+  name: string;
+  retailerName: string;
+  category: string | null;
+  priceAed?: number | null;
+  salePriceAed?: number | null;
+  availability?: string | null;
+  color?: string | null;
+  material?: string | null;
+  primaryImageUrl?: string | null;
+  dimensions?: string | null;
+  searchTags?: string[];
+};
+
+export type SourceProductsFromConceptInput = {
+  roomType: string;
+  conceptTitle: string;
+  conceptDescription?: string | null;
+  conceptImageUrl: string;
+  candidates: ConceptProductSourcingCandidate[];
+};
+
+export type SourceProductsFromConceptResult = {
+  promptKey: string;
+  promptVersion: string;
+  model: string;
+  needs: Array<{
+    category: string;
+    roleLabel: string;
+    visualBrief: string;
+    quantity: number;
+    priority: "required" | "supporting";
+  }>;
+  selectedProducts: Array<{
+    productId: string;
+    category: string;
+    roleLabel: string;
+    quantity: number;
+    visualMatchReason: string;
+    mismatchNote: string | null;
+  }>;
+  missingRoles: string[];
 };
 
 export async function generateClarifyingQuestions(
@@ -188,6 +240,106 @@ export async function generateClarifyingQuestions(
     promptVersion: clarifyingQuestionsPrompt.version,
     model: env.OPENAI_TEXT_MODEL,
     questions: parsed.questions
+  };
+}
+
+export async function sourceProductsFromConcept(
+  input: SourceProductsFromConceptInput
+): Promise<SourceProductsFromConceptResult> {
+  const env = parseServerEnv(process.env);
+  const client = new OpenAI({ apiKey: env.OPENAI_API_KEY });
+  const allowedProductIds = new Set(input.candidates.map((candidate) => candidate.id));
+  const candidateSummary = input.candidates
+    .slice(0, 16)
+    .map((candidate, index) =>
+      [
+        `${index + 1}. id: ${candidate.id}`,
+        `name: ${candidate.name}`,
+        `retailer: ${candidate.retailerName}`,
+        `category: ${candidate.category ?? "unknown"}`,
+        candidate.salePriceAed ?? candidate.priceAed
+          ? `price: AED ${candidate.salePriceAed ?? candidate.priceAed}`
+          : null,
+        candidate.availability ? `availability: ${candidate.availability}` : null,
+        candidate.color ? `color: ${candidate.color}` : null,
+        candidate.material ? `material: ${candidate.material}` : null,
+        candidate.dimensions ? `dimensions: ${candidate.dimensions}` : null,
+        candidate.searchTags?.length ? `tags: ${candidate.searchTags.join(", ")}` : null,
+        candidate.primaryImageUrl ? `image: ${candidate.primaryImageUrl}` : null
+      ]
+        .filter(Boolean)
+        .join("; ")
+    )
+    .join("\n");
+  const candidateImageContent = input.candidates
+    .slice(0, 16)
+    .filter((candidate) => candidate.primaryImageUrl)
+    .flatMap((candidate) => [
+      {
+        type: "input_text" as const,
+        text: `Candidate product image for id ${candidate.id}: ${candidate.name}`
+      },
+      {
+        type: "input_image" as const,
+        image_url: candidate.primaryImageUrl as string,
+        detail: "high" as const
+      }
+    ]);
+
+  const response = await client.responses.create({
+    model: env.OPENAI_TEXT_MODEL,
+    input: [
+      {
+        role: "system",
+        content: conceptProductSourcingPrompt.system
+      },
+      {
+        role: "user",
+        content: [
+          {
+            type: "input_text",
+            text: [
+              `Room type: ${input.roomType}`,
+              `Approved concept title: ${input.conceptTitle}`,
+              input.conceptDescription ? `Approved concept notes: ${input.conceptDescription}` : null,
+              "",
+              "Candidate catalog products:",
+              candidateSummary
+            ]
+              .filter(Boolean)
+              .join("\n")
+          },
+          {
+            type: "input_image",
+            image_url: input.conceptImageUrl,
+            detail: "high"
+          },
+          ...candidateImageContent
+        ]
+      }
+    ],
+    text: {
+      format: {
+        type: "json_schema",
+        name: "ritzy_concept_product_sourcing",
+        schema: conceptProductSourcingJsonSchema,
+        strict: true
+      }
+    }
+  });
+
+  const parsed = conceptProductSourcingResponseSchema.parse(JSON.parse(response.output_text));
+  const selectedProducts = parsed.selectedProducts.filter((selection) =>
+    allowedProductIds.has(selection.productId)
+  );
+
+  return {
+    promptKey: conceptProductSourcingPrompt.key,
+    promptVersion: conceptProductSourcingPrompt.version,
+    model: env.OPENAI_TEXT_MODEL,
+    needs: parsed.needs,
+    selectedProducts,
+    missingRoles: parsed.missingRoles
   };
 }
 
@@ -252,7 +404,9 @@ export async function generateInitialConcept(
     "Use the uploaded room photo as the base image.",
     "Preserve visible architecture, walls, windows, doors, ceiling details, AC vents, sockets, built-ins, and fixed bathroom fixtures where present.",
     "Redesign movable furniture, lighting, textiles, accessories, and decor according to the concept direction.",
-    "Keep the result realistic and residential. Do not add text labels, prices, product names, or retailer claims."
+    "Output must look like a photorealistic editorial interior photograph, not an illustration, 3D showroom render, sketch, or mood board.",
+    "Use physically plausible scale, natural shadows, realistic upholstery grain, wood texture, rug fibers, wall finish, and lighting falloff.",
+    "Keep the source-photo camera perspective and lens feel. Do not add text labels, prices, product names, or retailer claims."
   ].join("\n");
 
   const imageResponse = await client.images.edit({
@@ -260,7 +414,8 @@ export async function generateInitialConcept(
     image: roomFile,
     prompt: imagePrompt,
     size: "1536x1024",
-    quality: "medium",
+    quality: "high",
+    ...imageFidelityParams(env.OPENAI_IMAGE_MODEL),
     output_format: "png"
   });
 
@@ -347,7 +502,9 @@ export async function generateConceptRevision(
     "Use the uploaded original room photo as the base image.",
     "Apply the designer critique while preserving approved qualities from the previous concept.",
     "Preserve visible architecture, walls, windows, doors, ceiling details, AC vents, sockets, built-ins, and fixed bathroom fixtures where present.",
-    "Keep the result realistic and residential. Do not add text labels, prices, product names, or retailer claims."
+    "Output must look like a photorealistic editorial interior photograph, not an illustration, 3D showroom render, sketch, or mood board.",
+    "Use physically plausible scale, natural shadows, realistic upholstery grain, wood texture, rug fibers, wall finish, and lighting falloff.",
+    "Keep the source-photo camera perspective and lens feel. Do not add text labels, prices, product names, or retailer claims."
   ].join("\n");
 
   const imageResponse = await client.images.edit({
@@ -355,7 +512,8 @@ export async function generateConceptRevision(
     image: roomFile,
     prompt: imagePrompt,
     size: "1536x1024",
-    quality: "medium",
+    quality: "high",
+    ...imageFidelityParams(env.OPENAI_IMAGE_MODEL),
     output_format: "png"
   });
 
@@ -572,6 +730,12 @@ export async function generateFinalGroundedRender(
   const roomFile = await toFile(input.roomPhotoBytes, `room.${extensionForMime(input.roomPhotoMimeType)}`, {
     type: input.roomPhotoMimeType
   });
+  const conceptFile =
+    input.conceptImageBytes && input.conceptImageMimeType
+      ? await toFile(input.conceptImageBytes, `concept.${extensionForMime(input.conceptImageMimeType)}`, {
+          type: input.conceptImageMimeType
+        })
+      : null;
   const productFiles = await Promise.all(
     input.products
       .filter((product) => product.imageBytes && product.imageMimeType)
@@ -590,9 +754,11 @@ export async function generateFinalGroundedRender(
     .map((product, index) =>
       [
         `${index + 1}. ${product.category}: ${product.name}`,
+        product.roleLabel ? `room role: ${product.roleLabel}` : null,
         `retailer: ${product.retailerName}`,
         product.priceAed ? `price: AED ${product.priceAed}` : null,
-        product.dimensions ? `dimensions: ${product.dimensions}` : null
+        product.dimensions ? `dimensions: ${product.dimensions}` : null,
+        product.visualMatchReason ? `why selected: ${product.visualMatchReason}` : null
       ]
         .filter(Boolean)
         .join("; ")
@@ -603,21 +769,30 @@ export async function generateFinalGroundedRender(
     "",
     `Selected concept: ${input.conceptTitle}`,
     input.conceptDescription ? `Concept notes: ${input.conceptDescription}` : null,
+    conceptFile
+      ? "The second input image is the approved concept image. Preserve its overall design intent while replacing invented items with the selected catalog products."
+      : null,
     "",
     "Selected catalog products:",
     productSummary,
     "",
-    "Generate a polished final client-facing room render. Keep the shopping list as the source of truth; the image is a best-effort visual composition."
+    "Generate a polished final client-facing photorealistic interior photograph.",
+    "The final image must be product-grounded: main visible furniture and decor should correspond to the selected catalog products by room role, silhouette, color family, and material where possible.",
+    "Do not introduce alternate sofas, armchairs, coffee tables, rugs, wall art, or decor that are not represented in the selected catalog references.",
+    "Use realistic camera exposure, natural shadows, true material texture, believable furniture scale, and residential lighting.",
+    "Avoid illustration, generic CGI showroom smoothness, warped furniture, and impossible reflections.",
+    "Keep the shopping list as the source of truth; the image is a best-effort visual composition."
   ]
     .filter(Boolean)
     .join("\n");
 
   const imageResponse = await client.images.edit({
     model: env.OPENAI_IMAGE_MODEL,
-    image: [roomFile, ...productFiles],
+    image: [roomFile, ...(conceptFile ? [conceptFile] : []), ...productFiles],
     prompt,
     size: "1536x1024",
-    quality: "medium",
+    quality: "high",
+    ...imageFidelityParams(env.OPENAI_IMAGE_MODEL),
     output_format: "png"
   });
   const firstImage = imageResponse.data?.[0];
@@ -703,4 +878,8 @@ function productEnrichmentSourcePayload(input: ProductEnrichmentInput) {
     primaryImageUrl: input.primaryImageUrl ?? null,
     dimensions: input.dimensions ?? null
   };
+}
+
+function imageFidelityParams(model: string) {
+  return model.includes("gpt-image-2") ? {} : { input_fidelity: "high" as const };
 }

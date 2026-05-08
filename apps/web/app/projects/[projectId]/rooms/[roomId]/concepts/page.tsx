@@ -1,4 +1,4 @@
-import { Button, ButtonLink, Textarea } from "@ritzy-studio/ui";
+import { ButtonLink, SubmitButton, Textarea } from "@ritzy-studio/ui";
 import Image from "next/image";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
@@ -209,9 +209,9 @@ export default async function ConceptsPage({
             <form action={generateInitialConceptAction} className="mt-8">
               <input name="projectId" type="hidden" value={projectId} />
               <input name="roomId" type="hidden" value={roomId} />
-              <Button className="w-full" disabled={!canGenerate} type="submit">
+              <SubmitButton className="w-full" disabled={!canGenerate} pendingLabel="Generating concept...">
                 Generate concept
-              </Button>
+              </SubmitButton>
             </form>
             <ButtonLink
               className="mt-6 w-full"
@@ -259,13 +259,13 @@ export default async function ConceptsPage({
                     <input name="projectId" type="hidden" value={projectId} />
                     <input name="roomId" type="hidden" value={roomId} />
                     <input name="conceptId" type="hidden" value={concept.id} />
-                    <Button
+                    <SubmitButton
                       disabled={concept.status === "selected"}
-                      type="submit"
+                      pendingLabel="Selecting..."
                       variant={concept.status === "selected" ? "secondary" : "primary"}
                     >
                       {concept.status === "selected" ? "Selected" : "Select concept"}
-                    </Button>
+                    </SubmitButton>
                   </form>
                 </div>
                 <div className="mt-6 border-t border-line pt-5">
@@ -294,9 +294,9 @@ export default async function ConceptsPage({
                       name="critique"
                       placeholder="make the palette warmer, keep the sofa placement, reduce ornament..."
                     />
-                    <Button className="w-full" type="submit" variant="secondary">
+                    <SubmitButton className="w-full" pendingLabel="Generating revision..." variant="secondary">
                       Generate revision
-                    </Button>
+                    </SubmitButton>
                   </form>
                 </div>
               </article>
@@ -341,9 +341,9 @@ export default async function ConceptsPage({
                 <input name="projectId" type="hidden" value={projectId} />
                 <input name="roomId" type="hidden" value={roomId} />
                 <input name="conceptId" type="hidden" value={selectedConcept?.id ?? ""} />
-                <Button className="w-full" disabled={!selectedConcept} type="submit">
+                <SubmitButton className="w-full" disabled={!selectedConcept} pendingLabel="Matching products...">
                   Match products
-                </Button>
+                </SubmitButton>
               </form>
               {shoppingList ? (
                 <p className="mt-5 font-body text-body-s text-ink-secondary">
@@ -446,9 +446,9 @@ export default async function ConceptsPage({
                           <option value="same_retailer">same retailer</option>
                           <option value="in_stock">in stock only</option>
                         </select>
-                        <Button className="mt-4 w-full" type="submit" variant="secondary">
+                        <SubmitButton className="mt-4 w-full" pendingLabel="Finding substitute..." variant="secondary">
                           Swap this item
-                        </Button>
+                        </SubmitButton>
                         <p className="mt-3 font-body text-caption text-ink-muted">
                           Only this line changes.
                         </p>
@@ -505,13 +505,13 @@ export default async function ConceptsPage({
                 <input name="roomId" type="hidden" value={roomId} />
                 <input name="conceptId" type="hidden" value={selectedConcept?.id ?? ""} />
                 <input name="shoppingListId" type="hidden" value={shoppingList?.id ?? ""} />
-                <Button
+                <SubmitButton
                   className="w-full"
                   disabled={!selectedConcept || !shoppingList || shoppingItemsList.length === 0}
-                  type="submit"
+                  pendingLabel="Generating final render..."
                 >
                   Generate final render
-                </Button>
+                </SubmitButton>
               </form>
               {latestRenderJob ? (
                 <p className="mt-5 font-body text-body-s text-ink-secondary">

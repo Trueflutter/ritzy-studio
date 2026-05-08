@@ -11,7 +11,15 @@ const productHtml = `
 <meta property="product:product_type" content="Furniture &gt; Sofa &amp; Seating &gt; Sofas &amp; Sofa Sets"/>
 <meta property="product:additional_image_link" content="https://media.homecentre.com/i/homecentre/1.jpg,https://media.homecentre.com/i/homecentre/2.jpg"/>
 <script type="application/ld+json">{"@context":"https://schema.org/","@type":"Product","name":"Narissa 3-Seater Fabric Sofa","image":"https://media.homecentre.com/i/homecentre/1.jpg","color":"Ivory","description":"Buy Narissa 3-Seater Fabric Sofa","offers":{"@type":"Offer","url":"https://www.homecentre.com/ae/en/buy-narissa-3-seater-fabric-sofa/p/168425236","priceCurrency":"AED","price":3299,"availability":"https://schema.org/InStock"}}</script>
-</head></html>
+</head><body>
+<section>
+<h2>Weight &amp; Dimensions</h2>
+<div><div>Width (cm)</div><div>245</div></div>
+<div><div>Depth (cm)</div><div>114</div></div>
+<div><div>Height (cm)</div><div>87</div></div>
+<div><div>Upholstery Material</div><div>Fabric</div></div>
+</section>
+</body></html>
 `;
 
 const parsed = parseHomeCentreProductHtml(
@@ -24,6 +32,8 @@ assert.equal(parsed.priceText, "3299");
 assert.equal(parsed.currency, "AED");
 assert.equal(parsed.availability, "in stock");
 assert.equal(parsed.color, "Ivory");
+assert.equal(parsed.material, "Fabric");
+assert.equal(parsed.dimensionsText, "W 245 x D 114 x H 87 cm");
 assert.equal(parsed.imageUrls?.length, 3);
 
 const categoryHtml = `
