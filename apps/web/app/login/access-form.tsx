@@ -61,7 +61,7 @@ export function AccessForm() {
 
 function modeButtonClass(active: boolean) {
   return cx(
-    "h-[52px] border-0 border-e border-line-strong px-4 font-body text-button font-medium uppercase transition-colors duration-micro ease-standard last:border-e-0 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--rs-focus-ring)]",
+    "h-[52px] min-w-0 whitespace-nowrap border-0 border-e border-line-strong px-2 text-center font-body text-[11px] font-medium uppercase leading-none transition-colors duration-micro ease-standard last:border-e-0 min-[420px]:text-button focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--rs-focus-ring)]",
     active
       ? "bg-[var(--rs-primary)] text-[var(--rs-surface)]"
       : "bg-transparent text-ink hover:bg-[var(--rs-accent)]"

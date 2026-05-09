@@ -1,4 +1,5 @@
 import { Panel } from "@ritzy-studio/ui";
+import Image from "next/image";
 import { redirect } from "next/navigation";
 
 import { createClient } from "@/lib/supabase/server";
@@ -30,11 +31,21 @@ export default async function LoginPage({
             <p className="font-body text-caption font-medium uppercase text-ink-muted">
               Ritzy Studio
             </p>
-            <h1 className="mt-8 max-w-[720px] font-display text-display-xl font-light leading-[0.95] tracking-[-0.02em] text-ink">
+            <h1 className="mt-8 max-w-[720px] font-display text-display-l font-light leading-[0.95] tracking-[-0.02em] text-ink md:text-display-xl">
               Quiet design work, grounded in real pieces.
             </h1>
+            <figure className="mt-12 max-w-[720px] border border-line-strong bg-surface-subtle">
+              <Image
+                alt="Warm gallery-style living room with sculptural seating, layered neutral textiles, and refined natural light"
+                className="aspect-[16/9] h-auto w-full object-cover"
+                height={949}
+                priority
+                src="/login-hero-living-room.jpg"
+                width={1800}
+              />
+            </figure>
           </div>
-          <p className="mt-20 max-w-[66ch] font-body text-body-l text-ink-secondary">
+          <p className="mt-12 max-w-[66ch] font-body text-body-l text-ink-secondary">
             Sign in to manage client rooms, design concepts, and product-grounded project work.
           </p>
         </div>
