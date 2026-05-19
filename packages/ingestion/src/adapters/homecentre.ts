@@ -148,7 +148,7 @@ export function parseHomeCentreProductHtml(
       extractAttributeValue(html, "Upholstery Material") ??
       extractAttributeValue(html, "Frame material") ??
       null,
-    dimensionsText: extractDimensionsText(html) ?? stringValue(product.name) ?? null
+    dimensionsText: extractDimensionsText(html)
   };
 }
 

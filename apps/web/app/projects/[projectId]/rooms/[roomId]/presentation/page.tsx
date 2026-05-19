@@ -4,6 +4,7 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
 import { createClient } from "@/lib/supabase/server";
+import { createServiceClient } from "@/lib/supabase/service";
 
 import { PrintButton } from "./print-button";
 
@@ -41,6 +42,18 @@ export default async function PresentationPage({
     notFound();
   }
 
+  const { data: canAccessCommerce = false } = await supabase.rpc("can_access_room_commerce", {
+    room_id: roomId
+  });
+  if (!canAccessCommerce) {
+    redirect(
+      `/projects/${projectId}/rooms/${roomId}/shopping-list?message=${encodeURIComponent(
+        "Unlock this room before opening the client presentation."
+      )}`
+    );
+  }
+
+  const serviceSupabase = createServiceClient();
   const { data: selectedConcept } = await supabase
     .from("concepts")
     .select("*")
@@ -59,7 +72,7 @@ export default async function PresentationPage({
     .maybeSingle();
   const finalRenderUrl = finalRenderAsset?.storage_path
     ? (
-        await supabase.storage
+        await serviceSupabase.storage
           .from("generated-renders")
           .createSignedUrl(finalRenderAsset.storage_path, 60 * 60)
       ).data?.signedUrl
@@ -74,7 +87,7 @@ export default async function PresentationPage({
     .maybeSingle();
 
   const { data: items = [] } = shoppingList
-    ? await supabase
+    ? await serviceSupabase
         .from("shopping_list_items")
         .select(
           `

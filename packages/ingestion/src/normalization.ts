@@ -91,7 +91,7 @@ export function normalizeProductCandidate(input: RawProductCandidate): Normalize
       ? {
           ...dimensions,
           source_text: parsed.dimensionsText ?? null,
-          confidence: "verified"
+          confidence: "estimated"
         }
       : null,
     images: imageUrls.map((imageUrl, index) => ({

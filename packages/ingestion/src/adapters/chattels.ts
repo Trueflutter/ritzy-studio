@@ -91,7 +91,7 @@ export function parseChattelsProductHtml(
     imageUrls: images,
     color: asString(product.color) ?? null,
     material: asString(product.material) ?? null,
-    dimensionsText: dimensionsText || asString(product.name) || null
+    dimensionsText: dimensionsText || null
   };
 }
 

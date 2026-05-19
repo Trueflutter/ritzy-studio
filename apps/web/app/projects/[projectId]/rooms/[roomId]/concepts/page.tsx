@@ -12,6 +12,7 @@ import {
   substituteProductAction
 } from "@/app/actions";
 import { createClient } from "@/lib/supabase/server";
+import { createServiceClient } from "@/lib/supabase/service";
 
 export const dynamic = "force-dynamic";
 
@@ -49,6 +50,11 @@ export default async function ConceptsPage({
   if (!project || !room) {
     notFound();
   }
+
+  const serviceSupabase = createServiceClient();
+  const { data: canAccessCommerce = false } = await supabase.rpc("can_access_room_commerce", {
+    room_id: roomId
+  });
 
   const { data: designBrief } = await supabase
     .from("design_briefs")
@@ -95,7 +101,7 @@ export default async function ConceptsPage({
         return { ...concept, signedUrl: null };
       }
 
-      const { data } = await supabase.storage
+      const { data } = await serviceSupabase.storage
         .from("generated-renders")
         .createSignedUrl(asset.storage_path, 60 * 60);
 
@@ -115,7 +121,7 @@ export default async function ConceptsPage({
     : { data: null };
 
   const { data: shoppingItems = [] } = shoppingList
-    ? await supabase
+    ? await serviceSupabase
         .from("shopping_list_items")
         .select(
           `
@@ -140,13 +146,15 @@ export default async function ConceptsPage({
         .limit(4)
     : { data: [] };
   const finalRenders = await Promise.all(
-    (finalRenderAssets ?? []).map(async (asset) => {
-      const { data } = await supabase.storage
-        .from("generated-renders")
-        .createSignedUrl(asset.storage_path, 60 * 60);
+    canAccessCommerce
+      ? (finalRenderAssets ?? []).map(async (asset) => {
+          const { data } = await serviceSupabase.storage
+            .from("generated-renders")
+            .createSignedUrl(asset.storage_path, 60 * 60);
 
-      return { ...asset, signedUrl: data?.signedUrl ?? null };
-    })
+          return { ...asset, signedUrl: data?.signedUrl ?? null };
+        })
+      : []
   );
   const { data: latestRenderJob } = selectedConcept
     ? await supabase
@@ -414,7 +422,7 @@ export default async function ConceptsPage({
                         {warningText}
                       </p>
                     ) : null}
-                    {product?.canonical_url ? (
+                    {canAccessCommerce && product?.canonical_url ? (
                       <a
                         className="mt-5 inline-flex font-display text-button-quiet italic text-ink transition-colors hover:text-accent-deep"
                         href={product.canonical_url}
@@ -424,7 +432,7 @@ export default async function ConceptsPage({
                         open retailer page →
                       </a>
                     ) : null}
-                    {shoppingList ? (
+                    {canAccessCommerce && shoppingList ? (
                       <form action={substituteProductAction} className="mt-5 border-t border-line pt-5">
                         <input name="projectId" type="hidden" value={projectId} />
                         <input name="roomId" type="hidden" value={roomId} />
@@ -507,7 +515,7 @@ export default async function ConceptsPage({
                 <input name="shoppingListId" type="hidden" value={shoppingList?.id ?? ""} />
                 <SubmitButton
                   className="w-full"
-                  disabled={!selectedConcept || !shoppingList || shoppingItemsList.length === 0}
+                  disabled={!canAccessCommerce || !selectedConcept || !shoppingList || shoppingItemsList.length === 0}
                   pendingLabel="Generating final render..."
                 >
                   Generate final render

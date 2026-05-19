@@ -47,7 +47,9 @@ export type Database = {
           output_summary: Json
           prompt_version: string | null
           provider: string
+          room_id: string | null
           status: Database["public"]["Enums"]["ai_job_status"]
+          user_id: string | null
         }
         Insert: {
           completed_at?: string | null
@@ -61,7 +63,9 @@ export type Database = {
           output_summary?: Json
           prompt_version?: string | null
           provider: string
+          room_id?: string | null
           status?: Database["public"]["Enums"]["ai_job_status"]
+          user_id?: string | null
         }
         Update: {
           completed_at?: string | null
@@ -75,7 +79,9 @@ export type Database = {
           output_summary?: Json
           prompt_version?: string | null
           provider?: string
+          room_id?: string | null
           status?: Database["public"]["Enums"]["ai_job_status"]
+          user_id?: string | null
         }
         Relationships: []
       }
@@ -1138,6 +1144,33 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      stripe_webhook_events: {
+        Row: {
+          event_id: string
+          event_type: string
+          processed_at: string | null
+          processing_error: string | null
+          processing_started_at: string
+          stripe_created_at: string | null
+        }
+        Insert: {
+          event_id: string
+          event_type: string
+          processed_at?: string | null
+          processing_error?: string | null
+          processing_started_at?: string
+          stripe_created_at?: string | null
+        }
+        Update: {
+          event_id?: string
+          event_type?: string
+          processed_at?: string | null
+          processing_error?: string | null
+          processing_started_at?: string
+          stripe_created_at?: string | null
+        }
+        Relationships: []
       }
       subscriptions: {
         Row: {

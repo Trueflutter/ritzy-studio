@@ -113,9 +113,40 @@ export function rankProductMatches(request: ProductMatchRequest): RankedProductM
   const preferredCategories = categoriesForRoom(parsed.roomType);
 
   return parsed.candidates
+    .filter((candidate) => isEligibleCandidate(candidate, preferredCategories, parsed))
     .map((candidate) => scoreCandidate(candidate, conceptTokens, preferredCategories, parsed))
     .sort((left, right) => right.score - left.score)
     .map((match, index) => ({ ...match, score: Number((match.score - index * 0.001).toFixed(3)) }));
+}
+
+function isEligibleCandidate(
+  candidate: ProductMatchCandidate,
+  preferredCategories: string[],
+  request: ProductMatchRequest
+) {
+  if (!candidate.primaryImageUrl) {
+    return false;
+  }
+
+  if (!candidate.categoryNormalized || !preferredCategories.includes(candidate.categoryNormalized)) {
+    return false;
+  }
+
+  const availability = candidate.availability?.toLowerCase() ?? "";
+  if (
+    availability.includes("out of stock") ||
+    availability.includes("sold out") ||
+    availability.includes("unavailable")
+  ) {
+    return false;
+  }
+
+  const effectivePrice = candidate.salePriceAed ?? candidate.priceAed;
+  if (effectivePrice !== null && request.budgetMaxAed && effectivePrice > request.budgetMaxAed) {
+    return false;
+  }
+
+  return true;
 }
 
 export function composeRoomProductSet({
@@ -375,7 +406,7 @@ function dimensionNote(candidate: ProductMatchCandidate, request: ProductMatchRe
     candidate.dimensions.depthCm <= measurements.roomDepthCm;
 
   if (widthFits && depthFits) {
-    return "verified against entered room measurements";
+    return "estimated fit against entered room measurements; designer review required.";
   }
 
   return "May not fit entered room measurements; designer review required.";

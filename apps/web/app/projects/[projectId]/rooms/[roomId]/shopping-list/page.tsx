@@ -4,6 +4,7 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
 import { createClient } from "@/lib/supabase/server";
+import { createServiceClient } from "@/lib/supabase/service";
 import { createHomeownerRoomUnlockCheckoutAction } from "@/app/actions";
 
 export const dynamic = "force-dynamic";
@@ -40,6 +41,7 @@ export default async function ShoppingListPage({
     notFound();
   }
 
+  const serviceSupabase = createServiceClient();
   const { data: shoppingList } = await supabase
     .from("shopping_lists")
     .select("*, concept:concepts(title)")
@@ -49,7 +51,7 @@ export default async function ShoppingListPage({
     .maybeSingle();
 
   const { data: items = [] } = shoppingList
-    ? await supabase
+    ? await serviceSupabase
         .from("shopping_list_items")
         .select(
           `
@@ -232,7 +234,7 @@ export default async function ShoppingListPage({
                         {product?.availability ?? "not available"}
                       </td>
                       <td className="px-4 py-4">
-                        {product?.canonical_url ? (
+                        {canAccessCommerce && product?.canonical_url ? (
                           <a
                             className="font-display text-button-quiet italic text-ink transition-colors hover:text-accent-deep"
                             href={product.canonical_url}

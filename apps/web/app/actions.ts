@@ -14,6 +14,7 @@ import {
   designBriefSchema,
   composeRoomProductSet,
   filterSubstitutionCandidates,
+  productRolesForRoom,
   quantityForProductCategory,
   rankProductMatches,
   setUserModeSchema,
@@ -24,7 +25,6 @@ import {
   type ProductMatchCandidate
 } from "@ritzy-studio/domain";
 import { revalidatePath } from "next/cache";
-import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
 import { createServiceClient } from "@/lib/supabase/service";
@@ -51,12 +51,20 @@ function optionalNumber(formData: FormData, key: string) {
   return Number.isFinite(number) ? number : undefined;
 }
 
-async function currentAppUrl() {
-  const requestHeaders = await headers();
-  const host = requestHeaders.get("x-forwarded-host") ?? requestHeaders.get("host");
-  const proto = requestHeaders.get("x-forwarded-proto") ?? "http";
+function currentAppUrl() {
+  return appUrl();
+}
 
-  return host ? `${proto}://${host}` : appUrl();
+async function canAccessRoomCommerce(roomId: string) {
+  const supabase = await createClient();
+  const { data } = await supabase.rpc("can_access_room_commerce", { room_id: roomId });
+  return Boolean(data);
+}
+
+async function requireRoomCommerceAccess(roomId: string, redirectPath: string) {
+  if (!(await canAccessRoomCommerce(roomId))) {
+    redirect(`${redirectPath}?message=${encodeURIComponent("Unlock this room to use retailer links, product swaps, and final renders.")}`);
+  }
 }
 
 export async function signInAction(formData: FormData) {
@@ -134,14 +142,19 @@ export async function setUserModeAction(formData: FormData) {
   }
 
   if (parsed.intendedMode === "designer" || parsed.intendedMode === "both") {
-    const { error: designerError } = await supabase.from("designer_accounts").upsert(
-      {
-        owner_user_id: user.id,
-        subscription_status: "incomplete",
-        plan_key: "designer_monthly_usd_99"
-      },
-      { onConflict: "owner_user_id" }
-    );
+    const serviceSupabase = createServiceClient();
+    const { data: existingDesignerAccount } = await serviceSupabase
+      .from("designer_accounts")
+      .select("id")
+      .eq("owner_user_id", user.id)
+      .maybeSingle();
+    const { error: designerError } = existingDesignerAccount
+      ? { error: null }
+      : await serviceSupabase.from("designer_accounts").insert({
+          owner_user_id: user.id,
+          subscription_status: "incomplete",
+          plan_key: "designer_monthly_usd_99"
+        });
 
     if (designerError) {
       redirect(`/onboarding?message=${encodeURIComponent(designerError.message)}`);
@@ -252,9 +265,14 @@ export async function createHomeownerRoomUnlockCheckoutAction(formData: FormData
     redirect("/");
   }
 
+  const { data: alreadyEntitled } = await supabase.rpc("can_access_room_commerce", { room_id: roomId });
+  if (alreadyEntitled) {
+    redirect(`${redirectPath}?message=${encodeURIComponent("This room is already unlocked.")}`);
+  }
+
   const stripe = getStripe();
   const serviceSupabase = createServiceClient();
-  const baseUrl = await currentAppUrl();
+  const baseUrl = currentAppUrl();
   const session = await stripe.checkout.sessions.create({
     mode: "payment",
     customer_email: user.email ?? undefined,
@@ -281,17 +299,39 @@ export async function createHomeownerRoomUnlockCheckoutAction(formData: FormData
     cancel_url: `${baseUrl}${redirectPath}?message=${encodeURIComponent("Room unlock payment cancelled.")}`
   });
 
-  const { error: unlockError } = await serviceSupabase.from("room_unlocks").upsert(
-    {
-      room_id: roomId,
-      user_id: user.id,
-      status: "pending",
-      price_aed: 100,
-      billing_provider: "stripe",
-      billing_checkout_id: session.id
-    },
-    { onConflict: "room_id,user_id" }
-  );
+  const { data: existingUnlock } = await serviceSupabase
+    .from("room_unlocks")
+    .select("id, status")
+    .eq("room_id", roomId)
+    .eq("user_id", user.id)
+    .maybeSingle();
+
+  if (existingUnlock?.status === "active") {
+    redirect(`${redirectPath}?message=${encodeURIComponent("This room is already unlocked.")}`);
+  }
+
+  const unlockMutation = existingUnlock
+    ? serviceSupabase
+        .from("room_unlocks")
+        .update({
+          status: "pending",
+          price_aed: 100,
+          billing_provider: "stripe",
+          billing_checkout_id: session.id,
+          updated_at: new Date().toISOString()
+        })
+        .eq("id", existingUnlock.id)
+        .neq("status", "active")
+    : serviceSupabase.from("room_unlocks").insert({
+        room_id: roomId,
+        user_id: user.id,
+        status: "pending",
+        price_aed: 100,
+        billing_provider: "stripe",
+        billing_checkout_id: session.id
+      });
+
+  const { error: unlockError } = await unlockMutation;
 
   if (unlockError) {
     redirect(`${redirectPath}?message=${encodeURIComponent(unlockError.message)}`);
@@ -316,25 +356,36 @@ export async function createDesignerSubscriptionCheckoutAction() {
   }
 
   const serviceSupabase = createServiceClient();
-  const { data: designerAccount, error: designerError } = await serviceSupabase
+  const { data: existingDesignerAccount } = await serviceSupabase
     .from("designer_accounts")
-    .upsert(
-      {
-        owner_user_id: user.id,
-        subscription_status: "incomplete",
-        plan_key: "designer_monthly_usd_99"
-      },
-      { onConflict: "owner_user_id" }
-    )
-    .select("id")
-    .single();
+    .select("id, subscription_status")
+    .eq("owner_user_id", user.id)
+    .maybeSingle();
+
+  if (existingDesignerAccount?.subscription_status === "active" || existingDesignerAccount?.subscription_status === "trialing") {
+    redirect(`/?message=${encodeURIComponent("Your designer subscription is already active.")}`);
+  }
+
+  const designerAccountResult = existingDesignerAccount
+    ? await serviceSupabase.from("designer_accounts").select("id").eq("id", existingDesignerAccount.id).single()
+    : await serviceSupabase
+        .from("designer_accounts")
+        .insert({
+          owner_user_id: user.id,
+          subscription_status: "incomplete",
+          plan_key: "designer_monthly_usd_99"
+        })
+        .select("id")
+        .single();
+
+  const { data: designerAccount, error: designerError } = designerAccountResult;
 
   if (designerError || !designerAccount) {
     redirect(`/onboarding?message=${encodeURIComponent(designerError?.message ?? "Designer account could not be prepared.")}`);
   }
 
   const stripe = getStripe();
-  const baseUrl = await currentAppUrl();
+  const baseUrl = currentAppUrl();
   const session = await stripe.checkout.sessions.create({
     mode: "subscription",
     customer_email: user.email ?? undefined,
@@ -667,6 +718,8 @@ export async function saveDesignBriefAction(formData: FormData) {
   const { data: job, error: jobError } = await serviceSupabase
     .from("ai_jobs")
     .insert({
+      user_id: user.id,
+      room_id: parsed.roomId,
       job_type: "clarifying_questions",
       status: "running",
       provider: "openai",
@@ -864,6 +917,8 @@ export async function generateInitialConceptAction(formData: FormData) {
   const { data: job, error: jobError } = await serviceSupabase
     .from("ai_jobs")
     .insert({
+      user_id: user.id,
+      room_id: roomId,
       job_type: "initial_concept_generation",
       status: "running",
       provider: "openai",
@@ -1038,6 +1093,8 @@ export async function groundProductsAction(formData: FormData) {
     redirect("/login");
   }
 
+  const serviceSupabase = createServiceClient();
+
   const { data: project } = await supabase
     .from("projects")
     .select("id, budget_max_aed")
@@ -1074,12 +1131,12 @@ export async function groundProductsAction(formData: FormData) {
     .limit(1)
     .maybeSingle();
 
-  const { data: products = [], error: productsError } = await supabase
+  const { data: products = [], error: productsError } = await serviceSupabase
     .from("products")
     .select(
       `
       *,
-      retailer:retailers(name),
+      retailer:retailers(name, status),
       dimensions:product_dimensions(width_cm, depth_cm, height_cm, source_text)
     `
     )
@@ -1116,7 +1173,7 @@ export async function groundProductsAction(formData: FormData) {
     ? concept.primary_image_asset[0]
     : concept.primary_image_asset;
   const { data: conceptSignedImage } = conceptImageAsset?.storage_path
-    ? await supabase.storage
+    ? await serviceSupabase.storage
         .from("generated-renders")
         .createSignedUrl(conceptImageAsset.storage_path, 60 * 30)
     : { data: null };
@@ -1167,6 +1224,18 @@ export async function groundProductsAction(formData: FormData) {
     limit: 12
   });
   const roomProductSet = dedupeMatches([...visuallySelected, ...composedSet]).slice(0, 12);
+  const selectedCategories = new Set(roomProductSet.map((match) => match.categoryNormalized).filter(Boolean));
+  const missingRequiredRoles = productRolesForRoom(room.room_type)
+    .filter((role) => role.required && !selectedCategories.has(role.category))
+    .map((role) => role.label);
+
+  if (missingRequiredRoles.length > 0) {
+    redirect(
+      `${redirectPath}?message=${encodeURIComponent(
+        `Product grounding needs more catalog coverage before it is usable. Missing: ${missingRequiredRoles.join(", ")}.`
+      )}`
+    );
+  }
 
   const { data: existingList } = await supabase
     .from("shopping_lists")
@@ -1257,6 +1326,9 @@ export async function substituteProductAction(formData: FormData) {
     redirect("/login");
   }
 
+  await requireRoomCommerceAccess(roomId, redirectPath);
+  const serviceSupabase = createServiceClient();
+
   const { data: project } = await supabase
     .from("projects")
     .select("id, budget_max_aed")
@@ -1277,14 +1349,14 @@ export async function substituteProductAction(formData: FormData) {
     .eq("room_id", roomId)
     .single();
 
-  const { data: item } = await supabase
+  const { data: item } = await serviceSupabase
     .from("shopping_list_items")
     .select(
       `
       *,
       product:products(
         *,
-        retailer:retailers(name),
+        retailer:retailers(name, status),
         dimensions:product_dimensions(width_cm, depth_cm, height_cm, source_text)
       )
     `
@@ -1321,12 +1393,12 @@ export async function substituteProductAction(formData: FormData) {
     .select("product_id")
     .eq("shopping_list_id", shoppingListId);
 
-  const { data: products = [], error: productsError } = await supabase
+  const { data: products = [], error: productsError } = await serviceSupabase
     .from("products")
     .select(
       `
       *,
-      retailer:retailers(name),
+      retailer:retailers(name, status),
       dimensions:product_dimensions(width_cm, depth_cm, height_cm, source_text)
     `
     )
@@ -1438,6 +1510,9 @@ export async function generateFinalRenderAction(formData: FormData) {
     redirect("/login");
   }
 
+  await requireRoomCommerceAccess(roomId, redirectPath);
+  const serviceSupabase = createServiceClient();
+
   const { data: room } = await supabase
     .from("rooms")
     .select("id, room_type")
@@ -1488,19 +1563,19 @@ export async function generateFinalRenderAction(formData: FormData) {
     ? concept.primary_image_asset[0]
     : concept.primary_image_asset;
   const { data: conceptBlob } = conceptImageAsset?.storage_path
-    ? await supabase.storage
+    ? await serviceSupabase.storage
         .from("generated-renders")
         .download(conceptImageAsset.storage_path)
     : { data: null };
 
-  const { data: items = [] } = await supabase
+  const { data: items = [] } = await serviceSupabase
     .from("shopping_list_items")
     .select(
       `
       *,
       product:products(
         *,
-        retailer:retailers(name),
+        retailer:retailers(name, status),
         dimensions:product_dimensions(width_cm, depth_cm, height_cm, source_text)
       )
     `
@@ -1514,7 +1589,15 @@ export async function generateFinalRenderAction(formData: FormData) {
     redirect(`${redirectPath}?message=${encodeURIComponent("Match products before final rendering.")}`);
   }
 
-  const serviceSupabase = createServiceClient();
+  const invalidProducts = selectedProducts.filter((item) => !productToMatchCandidate(item.product as ProductRow));
+  if (invalidProducts.length > 0) {
+    redirect(
+      `${redirectPath}?message=${encodeURIComponent(
+        "Refresh product matching before final rendering. One or more selected products are unavailable."
+      )}`
+    );
+  }
+
   const productIds = selectedProducts.map((item) => item.product!.id);
   const { data: renderJob, error: renderJobError } = await supabase
     .from("render_jobs")
@@ -1733,6 +1816,8 @@ export async function reviseConceptAction(formData: FormData) {
   const { data: job, error: jobError } = await serviceSupabase
     .from("ai_jobs")
     .insert({
+      user_id: user.id,
+      room_id: roomId,
       job_type: "concept_revision",
       status: "running",
       provider: "openai",
@@ -1872,7 +1957,7 @@ export async function reviseConceptAction(formData: FormData) {
 }
 
 type ProductRow = Database["public"]["Tables"]["products"]["Row"] & {
-  retailer: { name: string } | null;
+  retailer: { name: string; status?: string | null } | null;
   dimensions:
     | Array<{
         width_cm: number | null;
@@ -1885,6 +1970,19 @@ type ProductRow = Database["public"]["Tables"]["products"]["Row"] & {
 
 function productToMatchCandidate(product: ProductRow): ProductMatchCandidate | null {
   if (!product.primary_image_url) {
+    return null;
+  }
+
+  if (product.retailer?.status && product.retailer.status !== "active") {
+    return null;
+  }
+
+  const availability = product.availability?.toLowerCase() ?? "";
+  if (
+    availability.includes("out of stock") ||
+    availability.includes("sold out") ||
+    availability.includes("unavailable")
+  ) {
     return null;
   }
 

@@ -69,8 +69,8 @@ const ranked = rankProductMatches({
 
 assert.equal(ranked[0].name, "Ivory Fabric Sofa");
 assert.ok(ranked[0].selectionReason.includes("category fits"));
-assert.equal(ranked[0].dimensionFitNote, "verified against entered room measurements");
-assert.ok(ranked[1].warnings.some((warning) => warning.includes("Above")));
+assert.equal(ranked[0].dimensionFitNote, "estimated fit against entered room measurements; designer review required.");
+assert.equal(ranked.length, 1);
 
 const alternatives = filterSubstitutionCandidates({
   current: ranked[0],
