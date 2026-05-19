@@ -95,6 +95,7 @@ export function ShoppingListGrid({
             <input name="roomId" type="hidden" value={roomId} />
             <input name="conceptId" type="hidden" value={conceptId ?? ""} />
             <input name="shoppingListId" type="hidden" value={shoppingListId} />
+            <input name="selectedItemIds" type="hidden" value={Array.from(selectedIds).join(",")} />
             <SubmitButton
               disabled={!canRender}
               pendingLabel="Generating final render..."
