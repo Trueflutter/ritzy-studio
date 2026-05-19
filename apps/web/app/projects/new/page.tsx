@@ -157,7 +157,7 @@ export default async function NewProjectPage({
               </section>
 
               <div className="flex flex-col-reverse gap-4 border-t border-line pt-8 sm:flex-row sm:items-center sm:justify-between">
-                <ButtonLink href="/" variant="quiet">
+                <ButtonLink href="/" variant="chrome">
                   Cancel
                 </ButtonLink>
                 <SubmitButton pendingLabel="Creating project...">Continue</SubmitButton>

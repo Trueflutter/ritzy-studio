@@ -158,10 +158,10 @@ function PasswordField({
       >
         {label}
       </label>
-      <div className="group flex items-end border-b border-[var(--rs-border-strong)] transition-colors duration-micro ease-standard focus-within:border-[var(--rs-accent-deep)]">
+      <div className="group flex items-stretch border-b border-[var(--rs-border-strong)] transition-colors duration-micro ease-standard focus-within:border-[var(--rs-accent-deep)]">
         <input
           autoComplete={autoComplete}
-          className="min-w-0 flex-1 border-0 bg-transparent px-0 pb-4 font-body text-body-m text-[var(--rs-text)] outline-none"
+          className="min-w-0 flex-1 border-0 bg-transparent px-0 pb-3 pt-1 font-body text-body-m text-[var(--rs-text)] outline-none"
           id={id}
           name={name}
           required={required}
@@ -169,7 +169,7 @@ function PasswordField({
         />
         <button
           aria-label={showPassword ? "Hide password" : "Show password"}
-          className="mb-3 ms-4 inline-flex size-9 items-center justify-center border border-line bg-surface text-ink-secondary transition-colors hover:border-ink hover:text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--rs-focus-ring)]"
+          className="ms-4 inline-flex size-8 shrink-0 items-center justify-center self-center text-ink-muted transition-colors hover:text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--rs-focus-ring)]"
           onClick={onToggle}
           type="button"
         >

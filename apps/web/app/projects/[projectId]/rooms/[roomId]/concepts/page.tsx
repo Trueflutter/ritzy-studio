@@ -111,8 +111,8 @@ export default async function ConceptsPage({
         <Link className="font-display text-[28px] font-light text-ink" href="/">
           Ri <span className="font-body text-caption font-medium uppercase text-ink-muted">Ritzy Studio</span>
         </Link>
-        <ButtonLink href="/" trailing="→" variant="quiet">
-          back to studio
+        <ButtonLink href="/" leading="←" variant="chrome">
+          Back to studio
         </ButtonLink>
       </header>
 

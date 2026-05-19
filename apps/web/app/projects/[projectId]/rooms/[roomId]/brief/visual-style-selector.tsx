@@ -5,11 +5,10 @@ import Image from "next/image";
 import { useState } from "react";
 
 export function VisualStyleSelector({
-  avoidedStyleSlugs,
   selectedStyleSlugs,
   styles
 }: {
-  avoidedStyleSlugs: string[];
+  avoidedStyleSlugs?: string[];
   selectedStyleSlugs: string[];
   styles: VisualStyleOption[];
 }) {
@@ -42,7 +41,6 @@ export function VisualStyleSelector({
     <div className="grid gap-px bg-line md:grid-cols-2 xl:grid-cols-3">
       {styles.map((style) => {
         const checked = selected.includes(style.slug);
-        const avoided = avoidedStyleSlugs.includes(style.slug);
 
         return (
           <article className="bg-surface p-4" key={style.slug}>
@@ -65,11 +63,26 @@ export function VisualStyleSelector({
                     src={styleImageUrl(style.slug)}
                     width={480}
                   />
-                  {checked ? (
-                    <span className="absolute right-3 top-3 border border-ink bg-surface px-3 py-2 font-body text-caption font-medium uppercase text-ink">
-                      Selected
-                    </span>
-                  ) : null}
+                  <span
+                    aria-hidden
+                    className={
+                      checked
+                        ? "absolute right-3 top-3 inline-flex size-7 items-center justify-center border border-ink bg-ink text-surface"
+                        : "absolute right-3 top-3 inline-flex size-7 items-center justify-center border border-ink-muted bg-surface/80 text-transparent transition-colors group-hover:border-ink"
+                    }
+                  >
+                    <svg
+                      className="size-4"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth="2"
+                      viewBox="0 0 24 24"
+                    >
+                      <path d="m5 12 5 5L20 7" />
+                    </svg>
+                  </span>
                 </span>
                 <span className="block p-4">
                   <span className="font-display text-body-l font-light italic text-ink">
@@ -78,21 +91,8 @@ export function VisualStyleSelector({
                   <span className="mt-2 block font-body text-body-s text-ink-secondary">
                     {style.description}
                   </span>
-                  <span className="mt-4 inline-flex h-10 items-center justify-center border border-line-strong px-4 font-body text-caption font-medium uppercase text-ink transition-colors group-hover:border-ink peer-checked:bg-ink peer-checked:text-surface">
-                    {checked ? "Selected" : "Select"}
-                  </span>
                 </span>
               </span>
-            </label>
-            <label className="mt-3 flex items-start gap-3 border-t border-line pt-3 font-body text-body-s text-ink-secondary">
-              <input
-                className="mt-1 size-4 accent-[var(--rs-primary)]"
-                defaultChecked={avoided}
-                name="avoidStyleSlugs"
-                type="checkbox"
-                value={style.slug}
-              />
-              Not this direction
             </label>
           </article>
         );

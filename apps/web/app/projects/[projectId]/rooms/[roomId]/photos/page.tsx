@@ -70,38 +70,38 @@ export default async function RoomPhotosPage({
         <Link className="font-display text-[28px] font-light text-ink" href="/">
           Ri <span className="font-body text-caption font-medium uppercase text-ink-muted">Ritzy Studio</span>
         </Link>
-        <ButtonLink href="/" trailing="→" variant="quiet">
-          back to studio
+        <ButtonLink href="/" leading="←" variant="chrome">
+          Back to studio
         </ButtonLink>
       </header>
 
-      <section className="mx-auto max-w-[720px] px-5 py-12 md:px-8 lg:px-0">
-        <p className="font-body text-caption font-medium uppercase text-ink-muted">
+      <section className="mx-auto max-w-[720px] px-5 py-8 md:px-8 lg:px-0">
+        <p className="font-body text-caption font-medium uppercase tracking-[0.32em] text-ink-muted">
           Project — Photos — Brief — Generate — Critique — Match
         </p>
         <div className="mt-3 h-px w-32 bg-ink" />
 
-        <p className="mt-12 font-body text-caption font-medium uppercase text-ink-muted">
+        <p className="mt-8 font-body text-caption font-medium uppercase tracking-[0.32em] text-ink-muted">
           N° 03 — Photographs
         </p>
-        <h1 className="mt-6 font-display text-display-l font-light leading-none tracking-[-0.015em] text-ink">
+        <h1 className="mt-4 font-display text-display-m font-light leading-[1.05] tracking-[-0.015em] text-ink">
           Upload the room you want to redesign.
         </h1>
-        <p className="mt-6 max-w-[62ch] font-body text-body-m text-ink-secondary">
+        <p className="mt-4 font-body text-body-s text-ink-muted">
           {project.name} · {room.name} · {room.room_type}
         </p>
-        <p className="mt-4 max-w-[62ch] font-body text-body-s text-ink-secondary">
+        <p className="mt-3 max-w-[62ch] font-body text-body-s text-ink-secondary">
           Use a current room photo, or an empty-room photo if you want the system to ignore existing
           furniture.
         </p>
 
         {message ? (
-          <p className="mt-8 border border-line bg-surface px-4 py-3 font-display text-body-s italic text-ink-secondary">
+          <p className="mt-6 border border-line bg-surface px-4 py-3 font-display text-body-s italic text-ink-secondary">
             {message}
           </p>
         ) : null}
 
-        <div className="mt-12">
+        <div className="mt-8">
           <RoomPhotoUploader existingCount={signedAssets.length} roomId={roomId} userId={user.id} />
         </div>
 
@@ -141,7 +141,7 @@ export default async function RoomPhotosPage({
           </div>
         ) : null}
 
-        <div className="mt-12 flex items-center justify-end gap-6">
+        <div className="mt-8 flex items-center justify-end gap-6">
           {signedAssets.length > 0 ? (
             <ButtonLink href={`/projects/${projectId}/rooms/${roomId}/brief`}>
               Continue to brief
