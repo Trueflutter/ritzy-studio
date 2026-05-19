@@ -1,5 +1,4 @@
 import { ButtonLink, SubmitButton } from "@ritzy-studio/ui";
-import Image from "next/image";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
@@ -9,6 +8,9 @@ import {
   createDesignerSubscriptionCheckoutAction,
   createHomeownerRoomUnlockCheckoutAction
 } from "@/app/actions";
+
+import type { ProductCardItem } from "./product-card";
+import { ShoppingListGrid } from "./shopping-list-grid";
 
 export const dynamic = "force-dynamic";
 
@@ -77,12 +79,41 @@ export default async function ShoppingListPage({
   const { data: canAccessCommerce = false } = await supabase.rpc("can_access_room_commerce", {
     room_id: roomId
   });
+  const commerceUnlocked = Boolean(canAccessCommerce);
   const { data: profile } = await supabase
     .from("user_profiles")
     .select("intended_mode")
     .eq("user_id", user.id)
     .maybeSingle();
   const isDesignerMode = profile?.intended_mode === "designer" || profile?.intended_mode === "both";
+
+  const cardItems: ProductCardItem[] = listItems.map((item) => {
+    const product = item.product;
+    const dimensions = product?.dimensions?.[0];
+    const warnings = warningsFor(item, product);
+    const warning = warnings.length > 0 ? warnings.join(" ") : null;
+    const lineTotal = currentLineTotalAed(item);
+
+    return {
+      id: item.id,
+      shoppingListId: shoppingList?.id ?? "",
+      warning,
+      detail: {
+        id: item.id,
+        name: product?.name ?? "Product unavailable",
+        imageUrl: product?.primary_image_url ?? null,
+        retailerName: product?.retailer?.name ?? null,
+        category: item.category,
+        priceLabel: formatAed(lineTotal),
+        dimensionsLabel:
+          dimensions?.source_text ??
+          dimensionsText(dimensions?.width_cm, dimensions?.depth_cm, dimensions?.height_cm),
+        description: product?.description ?? null,
+        retailerUrl: product?.canonical_url ?? null,
+        warning
+      }
+    };
+  });
 
   return (
     <main className="min-h-dvh bg-page text-ink">
@@ -118,23 +149,24 @@ export default async function ShoppingListPage({
       <section className="mx-auto max-w-[1280px] px-5 py-12 md:px-8 lg:px-12 xl:px-16">
         <div className="grid gap-10 lg:grid-cols-[minmax(0,1fr)_360px]">
           <div>
-            <p className="font-body text-caption font-medium uppercase text-ink-muted">
-              Project — Products — Estimate
+            <p className="font-body text-caption font-medium uppercase tracking-[0.32em] text-ink-muted">
+              Shopping list
             </p>
             <div className="mt-3 h-px w-32 bg-ink" />
-            <p className="mt-12 font-body text-caption font-medium uppercase text-ink-muted">
-              Shopping List
-            </p>
-            <h1 className="mt-6 font-display text-display-l font-light leading-none tracking-[-0.015em] text-ink">
-              Catalog-backed cost estimate.
+            <h1 className="mt-8 font-display text-display-l font-light leading-[1] tracking-[-0.015em] text-ink">
+              Choose the pieces for the final render.
             </h1>
-            <p className="mt-6 max-w-[680px] font-body text-body-m text-ink-secondary">
+            <p className="mt-5 max-w-[640px] font-body text-body-m text-ink-secondary">
               {project.name} · {room.name} · {shoppingList?.concept?.title ?? "No selected concept"}
+            </p>
+            <p className="mt-3 max-w-[640px] font-body text-body-s text-ink-muted">
+              Tap any piece to see the catalog detail. Select the pieces you want included, then
+              generate the grounded render.
             </p>
           </div>
 
           <aside className="border border-line bg-surface p-5 lg:self-start">
-            <p className="font-body text-caption font-medium uppercase text-ink-muted">
+            <p className="font-body text-caption font-medium uppercase tracking-[0.32em] text-ink-muted">
               Estimate
             </p>
             <div className="mt-3 h-px w-20 bg-ink" />
@@ -144,7 +176,7 @@ export default async function ShoppingListPage({
             <p className="mt-4 font-body text-body-s text-ink-secondary">
               {listItems.length} catalog item{listItems.length === 1 ? "" : "s"} in draft.
             </p>
-            {!canAccessCommerce && isDesignerMode ? (
+            {!commerceUnlocked && isDesignerMode ? (
               <form action={createDesignerSubscriptionCheckoutAction} className="mt-6 border-t border-line pt-5">
                 <input
                   name="returnTo"
@@ -159,7 +191,7 @@ export default async function ShoppingListPage({
                   Start designer plan
                 </SubmitButton>
               </form>
-            ) : !canAccessCommerce ? (
+            ) : !commerceUnlocked ? (
               <form action={createHomeownerRoomUnlockCheckoutAction} className="mt-6 border-t border-line pt-5">
                 <input name="projectId" type="hidden" value={projectId} />
                 <input name="roomId" type="hidden" value={roomId} />
@@ -179,105 +211,18 @@ export default async function ShoppingListPage({
           </aside>
         </div>
 
-        <section className="mt-12 overflow-x-auto border border-line bg-surface">
-          {shoppingList && listItems.length > 0 ? (
-            <table className="w-full min-w-[1040px] border-collapse text-left">
-              <thead>
-                <tr className="border-b border-line bg-page">
-                  <th className="px-4 py-4 font-body text-caption font-medium uppercase text-ink-muted">
-                    Product
-                  </th>
-                  <th className="px-4 py-4 font-body text-caption font-medium uppercase text-ink-muted">
-                    Retailer
-                  </th>
-                  <th className="px-4 py-4 font-body text-caption font-medium uppercase text-ink-muted">
-                    Category
-                  </th>
-                  <th className="px-4 py-4 font-body text-caption font-medium uppercase text-ink-muted">
-                    Price
-                  </th>
-                  <th className="px-4 py-4 font-body text-caption font-medium uppercase text-ink-muted">
-                    Dimensions
-                  </th>
-                  <th className="px-4 py-4 font-body text-caption font-medium uppercase text-ink-muted">
-                    Status
-                  </th>
-                  <th className="px-4 py-4 font-body text-caption font-medium uppercase text-ink-muted">
-                    Link
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {listItems.map((item) => {
-                  const product = item.product;
-                  const dimensions = product?.dimensions?.[0];
-                  const warnings = warningsFor(item, product);
-
-                  return (
-                    <tr className="border-b border-line align-top last:border-b-0" key={item.id}>
-                      <td className="w-[340px] px-4 py-4">
-                        <div className="grid grid-cols-[88px_minmax(0,1fr)] gap-4">
-                          <div className="aspect-[4/3] bg-page">
-                            {product?.primary_image_url ? (
-                              <Image
-                                alt={`${product.name} product image`}
-                                className="h-full w-full object-cover"
-                                height={180}
-                                unoptimized
-                                src={product.primary_image_url}
-                                width={240}
-                              />
-                            ) : null}
-                          </div>
-                          <div>
-                            <p className="font-display text-body-l font-light italic leading-snug text-ink">
-                              {product?.name ?? "Product unavailable"}
-                            </p>
-                            {warnings.length > 0 ? (
-                              <p className="mt-2 font-display text-body-s italic text-warning">
-                                {warnings.join(" ")}
-                              </p>
-                            ) : null}
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-4 py-4 font-body text-body-s text-ink-secondary">
-                        {product?.retailer?.name ?? "not available"}
-                      </td>
-                      <td className="px-4 py-4 font-body text-body-s text-ink-secondary">
-                        {item.category}
-                      </td>
-                      <td className="px-4 py-4 font-body text-body-s text-ink-secondary">
-                        {formatAed(currentLineTotalAed(item))}
-                      </td>
-                      <td className="px-4 py-4 font-body text-body-s text-ink-secondary">
-                        {dimensions?.source_text ??
-                          dimensionsText(dimensions?.width_cm, dimensions?.depth_cm, dimensions?.height_cm)}
-                      </td>
-                      <td className="px-4 py-4 font-body text-body-s text-ink-secondary">
-                        {product?.availability ?? "not available"}
-                      </td>
-                      <td className="px-4 py-4">
-                        {canAccessCommerce && product?.canonical_url ? (
-                          <a
-                            className="font-display text-button-quiet italic text-ink transition-colors hover:text-accent-deep"
-                            href={product.canonical_url}
-                            rel="noreferrer"
-                            target="_blank"
-                          >
-                            retailer page →
-                          </a>
-                        ) : (
-                          <span className="font-body text-body-s text-ink-muted">not available</span>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+        <section className="mt-12">
+          {shoppingList && cardItems.length > 0 ? (
+            <ShoppingListGrid
+              canAccessCommerce={commerceUnlocked}
+              conceptId={shoppingList.concept_id ?? null}
+              items={cardItems}
+              projectId={projectId}
+              roomId={roomId}
+              shoppingListId={shoppingList.id}
+            />
           ) : (
-            <div className="p-8">
+            <div className="border border-line bg-surface p-10">
               <p className="font-display text-display-xs font-light italic text-ink">
                 No shopping list yet.
               </p>
@@ -313,7 +258,7 @@ function dimensionsText(
     height ? `H ${height}` : null
   ].filter(Boolean);
 
-  return parts.length > 0 ? `${parts.join(" x ")} cm` : "not available";
+  return parts.length > 0 ? `${parts.join(" × ")} cm` : "not available";
 }
 
 function currentLineTotalAed(item: {

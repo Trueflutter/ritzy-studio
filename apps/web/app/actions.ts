@@ -1325,6 +1325,7 @@ export async function groundProductsAction(formData: FormData) {
   const roomId = String(formData.get("roomId") ?? "");
   const conceptId = String(formData.get("conceptId") ?? "");
   const redirectPath = `/projects/${projectId}/rooms/${roomId}/product-matching`;
+  const successRedirectPath = `/projects/${projectId}/rooms/${roomId}/shopping-list`;
   const supabase = await createClient();
   const {
     data: { user },
@@ -1549,7 +1550,8 @@ export async function groundProductsAction(formData: FormData) {
   await supabase.from("rooms").update({ status: "sourcing" }).eq("id", roomId);
 
   revalidatePath(redirectPath);
-  redirect(`${redirectPath}?message=${encodeURIComponent("Catalog products matched to the selected concept.")}`);
+  revalidatePath(successRedirectPath);
+  redirect(successRedirectPath);
 }
 
 export async function substituteProductAction(formData: FormData) {

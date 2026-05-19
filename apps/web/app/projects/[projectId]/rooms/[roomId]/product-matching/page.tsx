@@ -235,7 +235,7 @@ export default async function ProductMatchingPage({
                 Shopping plan
               </p>
               <h2 className="mt-4 font-display text-display-m font-light italic text-ink">
-                {shoppingList ? "Sourced from the live catalog." : "Source the shopping plan."}
+                {shoppingList ? "Sourced from the live catalog." : "Generate the shopping list."}
               </h2>
               {shoppingList ? (
                 <p className="mt-3 font-body text-body-s text-ink-muted">
@@ -266,10 +266,10 @@ export default async function ProductMatchingPage({
                 <input name="roomId" type="hidden" value={roomId} />
                 <input name="conceptId" type="hidden" value={selectedConcept.id} />
                 <SubmitButton
-                  pendingLabel="Sourcing the shopping plan..."
+                  pendingLabel="Generating shopping list..."
                   variant={shoppingList ? "secondary" : "primary"}
                 >
-                  {shoppingList ? "Refresh matches" : "Source the shopping plan"}
+                  {shoppingList ? "Refresh matches" : "Generate shopping list"}
                 </SubmitButton>
               </form>
             </div>
@@ -377,7 +377,7 @@ export default async function ProductMatchingPage({
                   No pieces sourced yet.
                 </p>
                 <p className="mt-3 max-w-[560px] font-body text-body-s text-ink-secondary">
-                  Press <span className="italic">Source the shopping plan</span> above to match
+                  Press <span className="italic">Generate shopping list</span> above to match
                   catalog products with prices, dimensions, and retailer links.
                 </p>
               </div>
