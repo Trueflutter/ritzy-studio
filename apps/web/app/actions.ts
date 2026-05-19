@@ -76,75 +76,90 @@ async function requireRoomCommerceAccess(roomId: string, redirectPath: string) {
 
 async function hasActiveDesignerSubscription(userId: string) {
   const serviceSupabase = createServiceClient();
-  const { data: designerAccount } = await serviceSupabase
-    .from("designer_accounts")
-    .select("subscription_status, current_period_end")
-    .eq("owner_user_id", userId)
-    .maybeSingle();
+  const { data, error } = await serviceSupabase.rpc("has_active_designer_subscription", {
+    user_id: userId
+  });
 
-  if (!designerAccount) {
-    return false;
+  if (error) {
+    throw new Error(error.message);
   }
 
-  const isActive =
-    designerAccount.subscription_status === "active" ||
-    designerAccount.subscription_status === "trialing";
-  const periodStillValid =
-    !designerAccount.current_period_end ||
-    new Date(designerAccount.current_period_end).getTime() > Date.now();
-
-  return isActive && periodStillValid;
+  return Boolean(data);
 }
 
 async function countOwnedRooms(userId: string) {
   const serviceSupabase = createServiceClient();
-  const { data: projects } = await serviceSupabase
+  const { data: projects, error: projectsError } = await serviceSupabase
     .from("projects")
     .select("id")
     .eq("owner_user_id", userId);
+
+  if (projectsError) {
+    throw new Error(projectsError.message);
+  }
+
   const projectIds = (projects ?? []).map((project) => project.id);
 
   if (projectIds.length === 0) {
     return 0;
   }
 
-  const { count } = await serviceSupabase
+  const { count, error: roomsError } = await serviceSupabase
     .from("rooms")
     .select("id", { count: "exact", head: true })
     .in("project_id", projectIds);
+
+  if (roomsError) {
+    throw new Error(roomsError.message);
+  }
 
   return count ?? 0;
 }
 
 async function requireDesignerFreeRoomAccess(userId: string, roomId: string, redirectPath: string) {
   const serviceSupabase = createServiceClient();
-  const { data: profile } = await serviceSupabase
+  const { data: profile, error: profileError } = await serviceSupabase
     .from("user_profiles")
     .select("intended_mode")
     .eq("user_id", userId)
     .maybeSingle();
+
+  if (profileError) {
+    throw new Error(profileError.message);
+  }
+
   const isDesignerMode = profile?.intended_mode === "designer" || profile?.intended_mode === "both";
 
   if (!isDesignerMode || (await hasActiveDesignerSubscription(userId))) {
     return;
   }
 
-  const { data: projects } = await serviceSupabase
+  const { data: projects, error: projectsError } = await serviceSupabase
     .from("projects")
     .select("id")
     .eq("owner_user_id", userId);
+
+  if (projectsError) {
+    throw new Error(projectsError.message);
+  }
+
   const projectIds = (projects ?? []).map((project) => project.id);
 
   if (projectIds.length === 0) {
     return;
   }
 
-  const { data: roomsResult } = await serviceSupabase
+  const { data: roomsResult, error: roomsError } = await serviceSupabase
     .from("rooms")
     .select("id")
     .in("project_id", projectIds)
     .order("created_at", { ascending: true })
     .order("id", { ascending: true });
+
+  if (roomsError) {
+    throw new Error(roomsError.message);
+  }
+
   const rooms = roomsResult ?? [];
   const firstRoom = rooms[0];
 
@@ -621,11 +636,20 @@ export async function createProjectWithRoomAction(formData: FormData) {
     redirect("/login");
   }
 
-  const { data: profile } = await supabase
+  const { data: profile, error: profileError } = await supabase
     .from("user_profiles")
     .select("intended_mode")
     .eq("user_id", user.id)
     .maybeSingle();
+
+  if (profileError) {
+    throw new Error(profileError.message);
+  }
+
+  if (!profile || profile.intended_mode === "unknown") {
+    redirect("/onboarding");
+  }
+
   const isDesignerMode = profile?.intended_mode === "designer" || profile?.intended_mode === "both";
   const designerIsSubscribed = isDesignerMode ? await hasActiveDesignerSubscription(user.id) : false;
   const existingRoomCount = isDesignerMode ? await countOwnedRooms(user.id) : 0;
