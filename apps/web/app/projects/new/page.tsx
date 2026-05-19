@@ -65,11 +65,10 @@ export default async function NewProjectPage({
           N° 02 — New project
         </p>
         <h1 className="mt-6 font-display text-display-l font-light leading-none tracking-[-0.015em] text-ink">
-          Create the first room
+          Create the project.
         </h1>
         <p className="mt-6 max-w-[58ch] font-body text-body-m text-ink-secondary">
-          Add the project and room details before uploading photographs and building the first
-          design direction.
+          Start with the project details, then name the first room before uploading photographs.
         </p>
 
         {message ? (
@@ -98,38 +97,45 @@ export default async function NewProjectPage({
               </SubmitButton>
             </form>
           ) : (
-            <form action={createProjectWithRoomAction}>
-              <TextInput
-                id="name"
-                label="Project name"
-                name="name"
-                narrative
-                placeholder="villa al barari"
-                required
-              />
-              <TextInput id="clientName" label="Client name" name="clientName" />
-              <TextInput id="location" label="Location" name="location" placeholder="Dubai" />
-
-              <div className="grid gap-4 md:grid-cols-2">
-                <TextInput
-                  id="budgetMinAed"
-                  inputMode="numeric"
-                  label="Budget minimum"
-                  name="budgetMinAed"
-                  placeholder="AED"
-                />
-                <TextInput
-                  id="budgetMaxAed"
-                  inputMode="numeric"
-                  label="Budget maximum"
-                  name="budgetMaxAed"
-                  placeholder="AED"
-                />
-              </div>
-
-              <div className="mt-8 border-t border-line pt-8">
+            <form action={createProjectWithRoomAction} className="space-y-12">
+              <section>
                 <p className="font-body text-caption font-medium uppercase text-ink-muted">
-                  First room
+                  Create project
+                </p>
+                <div className="mt-8 space-y-3">
+                  <TextInput
+                    id="name"
+                    label="Project name"
+                    name="name"
+                    narrative
+                    placeholder="Al Barsha villa..."
+                    required
+                  />
+                  <TextInput id="clientName" label="Your name" name="clientName" placeholder="Ayo Olatoye..." />
+                  <TextInput id="location" label="Location" name="location" placeholder="Dubai..." />
+                </div>
+
+                <div className="mt-2 grid gap-x-8 gap-y-3 md:grid-cols-2">
+                  <TextInput
+                    id="budgetMinAed"
+                    inputMode="numeric"
+                    label="Budget minimum"
+                    name="budgetMinAed"
+                    placeholder="AED 35,000..."
+                  />
+                  <TextInput
+                    id="budgetMaxAed"
+                    inputMode="numeric"
+                    label="Budget maximum"
+                    name="budgetMaxAed"
+                    placeholder="AED 100,000..."
+                  />
+                </div>
+              </section>
+
+              <section className="border-t border-line pt-10">
+                <p className="font-body text-caption font-medium uppercase text-ink-muted">
+                  Create first room
                 </p>
                 <div className="mt-8">
                   <TextInput
@@ -137,22 +143,22 @@ export default async function NewProjectPage({
                     label="Room name"
                     name="roomName"
                     narrative
-                    placeholder="main living room"
+                    placeholder="Living room..."
                     required
                   />
                   <TextInput
                     id="roomType"
                     label="Room type"
                     name="roomType"
-                    placeholder="living room"
+                    placeholder="Living room..."
                     required
                   />
                 </div>
-              </div>
+              </section>
 
-              <div className="mt-12 flex items-center justify-end gap-6">
-                <ButtonLink href="/" trailing="→" variant="quiet">
-                  cancel
+              <div className="flex flex-col-reverse gap-4 border-t border-line pt-8 sm:flex-row sm:items-center sm:justify-between">
+                <ButtonLink href="/" variant="quiet">
+                  Cancel
                 </ButtonLink>
                 <SubmitButton pendingLabel="Creating project...">Continue</SubmitButton>
               </div>

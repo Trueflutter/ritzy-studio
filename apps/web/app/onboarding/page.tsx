@@ -58,8 +58,8 @@ export default async function OnboardingPage({
             </p>
           ) : null}
 
-          <div className="mt-12 grid gap-5 md:grid-cols-2">
-            <Panel className="p-6">
+          <div className="mt-12 grid items-stretch gap-5 md:grid-cols-2">
+            <Panel className="flex h-full flex-col p-8">
               <p className="font-body text-caption font-medium uppercase text-ink-muted">
                 Homeowner
               </p>
@@ -67,18 +67,18 @@ export default async function OnboardingPage({
                 My own space
               </h2>
               <p className="mt-4 font-body text-body-s text-ink-secondary">
-                A guided room flow with visual style choices, fewer questions, and a paid room
-                unlock when the shopping plan is ready.
+                Create one personal room, shape the brief, and unlock shopping links only when the
+                plan is ready.
               </p>
-              <form action={setUserModeAction} className="mt-8">
+              <form action={setUserModeAction} className="mt-auto pt-10">
                 <input name="intendedMode" type="hidden" value="homeowner" />
-                <SubmitButton pendingLabel="Preparing room flow..." variant="secondary">
-                  Use homeowner mode
+                <SubmitButton className="w-full" pendingLabel="Preparing room flow..." variant="secondary">
+                  Homeowner mode
                 </SubmitButton>
               </form>
             </Panel>
 
-            <Panel className="p-6">
+            <Panel className="flex h-full flex-col p-8">
               <p className="font-body text-caption font-medium uppercase text-ink-muted">
                 Designer
               </p>
@@ -86,13 +86,12 @@ export default async function OnboardingPage({
                 Client studio
               </h2>
               <p className="mt-4 font-body text-body-s text-ink-secondary">
-                Create one client room free, see the design direction, then subscribe when you are
-                ready to reveal sourcing, presentations, product swaps, or create more rooms.
+                Create one client room, shape the brief, and subscribe only when sourcing is ready.
               </p>
-              <form action={setUserModeAction} className="mt-8">
+              <form action={setUserModeAction} className="mt-auto pt-10">
                 <input name="intendedMode" type="hidden" value="designer" />
-                <SubmitButton pendingLabel="Preparing studio...">
-                  Use designer mode
+                <SubmitButton className="w-full" pendingLabel="Preparing studio...">
+                  Designer mode
                 </SubmitButton>
               </form>
             </Panel>

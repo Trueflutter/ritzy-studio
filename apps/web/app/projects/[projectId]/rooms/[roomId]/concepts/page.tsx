@@ -4,15 +4,12 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
 import {
-  generateFinalRenderAction,
-  generateInitialConceptAction,
-  groundProductsAction,
   reviseConceptAction,
-  selectConceptAction,
-  substituteProductAction
+  selectConceptAction
 } from "@/app/actions";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
+import { ConceptGenerationPanel } from "./concept-generation-panel";
 
 export const dynamic = "force-dynamic";
 
@@ -21,10 +18,10 @@ export default async function ConceptsPage({
   searchParams
 }: {
   params: Promise<{ projectId: string; roomId: string }>;
-  searchParams: Promise<{ message?: string }>;
+  searchParams: Promise<{ autogenerate?: string; message?: string }>;
 }) {
   const { projectId, roomId } = await params;
-  const { message } = await searchParams;
+  const { autogenerate, message } = await searchParams;
   const supabase = await createClient();
   const {
     data: { user }
@@ -52,10 +49,6 @@ export default async function ConceptsPage({
   }
 
   const serviceSupabase = createServiceClient();
-  const { data: canAccessCommerce = false } = await supabase.rpc("can_access_room_commerce", {
-    room_id: roomId
-  });
-
   const { data: designBrief } = await supabase
     .from("design_briefs")
     .select("id")
@@ -110,64 +103,6 @@ export default async function ConceptsPage({
   );
   const selectedConcept = conceptsWithImages.find((concept) => concept.status === "selected") ?? null;
 
-  const { data: shoppingList } = selectedConcept
-    ? await supabase
-        .from("shopping_lists")
-        .select("*")
-        .eq("room_id", roomId)
-        .eq("concept_id", selectedConcept.id)
-        .limit(1)
-        .maybeSingle()
-    : { data: null };
-
-  const { data: shoppingItems = [] } = shoppingList
-    ? await serviceSupabase
-        .from("shopping_list_items")
-        .select(
-          `
-          *,
-          product:products(
-            *,
-            retailer:retailers(name, domain),
-            dimensions:product_dimensions(width_cm, depth_cm, height_cm, source_text)
-          )
-        `
-        )
-        .eq("shopping_list_id", shoppingList.id)
-        .order("sort_order", { ascending: true })
-    : { data: [] };
-  const { data: finalRenderAssets = [] } = selectedConcept
-    ? await supabase
-        .from("room_assets")
-        .select("*")
-        .eq("room_id", roomId)
-        .eq("asset_type", "final_render")
-        .order("created_at", { ascending: false })
-        .limit(4)
-    : { data: [] };
-  const finalRenders = await Promise.all(
-    canAccessCommerce
-      ? (finalRenderAssets ?? []).map(async (asset) => {
-          const { data } = await serviceSupabase.storage
-            .from("generated-renders")
-            .createSignedUrl(asset.storage_path, 60 * 60);
-
-          return { ...asset, signedUrl: data?.signedUrl ?? null };
-        })
-      : []
-  );
-  const { data: latestRenderJob } = selectedConcept
-    ? await supabase
-        .from("render_jobs")
-        .select("status, error_message, completed_at")
-        .eq("room_id", roomId)
-        .eq("concept_id", selectedConcept.id)
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .maybeSingle()
-    : { data: null };
-  const shoppingItemsList = shoppingItems ?? [];
-
   const canGenerate = Boolean(designBrief && roomPhoto);
 
   return (
@@ -212,15 +147,8 @@ export default async function ConceptsPage({
             </p>
             <div className="mt-3 h-px w-20 bg-ink" />
             <p className="mt-6 font-display text-display-xs font-light italic text-ink">
-              {canGenerate ? "brief and room photo ready" : "brief and room photo required"}
+              {canGenerate ? "generating from saved brief" : "brief and room photo required"}
             </p>
-            <form action={generateInitialConceptAction} className="mt-8">
-              <input name="projectId" type="hidden" value={projectId} />
-              <input name="roomId" type="hidden" value={roomId} />
-              <SubmitButton className="w-full" disabled={!canGenerate} pendingLabel="Generating concept...">
-                Generate concept
-              </SubmitButton>
-            </form>
             <ButtonLink
               className="mt-6 w-full"
               href={`/projects/${projectId}/rooms/${roomId}/brief`}
@@ -230,6 +158,15 @@ export default async function ConceptsPage({
             </ButtonLink>
           </aside>
         </div>
+
+        {conceptsWithImages.length === 0 ? (
+          <ConceptGenerationPanel
+            autoGenerate={autogenerate === "1"}
+            canGenerate={canGenerate}
+            projectId={projectId}
+            roomId={roomId}
+          />
+        ) : null}
 
         <div className="mt-12 grid gap-6 md:grid-cols-2">
           {conceptsWithImages.length > 0 ? (
@@ -309,288 +246,43 @@ export default async function ConceptsPage({
                 </div>
               </article>
             ))
-          ) : (
-            <div className="border border-line bg-surface p-8 md:col-span-2">
-              <p className="font-display text-display-xs font-light italic text-ink">
-                No concepts generated yet.
-              </p>
-              <p className="mt-4 max-w-[560px] font-body text-body-s text-ink-secondary">
-                The first concept uses the uploaded room photo and saved brief. It is an initial
-                design direction, not a shopping-list claim.
-              </p>
-            </div>
-          )}
+          ) : null}
         </div>
 
-        <section className="mt-16 border-t border-line pt-10">
-          <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_340px]">
-            <div>
-              <p className="font-body text-caption font-medium uppercase text-ink-muted">
-                N° 06 — Product Grounding
-              </p>
-              <h2 className="mt-4 font-display text-display-s font-light italic text-ink">
-                Match the selected concept to real catalog products.
-              </h2>
-              <p className="mt-4 max-w-[680px] font-body text-body-s text-ink-secondary">
-                Product cards use catalog records only: retailer, price, URL, dimensions, stock,
-                and warnings come from stored product data.
-              </p>
-            </div>
-
-            <aside className="border border-line bg-surface p-5 lg:self-start">
-              <p className="font-body text-caption font-medium uppercase text-ink-muted">
-                Sourcing Status
-              </p>
-              <div className="mt-3 h-px w-20 bg-ink" />
-              <p className="mt-6 font-display text-display-xs font-light italic text-ink">
-                {selectedConcept ? "selected concept ready" : "select a concept first"}
-              </p>
-              <form action={groundProductsAction} className="mt-8">
-                <input name="projectId" type="hidden" value={projectId} />
-                <input name="roomId" type="hidden" value={roomId} />
-                <input name="conceptId" type="hidden" value={selectedConcept?.id ?? ""} />
-                <SubmitButton className="w-full" disabled={!selectedConcept} pendingLabel="Matching products...">
-                  Match products
-                </SubmitButton>
-              </form>
-              {shoppingList ? (
-                <p className="mt-5 font-body text-body-s text-ink-secondary">
-                  Estimated catalog total: {formatAed(shoppingList.estimated_total_aed)}
+        {selectedConcept ? (
+          <section className="mt-16 border-t border-line pt-10">
+            <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_340px]">
+              <div>
+                <p className="font-body text-caption font-medium uppercase text-ink-muted">
+                  N° 06 - Product Matching
                 </p>
-              ) : null}
-              {shoppingList ? (
+                <h2 className="mt-4 font-display text-display-s font-light italic text-ink">
+                  Next, source the shopping plan.
+                </h2>
+                <p className="mt-4 max-w-[680px] font-body text-body-s text-ink-secondary">
+                  Product matching now opens on its own screen, so this page stays focused on
+                  concept generation, selection, and critique.
+                </p>
+              </div>
+              <aside className="border border-line bg-surface p-5 lg:self-start">
+                <p className="font-body text-caption font-medium uppercase text-ink-muted">
+                  Selected Concept
+                </p>
+                <div className="mt-3 h-px w-20 bg-ink" />
+                <p className="mt-6 font-display text-display-xs font-light italic text-ink">
+                  ready for catalog matching
+                </p>
                 <ButtonLink
-                  className="mt-5 w-full"
-                  href={`/projects/${projectId}/rooms/${roomId}/shopping-list`}
-                  variant="quiet"
+                  className="mt-6 w-full"
+                  href={`/projects/${projectId}/rooms/${roomId}/product-matching`}
                 >
-                  open shopping list
+                  Continue
                 </ButtonLink>
-              ) : null}
-            </aside>
-          </div>
-
-          <div className="mt-8 grid gap-5 md:grid-cols-2 xl:grid-cols-3">
-            {shoppingItemsList.length > 0 ? (
-              shoppingItemsList.map((item) => {
-                const product = item.product;
-                const dimensions = product?.dimensions?.[0];
-                const warningText = [item.dimension_fit_note, item.selection_reason]
-                  .filter(Boolean)
-                  .join(" ");
-
-                return (
-                  <article className="border border-line bg-surface p-4" key={item.id}>
-                    <div className="aspect-[4/3] overflow-hidden bg-page">
-                      {product?.primary_image_url ? (
-                        <Image
-                          alt={`${product.name} product image`}
-                          className="h-full w-full object-cover"
-                          height={600}
-                          unoptimized
-                          src={product.primary_image_url}
-                          width={800}
-                        />
-                      ) : (
-                        <div className="flex h-full items-center justify-center">
-                          <p className="font-display text-body-s italic text-error">
-                            image missing
-                          </p>
-                        </div>
-                      )}
-                    </div>
-                    <p className="mt-5 font-body text-caption font-medium uppercase text-ink-muted">
-                      {product?.retailer?.name ?? "Retailer"} · {item.category}
-                    </p>
-                    <h3 className="mt-3 font-display text-display-xs font-light italic text-ink">
-                      {product?.name ?? "Product unavailable"}
-                    </h3>
-                    <div className="mt-4 space-y-2 font-body text-body-s text-ink-secondary">
-                      <p>
-                        Price: {formatAed(item.unit_price_aed)}
-                        {product?.sale_price_aed ? " sale" : ""}
-                      </p>
-                      <p>Availability: {product?.availability ?? "not available"}</p>
-                      <p>
-                        Dimensions:{" "}
-                        {dimensions?.source_text ??
-                          dimensionsText(dimensions?.width_cm, dimensions?.depth_cm, dimensions?.height_cm)}
-                      </p>
-                    </div>
-                    {warningText ? (
-                      <p className="mt-4 border border-line bg-page px-4 py-3 font-display text-body-s italic text-warning">
-                        {warningText}
-                      </p>
-                    ) : null}
-                    {canAccessCommerce && product?.canonical_url ? (
-                      <a
-                        className="mt-5 inline-flex font-display text-button-quiet italic text-ink transition-colors hover:text-accent-deep"
-                        href={product.canonical_url}
-                        rel="noreferrer"
-                        target="_blank"
-                      >
-                        open retailer page →
-                      </a>
-                    ) : null}
-                    {canAccessCommerce && shoppingList ? (
-                      <form action={substituteProductAction} className="mt-5 border-t border-line pt-5">
-                        <input name="projectId" type="hidden" value={projectId} />
-                        <input name="roomId" type="hidden" value={roomId} />
-                        <input name="shoppingListId" type="hidden" value={shoppingList.id} />
-                        <input name="itemId" type="hidden" value={item.id} />
-                        <label
-                          className="mb-3 block font-body text-caption font-medium uppercase text-ink-muted"
-                          htmlFor={`mode-${item.id}`}
-                        >
-                          Swap request
-                        </label>
-                        <select
-                          className="h-[52px] w-full border border-line-strong bg-transparent px-4 font-body text-body-s text-ink focus:outline focus:outline-2 focus:outline-offset-2 focus:outline-ring"
-                          id={`mode-${item.id}`}
-                          name="mode"
-                        >
-                          <option value="cheaper">cheaper option</option>
-                          <option value="closer_style">closer style</option>
-                          <option value="same_retailer">same retailer</option>
-                          <option value="in_stock">in stock only</option>
-                        </select>
-                        <SubmitButton className="mt-4 w-full" pendingLabel="Finding substitute..." variant="secondary">
-                          Swap this item
-                        </SubmitButton>
-                        <p className="mt-3 font-body text-caption text-ink-muted">
-                          Only this line changes.
-                        </p>
-                      </form>
-                    ) : null}
-                  </article>
-                );
-              })
-            ) : (
-              <div className="border border-line bg-surface p-8 md:col-span-2 xl:col-span-3">
-                <p className="font-display text-display-xs font-light italic text-ink">
-                  No product matches yet.
-                </p>
-                <p className="mt-4 max-w-[560px] font-body text-body-s text-ink-secondary">
-                  Select a concept, then match products from the live catalog records already
-                  ingested into the system.
-                </p>
-              </div>
-            )}
-          </div>
-        </section>
-
-        <section className="mt-16 border-t border-line pt-10">
-          <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_340px]">
-            <div>
-              <p className="font-body text-caption font-medium uppercase text-ink-muted">
-                N° 07 — Final Render
-              </p>
-              <h2 className="mt-4 font-display text-display-s font-light italic text-ink">
-                Generate the client-facing grounded render.
-              </h2>
-              <p className="mt-4 max-w-[680px] font-body text-body-s text-ink-secondary">
-                The render uses the selected product images as visual references where available.
-                It is not a guarantee of exact SKU reproduction; the shopping list remains the
-                source of truth.
-              </p>
-              {latestRenderJob?.status === "failed" ? (
-                <p className="mt-5 border border-line bg-surface px-4 py-3 font-display text-body-s italic text-error">
-                  {latestRenderJob.error_message ?? "Final render failed."}
-                </p>
-              ) : null}
+              </aside>
             </div>
-
-            <aside className="border border-line bg-surface p-5 lg:self-start">
-              <p className="font-body text-caption font-medium uppercase text-ink-muted">
-                Render Status
-              </p>
-              <div className="mt-3 h-px w-20 bg-ink" />
-              <p className="mt-6 font-display text-display-xs font-light italic text-ink">
-                {shoppingList && shoppingItemsList.length > 0 ? "shopping list ready" : "match products first"}
-              </p>
-              <form action={generateFinalRenderAction} className="mt-8">
-                <input name="projectId" type="hidden" value={projectId} />
-                <input name="roomId" type="hidden" value={roomId} />
-                <input name="conceptId" type="hidden" value={selectedConcept?.id ?? ""} />
-                <input name="shoppingListId" type="hidden" value={shoppingList?.id ?? ""} />
-                <SubmitButton
-                  className="w-full"
-                  disabled={!canAccessCommerce || !selectedConcept || !shoppingList || shoppingItemsList.length === 0}
-                  pendingLabel="Generating final render..."
-                >
-                  Generate final render
-                </SubmitButton>
-              </form>
-              {latestRenderJob ? (
-                <p className="mt-5 font-body text-body-s text-ink-secondary">
-                  Latest job: {latestRenderJob.status}
-                </p>
-              ) : null}
-            </aside>
-          </div>
-
-          <div className="mt-8 grid gap-6 md:grid-cols-2">
-            {finalRenders.length > 0 ? (
-              finalRenders.map((render) => (
-                <article className="border border-line bg-surface p-4" key={render.id}>
-                  <div className="flex aspect-[3/2] items-center justify-center bg-page">
-                    {render.signedUrl ? (
-                      <Image
-                        alt="Final grounded room render"
-                        className="h-full w-full object-cover"
-                        height={768}
-                        unoptimized
-                        src={render.signedUrl}
-                        width={1152}
-                      />
-                    ) : (
-                      <p className="font-display text-body-s italic text-error">
-                        final render could not load
-                      </p>
-                    )}
-                  </div>
-                  <p className="mt-4 font-body text-caption font-medium uppercase text-ink-muted">
-                    Final render · {new Date(render.created_at).toLocaleDateString("en-AE")}
-                  </p>
-                </article>
-              ))
-            ) : (
-              <div className="border border-line bg-surface p-8 md:col-span-2">
-                <p className="font-display text-display-xs font-light italic text-ink">
-                  No final render yet.
-                </p>
-                <p className="mt-4 max-w-[560px] font-body text-body-s text-ink-secondary">
-                  Generate after product matching and substitution are complete.
-                </p>
-              </div>
-            )}
-          </div>
-        </section>
+          </section>
+        ) : null}
       </section>
     </main>
   );
-}
-
-function formatAed(value: number | null | undefined) {
-  if (value === null || value === undefined) {
-    return "AED not available";
-  }
-
-  return `AED ${Number(value).toLocaleString("en-AE", {
-    maximumFractionDigits: 0
-  })}`;
-}
-
-function dimensionsText(
-  width: number | null | undefined,
-  depth: number | null | undefined,
-  height: number | null | undefined
-) {
-  const parts = [
-    width ? `W ${width}` : null,
-    depth ? `D ${depth}` : null,
-    height ? `H ${height}` : null
-  ].filter(Boolean);
-
-  return parts.length > 0 ? `${parts.join(" x ")} cm` : "not available";
 }

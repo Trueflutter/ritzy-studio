@@ -1338,6 +1338,7 @@ export type Database = {
         | "room_photo"
         | "floor_plan"
         | "thumbnail"
+        | "inspiration_image"
         | "concept_render"
         | "final_render"
       concept_status: "draft" | "generated" | "selected" | "rejected"
@@ -1510,6 +1511,7 @@ export const Constants = {
         "room_photo",
         "floor_plan",
         "thumbnail",
+        "inspiration_image",
         "concept_render",
         "final_render",
       ],

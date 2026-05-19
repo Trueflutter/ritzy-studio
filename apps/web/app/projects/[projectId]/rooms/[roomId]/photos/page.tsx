@@ -85,10 +85,14 @@ export default async function RoomPhotosPage({
           N° 03 — Photographs
         </p>
         <h1 className="mt-6 font-display text-display-l font-light leading-none tracking-[-0.015em] text-ink">
-          Place the room you would like to redesign.
+          Upload the room you want to redesign.
         </h1>
-        <p className="mt-6 font-body text-body-m text-ink-secondary">
+        <p className="mt-6 max-w-[62ch] font-body text-body-m text-ink-secondary">
           {project.name} · {room.name} · {room.room_type}
+        </p>
+        <p className="mt-4 max-w-[62ch] font-body text-body-s text-ink-secondary">
+          Use a current room photo, or an empty-room photo if you want the system to ignore existing
+          furniture.
         </p>
 
         {message ? (
@@ -138,9 +142,6 @@ export default async function RoomPhotosPage({
         ) : null}
 
         <div className="mt-12 flex items-center justify-end gap-6">
-          <ButtonLink href="/" trailing="→" variant="quiet">
-            skip — I&apos;ll add later
-          </ButtonLink>
           {signedAssets.length > 0 ? (
             <ButtonLink href={`/projects/${projectId}/rooms/${roomId}/brief`}>
               Continue to brief

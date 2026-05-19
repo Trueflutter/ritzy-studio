@@ -4,8 +4,10 @@ import Image from "next/image";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
-import { saveClarifyingAnswersAction, saveDesignBriefAction } from "@/app/actions";
+import { saveDesignBriefAction } from "@/app/actions";
 import { createClient } from "@/lib/supabase/server";
+import { InspirationUploader } from "./inspiration-uploader";
+import { VisualStyleSelector } from "./visual-style-selector";
 
 export const dynamic = "force-dynamic";
 
@@ -67,6 +69,24 @@ export default async function DesignBriefPage({
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();
+  const { data: inspirationAssets = [] } = await supabase
+    .from("room_assets")
+    .select("*")
+    .eq("room_id", roomId)
+    .eq("asset_type", "inspiration_image")
+    .order("created_at", { ascending: true });
+  const signedInspirationAssets = await Promise.all(
+    (inspirationAssets ?? []).map(async (asset) => {
+      const { data } = await supabase.storage
+        .from("room-assets")
+        .createSignedUrl(asset.storage_path, 60 * 60);
+
+      return {
+        ...asset,
+        signedUrl: data?.signedUrl ?? null
+      };
+    })
+  );
 
   const answeredCount = (questions ?? []).filter((question) => question.status === "answered").length;
   const selectedStyleSlugs = stringArrayFromStructuredJson(
@@ -89,7 +109,11 @@ export default async function DesignBriefPage({
         </ButtonLink>
       </header>
 
-      <section className="mx-auto grid max-w-[1120px] gap-12 px-5 py-12 md:px-8 lg:grid-cols-[minmax(0,1fr)_360px] lg:px-12 xl:px-16">
+      <form action={saveDesignBriefAction} className="mx-auto grid max-w-[1120px] gap-12 px-5 py-12 md:px-8 lg:grid-cols-[minmax(0,1fr)_360px] lg:px-12 xl:px-16">
+        <input name="projectId" type="hidden" value={projectId} />
+        <input name="roomId" type="hidden" value={roomId} />
+        <input name="roomType" type="hidden" value={room.room_type} />
+        <input name="existingQuestionCount" type="hidden" value={(questions ?? []).length} />
         <div>
           <p className="font-body text-caption font-medium uppercase text-ink-muted">
             Project — Photos — Brief — Generate — Critique — Match
@@ -112,11 +136,7 @@ export default async function DesignBriefPage({
             </p>
           ) : null}
 
-          <form action={saveDesignBriefAction} className="mt-12">
-            <input name="projectId" type="hidden" value={projectId} />
-            <input name="roomId" type="hidden" value={roomId} />
-            <input name="roomType" type="hidden" value={room.room_type} />
-
+          <div className="mt-12">
             <section className="mb-12 border border-line bg-surface">
               <div className="border-b border-line p-5">
                 <p className="font-body text-caption font-medium uppercase text-ink-muted">
@@ -130,59 +150,53 @@ export default async function DesignBriefPage({
                   language carry the actual brief.
                 </p>
               </div>
-              <div className="grid gap-px bg-line md:grid-cols-2 xl:grid-cols-3">
-                {visualStyleOptions.map((style) => {
-                  const checked = selectedStyleSlugs.includes(style.slug);
-                  const avoided = avoidedStyleSlugs.includes(style.slug);
+              <VisualStyleSelector
+                avoidedStyleSlugs={avoidedStyleSlugs}
+                selectedStyleSlugs={selectedStyleSlugs}
+                styles={visualStyleOptions}
+              />
+            </section>
 
-                  return (
-                    <article className="bg-surface p-4" key={style.slug}>
-                      <label className="group block cursor-pointer">
-                        <input
-                          className="peer sr-only"
-                          defaultChecked={checked}
-                          name="styleSlugs"
-                          type="checkbox"
-                          value={style.slug}
-                        />
-                        <span className="block border border-line bg-page transition-colors duration-standard ease-standard peer-checked:border-ink peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-offset-4 peer-focus-visible:outline-ring">
-                          <span className="relative block aspect-[4/3] overflow-hidden bg-surface-subtle">
-                            <Image
-                              alt={`${style.name} interior style reference`}
-                              className="h-full w-full object-cover transition-transform duration-standard ease-standard group-hover:scale-[1.02]"
-                              height={360}
-                              unoptimized
-                              src={styleImageUrl(style.slug)}
-                              width={480}
-                            />
-                          </span>
-                          <span className="block p-4">
-                            <span className="font-display text-body-l font-light italic text-ink">
-                              {style.name}
-                            </span>
-                            <span className="mt-2 block font-body text-body-s text-ink-secondary">
-                              {style.description}
-                            </span>
-                            <span className="mt-4 inline-flex font-body text-caption font-medium uppercase text-accent-deep">
-                              {checked ? "Selected" : "Select"}
-                            </span>
-                          </span>
-                        </span>
-                      </label>
-                      <label className="mt-3 flex items-start gap-3 border-t border-line pt-3 font-body text-body-s text-ink-secondary">
-                        <input
-                          className="mt-1 size-4 accent-[var(--rs-primary)]"
-                          defaultChecked={avoided}
-                          name="avoidStyleSlugs"
-                          type="checkbox"
-                          value={style.slug}
-                        />
-                        Not this direction
-                      </label>
-                    </article>
-                  );
-                })}
+            <section className="mb-12 border border-line bg-surface p-5">
+              <p className="font-body text-caption font-medium uppercase text-ink-muted">
+                Inspiration images
+              </p>
+              <h2 className="mt-4 font-display text-display-s font-light italic text-ink">
+                Add rooms, palettes, or details you already like.
+              </h2>
+              <p className="mt-4 max-w-[62ch] font-body text-body-s text-ink-secondary">
+                These references help the system infer colour, material, and mood before it asks
+                follow-up questions.
+              </p>
+              <div className="mt-6">
+                <InspirationUploader
+                  existingCount={signedInspirationAssets.length}
+                  roomId={roomId}
+                  userId={user.id}
+                />
               </div>
+              {signedInspirationAssets.length > 0 ? (
+                <div className="mt-6 grid grid-cols-3 gap-3">
+                  {signedInspirationAssets.map((asset, index) => (
+                    <figure className="border border-line bg-page p-2" key={asset.id}>
+                      <div className="flex aspect-square items-center justify-center bg-surface-subtle">
+                        {asset.signedUrl ? (
+                          <Image
+                            alt={`Inspiration reference ${index + 1}`}
+                            className="h-full w-full object-cover"
+                            height={180}
+                            unoptimized
+                            src={asset.signedUrl}
+                            width={180}
+                          />
+                        ) : (
+                          <p className="font-display text-body-s italic text-error">missing</p>
+                        )}
+                      </div>
+                    </figure>
+                  ))}
+                </div>
+              ) : null}
             </section>
 
             <Textarea
@@ -197,15 +211,23 @@ export default async function DesignBriefPage({
               id="colorNotes"
               label="Colour preferences"
               name="colorNotes"
-              placeholder="bone, olive, walnut, muted ochre; avoid cool grey..."
+              placeholder="Tell us the colours you want, and anything to avoid..."
             />
-            <Textarea
-              defaultValue={designBrief?.budget_notes ?? ""}
-              id="budgetNotes"
-              label="Budget range and priorities"
+            <input
               name="budgetNotes"
-              placeholder="AED 35,000 total; invest in sofa and lighting, save on accessories..."
+              type="hidden"
+              value={project.budget_max_aed ? `AED ${Number(project.budget_max_aed).toLocaleString("en-AE")} maximum` : ""}
             />
+            {project.budget_min_aed || project.budget_max_aed ? (
+              <div className="mb-9 border border-line bg-surface px-5 py-4">
+                <p className="font-body text-caption font-medium uppercase text-ink-muted">
+                  Budget
+                </p>
+                <p className="mt-2 font-body text-body-m text-ink">
+                  {formatBudget(project.budget_min_aed, project.budget_max_aed)}
+                </p>
+              </div>
+            ) : null}
             <Textarea
               defaultValue={designBrief?.functional_requirements ?? ""}
               id="functionalRequirements"
@@ -272,20 +294,13 @@ export default async function DesignBriefPage({
 
             <div className="mt-12 flex flex-col gap-4 border-t border-line pt-8 md:flex-row md:items-center md:justify-between">
               <ButtonLink href={`/projects/${projectId}/rooms/${roomId}/photos`} variant="quiet">
-                back to photos
+                Back to photos
               </ButtonLink>
-              <div className="flex flex-col gap-4 md:flex-row md:items-center">
-                {designBrief ? (
-                  <ButtonLink href={`/projects/${projectId}/rooms/${roomId}/concepts`} variant="secondary">
-                    open concepts
-                  </ButtonLink>
-                ) : null}
-                <SubmitButton pendingLabel="Saving brief and preparing questions...">
-                  Save brief
-                </SubmitButton>
-              </div>
+              <SubmitButton pendingLabel={(questions ?? []).length > 0 ? "Starting concept generation..." : "Preparing questions..."}>
+                Next
+              </SubmitButton>
             </div>
-          </form>
+          </div>
         </div>
 
         <aside className="border border-line bg-surface p-5 lg:sticky lg:top-8 lg:self-start">
@@ -300,9 +315,7 @@ export default async function DesignBriefPage({
           </p>
 
           {questions && questions.length > 0 ? (
-            <form action={saveClarifyingAnswersAction} className="mt-8">
-              <input name="projectId" type="hidden" value={projectId} />
-              <input name="roomId" type="hidden" value={roomId} />
+            <div className="mt-8">
               {questions.map((question, index) => (
                 <div className="border-t border-line py-6 first:border-t-0 first:pt-0" key={question.id}>
                   <p className="font-body text-caption font-medium uppercase text-ink-muted">
@@ -318,10 +331,10 @@ export default async function DesignBriefPage({
                   />
                 </div>
               ))}
-              <SubmitButton className="w-full" pendingLabel="Saving answers..." variant="secondary">
-                Save answers
-              </SubmitButton>
-            </form>
+              <p className="border-t border-line pt-6 font-body text-body-s text-ink-secondary">
+                The Next button saves these answers and starts concept generation.
+              </p>
+            </div>
           ) : (
             <div className="mt-8 border-t border-line pt-6">
               <p className="font-body text-body-s text-ink-secondary">
@@ -331,9 +344,21 @@ export default async function DesignBriefPage({
             </div>
           )}
         </aside>
-      </section>
+      </form>
     </main>
   );
+}
+
+function formatBudget(min: number | null, max: number | null) {
+  if (min && max) {
+    return `AED ${Number(min).toLocaleString("en-AE")} to AED ${Number(max).toLocaleString("en-AE")}`;
+  }
+
+  if (max) {
+    return `Up to AED ${Number(max).toLocaleString("en-AE")}`;
+  }
+
+  return `From AED ${Number(min).toLocaleString("en-AE")}`;
 }
 
 function stringArrayFromStructuredJson(value: unknown, key: "likedStyleSlugs" | "avoidedStyleSlugs") {
@@ -350,23 +375,4 @@ function stringArrayFromStructuredJson(value: unknown, key: "likedStyleSlugs" | 
   return Array.isArray(possibleValues)
     ? possibleValues.filter((item): item is string => typeof item === "string")
     : [];
-}
-
-function styleImageUrl(slug: string) {
-  const images: Record<string, string> = {
-    "warm-minimal":
-      "https://images.unsplash.com/photo-1618221195710-dd6b41faaea6?auto=format&fit=crop&w=960&q=80",
-    "modern-organic":
-      "https://images.unsplash.com/photo-1600607687939-ce8a6c25118c?auto=format&fit=crop&w=960&q=80",
-    "quiet-luxury":
-      "https://images.unsplash.com/photo-1616486338812-3dadae4b4ace?auto=format&fit=crop&w=960&q=80",
-    "classic-contemporary":
-      "https://images.unsplash.com/photo-1600210492486-724fe5c67fb0?auto=format&fit=crop&w=960&q=80",
-    "coastal-light":
-      "https://images.unsplash.com/photo-1615874694520-474822394e73?auto=format&fit=crop&w=960&q=80",
-    "earthy-rustic":
-      "https://images.unsplash.com/photo-1617103996702-96ff29b1c467?auto=format&fit=crop&w=960&q=80"
-  };
-
-  return images[slug] ?? images["warm-minimal"];
 }

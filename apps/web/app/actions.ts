@@ -216,6 +216,29 @@ export async function signUpAction(formData: FormData) {
   redirect("/");
 }
 
+export async function requestPasswordResetAction(formData: FormData) {
+  const email = String(formData.get("email") ?? "").trim();
+  const supabase = await createClient();
+
+  if (!email) {
+    redirect(`/login?message=${encodeURIComponent("Enter your email address to receive a reset link.")}`);
+  }
+
+  const { error } = await supabase.auth.resetPasswordForEmail(email, {
+    redirectTo: `${currentAppUrl()}/login`
+  });
+
+  if (error) {
+    redirect(`/login?message=${encodeURIComponent(error.message)}`);
+  }
+
+  redirect(
+    `/login?message=${encodeURIComponent(
+      "If that email has an account, a password reset link has been sent."
+    )}`
+  );
+}
+
 export async function signOutAction() {
   const supabase = await createClient();
   await supabase.auth.signOut();
@@ -717,6 +740,7 @@ export async function saveDesignBriefAction(formData: FormData) {
     ceilingHeightCm: optionalNumber(formData, "ceilingHeightCm"),
     measurementNotes: optionalString(formData, "measurementNotes")
   });
+  const existingQuestionCount = Number(formData.get("existingQuestionCount") ?? "0");
 
   const redirectPath = `/projects/${parsed.projectId}/rooms/${parsed.roomId}/brief`;
   const supabase = await createClient();
@@ -739,6 +763,14 @@ export async function saveDesignBriefAction(formData: FormData) {
   if (!room) {
     redirect("/");
   }
+
+  const answerUpdates = Array.from(formData.entries())
+    .filter(([key]) => key.startsWith("answer:"))
+    .map(([key, value]) => ({
+      id: key.replace("answer:", ""),
+      answer: String(value ?? "").trim()
+    }))
+    .filter((update) => update.id.length > 0);
 
   const hasMeasurements =
     parsed.wallLengthCm !== undefined ||
@@ -844,13 +876,52 @@ export async function saveDesignBriefAction(formData: FormData) {
 
   await supabase.from("rooms").update({ status: "briefing" }).eq("id", parsed.roomId);
 
+  const { data: inspirationAssets = [] } = await supabase
+    .from("room_assets")
+    .select("storage_path")
+    .eq("room_id", parsed.roomId)
+    .eq("asset_type", "inspiration_image")
+    .order("created_at", { ascending: true })
+    .limit(6);
+
+  const signedInspirationUrls = (
+    await Promise.all(
+      (inspirationAssets ?? []).map(async (asset) => {
+        const { data } = await supabase.storage
+          .from("room-assets")
+          .createSignedUrl(asset.storage_path, 60 * 30);
+
+        return data?.signedUrl ?? null;
+      })
+    )
+  ).filter((url): url is string => Boolean(url));
+
+  if (answerUpdates.length > 0) {
+    for (const update of answerUpdates) {
+      await supabase
+        .from("clarifying_questions")
+        .update({
+          answer: update.answer.length > 0 ? update.answer : null,
+          status: update.answer.length > 0 ? "answered" : "open",
+          answered_at: update.answer.length > 0 ? new Date().toISOString() : null
+        })
+        .eq("id", update.id);
+    }
+  }
+
+  if (existingQuestionCount > 0) {
+    revalidatePath(redirectPath);
+    redirect(`/projects/${parsed.projectId}/rooms/${parsed.roomId}/concepts?autogenerate=1`);
+  }
+
   const serviceSupabase = createServiceClient();
   const inputSummary = {
     roomType: parsed.roomType,
     styleNotes: resolvedStyleNotes || null,
     colorNotes: parsed.colorNotes ?? null,
     budgetNotes: parsed.budgetNotes ?? null,
-    hasMeasurements
+    hasMeasurements,
+    inspirationAssetCount: signedInspirationUrls.length
   };
 
   const { data: job, error: jobError } = await serviceSupabase
@@ -872,9 +943,12 @@ export async function saveDesignBriefAction(formData: FormData) {
     throw new Error(jobError.message);
   }
 
+  let shouldGenerateAfterBrief = false;
+
   try {
     const result = await generateClarifyingQuestions({
       roomType: parsed.roomType,
+      inspirationImageUrls: signedInspirationUrls,
       styleNotes: resolvedStyleNotes || undefined,
       colorNotes: parsed.colorNotes,
       budgetNotes: parsed.budgetNotes,
@@ -920,6 +994,8 @@ export async function saveDesignBriefAction(formData: FormData) {
         throw new Error(questionsError.message);
       }
     }
+
+    shouldGenerateAfterBrief = result.questions.length === 0;
   } catch (error) {
     await serviceSupabase
       .from("ai_jobs")
@@ -934,7 +1010,11 @@ export async function saveDesignBriefAction(formData: FormData) {
   }
 
   revalidatePath(redirectPath);
-  redirect(`${redirectPath}?message=${encodeURIComponent("Brief saved. Review any clarifying questions before concepts.")}`);
+  if (shouldGenerateAfterBrief) {
+    redirect(`/projects/${parsed.projectId}/rooms/${parsed.roomId}/concepts?autogenerate=1`);
+  }
+
+  redirect(`${redirectPath}?message=${encodeURIComponent("Answer the clarifying questions, then continue to generate the concept.")}`);
 }
 
 export async function saveClarifyingAnswersAction(formData: FormData) {
@@ -1030,6 +1110,26 @@ export async function generateInitialConceptAction(formData: FormData) {
     .from("room-assets")
     .createSignedUrl(roomPhoto.storage_path, 60 * 30);
 
+  const { data: inspirationAssets = [] } = await supabase
+    .from("room_assets")
+    .select("id, storage_path")
+    .eq("room_id", roomId)
+    .eq("asset_type", "inspiration_image")
+    .order("created_at", { ascending: true })
+    .limit(6);
+
+  const signedInspirationUrls = (
+    await Promise.all(
+      (inspirationAssets ?? []).map(async (asset) => {
+        const { data } = await supabase.storage
+          .from("room-assets")
+          .createSignedUrl(asset.storage_path, 60 * 30);
+
+        return data?.signedUrl ?? null;
+      })
+    )
+  ).filter((url): url is string => Boolean(url));
+
   const { data: photoBlob, error: downloadError } = await supabase.storage
     .from("room-assets")
     .download(roomPhoto.storage_path);
@@ -1068,6 +1168,7 @@ export async function generateInitialConceptAction(formData: FormData) {
         roomId,
         designBriefId: designBrief.id,
         roomPhotoAssetId: roomPhoto.id,
+        inspirationAssetCount: signedInspirationUrls.length,
         answeredQuestionCount: answeredQuestions?.length ?? 0
       }
     })
@@ -1085,6 +1186,7 @@ export async function generateInitialConceptAction(formData: FormData) {
       roomPhotoUrl: signedPhoto.signedUrl,
       roomPhotoBytes: photoBytes,
       roomPhotoMimeType: roomPhoto.mime_type,
+      inspirationImageUrls: signedInspirationUrls,
       styleNotes: designBrief.style_notes,
       colorNotes: designBrief.color_notes,
       budgetNotes: designBrief.budget_notes,
@@ -1213,7 +1315,7 @@ export async function selectConceptAction(formData: FormData) {
   await supabase.from("concepts").update({ status: "rejected" }).eq("room_id", roomId);
   await supabase.from("concepts").update({ status: "selected" }).eq("id", conceptId);
 
-  const redirectPath = `/projects/${projectId}/rooms/${roomId}/concepts`;
+  const redirectPath = `/projects/${projectId}/rooms/${roomId}/product-matching`;
   revalidatePath(redirectPath);
   redirect(`${redirectPath}?message=${encodeURIComponent("Concept selected for sourcing.")}`);
 }
@@ -1222,7 +1324,7 @@ export async function groundProductsAction(formData: FormData) {
   const projectId = String(formData.get("projectId") ?? "");
   const roomId = String(formData.get("roomId") ?? "");
   const conceptId = String(formData.get("conceptId") ?? "");
-  const redirectPath = `/projects/${projectId}/rooms/${roomId}/concepts`;
+  const redirectPath = `/projects/${projectId}/rooms/${roomId}/product-matching`;
   const supabase = await createClient();
   const {
     data: { user },
@@ -1455,7 +1557,7 @@ export async function substituteProductAction(formData: FormData) {
   const shoppingListId = String(formData.get("shoppingListId") ?? "");
   const itemId = String(formData.get("itemId") ?? "");
   const mode = substitutionModeSchema.parse(String(formData.get("mode") ?? "cheaper"));
-  const redirectPath = `/projects/${projectId}/rooms/${roomId}/concepts`;
+  const redirectPath = `/projects/${projectId}/rooms/${roomId}/product-matching`;
   const supabase = await createClient();
   const {
     data: { user },
@@ -1639,7 +1741,7 @@ export async function generateFinalRenderAction(formData: FormData) {
   const roomId = String(formData.get("roomId") ?? "");
   const conceptId = String(formData.get("conceptId") ?? "");
   const shoppingListId = String(formData.get("shoppingListId") ?? "");
-  const redirectPath = `/projects/${projectId}/rooms/${roomId}/concepts`;
+  const redirectPath = `/projects/${projectId}/rooms/${roomId}/product-matching`;
   const supabase = await createClient();
   const {
     data: { user },

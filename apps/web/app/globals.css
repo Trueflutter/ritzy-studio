@@ -180,3 +180,59 @@ select {
     transition-duration: 1ms !important;
   }
 }
+
+.generation-orbit {
+  position: absolute;
+  inset: 50%;
+  height: 220px;
+  width: 220px;
+  transform: translate(-50%, -50%);
+}
+
+.generation-orbit span {
+  position: absolute;
+  inset: 0;
+  border: 1px solid var(--rs-border-strong);
+  animation: generation-orbit 4.8s var(--rs-ease-standard) infinite;
+}
+
+.generation-orbit span:nth-child(2) {
+  animation-delay: 600ms;
+  transform: rotate(35deg) scale(0.78);
+}
+
+.generation-orbit span:nth-child(3) {
+  animation-delay: 1200ms;
+  transform: rotate(70deg) scale(0.56);
+}
+
+.generation-step {
+  animation: generation-step 3.2s var(--rs-ease-standard) infinite;
+}
+
+@keyframes generation-orbit {
+  0% {
+    opacity: 0.18;
+    transform: rotate(0deg) scale(0.58);
+  }
+  50% {
+    opacity: 0.65;
+    transform: rotate(135deg) scale(1);
+  }
+  100% {
+    opacity: 0.18;
+    transform: rotate(270deg) scale(0.58);
+  }
+}
+
+@keyframes generation-step {
+  0%,
+  100% {
+    border-color: var(--rs-border);
+    color: var(--rs-text-muted);
+  }
+  42% {
+    border-color: var(--rs-accent-deep);
+    color: var(--rs-text);
+  }
+}

@@ -28,6 +28,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 export type GenerateClarifyingQuestionsInput = {
   roomType: string;
+  inspirationImageUrls?: string[];
   styleNotes?: string;
   colorNotes?: string;
   budgetNotes?: string;
@@ -57,6 +58,7 @@ export type GenerateInitialConceptInput = {
   roomPhotoUrl: string;
   roomPhotoBytes: Buffer;
   roomPhotoMimeType: string;
+  inspirationImageUrls?: string[];
   styleNotes?: string | null;
   colorNotes?: string | null;
   budgetNotes?: string | null;
@@ -210,6 +212,7 @@ export async function generateClarifyingQuestions(
 ): Promise<GenerateClarifyingQuestionsResult> {
   const env = parseServerEnv(process.env);
   const client = new OpenAI({ apiKey: env.OPENAI_API_KEY });
+  const { inspirationImageUrls, ...briefInput } = input;
 
   const response = await client.responses.create({
     model: env.OPENAI_TEXT_MODEL,
@@ -220,7 +223,23 @@ export async function generateClarifyingQuestions(
       },
       {
         role: "user",
-        content: JSON.stringify(input)
+        content: [
+          {
+            type: "input_text",
+            text: JSON.stringify(briefInput)
+          },
+          ...(inspirationImageUrls ?? []).flatMap((imageUrl, index) => [
+            {
+              type: "input_text" as const,
+              text: `User inspiration image ${index + 1}. Use this to infer style, colour, materials, and mood so you only ask questions that are still genuinely unresolved.`
+            },
+            {
+              type: "input_image" as const,
+              image_url: imageUrl,
+              detail: "high" as const
+            }
+          ])
+        ]
       }
     ],
     text: {
@@ -379,7 +398,18 @@ export async function generateInitialConcept(
             type: "input_image",
             image_url: input.roomPhotoUrl,
             detail: "high"
-          }
+          },
+          ...(input.inspirationImageUrls ?? []).flatMap((imageUrl, index) => [
+            {
+              type: "input_text" as const,
+              text: `User inspiration image ${index + 1}. Extract colour, material, mood, composition, and style cues only. Do not copy private artwork or exact furniture unless the user explicitly requested that in the brief.`
+            },
+            {
+              type: "input_image" as const,
+              image_url: imageUrl,
+              detail: "high" as const
+            }
+          ])
         ]
       }
     ],
@@ -402,12 +432,17 @@ export async function generateInitialConcept(
     direction.concept.generationPrompt,
     "",
     "Use the uploaded room photo as the base image.",
+    input.inspirationImageUrls?.length
+      ? "Use the uploaded inspiration images as style references for palette, materials, atmosphere, and composition. Do not reproduce them exactly."
+      : null,
     "Preserve visible architecture, walls, windows, doors, ceiling details, AC vents, sockets, built-ins, and fixed bathroom fixtures where present.",
     "Redesign movable furniture, lighting, textiles, accessories, and decor according to the concept direction.",
     "Output must look like a photorealistic editorial interior photograph, not an illustration, 3D showroom render, sketch, or mood board.",
     "Use physically plausible scale, natural shadows, realistic upholstery grain, wood texture, rug fibers, wall finish, and lighting falloff.",
     "Keep the source-photo camera perspective and lens feel. Do not add text labels, prices, product names, or retailer claims."
-  ].join("\n");
+  ]
+    .filter(Boolean)
+    .join("\n");
 
   const imageResponse = await client.images.edit({
     model: env.OPENAI_IMAGE_MODEL,
