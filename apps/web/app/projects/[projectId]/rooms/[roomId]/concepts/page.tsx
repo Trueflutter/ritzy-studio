@@ -171,16 +171,16 @@ export default async function ConceptsPage({
         <div className="mt-12 grid gap-6 md:grid-cols-2">
           {conceptsWithImages.length > 0 ? (
             conceptsWithImages.map((concept) => (
-              <article className="border border-line bg-surface p-4" key={concept.id}>
-                <div className="flex aspect-[3/2] items-center justify-center bg-page">
+              <article className="border border-line bg-surface p-[14px]" key={concept.id}>
+                <div className="flex aspect-[4/3] items-center justify-center overflow-hidden bg-page">
                   {concept.signedUrl ? (
                     <Image
                       alt={`${concept.title} generated room concept`}
                       className="h-full w-full object-cover"
-                      height={768}
+                      height={900}
                       unoptimized
                       src={concept.signedUrl}
-                      width={1152}
+                      width={1200}
                     />
                   ) : (
                     <p className="font-display text-body-s italic text-error">
@@ -188,61 +188,63 @@ export default async function ConceptsPage({
                     </p>
                   )}
                 </div>
-                <p className="mt-5 font-body text-caption font-medium uppercase text-ink-muted">
-                  {concept.status}
-                </p>
-                <h2 className="mt-3 font-display text-display-xs font-light italic text-ink">
-                  {concept.title}
-                </h2>
-                {concept.description ? (
-                  <p className="mt-4 whitespace-pre-line font-body text-body-s text-ink-secondary">
-                    {concept.description}
-                  </p>
-                ) : null}
-                <div className="mt-6 flex flex-col gap-4 border-t border-line pt-5 md:flex-row md:items-center md:justify-between">
-                  <form action={selectConceptAction}>
-                    <input name="projectId" type="hidden" value={projectId} />
-                    <input name="roomId" type="hidden" value={roomId} />
-                    <input name="conceptId" type="hidden" value={concept.id} />
-                    <SubmitButton
-                      disabled={concept.status === "selected"}
-                      pendingLabel="Selecting..."
-                      variant={concept.status === "selected" ? "secondary" : "primary"}
-                    >
-                      {concept.status === "selected" ? "Selected" : "Select concept"}
-                    </SubmitButton>
-                  </form>
-                </div>
-                <div className="mt-6 border-t border-line pt-5">
+                <div className="mt-5 border-t border-line px-[18px] pb-[18px] pt-5">
                   <p className="font-body text-caption font-medium uppercase text-ink-muted">
-                    Critique And Revise
+                    {concept.status}
                   </p>
-                  {(critiquesByConcept.get(concept.id) ?? []).length > 0 ? (
-                    <div className="mt-4 space-y-3">
-                      {(critiquesByConcept.get(concept.id) ?? []).map((critique) => (
-                        <p
-                          className="border border-line bg-page px-4 py-3 font-display text-body-s italic text-ink-secondary"
-                          key={critique.id}
-                        >
-                          {critique.critique_text}
-                        </p>
-                      ))}
-                    </div>
+                  <h2 className="mt-3 font-display text-display-xs font-light italic text-ink">
+                    {concept.title}
+                  </h2>
+                  {concept.description ? (
+                    <p className="mt-4 whitespace-pre-line font-body text-body-s text-ink-secondary">
+                      {concept.description}
+                    </p>
                   ) : null}
-                  <form action={reviseConceptAction} className="mt-5">
-                    <input name="projectId" type="hidden" value={projectId} />
-                    <input name="roomId" type="hidden" value={roomId} />
-                    <input name="conceptId" type="hidden" value={concept.id} />
-                    <Textarea
-                      id={`critique-${concept.id}`}
-                      label="Designer critique"
-                      name="critique"
-                      placeholder="make the palette warmer, keep the sofa placement, reduce ornament..."
-                    />
-                    <SubmitButton className="w-full" pendingLabel="Generating revision..." variant="secondary">
-                      Generate revision
-                    </SubmitButton>
-                  </form>
+                  <div className="mt-6 flex flex-col gap-4 border-t border-line pt-5 md:flex-row md:items-center md:justify-between">
+                    <form action={selectConceptAction}>
+                      <input name="projectId" type="hidden" value={projectId} />
+                      <input name="roomId" type="hidden" value={roomId} />
+                      <input name="conceptId" type="hidden" value={concept.id} />
+                      <SubmitButton
+                        disabled={concept.status === "selected"}
+                        pendingLabel="Selecting..."
+                        variant={concept.status === "selected" ? "secondary" : "primary"}
+                      >
+                        {concept.status === "selected" ? "Selected" : "Select concept"}
+                      </SubmitButton>
+                    </form>
+                  </div>
+                  <div className="mt-6 border-t border-line pt-5">
+                    <p className="font-body text-caption font-medium uppercase text-ink-muted">
+                      Critique And Revise
+                    </p>
+                    {(critiquesByConcept.get(concept.id) ?? []).length > 0 ? (
+                      <div className="mt-4 space-y-3">
+                        {(critiquesByConcept.get(concept.id) ?? []).map((critique) => (
+                          <p
+                            className="border border-line bg-page px-4 py-3 font-display text-body-s italic text-ink-secondary"
+                            key={critique.id}
+                          >
+                            {critique.critique_text}
+                          </p>
+                        ))}
+                      </div>
+                    ) : null}
+                    <form action={reviseConceptAction} className="mt-5">
+                      <input name="projectId" type="hidden" value={projectId} />
+                      <input name="roomId" type="hidden" value={roomId} />
+                      <input name="conceptId" type="hidden" value={concept.id} />
+                      <Textarea
+                        id={`critique-${concept.id}`}
+                        label="Designer critique"
+                        name="critique"
+                        placeholder="make the palette warmer, keep the sofa placement, reduce ornament..."
+                      />
+                      <SubmitButton className="w-full" pendingLabel="Generating revision..." variant="secondary">
+                        Generate revision
+                      </SubmitButton>
+                    </form>
+                  </div>
                 </div>
               </article>
             ))
