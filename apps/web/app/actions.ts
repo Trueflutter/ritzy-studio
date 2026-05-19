@@ -1395,7 +1395,8 @@ export async function groundProductsAction(formData: FormData) {
     .filter((candidate): candidate is ProductMatchCandidate => Boolean(candidate));
 
   if (candidates.length === 0) {
-    redirect(`${redirectPath}?message=${encodeURIComponent("No catalog products are available yet. Run ingestion first.")}`);
+    const message = catalogUnavailableMessage(products ?? []);
+    redirect(`${redirectPath}?message=${encodeURIComponent(message)}`);
   }
 
   const baseConceptText = `${concept.title}\n${concept.description ?? ""}`;
@@ -2254,6 +2255,32 @@ function productToMatchCandidate(product: ProductRow): ProductMatchCandidate | n
         }
       : null
   };
+}
+
+function catalogUnavailableMessage(products: ProductRow[]) {
+  if (products.length === 0) {
+    return "The shopping catalog is refreshing. Please try matching products again in a minute.";
+  }
+
+  const activeRetailerProducts = products.filter((product) => product.retailer?.status === "active");
+  if (activeRetailerProducts.length === 0) {
+    return "The shopping catalog is waiting for an approved retailer. Please try again shortly.";
+  }
+
+  const inStockProducts = activeRetailerProducts.filter((product) => {
+    const availability = product.availability?.toLowerCase() ?? "";
+    return !(
+      availability.includes("out of stock") ||
+      availability.includes("sold out") ||
+      availability.includes("unavailable")
+    );
+  });
+
+  if (inStockProducts.length === 0) {
+    return "The approved catalog is refreshing current availability. Please try again shortly.";
+  }
+
+  return "The shopping catalog is refreshing eligible products. Please try again shortly.";
 }
 
 function shortlistSourcingCandidates(ranked: RankedProductMatch[]) {

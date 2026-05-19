@@ -11,6 +11,16 @@ export async function runCatalogIngestion({
   limit?: number;
 }) {
   const compliance = adapter.getComplianceNotes ? await adapter.getComplianceNotes() : {};
+  const { data: existingRetailer, error: existingRetailerError } = await supabase
+    .from("retailers")
+    .select("status")
+    .eq("adapter_key", adapter.key)
+    .maybeSingle();
+
+  if (existingRetailerError) {
+    throw new Error(existingRetailerError.message);
+  }
+
   const { data: retailer, error: retailerError } = await supabase
     .from("retailers")
     .upsert(
@@ -19,7 +29,7 @@ export async function runCatalogIngestion({
         domain: adapter.retailer.domain,
         country: adapter.retailer.country ?? "AE",
         adapter_key: adapter.key,
-        status: adapter.retailer.status ?? "candidate",
+        status: existingRetailer?.status ?? adapter.retailer.status ?? "candidate",
         robots_notes: compliance.robotsNotes ?? adapter.retailer.robotsNotes ?? null,
         terms_notes: compliance.termsNotes ?? adapter.retailer.termsNotes ?? null
       },
