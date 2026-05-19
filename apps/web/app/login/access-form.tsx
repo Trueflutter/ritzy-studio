@@ -18,22 +18,24 @@ export function AccessForm() {
         role="tablist"
       >
         <button
+          aria-label="Returning user"
           aria-selected={mode === "signin"}
           className={modeButtonClass(mode === "signin")}
           onClick={() => setMode("signin")}
           role="tab"
           type="button"
         >
-          Returning user
+          Returning
         </button>
         <button
+          aria-label="Create account"
           aria-selected={mode === "signup"}
           className={modeButtonClass(mode === "signup")}
           onClick={() => setMode("signup")}
           role="tab"
           type="button"
         >
-          Create account
+          New user
         </button>
       </div>
 
