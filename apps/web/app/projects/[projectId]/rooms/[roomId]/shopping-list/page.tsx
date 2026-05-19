@@ -5,7 +5,10 @@ import { notFound, redirect } from "next/navigation";
 
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
-import { createHomeownerRoomUnlockCheckoutAction } from "@/app/actions";
+import {
+  createDesignerSubscriptionCheckoutAction,
+  createHomeownerRoomUnlockCheckoutAction
+} from "@/app/actions";
 
 export const dynamic = "force-dynamic";
 
@@ -74,6 +77,12 @@ export default async function ShoppingListPage({
   const { data: canAccessCommerce = false } = await supabase.rpc("can_access_room_commerce", {
     room_id: roomId
   });
+  const { data: profile } = await supabase
+    .from("user_profiles")
+    .select("intended_mode")
+    .eq("user_id", user.id)
+    .maybeSingle();
+  const isDesignerMode = profile?.intended_mode === "designer" || profile?.intended_mode === "both";
 
   return (
     <main className="min-h-dvh bg-page text-ink">
@@ -135,7 +144,22 @@ export default async function ShoppingListPage({
             <p className="mt-4 font-body text-body-s text-ink-secondary">
               {listItems.length} catalog item{listItems.length === 1 ? "" : "s"} in draft.
             </p>
-            {!canAccessCommerce ? (
+            {!canAccessCommerce && isDesignerMode ? (
+              <form action={createDesignerSubscriptionCheckoutAction} className="mt-6 border-t border-line pt-5">
+                <input
+                  name="returnTo"
+                  type="hidden"
+                  value={`/projects/${projectId}/rooms/${roomId}/shopping-list`}
+                />
+                <p className="mb-5 font-body text-body-s text-ink-secondary">
+                  Start the designer plan to reveal retailer links, presentations, product swaps,
+                  final renders, and additional rooms.
+                </p>
+                <SubmitButton className="w-full" pendingLabel="Opening secure checkout...">
+                  Start designer plan
+                </SubmitButton>
+              </form>
+            ) : !canAccessCommerce ? (
               <form action={createHomeownerRoomUnlockCheckoutAction} className="mt-6 border-t border-line pt-5">
                 <input name="projectId" type="hidden" value={projectId} />
                 <input name="roomId" type="hidden" value={roomId} />

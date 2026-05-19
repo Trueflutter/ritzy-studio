@@ -55,6 +55,13 @@ function currentAppUrl() {
   return appUrl();
 }
 
+function checkoutRedirectUrl(baseUrl: string, returnTo: string | undefined, message: string) {
+  const safePath = returnTo?.startsWith("/") && !returnTo.startsWith("//") ? returnTo : "/";
+  const url = new URL(safePath, baseUrl);
+  url.searchParams.set("message", message);
+  return url.toString();
+}
+
 async function canAccessRoomCommerce(roomId: string) {
   const supabase = await createClient();
   const { data } = await supabase.rpc("can_access_room_commerce", { room_id: roomId });
@@ -65,6 +72,91 @@ async function requireRoomCommerceAccess(roomId: string, redirectPath: string) {
   if (!(await canAccessRoomCommerce(roomId))) {
     redirect(`${redirectPath}?message=${encodeURIComponent("Unlock this room to use retailer links, product swaps, and final renders.")}`);
   }
+}
+
+async function hasActiveDesignerSubscription(userId: string) {
+  const serviceSupabase = createServiceClient();
+  const { data: designerAccount } = await serviceSupabase
+    .from("designer_accounts")
+    .select("subscription_status, current_period_end")
+    .eq("owner_user_id", userId)
+    .maybeSingle();
+
+  if (!designerAccount) {
+    return false;
+  }
+
+  const isActive =
+    designerAccount.subscription_status === "active" ||
+    designerAccount.subscription_status === "trialing";
+  const periodStillValid =
+    !designerAccount.current_period_end ||
+    new Date(designerAccount.current_period_end).getTime() > Date.now();
+
+  return isActive && periodStillValid;
+}
+
+async function countOwnedRooms(userId: string) {
+  const serviceSupabase = createServiceClient();
+  const { data: projects } = await serviceSupabase
+    .from("projects")
+    .select("id")
+    .eq("owner_user_id", userId);
+  const projectIds = (projects ?? []).map((project) => project.id);
+
+  if (projectIds.length === 0) {
+    return 0;
+  }
+
+  const { count } = await serviceSupabase
+    .from("rooms")
+    .select("id", { count: "exact", head: true })
+    .in("project_id", projectIds);
+
+  return count ?? 0;
+}
+
+async function requireDesignerFreeRoomAccess(userId: string, roomId: string, redirectPath: string) {
+  const serviceSupabase = createServiceClient();
+  const { data: profile } = await serviceSupabase
+    .from("user_profiles")
+    .select("intended_mode")
+    .eq("user_id", userId)
+    .maybeSingle();
+  const isDesignerMode = profile?.intended_mode === "designer" || profile?.intended_mode === "both";
+
+  if (!isDesignerMode || (await hasActiveDesignerSubscription(userId))) {
+    return;
+  }
+
+  const { data: projects } = await serviceSupabase
+    .from("projects")
+    .select("id")
+    .eq("owner_user_id", userId);
+  const projectIds = (projects ?? []).map((project) => project.id);
+
+  if (projectIds.length === 0) {
+    return;
+  }
+
+  const { data: roomsResult } = await serviceSupabase
+    .from("rooms")
+    .select("id")
+    .in("project_id", projectIds)
+    .order("created_at", { ascending: true })
+    .order("id", { ascending: true });
+  const rooms = roomsResult ?? [];
+  const firstRoom = rooms[0];
+
+  if (!firstRoom || firstRoom.id === roomId) {
+    return;
+  }
+
+  redirect(
+    `${redirectPath}?message=${encodeURIComponent(
+      "Your free designer room is already in progress. Start the designer plan to generate another room."
+    )}`
+  );
 }
 
 export async function signInAction(formData: FormData) {
@@ -162,7 +254,7 @@ export async function setUserModeAction(formData: FormData) {
   }
 
   revalidatePath("/", "layout");
-  redirect(parsed.intendedMode === "designer" || parsed.intendedMode === "both" ? "/" : "/onboarding");
+  redirect("/projects/new");
 }
 
 export async function createHomeownerRoomAction(formData: FormData) {
@@ -344,7 +436,8 @@ export async function createHomeownerRoomUnlockCheckoutAction(formData: FormData
   redirect(session.url);
 }
 
-export async function createDesignerSubscriptionCheckoutAction() {
+export async function createDesignerSubscriptionCheckoutAction(formData?: FormData) {
+  const returnTo = formData ? optionalString(formData, "returnTo") : undefined;
   const supabase = await createClient();
   const {
     data: { user },
@@ -417,8 +510,12 @@ export async function createDesignerSubscriptionCheckoutAction() {
         plan_key: "designer_monthly_usd_99"
       }
     },
-    success_url: `${baseUrl}/?message=${encodeURIComponent("Designer subscription activated.")}`,
-    cancel_url: `${baseUrl}/onboarding?message=${encodeURIComponent("Designer subscription checkout cancelled.")}`
+    success_url: checkoutRedirectUrl(baseUrl, returnTo, "Designer subscription activated."),
+    cancel_url: checkoutRedirectUrl(
+      baseUrl,
+      returnTo ?? "/onboarding",
+      "Designer subscription checkout cancelled."
+    )
   });
 
   if (!session.url) {
@@ -522,6 +619,23 @@ export async function createProjectWithRoomAction(formData: FormData) {
 
   if (userError || !user) {
     redirect("/login");
+  }
+
+  const { data: profile } = await supabase
+    .from("user_profiles")
+    .select("intended_mode")
+    .eq("user_id", user.id)
+    .maybeSingle();
+  const isDesignerMode = profile?.intended_mode === "designer" || profile?.intended_mode === "both";
+  const designerIsSubscribed = isDesignerMode ? await hasActiveDesignerSubscription(user.id) : false;
+  const existingRoomCount = isDesignerMode ? await countOwnedRooms(user.id) : 0;
+
+  if (isDesignerMode && !designerIsSubscribed && existingRoomCount >= 1) {
+    redirect(
+      `/projects/new?message=${encodeURIComponent(
+        "Your free designer room is already in progress. Start the designer plan to create another room."
+      )}`
+    );
   }
 
   const { data: project, error: projectError } = await supabase
@@ -860,6 +974,8 @@ export async function generateInitialConceptAction(formData: FormData) {
   if (!room) {
     redirect("/");
   }
+
+  await requireDesignerFreeRoomAccess(user.id, roomId, redirectPath);
 
   const { data: designBrief } = await supabase
     .from("design_briefs")
