@@ -32,21 +32,21 @@ export default async function LoginPage({
               Ritzy Studio
             </p>
             <h1 className="mt-8 max-w-[720px] font-display text-display-l font-light leading-[0.95] tracking-[-0.02em] text-ink md:text-display-xl">
-              Quiet design work, grounded in real pieces.
+              Design the home you want, with furniture you can actually afford.
             </h1>
             <p className="mt-10 max-w-[58ch] font-body text-body-l text-ink-secondary">
-              A studio surface for residential interior design — built around the room itself, the
-              brief in front of you, and the pieces your clients will actually live with.
+              Upload a photo of your room. We design it with real furniture at your budget, and
+              give you links to shop every piece.
             </p>
           </div>
           <figure className="mt-14 max-w-[720px] border border-line bg-surface-subtle">
             <Image
-              alt="Warm gallery-style living room with sculptural seating, layered neutral textiles, and refined natural light"
-              className="aspect-[16/9] h-auto w-full object-cover"
-              height={949}
+              alt="Photorealistic designed living room with layered furniture, warm lighting, and polished interior styling"
+              className="aspect-[4/3] h-auto w-full object-cover"
+              height={1080}
               priority
-              src="/login-hero-living-room.jpg"
-              width={1800}
+              src="/landing-hero.webp"
+              width={1440}
             />
           </figure>
         </div>
