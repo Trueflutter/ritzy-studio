@@ -7,40 +7,40 @@ export type VisualStyleOption = {
 
 export const visualStyleOptions = [
   {
-    slug: "warm-minimal",
-    name: "Warm minimal",
-    description: "Calm rooms, soft neutrals, natural texture, and very little visual noise.",
-    tags: ["warm", "minimal", "neutral", "natural"]
+    slug: "modern",
+    name: "Modern",
+    description: "Clean lines, minimal decoration, neutral colour, sleek finishes, and functional furniture.",
+    tags: ["modern", "clean", "minimal", "neutral", "sleek"]
   },
   {
-    slug: "modern-organic",
-    name: "Modern organic",
-    description: "Curved forms, stone, wood, linen, and relaxed contemporary pieces.",
-    tags: ["modern", "organic", "wood", "linen"]
+    slug: "contemporary",
+    name: "Contemporary",
+    description: "Current, expressive interiors with mixed textures, curved forms, and evolving design details.",
+    tags: ["contemporary", "current", "curved", "textured", "trend"]
   },
   {
-    slug: "quiet-luxury",
-    name: "Quiet luxury",
-    description: "Hotel-level polish, tailored upholstery, rich texture, and restrained colour.",
-    tags: ["luxury", "tailored", "hotel", "textured"]
+    slug: "scandinavian",
+    name: "Scandinavian",
+    description: "Light, airy rooms with soft neutrals, natural wood, cozy textures, and practical furniture.",
+    tags: ["scandinavian", "airy", "light", "wood", "cozy", "functional"]
   },
   {
-    slug: "classic-contemporary",
-    name: "Classic contemporary",
-    description: "Timeless silhouettes, balanced symmetry, soft contrast, and elegant details.",
-    tags: ["classic", "contemporary", "elegant", "balanced"]
+    slug: "industrial",
+    name: "Industrial",
+    description: "Warehouse-inspired spaces with exposed brick, metal, concrete, darker tones, and raw finishes.",
+    tags: ["industrial", "brick", "metal", "concrete", "raw", "dark"]
   },
   {
-    slug: "coastal-light",
-    name: "Coastal light",
-    description: "Airy, pale, relaxed, and sun-washed without feeling themed.",
-    tags: ["coastal", "airy", "light", "relaxed"]
+    slug: "traditional",
+    name: "Traditional",
+    description: "Classic elegance with detailed moldings, rich wood, layered fabrics, and timeless furniture.",
+    tags: ["traditional", "classic", "elegant", "molding", "wood", "timeless"]
   },
   {
-    slug: "earthy-rustic",
-    name: "Earthy rustic",
-    description: "Grounded woods, woven pieces, tactile finishes, and a relaxed lived-in mood.",
-    tags: ["earthy", "rustic", "woven", "tactile"]
+    slug: "bohemian",
+    name: "Bohemian",
+    description: "Relaxed and expressive rooms with mixed patterns, vibrant colour, plants, natural materials, and collected decor.",
+    tags: ["bohemian", "boho", "pattern", "colour", "plants", "collected"]
   }
 ] satisfies VisualStyleOption[];
 

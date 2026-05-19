@@ -103,19 +103,19 @@ export function VisualStyleSelector({
 
 function styleImageUrl(slug: string) {
   const images: Record<string, string> = {
-    "warm-minimal":
-      "https://images.unsplash.com/photo-1618221195710-dd6b41faaea6?auto=format&fit=crop&w=960&q=80",
-    "modern-organic":
-      "https://images.unsplash.com/photo-1600607687939-ce8a6c25118c?auto=format&fit=crop&w=960&q=80",
-    "quiet-luxury":
-      "https://images.unsplash.com/photo-1616486338812-3dadae4b4ace?auto=format&fit=crop&w=960&q=80",
-    "classic-contemporary":
-      "https://images.unsplash.com/photo-1600210492486-724fe5c67fb0?auto=format&fit=crop&w=960&q=80",
-    "coastal-light":
-      "https://images.unsplash.com/photo-1615874694520-474822394e73?auto=format&fit=crop&w=960&q=80",
-    "earthy-rustic":
-      "https://images.unsplash.com/photo-1617103996702-96ff29b1c467?auto=format&fit=crop&w=960&q=80"
+    modern:
+      "https://images.unsplash.com/photo-1600210491892-03d54c0aaf87?auto=format&fit=crop&w=1200&q=88",
+    contemporary:
+      "https://images.unsplash.com/photo-1600607687939-ce8a6c25118c?auto=format&fit=crop&w=1200&q=88",
+    scandinavian:
+      "https://images.unsplash.com/photo-1600210492486-724fe5c67fb0?auto=format&fit=crop&w=1200&q=88",
+    industrial:
+      "https://images.unsplash.com/photo-1615873968403-89e068629265?auto=format&fit=crop&w=1200&q=88",
+    traditional:
+      "https://images.unsplash.com/photo-1616486338812-3dadae4b4ace?auto=format&fit=crop&w=1200&q=88",
+    bohemian:
+      "https://images.unsplash.com/photo-1617103996702-96ff29b1c467?auto=format&fit=crop&w=1200&q=88"
   };
 
-  return images[slug] ?? images["warm-minimal"];
+  return images[slug] ?? images.modern;
 }
