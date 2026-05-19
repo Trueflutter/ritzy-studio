@@ -1,6 +1,7 @@
 "use server";
 
 import {
+  analyzeInspirationImages,
   generateClarifyingQuestions,
   generateConceptRevision,
   generateFinalGroundedRender,
@@ -49,6 +50,22 @@ function optionalNumber(formData: FormData, key: string) {
 
   const number = Number(value);
   return Number.isFinite(number) ? number : undefined;
+}
+
+type StructuredBriefJson = Record<string, unknown> & {
+  visualPreferences?: unknown;
+  measurements?: unknown;
+  inspirationAnalysis?: unknown;
+};
+
+function structuredBriefJson(value: unknown): StructuredBriefJson {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? ({ ...(value as Record<string, unknown>) } as StructuredBriefJson)
+    : {};
+}
+
+function optionalValueForPresentField<T>(formData: FormData, key: string, value: T | undefined) {
+  return formData.has(key) ? (value ?? null) : undefined;
 }
 
 function currentAppUrl() {
@@ -723,6 +740,8 @@ export async function createProjectWithRoomAction(formData: FormData) {
 }
 
 export async function saveDesignBriefAction(formData: FormData) {
+  const briefStep = String(formData.get("briefStep") ?? "details");
+  const nextPath = String(formData.get("nextPath") ?? "");
   const parsed = designBriefSchema.parse({
     projectId: String(formData.get("projectId") ?? ""),
     roomId: String(formData.get("roomId") ?? ""),
@@ -740,9 +759,11 @@ export async function saveDesignBriefAction(formData: FormData) {
     ceilingHeightCm: optionalNumber(formData, "ceilingHeightCm"),
     measurementNotes: optionalString(formData, "measurementNotes")
   });
-  const existingQuestionCount = Number(formData.get("existingQuestionCount") ?? "0");
 
-  const redirectPath = `/projects/${parsed.projectId}/rooms/${parsed.roomId}/brief`;
+  const briefRootPath = `/projects/${parsed.projectId}/rooms/${parsed.roomId}/brief`;
+  const redirectPath = nextPath.startsWith(briefRootPath)
+    ? nextPath
+    : `${briefRootPath}/details`;
   const supabase = await createClient();
   const {
     data: { user },
@@ -763,14 +784,6 @@ export async function saveDesignBriefAction(formData: FormData) {
   if (!room) {
     redirect("/");
   }
-
-  const answerUpdates = Array.from(formData.entries())
-    .filter(([key]) => key.startsWith("answer:"))
-    .map(([key, value]) => ({
-      id: key.replace("answer:", ""),
-      answer: String(value ?? "").trim()
-    }))
-    .filter((update) => update.id.length > 0);
 
   const hasMeasurements =
     parsed.wallLengthCm !== undefined ||
@@ -793,8 +806,18 @@ export async function saveDesignBriefAction(formData: FormData) {
     .filter(Boolean)
     .join("\n\n");
 
-  const structuredJson = {
-    visualPreferences: {
+  const { data: existingBrief } = await supabase
+    .from("design_briefs")
+    .select("*")
+    .eq("room_id", parsed.roomId)
+    .order("updated_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  const structuredJson = structuredBriefJson(existingBrief?.structured_json);
+
+  if (formData.has("styleSlugs") || formData.has("avoidStyleSlugs")) {
+    structuredJson.visualPreferences = {
       likedStyleSlugs: parsed.styleSlugs,
       avoidedStyleSlugs: parsed.avoidStyleSlugs,
       likedStyles: visualStyleOptions
@@ -811,37 +834,46 @@ export async function saveDesignBriefAction(formData: FormData) {
           slug: option.slug,
           name: option.name
         }))
-    },
-    measurements: hasMeasurements
-      ? {
-          wallLengthCm: parsed.wallLengthCm ?? null,
-          roomDepthCm: parsed.roomDepthCm ?? null,
-          ceilingHeightCm: parsed.ceilingHeightCm ?? null,
-          notes: parsed.measurementNotes ?? null,
-          source: "manual",
-          confidence: "verified"
-        }
-      : null
-  };
+    };
+  }
 
-  const { data: existingBrief } = await supabase
-    .from("design_briefs")
-    .select("id")
-    .eq("room_id", parsed.roomId)
-    .order("updated_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
+  if (hasMeasurements) {
+    structuredJson.measurements = {
+      wallLengthCm: parsed.wallLengthCm ?? null,
+      roomDepthCm: parsed.roomDepthCm ?? null,
+      ceilingHeightCm: parsed.ceilingHeightCm ?? null,
+      notes: parsed.measurementNotes ?? null,
+      source: "manual",
+      confidence: "verified"
+    };
+  }
 
-  const briefPayload = {
+  const briefPayload: Database["public"]["Tables"]["design_briefs"]["Update"] & {
+    room_id: string;
+  } = {
     room_id: parsed.roomId,
-    style_notes: resolvedStyleNotes || null,
-    color_notes: parsed.colorNotes ?? null,
-    budget_notes: parsed.budgetNotes ?? null,
-    functional_requirements: parsed.functionalRequirements ?? null,
-    avoid_notes: parsed.avoidNotes ?? null,
-    inspiration_notes: parsed.inspirationNotes ?? null,
-    structured_json: structuredJson
+    structured_json: structuredJson as Database["public"]["Tables"]["design_briefs"]["Update"]["structured_json"]
   };
+
+  if (formData.has("styleSlugs") || formData.has("avoidStyleSlugs") || formData.has("styleNotes")) {
+    briefPayload.style_notes = resolvedStyleNotes || null;
+  }
+
+  const colorNotes = optionalValueForPresentField(formData, "colorNotes", parsed.colorNotes);
+  const budgetNotes = optionalValueForPresentField(formData, "budgetNotes", parsed.budgetNotes);
+  const functionalRequirements = optionalValueForPresentField(
+    formData,
+    "functionalRequirements",
+    parsed.functionalRequirements
+  );
+  const avoidNotes = optionalValueForPresentField(formData, "avoidNotes", parsed.avoidNotes);
+  const inspirationNotes = optionalValueForPresentField(formData, "inspirationNotes", parsed.inspirationNotes);
+
+  if (colorNotes !== undefined) briefPayload.color_notes = colorNotes;
+  if (budgetNotes !== undefined) briefPayload.budget_notes = budgetNotes;
+  if (functionalRequirements !== undefined) briefPayload.functional_requirements = functionalRequirements;
+  if (avoidNotes !== undefined) briefPayload.avoid_notes = avoidNotes;
+  if (inspirationNotes !== undefined) briefPayload.inspiration_notes = inspirationNotes;
 
   const briefResult = existingBrief
     ? await supabase
@@ -876,6 +908,11 @@ export async function saveDesignBriefAction(formData: FormData) {
 
   await supabase.from("rooms").update({ status: "briefing" }).eq("id", parsed.roomId);
 
+  if (briefStep !== "details") {
+    revalidatePath(briefRootPath);
+    redirect(redirectPath);
+  }
+
   const { data: inspirationAssets = [] } = await supabase
     .from("room_assets")
     .select("storage_path")
@@ -896,30 +933,38 @@ export async function saveDesignBriefAction(formData: FormData) {
     )
   ).filter((url): url is string => Boolean(url));
 
-  if (answerUpdates.length > 0) {
-    for (const update of answerUpdates) {
-      await supabase
-        .from("clarifying_questions")
-        .update({
-          answer: update.answer.length > 0 ? update.answer : null,
-          status: update.answer.length > 0 ? "answered" : "open",
-          answered_at: update.answer.length > 0 ? new Date().toISOString() : null
-        })
-        .eq("id", update.id);
-    }
-  }
-
-  if (existingQuestionCount > 0) {
-    revalidatePath(redirectPath);
-    redirect(`/projects/${parsed.projectId}/rooms/${parsed.roomId}/concepts?autogenerate=1`);
-  }
-
   const serviceSupabase = createServiceClient();
+  const { data: profile } = await serviceSupabase
+    .from("user_profiles")
+    .select("intended_mode")
+    .eq("user_id", user.id)
+    .maybeSingle();
+  const currentStyleNotes =
+    formData.has("styleSlugs") || formData.has("avoidStyleSlugs") || formData.has("styleNotes")
+      ? (briefPayload.style_notes ?? null)
+      : (existingBrief?.style_notes ?? null);
+  const currentColorNotes = formData.has("colorNotes")
+    ? (briefPayload.color_notes ?? null)
+    : (existingBrief?.color_notes ?? null);
+  const currentBudgetNotes = formData.has("budgetNotes")
+    ? (briefPayload.budget_notes ?? null)
+    : (existingBrief?.budget_notes ?? null);
+  const currentFunctionalRequirements = formData.has("functionalRequirements")
+    ? (briefPayload.functional_requirements ?? null)
+    : (existingBrief?.functional_requirements ?? null);
+  const currentAvoidNotes = formData.has("avoidNotes")
+    ? (briefPayload.avoid_notes ?? null)
+    : (existingBrief?.avoid_notes ?? null);
+  const currentInspirationNotes = formData.has("inspirationNotes")
+    ? (briefPayload.inspiration_notes ?? null)
+    : (existingBrief?.inspiration_notes ?? null);
+
   const inputSummary = {
     roomType: parsed.roomType,
-    styleNotes: resolvedStyleNotes || null,
-    colorNotes: parsed.colorNotes ?? null,
-    budgetNotes: parsed.budgetNotes ?? null,
+    intendedMode: profile?.intended_mode ?? "unknown",
+    styleNotes: currentStyleNotes,
+    colorNotes: currentColorNotes,
+    budgetNotes: currentBudgetNotes,
     hasMeasurements,
     inspirationAssetCount: signedInspirationUrls.length
   };
@@ -948,13 +993,14 @@ export async function saveDesignBriefAction(formData: FormData) {
   try {
     const result = await generateClarifyingQuestions({
       roomType: parsed.roomType,
+      intendedMode: profile?.intended_mode ?? "unknown",
       inspirationImageUrls: signedInspirationUrls,
-      styleNotes: resolvedStyleNotes || undefined,
-      colorNotes: parsed.colorNotes,
-      budgetNotes: parsed.budgetNotes,
-      functionalRequirements: parsed.functionalRequirements,
-      avoidNotes: parsed.avoidNotes,
-      inspirationNotes: parsed.inspirationNotes,
+      styleNotes: currentStyleNotes || undefined,
+      colorNotes: currentColorNotes || undefined,
+      budgetNotes: currentBudgetNotes || undefined,
+      functionalRequirements: currentFunctionalRequirements || undefined,
+      avoidNotes: currentAvoidNotes || undefined,
+      inspirationNotes: currentInspirationNotes || undefined,
       measurements: hasMeasurements
         ? {
             wallLengthCm: parsed.wallLengthCm,
@@ -1006,15 +1052,15 @@ export async function saveDesignBriefAction(formData: FormData) {
       })
       .eq("id", job.id);
 
-    redirect(`${redirectPath}?message=${encodeURIComponent("Brief saved. Clarifying questions could not be generated yet.")}`);
+    redirect(`${briefRootPath}/details?message=${encodeURIComponent("Brief saved. Clarifying questions could not be generated yet.")}`);
   }
 
-  revalidatePath(redirectPath);
+  revalidatePath(briefRootPath);
   if (shouldGenerateAfterBrief) {
     redirect(`/projects/${parsed.projectId}/rooms/${parsed.roomId}/concepts?autogenerate=1`);
   }
 
-  redirect(`${redirectPath}?message=${encodeURIComponent("Answer the clarifying questions, then continue to generate the concept.")}`);
+  redirect(`${briefRootPath}/questions/0`);
 }
 
 export async function saveClarifyingAnswersAction(formData: FormData) {
@@ -1052,6 +1098,174 @@ export async function saveClarifyingAnswersAction(formData: FormData) {
   const redirectPath = `/projects/${projectId}/rooms/${roomId}/brief`;
   revalidatePath(redirectPath);
   redirect(`${redirectPath}?message=${encodeURIComponent("Clarifying answers saved.")}`);
+}
+
+export async function saveClarifyingQuestionAction(formData: FormData) {
+  const projectId = String(formData.get("projectId") ?? "");
+  const roomId = String(formData.get("roomId") ?? "");
+  const questionId = String(formData.get("questionId") ?? "");
+  const currentIndex = Number(formData.get("currentIndex") ?? "0");
+  const questionCount = Number(formData.get("questionCount") ?? "0");
+  const answer = String(formData.get("answer") ?? "").trim();
+  const skip = String(formData.get("skip") ?? "") === "1";
+  const supabase = await createClient();
+  const {
+    data: { user },
+    error: userError
+  } = await supabase.auth.getUser();
+
+  if (userError || !user) {
+    redirect("/login");
+  }
+
+  const { data: room } = await supabase
+    .from("rooms")
+    .select("id")
+    .eq("id", roomId)
+    .eq("project_id", projectId)
+    .single();
+
+  if (!room || !questionId) {
+    redirect("/");
+  }
+
+  await supabase
+    .from("clarifying_questions")
+    .update({
+      answer: !skip && answer.length > 0 ? answer : null,
+      status: !skip && answer.length > 0 ? "answered" : "skipped",
+      answered_at: !skip && answer.length > 0 ? new Date().toISOString() : null
+    })
+    .eq("id", questionId);
+
+  const nextIndex = currentIndex + 1;
+  const questionsRoot = `/projects/${projectId}/rooms/${roomId}/brief/questions`;
+  revalidatePath(questionsRoot);
+
+  if (nextIndex >= questionCount) {
+    redirect(`/projects/${projectId}/rooms/${roomId}/concepts?autogenerate=1`);
+  }
+
+  redirect(`${questionsRoot}/${nextIndex}`);
+}
+
+export async function analyzeInspirationAction(roomId: string) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+    error: userError
+  } = await supabase.auth.getUser();
+
+  if (userError || !user) {
+    throw new Error("Sign in to analyze inspiration images.");
+  }
+
+  const { data: room } = await supabase
+    .from("rooms")
+    .select("id")
+    .eq("id", roomId)
+    .single();
+
+  if (!room) {
+    throw new Error("Room not found.");
+  }
+
+  const { data: inspirationAssets = [] } = await supabase
+    .from("room_assets")
+    .select("storage_path")
+    .eq("room_id", roomId)
+    .eq("asset_type", "inspiration_image")
+    .order("created_at", { ascending: true })
+    .limit(6);
+
+  const signedUrls = (
+    await Promise.all(
+      (inspirationAssets ?? []).map(async (asset) => {
+        const { data } = await supabase.storage
+          .from("room-assets")
+          .createSignedUrl(asset.storage_path, 60 * 30);
+
+        return data?.signedUrl ?? null;
+      })
+    )
+  ).filter((url): url is string => Boolean(url));
+
+  if (signedUrls.length === 0) {
+    return;
+  }
+
+  const serviceSupabase = createServiceClient();
+  const { data: job, error: jobError } = await serviceSupabase
+    .from("ai_jobs")
+    .insert({
+      user_id: user.id,
+      room_id: roomId,
+      job_type: "inspiration_analysis",
+      status: "running",
+      provider: "openai",
+      model: process.env.OPENAI_TEXT_MODEL ?? "gpt-5-mini",
+      prompt_version: null,
+      input_summary: { inspirationAssetCount: signedUrls.length }
+    })
+    .select("id")
+    .single();
+
+  if (jobError) {
+    throw new Error(jobError.message);
+  }
+
+  try {
+    const result = await analyzeInspirationImages({ imageUrls: signedUrls });
+    const { data: existingBrief } = await supabase
+      .from("design_briefs")
+      .select("id, structured_json")
+      .eq("room_id", roomId)
+      .order("updated_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    const structuredJson = structuredBriefJson(existingBrief?.structured_json);
+    structuredJson.inspirationAnalysis = result.analysis;
+
+    const payload = {
+      room_id: roomId,
+      structured_json: structuredJson as Database["public"]["Tables"]["design_briefs"]["Update"]["structured_json"]
+    };
+
+    const writeResult = existingBrief
+      ? await supabase.from("design_briefs").update(payload).eq("id", existingBrief.id)
+      : await supabase.from("design_briefs").insert(payload);
+
+    if (writeResult.error) {
+      throw new Error(writeResult.error.message);
+    }
+
+    await serviceSupabase
+      .from("ai_jobs")
+      .update({
+        status: "succeeded",
+        completed_at: new Date().toISOString(),
+        model: result.model,
+        prompt_version: result.promptVersion,
+        output_summary: {
+          promptKey: result.promptKey,
+          palette: result.analysis.palette,
+          materials: result.analysis.materials
+        }
+      })
+      .eq("id", job.id);
+  } catch (error) {
+    await serviceSupabase
+      .from("ai_jobs")
+      .update({
+        status: "failed",
+        completed_at: new Date().toISOString(),
+        error_message: error instanceof Error ? error.message : "Inspiration analysis failed."
+      })
+      .eq("id", job.id);
+
+    throw error;
+  }
 }
 
 export async function generateInitialConceptAction(formData: FormData) {

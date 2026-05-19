@@ -19,6 +19,9 @@ import {
   initialConceptPrompt,
   initialConceptResponseSchema,
   finalGroundedRenderPrompt,
+  inspirationAnalysisJsonSchema,
+  inspirationAnalysisPrompt,
+  inspirationAnalysisResponseSchema,
   productMetadataEnrichmentJsonSchema,
   productMetadataEnrichmentPrompt
 } from "@ritzy-studio/prompts";
@@ -28,6 +31,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 export type GenerateClarifyingQuestionsInput = {
   roomType: string;
+  intendedMode?: "homeowner" | "designer" | "both" | "unknown";
   inspirationImageUrls?: string[];
   styleNotes?: string;
   colorNotes?: string;
@@ -51,6 +55,22 @@ export type GenerateClarifyingQuestionsResult = {
     question: string;
     reason: string;
   }>;
+};
+
+export type AnalyzeInspirationImagesInput = {
+  imageUrls: string[];
+};
+
+export type AnalyzeInspirationImagesResult = {
+  promptKey: string;
+  promptVersion: string;
+  model: string;
+  analysis: {
+    styleDirection: string;
+    palette: string[];
+    materials: string[];
+    mood: string;
+  };
 };
 
 export type GenerateInitialConceptInput = {
@@ -213,13 +233,24 @@ export async function generateClarifyingQuestions(
   const env = parseServerEnv(process.env);
   const client = new OpenAI({ apiKey: env.OPENAI_API_KEY });
   const { inspirationImageUrls, ...briefInput } = input;
+  const modePrompt =
+    input.intendedMode === "homeowner"
+      ? [
+          "This is a homeowner intake. Ask at most three questions.",
+          "Allowed topics: primary use of the space, fixed elements to preserve, kids, pets, maintenance, or high-traffic durability.",
+          "Do not ask about timeline, decision-maker, bespoke versus off-the-shelf, procurement process, or client approval workflow."
+        ].join("\n")
+      : [
+          "This is a designer or professional intake. Ask at most five questions.",
+          "You may include practical approval, timeline, bespoke versus off-the-shelf, or decision-maker questions only if they materially affect the brief."
+        ].join("\n");
 
   const response = await client.responses.create({
     model: env.OPENAI_TEXT_MODEL,
     input: [
       {
         role: "system",
-        content: clarifyingQuestionsPrompt.system
+        content: `${clarifyingQuestionsPrompt.system}\n\n${modePrompt}`
       },
       {
         role: "user",
@@ -253,12 +284,67 @@ export async function generateClarifyingQuestions(
   });
 
   const parsed = clarifyingQuestionsResponseSchema.parse(JSON.parse(response.output_text));
+  const questions = input.intendedMode === "homeowner" ? parsed.questions.slice(0, 3) : parsed.questions;
 
   return {
     promptKey: clarifyingQuestionsPrompt.key,
     promptVersion: clarifyingQuestionsPrompt.version,
     model: env.OPENAI_TEXT_MODEL,
-    questions: parsed.questions
+    questions
+  };
+}
+
+export async function analyzeInspirationImages(
+  input: AnalyzeInspirationImagesInput
+): Promise<AnalyzeInspirationImagesResult> {
+  const env = parseServerEnv(process.env);
+  const client = new OpenAI({ apiKey: env.OPENAI_API_KEY });
+
+  const response = await client.responses.create({
+    model: env.OPENAI_TEXT_MODEL,
+    input: [
+      {
+        role: "system",
+        content: inspirationAnalysisPrompt.system
+      },
+      {
+        role: "user",
+        content: [
+          {
+            type: "input_text",
+            text: "Analyze these inspiration images and return only the requested JSON."
+          },
+          ...input.imageUrls.flatMap((imageUrl, index) => [
+            {
+              type: "input_text" as const,
+              text: `Inspiration image ${index + 1}.`
+            },
+            {
+              type: "input_image" as const,
+              image_url: imageUrl,
+              detail: "high" as const
+            }
+          ])
+        ]
+      }
+    ],
+    text: {
+      format: {
+        type: "json_schema",
+        name: "ritzy_inspiration_analysis",
+        schema: inspirationAnalysisJsonSchema,
+        strict: true
+      }
+    }
+  });
+
+  const analysis = inspirationAnalysisResponseSchema.parse(JSON.parse(response.output_text));
+
+  return {
+    promptKey: inspirationAnalysisPrompt.key,
+    promptVersion: inspirationAnalysisPrompt.version,
+    model: env.OPENAI_TEXT_MODEL,
+    analysis
   };
 }
 

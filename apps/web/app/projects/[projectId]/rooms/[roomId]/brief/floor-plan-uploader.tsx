@@ -5,7 +5,6 @@ import { Button } from "@ritzy-studio/ui";
 import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
-import { analyzeInspirationAction } from "@/app/actions";
 import { createClient } from "@/lib/supabase/client";
 
 type UploadStatus = "idle" | "uploading" | "complete" | "error";
@@ -37,37 +36,51 @@ async function readImageSize(file: File): Promise<{ width: number | null; height
   }
 }
 
-export function InspirationUploader({
-  existingCount,
+export function FloorPlanUploader({
+  existingStoragePath,
   roomId,
   userId
 }: {
-  existingCount: number;
+  existingStoragePath?: string | null;
   roomId: string;
   userId: string;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [lastFile, setLastFile] = useState<File | null>(null);
   const [status, setStatus] = useState<UploadStatus>("idle");
-  const [message, setMessage] = useState("Upload references the room should feel close to");
+  const [message, setMessage] = useState(
+    existingStoragePath ? "Floor plan attached" : "Add the floor plan for this room only"
+  );
   const [isPending, startTransition] = useTransition();
   const router = useRouter();
 
   async function uploadFile(file: File) {
+    if (file.size > 10 * 1024 * 1024) {
+      setStatus("error");
+      setMessage("Use a JPG, PNG, or PDF up to 10 MB.");
+      return false;
+    }
+
     setLastFile(file);
     setStatus("uploading");
-    setMessage("Uploading inspiration image...");
+    setMessage("Uploading floor plan...");
 
     const supabase = createClient();
-    const extension = file.name.split(".").pop() ?? "jpg";
-    const storagePath = `${userId}/${roomId}/inspiration/${crypto.randomUUID()}-${slugFileName(file.name) || `reference.${extension}`}`;
+    const extension = file.name.split(".").pop() ?? "pdf";
+    const storagePath = `${userId}/${roomId}/floor-plan/${crypto.randomUUID()}-${slugFileName(file.name) || `floor-plan.${extension}`}`;
     const size = await readImageSize(file);
+
+    const { data: existingAssets = [] } = await supabase
+      .from("room_assets")
+      .select("id, storage_path")
+      .eq("room_id", roomId)
+      .eq("asset_type", "floor_plan");
 
     const { error: uploadError } = await supabase.storage
       .from("room-assets")
       .upload(storagePath, file, {
         cacheControl: "3600",
-        contentType: file.type,
+        contentType: file.type || "application/octet-stream",
         upsert: false
       });
 
@@ -77,14 +90,25 @@ export function InspirationUploader({
       return false;
     }
 
+    if (existingAssets && existingAssets.length > 0) {
+      const paths = existingAssets.map((asset) => asset.storage_path).filter(Boolean);
+      if (paths.length > 0) {
+        await supabase.storage.from("room-assets").remove(paths);
+      }
+      await supabase.from("room_assets").delete().in(
+        "id",
+        existingAssets.map((asset) => asset.id)
+      );
+    }
+
     const { error: rowError } = await supabase.from("room_assets").insert({
       room_id: roomId,
-      asset_type: "inspiration_image",
+      asset_type: "floor_plan",
       storage_path: storagePath,
-      mime_type: file.type,
+      mime_type: file.type || "application/octet-stream",
       width_px: size.width,
       height_px: size.height,
-      is_primary: existingCount === 0
+      is_primary: false
     } satisfies Database["public"]["Tables"]["room_assets"]["Insert"]);
 
     if (rowError) {
@@ -94,36 +118,20 @@ export function InspirationUploader({
     }
 
     setStatus("complete");
-    setMessage("Inspiration image added");
+    setMessage("Floor plan attached");
+    startTransition(() => router.refresh());
     return true;
-  }
-
-  async function uploadFiles(files: File[]) {
-    for (const file of files) {
-      const uploaded = await uploadFile(file);
-      if (!uploaded) {
-        break;
-      }
-    }
-
-    startTransition(() => {
-      router.refresh();
-      void analyzeInspirationAction(roomId)
-        .catch(() => null)
-        .finally(() => router.refresh());
-    });
   }
 
   return (
     <div>
       <input
-        accept="image/jpeg,image/png,image/webp"
+        accept="image/jpeg,image/png,application/pdf"
         className="sr-only"
-        multiple
         onChange={(event) => {
-          const files = Array.from(event.target.files ?? []);
-          if (files.length > 0) {
-            void uploadFiles(files);
+          const file = event.target.files?.[0];
+          if (file) {
+            void uploadFile(file);
           }
           event.target.value = "";
         }}
@@ -133,22 +141,28 @@ export function InspirationUploader({
       <button
         className="flex min-h-40 w-full flex-col items-center justify-center border border-dashed border-line-strong bg-page px-6 text-center transition-colors duration-micro ease-standard hover:border-accent-deep hover:bg-surface-subtle focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--rs-focus-ring)]"
         disabled={status === "uploading" || isPending}
+        onClick={() => inputRef.current?.click()}
         onDragOver={(event) => event.preventDefault()}
         onDrop={(event) => {
           event.preventDefault();
-          const files = Array.from(event.dataTransfer.files ?? []);
-          if (files.length > 0) {
-            void uploadFiles(files);
+          const file = event.dataTransfer.files?.[0];
+          if (file) {
+            void uploadFile(file);
           }
         }}
-        onClick={() => inputRef.current?.click()}
         type="button"
       >
-        <span className="font-display text-body-l font-light italic text-ink">
-          {status === "error" ? "reference could not upload" : message}
+        <span className="mb-5 flex size-14 items-center justify-center border border-line-strong bg-surface text-ink">
+          <FloorPlanIcon />
         </span>
-        <span className="mt-3 font-body text-caption font-medium uppercase text-ink-muted">
-          Drag or click to add JPG, PNG, or WEBP
+        <span className="font-display text-body-l font-light italic text-ink">
+          {status === "error" ? "floor plan could not upload" : message}
+        </span>
+        <span className="mt-3 max-w-[36ch] font-body text-body-s text-ink-muted">
+          Add the floor plan for this room only — not the whole property.
+        </span>
+        <span className="mt-2 font-body text-caption font-medium uppercase text-ink-muted">
+          JPG, PNG, or PDF · up to 10 MB
         </span>
       </button>
 
@@ -163,5 +177,15 @@ export function InspirationUploader({
         </div>
       ) : null}
     </div>
+  );
+}
+
+function FloorPlanIcon() {
+  return (
+    <svg aria-hidden="true" className="size-7" fill="none" viewBox="0 0 24 24">
+      <path d="M5 4.75h14v14.5H5z" stroke="currentColor" strokeWidth="1.5" />
+      <path d="M5 10h5V4.75M10 19.25V14h4M19 12h-5v7.25" stroke="currentColor" strokeWidth="1.5" />
+      <path d="M14 9h1.8M8.2 14H10" stroke="currentColor" strokeLinecap="round" strokeWidth="1.5" />
+    </svg>
   );
 }
