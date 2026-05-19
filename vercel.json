@@ -2,5 +2,6 @@
   "buildCommand": "pnpm --filter @ritzy-studio/web build",
   "framework": "nextjs",
   "installCommand": "pnpm install --frozen-lockfile",
-  "outputDirectory": "apps/web/.next"
+  "outputDirectory": "apps/web/.next",
+  "regions": ["bom1"]
 }
