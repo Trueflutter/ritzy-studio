@@ -1,11 +1,11 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { SubmitButton } from "@ritzy-studio/ui";
+import { AnimatedStatus, SubmitButton } from "@ritzy-studio/ui";
 
 import { generateInitialConceptAction } from "@/app/actions";
 
-const progressLabels = [
+const generationPhases = [
   "Reading the room photo",
   "Studying the brief",
   "Extracting style cues",
@@ -38,32 +38,17 @@ export function ConceptGenerationPanel({
       <input name="projectId" type="hidden" value={projectId} />
       <input name="roomId" type="hidden" value={roomId} />
       <div className="overflow-hidden border border-line bg-surface">
-        <div className="relative flex min-h-[360px] items-center justify-center px-8 py-12">
-          <div className="generation-orbit" aria-hidden="true">
-            <span />
-            <span />
-            <span />
-          </div>
-          <div className="relative z-[1] max-w-[520px] text-center">
-            <p className="font-body text-caption font-medium uppercase tracking-[0.18em] text-ink-muted">
+        <div className="flex min-h-[360px] flex-col items-center justify-center px-8 py-12">
+          <div className="max-w-[520px] text-center">
+            <p className="font-body text-caption font-medium uppercase tracking-[0.32em] text-ink-muted">
               Generation studio
             </p>
             <h2 className="mt-6 font-display text-display-s font-light italic text-ink">
               Building the first room direction.
             </h2>
-            <div className="mt-8 grid gap-3 text-left sm:grid-cols-2">
-              {progressLabels.map((label, index) => (
-                <p
-                  className="generation-step border border-line bg-page px-4 py-3 font-body text-caption font-medium uppercase text-ink-muted"
-                  key={label}
-                  style={{ animationDelay: `${index * 420}ms` }}
-                >
-                  {label}
-                </p>
-              ))}
-            </div>
+            <AnimatedStatus className="mt-10" phases={generationPhases} />
             <SubmitButton
-              className="mt-8 w-full"
+              className="mt-10 w-full"
               disabled={!canGenerate}
               pendingLabel="Generating concept..."
             >
