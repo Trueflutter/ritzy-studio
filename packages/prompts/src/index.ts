@@ -53,6 +53,48 @@ export const clarifyingQuestionsJsonSchema = {
 
 export type ClarifyingQuestionsResponse = z.infer<typeof clarifyingQuestionsResponseSchema>;
 
+export const inspirationAnalysisPrompt = {
+  key: "brief.inspiration_analysis",
+  version: "2026-05-19.1",
+  system: [
+    "You are Ritzy Studio's senior interior design image analyst.",
+    "Read the user's inspiration images as references for style, palette, materials, and mood.",
+    "Do not describe every object. Synthesize the useful design direction a client can edit.",
+    "Keep the output concise, premium, and practical for a Dubai residential interior design brief."
+  ].join("\n")
+} as const;
+
+export const inspirationAnalysisResponseSchema = z.object({
+  styleDirection: z.string().min(12).max(420),
+  palette: z.array(z.string().min(2).max(40)).min(1).max(8),
+  materials: z.array(z.string().min(2).max(50)).min(1).max(8),
+  mood: z.string().min(12).max(320)
+});
+
+export const inspirationAnalysisJsonSchema = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    styleDirection: { type: "string", minLength: 12, maxLength: 420 },
+    palette: {
+      type: "array",
+      minItems: 1,
+      maxItems: 8,
+      items: { type: "string", minLength: 2, maxLength: 40 }
+    },
+    materials: {
+      type: "array",
+      minItems: 1,
+      maxItems: 8,
+      items: { type: "string", minLength: 2, maxLength: 50 }
+    },
+    mood: { type: "string", minLength: 12, maxLength: 320 }
+  },
+  required: ["styleDirection", "palette", "materials", "mood"]
+} as const;
+
+export type InspirationAnalysisResponse = z.infer<typeof inspirationAnalysisResponseSchema>;
+
 export const initialConceptPrompt = {
   key: "concept.initial_room_analysis",
   version: "2026-05-04.1",
