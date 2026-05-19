@@ -1317,7 +1317,7 @@ export async function selectConceptAction(formData: FormData) {
 
   const redirectPath = `/projects/${projectId}/rooms/${roomId}/product-matching`;
   revalidatePath(redirectPath);
-  redirect(`${redirectPath}?message=${encodeURIComponent("Concept selected for sourcing.")}`);
+  redirect(redirectPath);
 }
 
 export async function groundProductsAction(formData: FormData) {
