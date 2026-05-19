@@ -146,93 +146,113 @@ export default async function ProductMatchingPage({
         </ButtonLink>
       </header>
 
-      <section className="mx-auto max-w-[1120px] px-5 py-12 md:px-8 lg:px-12 xl:px-16">
-        <div className="grid gap-10 lg:grid-cols-[minmax(0,1fr)_340px]">
-          <div>
-            <p className="font-body text-caption font-medium uppercase text-ink-muted">
-              Project - Photos - Brief - Generate - Critique - Match
-            </p>
-            <div className="mt-3 h-px w-32 bg-ink" />
-            <p className="mt-12 font-body text-caption font-medium uppercase text-ink-muted">
-              N° 06 - Product Matching
-            </p>
-            <h1 className="mt-6 font-display text-display-l font-light leading-none tracking-[-0.015em] text-ink">
-              Match the selected direction to real products.
-            </h1>
-            <p className="mt-6 max-w-[640px] font-body text-body-m text-ink-secondary">
-              {project.name} · {room.name} · {room.room_type}
-            </p>
-            {message ? (
-              <p className="mt-8 border border-line bg-surface px-4 py-3 font-display text-body-s italic text-ink-secondary">
-                {message}
-              </p>
-            ) : null}
-          </div>
+      <section className="mx-auto max-w-[1280px] px-5 py-8 md:px-8 lg:px-12 xl:px-16">
+        <p className="font-body text-caption font-medium uppercase tracking-[0.32em] text-ink-muted">
+          Project — Photos — Brief — Generate — Critique — Match
+        </p>
+        <div className="mt-3 h-px w-32 bg-ink" />
 
-          <aside className="border border-line bg-surface p-5 lg:self-start">
-            <p className="font-body text-caption font-medium uppercase text-ink-muted">
-              Sourcing Status
-            </p>
-            <div className="mt-3 h-px w-20 bg-ink" />
-            <p className="mt-6 font-display text-display-xs font-light italic text-ink">
-              {shoppingList ? "catalog products matched" : "ready to source"}
-            </p>
-            <form action={groundProductsAction} className="mt-8">
-              <input name="projectId" type="hidden" value={projectId} />
-              <input name="roomId" type="hidden" value={roomId} />
-              <input name="conceptId" type="hidden" value={selectedConcept.id} />
-              <SubmitButton className="w-full" pendingLabel="Matching products...">
-                {shoppingList ? "Refresh matches" : "Match products"}
-              </SubmitButton>
-            </form>
-            {shoppingList ? (
-              <p className="mt-5 font-body text-body-s text-ink-secondary">
-                Estimated catalog total: {formatAed(shoppingList.estimated_total_aed)}
-              </p>
-            ) : null}
-            {shoppingList ? (
-              <ButtonLink
-                className="mt-5 w-full"
-                href={`/projects/${projectId}/rooms/${roomId}/shopping-list`}
-                variant="quiet"
-              >
-                open shopping list
-              </ButtonLink>
-            ) : null}
-          </aside>
+        <div className="mt-10 max-w-[860px]">
+          <p className="font-body text-caption font-medium uppercase tracking-[0.32em] text-ink-muted">
+            N° 06 — Product Matching
+          </p>
+          <h1 className="mt-4 font-display text-display-l font-light leading-[1.05] tracking-[-0.015em] text-ink">
+            {finalRenders.length > 0
+              ? "Your grounded room is ready."
+              : shoppingList
+                ? "Pieces matched to your concept."
+                : "Match the selected direction to real products."}
+          </h1>
+          <p className="mt-4 font-body text-body-m text-ink-muted">
+            {project.name} · {room.name} · {room.room_type}
+          </p>
         </div>
 
-        <section className="mt-12 grid gap-8 lg:grid-cols-[minmax(0,1fr)_340px]">
-          <article className="border border-line bg-surface p-[14px]">
-            <div className="flex aspect-[4/3] items-center justify-center overflow-hidden bg-page">
-              {signedConceptImage?.signedUrl ? (
-                <Image
-                  alt={`${selectedConcept.title} generated room concept`}
-                  className="h-full w-full object-cover"
-                  height={900}
-                  unoptimized
-                  src={signedConceptImage.signedUrl}
-                  width={1200}
-                />
+        {message ? (
+          <p className="mt-8 border border-line bg-surface px-4 py-3 font-display text-body-m italic text-ink-secondary">
+            {message}
+          </p>
+        ) : null}
+
+        {(() => {
+          const latestRender = finalRenders[0] ?? null;
+          const heroSrc = latestRender?.signedUrl ?? signedConceptImage?.signedUrl ?? null;
+          const heroAlt = latestRender
+            ? "Final grounded room render"
+            : `${selectedConcept.title} concept render`;
+          const heroLabel = latestRender ? "Final render" : "Selected concept";
+
+          return (
+            <article className="mt-10 border border-line bg-surface p-[14px]">
+              <div className="flex aspect-[4/3] items-center justify-center overflow-hidden bg-page">
+                {heroSrc ? (
+                  <Image
+                    alt={heroAlt}
+                    className="h-full w-full object-cover"
+                    height={1200}
+                    priority
+                    unoptimized
+                    src={heroSrc}
+                    width={1600}
+                  />
+                ) : (
+                  <p className="font-display text-body-s italic text-error">
+                    selected render could not load
+                  </p>
+                )}
+              </div>
+              <div className="mx-auto mt-5 max-w-[880px] border-t border-line px-6 pb-8 pt-8 md:px-10">
+                <p className="font-body text-caption font-medium uppercase tracking-[0.32em] text-ink-muted">
+                  {heroLabel}
+                </p>
+                <h2 className="mt-3 font-display text-display-s font-light italic text-ink">
+                  {selectedConcept.title}
+                </h2>
+                {latestRender ? (
+                  <p className="mt-3 font-body text-body-s text-ink-muted">
+                    Rendered {new Date(latestRender.created_at).toLocaleDateString("en-AE")}
+                  </p>
+                ) : null}
+              </div>
+            </article>
+          );
+        })()}
+
+        <section className="mt-16 border-t border-line pt-10">
+          <div className="flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
+            <div className="max-w-[680px]">
+              <p className="font-body text-caption font-medium uppercase tracking-[0.32em] text-ink-muted">
+                Shopping plan
+              </p>
+              <h2 className="mt-4 font-display text-display-m font-light italic text-ink">
+                {shoppingList ? "Sourced from the live catalog." : "Source the shopping plan."}
+              </h2>
+              {shoppingList ? (
+                <p className="mt-3 font-body text-body-s text-ink-muted">
+                  Estimated total ·{" "}
+                  <span className="font-display text-body-l font-light italic text-ink">
+                    {formatAed(shoppingList.estimated_total_aed)}
+                  </span>
+                </p>
               ) : (
-                <p className="font-display text-body-s italic text-error">
-                  selected render could not load
+                <p className="mt-3 max-w-[560px] font-body text-body-s text-ink-secondary">
+                  The system will match catalog products to this concept and return prices,
+                  dimensions, and retailer links.
                 </p>
               )}
             </div>
-            <div className="mt-5 border-t border-line px-[18px] pb-[18px] pt-5">
-              <p className="font-body text-caption font-medium uppercase text-ink-muted">
-                Selected Concept
-              </p>
-              <h2 className="mt-3 font-display text-display-xs font-light italic text-ink">
-                {selectedConcept.title}
-              </h2>
-            </div>
-          </article>
-        </section>
 
-        <section className="mt-12">
-          <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
+            <form action={groundProductsAction} className="shrink-0">
+              <input name="projectId" type="hidden" value={projectId} />
+              <input name="roomId" type="hidden" value={roomId} />
+              <input name="conceptId" type="hidden" value={selectedConcept.id} />
+              <SubmitButton pendingLabel="Sourcing the shopping plan...">
+                {shoppingList ? "Refresh matches" : "Source the shopping plan"}
+              </SubmitButton>
+            </form>
+          </div>
+
+          <div className="mt-10 grid gap-5 md:grid-cols-2 xl:grid-cols-3">
             {shoppingItemsList.length > 0 ? (
               shoppingItemsList.map((item) => {
                 const product = item.product;
@@ -329,93 +349,92 @@ export default async function ProductMatchingPage({
                 );
               })
             ) : (
-              <div className="border border-line bg-surface p-8 md:col-span-2 xl:col-span-3">
+              <div className="border border-line bg-surface p-10 md:col-span-2 xl:col-span-3">
                 <p className="font-display text-display-xs font-light italic text-ink">
-                  No product matches yet.
+                  No pieces sourced yet.
                 </p>
-                <p className="mt-4 max-w-[560px] font-body text-body-s text-ink-secondary">
-                  Match the selected direction to catalog products when you are ready for the
-                  shopping plan.
+                <p className="mt-3 max-w-[560px] font-body text-body-s text-ink-secondary">
+                  Press <span className="italic">Source the shopping plan</span> above to match
+                  catalog products with prices, dimensions, and retailer links.
                 </p>
               </div>
             )}
           </div>
         </section>
 
-        <section className="mt-16 border-t border-line pt-10">
-          <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_340px]">
-            <div>
-              <p className="font-body text-caption font-medium uppercase text-ink-muted">
-                N° 07 - Final Render
-              </p>
-              <h2 className="mt-4 font-display text-display-s font-light italic text-ink">
-                Generate the client-facing grounded render.
-              </h2>
-              <p className="mt-4 max-w-[680px] font-body text-body-s text-ink-secondary">
-                The render uses selected product images as visual references where available. The
-                shopping list remains the source of truth.
-              </p>
-              {latestRenderJob?.status === "failed" ? (
-                <p className="mt-5 border border-line bg-surface px-4 py-3 font-display text-body-s italic text-error">
-                  {latestRenderJob.error_message ?? "Final render failed."}
+        {shoppingList && shoppingItemsList.length > 0 ? (
+          <section className="mt-16 border-t border-line pt-10">
+            <div className="flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
+              <div className="max-w-[680px]">
+                <p className="font-body text-caption font-medium uppercase tracking-[0.32em] text-ink-muted">
+                  Final render
                 </p>
-              ) : null}
-            </div>
+                <h2 className="mt-4 font-display text-display-m font-light italic text-ink">
+                  {finalRenders.length > 0
+                    ? "The grounded render is live above."
+                    : "Generate the grounded render."}
+                </h2>
+                <p className="mt-3 max-w-[560px] font-body text-body-s text-ink-secondary">
+                  The render uses your sourced product images as visual references. The shopping
+                  list above remains the source of truth.
+                </p>
+                {latestRenderJob?.status === "failed" ? (
+                  <p className="mt-5 border border-line bg-surface px-4 py-3 font-display text-body-s italic text-error">
+                    {latestRenderJob.error_message ?? "Final render failed."}
+                  </p>
+                ) : null}
+              </div>
 
-            <aside className="border border-line bg-surface p-5 lg:self-start">
-              <p className="font-body text-caption font-medium uppercase text-ink-muted">
-                Render Status
-              </p>
-              <div className="mt-3 h-px w-20 bg-ink" />
-              <p className="mt-6 font-display text-display-xs font-light italic text-ink">
-                {shoppingList && shoppingItemsList.length > 0 ? "shopping list ready" : "match products first"}
-              </p>
-              <form action={generateFinalRenderAction} className="mt-8">
+              <form action={generateFinalRenderAction} className="shrink-0">
                 <input name="projectId" type="hidden" value={projectId} />
                 <input name="roomId" type="hidden" value={roomId} />
                 <input name="conceptId" type="hidden" value={selectedConcept.id} />
                 <input name="shoppingListId" type="hidden" value={shoppingList?.id ?? ""} />
                 <SubmitButton
-                  className="w-full"
-                  disabled={!canAccessCommerce || !shoppingList || shoppingItemsList.length === 0}
+                  disabled={!canAccessCommerce}
                   pendingLabel="Generating final render..."
                 >
-                  Generate final render
+                  {finalRenders.length > 0 ? "Regenerate render" : "Generate final render"}
                 </SubmitButton>
               </form>
-            </aside>
-          </div>
+            </div>
 
-          <div className="mt-8 grid gap-6 md:grid-cols-2">
-            {finalRenders.length > 0 ? (
-              finalRenders.map((render) => (
-                <article className="border border-line bg-surface p-[14px]" key={render.id}>
-                  <div className="flex aspect-[4/3] items-center justify-center overflow-hidden bg-page">
-                    {render.signedUrl ? (
-                      <Image
-                        alt="Final grounded room render"
-                        className="h-full w-full object-cover"
-                        height={900}
-                        unoptimized
-                        src={render.signedUrl}
-                        width={1200}
-                      />
-                    ) : (
-                      <p className="font-display text-body-s italic text-error">
-                        final render could not load
-                      </p>
-                    )}
-                  </div>
-                  <div className="mt-5 border-t border-line px-[18px] pb-[18px] pt-5">
-                    <p className="font-body text-caption font-medium uppercase text-ink-muted">
-                      Final render · {new Date(render.created_at).toLocaleDateString("en-AE")}
-                    </p>
-                  </div>
-                </article>
-              ))
+            {finalRenders.length > 1 ? (
+              <div className="mt-10">
+                <p className="font-body text-caption font-medium uppercase tracking-[0.32em] text-ink-muted">
+                  Earlier renders
+                </p>
+                <div className="mt-5 grid gap-6 md:grid-cols-2 xl:grid-cols-3">
+                  {finalRenders.slice(1).map((render) => (
+                    <article className="border border-line bg-surface p-[14px]" key={render.id}>
+                      <div className="flex aspect-[4/3] items-center justify-center overflow-hidden bg-page">
+                        {render.signedUrl ? (
+                          <Image
+                            alt="Earlier grounded room render"
+                            className="h-full w-full object-cover"
+                            height={900}
+                            unoptimized
+                            src={render.signedUrl}
+                            width={1200}
+                          />
+                        ) : (
+                          <p className="font-display text-body-s italic text-error">
+                            render could not load
+                          </p>
+                        )}
+                      </div>
+                      <div className="mt-5 border-t border-line px-[18px] pb-[18px] pt-5">
+                        <p className="font-body text-caption font-medium uppercase tracking-[0.32em] text-ink-muted">
+                          {new Date(render.created_at).toLocaleDateString("en-AE")}
+                        </p>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              </div>
             ) : null}
-          </div>
-        </section>
+          </section>
+        ) : null}
       </section>
     </main>
   );

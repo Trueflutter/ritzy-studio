@@ -116,48 +116,45 @@ export default async function ConceptsPage({
         </ButtonLink>
       </header>
 
-      <section className="mx-auto max-w-[1120px] px-5 py-12 md:px-8 lg:px-12 xl:px-16">
-        <div className="grid gap-10 lg:grid-cols-[minmax(0,1fr)_340px]">
-          <div>
-            <p className="font-body text-caption font-medium uppercase text-ink-muted">
-              Project — Photos — Brief — Generate — Critique — Match
-            </p>
-            <div className="mt-3 h-px w-32 bg-ink" />
+      <section className="mx-auto max-w-[1280px] px-5 py-8 md:px-8 lg:px-12 xl:px-16">
+        <p className="font-body text-caption font-medium uppercase tracking-[0.32em] text-ink-muted">
+          Project — Photos — Brief — Generate — Critique — Match
+        </p>
+        <div className="mt-3 h-px w-32 bg-ink" />
 
-            <p className="mt-12 font-body text-caption font-medium uppercase text-ink-muted">
+        <div className="mt-10 flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
+          <div className="max-w-[860px]">
+            <p className="font-body text-caption font-medium uppercase tracking-[0.32em] text-ink-muted">
               N° 05 — Initial Concepts
             </p>
-            <h1 className="mt-6 font-display text-display-l font-light leading-none tracking-[-0.015em] text-ink">
-              Generate the first room direction.
+            <h1 className="mt-4 font-display text-display-l font-light leading-[1.05] tracking-[-0.015em] text-ink">
+              {conceptsWithImages.length === 0
+                ? "Generate the first room direction."
+                : conceptsWithImages.length === 1
+                  ? "Your first room direction."
+                  : "Review the room directions."}
             </h1>
-            <p className="mt-6 max-w-[640px] font-body text-body-m text-ink-secondary">
+            <p className="mt-4 font-body text-body-m text-ink-muted">
               {project.name} · {room.name} · {room.room_type}
             </p>
-
-            {message ? (
-              <p className="mt-8 border border-line bg-surface px-4 py-3 font-display text-body-s italic text-ink-secondary">
-                {message}
-              </p>
-            ) : null}
           </div>
 
-          <aside className="border border-line bg-surface p-5 lg:self-start">
-            <p className="font-body text-caption font-medium uppercase text-ink-muted">
-              Generation Status
-            </p>
-            <div className="mt-3 h-px w-20 bg-ink" />
-            <p className="mt-6 font-display text-display-xs font-light italic text-ink">
-              {canGenerate ? "generating from saved brief" : "brief and room photo required"}
-            </p>
+          {conceptsWithImages.length > 0 ? (
             <ButtonLink
-              className="mt-6 w-full"
               href={`/projects/${projectId}/rooms/${roomId}/brief`}
-              variant="quiet"
+              leading="←"
+              variant="chrome"
             >
-              refine brief
+              Refine the brief
             </ButtonLink>
-          </aside>
+          ) : null}
         </div>
+
+        {message ? (
+          <p className="mt-8 border border-line bg-surface px-4 py-3 font-display text-body-m italic text-ink-secondary">
+            {message}
+          </p>
+        ) : null}
 
         {conceptsWithImages.length === 0 ? (
           <ConceptGenerationPanel
@@ -168,19 +165,24 @@ export default async function ConceptsPage({
           />
         ) : null}
 
-        <div className="mt-12 grid gap-6 md:grid-cols-2">
-          {conceptsWithImages.length > 0 ? (
-            conceptsWithImages.map((concept) => (
-              <article className="border border-line bg-surface p-[14px]" key={concept.id}>
+        {conceptsWithImages.length === 1 ? (
+          (() => {
+            const concept = conceptsWithImages[0];
+            const conceptCritiques = critiquesByConcept.get(concept.id) ?? [];
+            const isSelected = concept.status === "selected";
+
+            return (
+              <article className="mt-12 border border-line bg-surface p-[14px]">
                 <div className="flex aspect-[4/3] items-center justify-center overflow-hidden bg-page">
                   {concept.signedUrl ? (
                     <Image
                       alt={`${concept.title} generated room concept`}
                       className="h-full w-full object-cover"
-                      height={900}
+                      height={1200}
                       unoptimized
+                      priority
                       src={concept.signedUrl}
-                      width={1200}
+                      width={1600}
                     />
                   ) : (
                     <p className="font-display text-body-s italic text-error">
@@ -188,55 +190,59 @@ export default async function ConceptsPage({
                     </p>
                   )}
                 </div>
-                <div className="mt-5 border-t border-line px-[18px] pb-[18px] pt-5">
-                  <p className="font-body text-caption font-medium uppercase text-ink-muted">
-                    {concept.status}
+                <div className="mx-auto mt-5 max-w-[880px] border-t border-line px-6 pb-8 pt-10 md:px-10">
+                  <p className="font-body text-caption font-medium uppercase tracking-[0.32em] text-ink-muted">
+                    {isSelected ? "Selected" : "Initial concept"}
                   </p>
-                  <h2 className="mt-3 font-display text-display-xs font-light italic text-ink">
+                  <h2 className="mt-5 font-display text-display-m font-light italic text-ink">
                     {concept.title}
                   </h2>
                   {concept.description ? (
-                    <p className="mt-4 whitespace-pre-line font-body text-body-s text-ink-secondary">
+                    <p className="mt-6 whitespace-pre-line font-body text-body-l text-ink-secondary">
                       {concept.description}
                     </p>
                   ) : null}
-                  <div className="mt-6 flex flex-col gap-4 border-t border-line pt-5 md:flex-row md:items-center md:justify-between">
-                    <form action={selectConceptAction}>
-                      <input name="projectId" type="hidden" value={projectId} />
-                      <input name="roomId" type="hidden" value={roomId} />
-                      <input name="conceptId" type="hidden" value={concept.id} />
-                      <SubmitButton
-                        disabled={concept.status === "selected"}
-                        pendingLabel="Selecting..."
-                        variant={concept.status === "selected" ? "secondary" : "primary"}
-                      >
-                        {concept.status === "selected" ? "Selected" : "Select concept"}
-                      </SubmitButton>
-                    </form>
-                  </div>
-                  <div className="mt-6 border-t border-line pt-5">
-                    <p className="font-body text-caption font-medium uppercase text-ink-muted">
-                      Critique And Revise
-                    </p>
-                    {(critiquesByConcept.get(concept.id) ?? []).length > 0 ? (
-                      <div className="mt-4 space-y-3">
-                        {(critiquesByConcept.get(concept.id) ?? []).map((critique) => (
+
+                  {conceptCritiques.length > 0 ? (
+                    <div className="mt-10 border-t border-line pt-8">
+                      <p className="font-body text-caption font-medium uppercase tracking-[0.32em] text-ink-muted">
+                        Past critiques
+                      </p>
+                      <div className="mt-5 space-y-3">
+                        {conceptCritiques.map((critique) => (
                           <p
-                            className="border border-line bg-page px-4 py-3 font-display text-body-s italic text-ink-secondary"
+                            className="border border-line bg-page px-5 py-4 font-display text-body-m italic text-ink-secondary"
                             key={critique.id}
                           >
                             {critique.critique_text}
                           </p>
                         ))}
                       </div>
-                    ) : null}
-                    <form action={reviseConceptAction} className="mt-5">
+                    </div>
+                  ) : null}
+
+                  <div className="mt-10 grid gap-6 border-t border-line pt-8 md:grid-cols-2">
+                    <form action={selectConceptAction} className="flex flex-col md:justify-end">
+                      <input name="projectId" type="hidden" value={projectId} />
+                      <input name="roomId" type="hidden" value={roomId} />
+                      <input name="conceptId" type="hidden" value={concept.id} />
+                      <SubmitButton
+                        className="w-full"
+                        disabled={isSelected}
+                        pendingLabel="Selecting..."
+                        variant={isSelected ? "secondary" : "primary"}
+                      >
+                        {isSelected ? "Selected" : "Select concept"}
+                      </SubmitButton>
+                    </form>
+
+                    <form action={reviseConceptAction} className="flex flex-col">
                       <input name="projectId" type="hidden" value={projectId} />
                       <input name="roomId" type="hidden" value={roomId} />
                       <input name="conceptId" type="hidden" value={concept.id} />
                       <Textarea
                         id={`critique-${concept.id}`}
-                        label="Designer critique"
+                        label="Or describe what to change"
                         name="critique"
                         placeholder="make the palette warmer, keep the sofa placement, reduce ornament..."
                       />
@@ -247,41 +253,119 @@ export default async function ConceptsPage({
                   </div>
                 </div>
               </article>
-            ))
-          ) : null}
-        </div>
+            );
+          })()
+        ) : conceptsWithImages.length > 1 ? (
+          <div className="mt-12 grid gap-6 md:grid-cols-2">
+            {conceptsWithImages.map((concept) => {
+              const conceptCritiques = critiquesByConcept.get(concept.id) ?? [];
+              const isSelected = concept.status === "selected";
+
+              return (
+                <article className="border border-line bg-surface p-[14px]" key={concept.id}>
+                  <div className="flex aspect-[4/3] items-center justify-center overflow-hidden bg-page">
+                    {concept.signedUrl ? (
+                      <Image
+                        alt={`${concept.title} generated room concept`}
+                        className="h-full w-full object-cover"
+                        height={900}
+                        unoptimized
+                        src={concept.signedUrl}
+                        width={1200}
+                      />
+                    ) : (
+                      <p className="font-display text-body-s italic text-error">
+                        render could not load
+                      </p>
+                    )}
+                  </div>
+                  <div className="mt-5 border-t border-line px-[18px] pb-[18px] pt-5">
+                    <p className="font-body text-caption font-medium uppercase tracking-[0.32em] text-ink-muted">
+                      {isSelected ? "Selected" : "Concept"}
+                    </p>
+                    <h2 className="mt-3 font-display text-display-xs font-light italic text-ink">
+                      {concept.title}
+                    </h2>
+                    {concept.description ? (
+                      <p className="mt-4 whitespace-pre-line font-body text-body-s text-ink-secondary">
+                        {concept.description}
+                      </p>
+                    ) : null}
+
+                    {conceptCritiques.length > 0 ? (
+                      <div className="mt-6 border-t border-line pt-5">
+                        <p className="font-body text-caption font-medium uppercase tracking-[0.32em] text-ink-muted">
+                          Past critiques
+                        </p>
+                        <div className="mt-4 space-y-3">
+                          {conceptCritiques.map((critique) => (
+                            <p
+                              className="border border-line bg-page px-4 py-3 font-display text-body-s italic text-ink-secondary"
+                              key={critique.id}
+                            >
+                              {critique.critique_text}
+                            </p>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
+
+                    <form action={selectConceptAction} className="mt-6 border-t border-line pt-5">
+                      <input name="projectId" type="hidden" value={projectId} />
+                      <input name="roomId" type="hidden" value={roomId} />
+                      <input name="conceptId" type="hidden" value={concept.id} />
+                      <SubmitButton
+                        className="w-full"
+                        disabled={isSelected}
+                        pendingLabel="Selecting..."
+                        variant={isSelected ? "secondary" : "primary"}
+                      >
+                        {isSelected ? "Selected" : "Select concept"}
+                      </SubmitButton>
+                    </form>
+
+                    <form action={reviseConceptAction} className="mt-4">
+                      <input name="projectId" type="hidden" value={projectId} />
+                      <input name="roomId" type="hidden" value={roomId} />
+                      <input name="conceptId" type="hidden" value={concept.id} />
+                      <Textarea
+                        id={`critique-${concept.id}`}
+                        label="Or describe what to change"
+                        name="critique"
+                        placeholder="make the palette warmer, keep the sofa placement, reduce ornament..."
+                      />
+                      <SubmitButton className="w-full" pendingLabel="Generating revision..." variant="secondary">
+                        Generate revision
+                      </SubmitButton>
+                    </form>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        ) : null}
 
         {selectedConcept ? (
-          <section className="mt-16 border-t border-line pt-10">
-            <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_340px]">
-              <div>
-                <p className="font-body text-caption font-medium uppercase text-ink-muted">
-                  N° 06 - Product Matching
-                </p>
-                <h2 className="mt-4 font-display text-display-s font-light italic text-ink">
-                  Next, source the shopping plan.
-                </h2>
-                <p className="mt-4 max-w-[680px] font-body text-body-s text-ink-secondary">
-                  Product matching now opens on its own screen, so this page stays focused on
-                  concept generation, selection, and critique.
-                </p>
-              </div>
-              <aside className="border border-line bg-surface p-5 lg:self-start">
-                <p className="font-body text-caption font-medium uppercase text-ink-muted">
-                  Selected Concept
-                </p>
-                <div className="mt-3 h-px w-20 bg-ink" />
-                <p className="mt-6 font-display text-display-xs font-light italic text-ink">
-                  ready for catalog matching
-                </p>
-                <ButtonLink
-                  className="mt-6 w-full"
-                  href={`/projects/${projectId}/rooms/${roomId}/product-matching`}
-                >
-                  Continue
-                </ButtonLink>
-              </aside>
+          <section className="mt-16 flex flex-col gap-6 border-t border-line pt-10 md:flex-row md:items-end md:justify-between">
+            <div className="max-w-[680px]">
+              <p className="font-body text-caption font-medium uppercase tracking-[0.32em] text-ink-muted">
+                N° 06 — Product Matching
+              </p>
+              <h2 className="mt-4 font-display text-display-m font-light italic text-ink">
+                Next, source the shopping plan.
+              </h2>
+              <p className="mt-3 max-w-[560px] font-body text-body-s text-ink-secondary">
+                Open product matching for the selected concept. Catalog products, prices, and
+                retailer links follow.
+              </p>
             </div>
+            <ButtonLink
+              className="shrink-0"
+              href={`/projects/${projectId}/rooms/${roomId}/product-matching`}
+              trailing="→"
+            >
+              Continue to sourcing
+            </ButtonLink>
           </section>
         ) : null}
       </section>
