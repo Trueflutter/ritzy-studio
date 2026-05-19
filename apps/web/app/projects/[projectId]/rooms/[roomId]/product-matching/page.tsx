@@ -188,7 +188,7 @@ export default async function ProductMatchingPage({
                 <input name="projectId" type="hidden" value={projectId} />
                 <input name="roomId" type="hidden" value={roomId} />
                 <input name="conceptId" type="hidden" value={selectedConcept.id} />
-                <SubmitButton pendingLabel="Sourcing the shopping plan..." variant="secondary">
+                <SubmitButton pendingLabel="Generating shopping list..." variant="secondary">
                   Try sourcing again
                 </SubmitButton>
               </form>
@@ -297,7 +297,7 @@ export default async function ProductMatchingPage({
                 <input name="roomId" type="hidden" value={roomId} />
                 <input name="conceptId" type="hidden" value={selectedConcept.id} />
                 <SubmitButton
-                  pendingLabel="Sourcing the shopping plan..."
+                  pendingLabel="Generating shopping list..."
                   variant={shoppingList ? "secondary" : "primary"}
                 >
                   {shoppingList ? "Refresh matches" : "Source the shopping plan"}
