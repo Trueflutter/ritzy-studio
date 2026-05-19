@@ -1,4 +1,4 @@
-import { ButtonLink, SubmitButton } from "@ritzy-studio/ui";
+import { AnimatedStatus, AutoSubmit, ButtonLink, SubmitButton } from "@ritzy-studio/ui";
 import Image from "next/image";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
@@ -144,6 +144,8 @@ export default async function ProductMatchingPage({
   const latestRenderJob = (conceptRenderJobs ?? [])[0] ?? null;
 
   const shoppingItemsList = shoppingItems ?? [];
+  const shouldAutoSource = !shoppingList && !message;
+  const showRetryAfterError = !shoppingList && Boolean(message);
 
   return (
     <main className="min-h-dvh bg-page text-ink">
@@ -179,9 +181,19 @@ export default async function ProductMatchingPage({
         </div>
 
         {message ? (
-          <p className="mt-8 border border-line bg-surface px-4 py-3 font-display text-body-m italic text-ink-secondary">
-            {message}
-          </p>
+          <div className="mt-8 border border-line bg-surface px-4 py-4">
+            <p className="font-display text-body-m italic text-ink-secondary">{message}</p>
+            {showRetryAfterError ? (
+              <form action={groundProductsAction} className="mt-4">
+                <input name="projectId" type="hidden" value={projectId} />
+                <input name="roomId" type="hidden" value={roomId} />
+                <input name="conceptId" type="hidden" value={selectedConcept.id} />
+                <SubmitButton pendingLabel="Sourcing the shopping plan..." variant="secondary">
+                  Try sourcing again
+                </SubmitButton>
+              </form>
+            ) : null}
+          </div>
         ) : null}
 
         {(() => {
@@ -227,6 +239,25 @@ export default async function ProductMatchingPage({
             </article>
           );
         })()}
+
+        {shouldAutoSource ? (
+          <div className="mt-10 flex flex-col items-center text-center">
+            <AnimatedStatus
+              phases={[
+                "Sourcing the seating",
+                "Pricing the lighting",
+                "Matching the textiles",
+                "Composing the plan"
+              ]}
+            />
+            <form action={groundProductsAction} className="hidden" id="auto-source">
+              <input name="projectId" type="hidden" value={projectId} />
+              <input name="roomId" type="hidden" value={roomId} />
+              <input name="conceptId" type="hidden" value={selectedConcept.id} />
+            </form>
+            <AutoSubmit formId="auto-source" />
+          </div>
+        ) : null}
 
         <section className="mt-16 border-t border-line pt-10">
           <div className="flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
