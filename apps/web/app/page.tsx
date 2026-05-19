@@ -71,8 +71,8 @@ export default async function DashboardPage() {
             work · concepts · sourcing · studio
           </p>
           <form action={signOutAction}>
-            <Button type="submit" variant="quiet">
-              sign out
+            <Button type="submit" variant="chrome">
+              Sign out
             </Button>
           </form>
         </div>

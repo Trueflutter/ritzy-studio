@@ -141,8 +141,8 @@ export default async function ProductMatchingPage({
         <Link className="font-display text-[28px] font-light text-ink" href="/">
           Ri <span className="font-body text-caption font-medium uppercase text-ink-muted">Ritzy Studio</span>
         </Link>
-        <ButtonLink href={`/projects/${projectId}/rooms/${roomId}/concepts`} variant="quiet">
-          back to concepts
+        <ButtonLink href={`/projects/${projectId}/rooms/${roomId}/concepts`} leading="←" variant="chrome">
+          Back to concepts
         </ButtonLink>
       </header>
 

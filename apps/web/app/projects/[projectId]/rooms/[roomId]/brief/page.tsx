@@ -104,8 +104,8 @@ export default async function DesignBriefPage({
         <Link className="font-display text-[28px] font-light text-ink" href="/">
           Ri <span className="font-body text-caption font-medium uppercase text-ink-muted">Ritzy Studio</span>
         </Link>
-        <ButtonLink href="/" trailing="→" variant="quiet">
-          back to studio
+        <ButtonLink href="/" leading="←" variant="chrome">
+          Back to studio
         </ButtonLink>
       </header>
 
@@ -293,7 +293,7 @@ export default async function DesignBriefPage({
             </div>
 
             <div className="mt-12 flex flex-col gap-4 border-t border-line pt-8 md:flex-row md:items-center md:justify-between">
-              <ButtonLink href={`/projects/${projectId}/rooms/${roomId}/photos`} variant="quiet">
+              <ButtonLink href={`/projects/${projectId}/rooms/${roomId}/photos`} leading="←" variant="chrome">
                 Back to photos
               </ButtonLink>
               <SubmitButton pendingLabel={(questions ?? []).length > 0 ? "Starting concept generation..." : "Preparing questions..."}>

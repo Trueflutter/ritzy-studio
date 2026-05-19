@@ -32,8 +32,8 @@ export default async function OnboardingPage({
           Ri <span className="font-body text-caption font-medium uppercase text-ink-muted">Ritzy Studio</span>
         </Link>
         <form action={signOutAction}>
-          <SubmitButton pendingLabel="Signing out..." variant="quiet">
-            sign out
+          <SubmitButton pendingLabel="Signing out..." variant="chrome">
+            Sign out
           </SubmitButton>
         </form>
       </header>
