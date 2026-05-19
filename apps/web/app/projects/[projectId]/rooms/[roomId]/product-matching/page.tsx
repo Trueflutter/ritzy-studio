@@ -203,16 +203,16 @@ export default async function ProductMatchingPage({
         </div>
 
         <section className="mt-12 grid gap-8 lg:grid-cols-[minmax(0,1fr)_340px]">
-          <article className="border border-line bg-surface p-4">
-            <div className="flex aspect-[3/2] items-center justify-center bg-page">
+          <article className="border border-line bg-surface p-[14px]">
+            <div className="flex aspect-[4/3] items-center justify-center overflow-hidden bg-page">
               {signedConceptImage?.signedUrl ? (
                 <Image
                   alt={`${selectedConcept.title} generated room concept`}
                   className="h-full w-full object-cover"
-                  height={768}
+                  height={900}
                   unoptimized
                   src={signedConceptImage.signedUrl}
-                  width={1152}
+                  width={1200}
                 />
               ) : (
                 <p className="font-display text-body-s italic text-error">
@@ -220,12 +220,14 @@ export default async function ProductMatchingPage({
                 </p>
               )}
             </div>
-            <p className="mt-5 font-body text-caption font-medium uppercase text-ink-muted">
-              Selected Concept
-            </p>
-            <h2 className="mt-3 font-display text-display-xs font-light italic text-ink">
-              {selectedConcept.title}
-            </h2>
+            <div className="mt-5 border-t border-line px-[18px] pb-[18px] pt-5">
+              <p className="font-body text-caption font-medium uppercase text-ink-muted">
+                Selected Concept
+              </p>
+              <h2 className="mt-3 font-display text-display-xs font-light italic text-ink">
+                {selectedConcept.title}
+              </h2>
+            </div>
           </article>
         </section>
 
@@ -240,13 +242,13 @@ export default async function ProductMatchingPage({
                   .join(" ");
 
                 return (
-                  <article className="border border-line bg-surface p-4" key={item.id}>
-                    <div className="aspect-[4/3] overflow-hidden bg-page">
+                  <article className="border border-line bg-surface p-[14px]" key={item.id}>
+                    <div className="aspect-square overflow-hidden border border-line bg-page">
                       {product?.primary_image_url ? (
                         <Image
                           alt={`${product.name} product image`}
                           className="h-full w-full object-cover"
-                          height={600}
+                          height={800}
                           unoptimized
                           src={product.primary_image_url}
                           width={800}
@@ -259,66 +261,70 @@ export default async function ProductMatchingPage({
                         </div>
                       )}
                     </div>
-                    <p className="mt-5 font-body text-caption font-medium uppercase text-ink-muted">
-                      {product?.retailer?.name ?? "Retailer"} · {item.category}
-                    </p>
-                    <h3 className="mt-3 font-display text-display-xs font-light italic text-ink">
-                      {product?.name ?? "Product unavailable"}
-                    </h3>
-                    <div className="mt-4 space-y-2 font-body text-body-s text-ink-secondary">
-                      <p>
-                        Price: {formatAed(item.unit_price_aed)}
-                        {product?.sale_price_aed ? " sale" : ""}
+                    <div className="mt-5 px-[6px] pb-[6px]">
+                      <p className="font-body text-caption font-medium uppercase text-ink-muted">
+                        {product?.retailer?.name ?? "Retailer"} · {item.category}
                       </p>
-                      <p>Availability: {product?.availability ?? "not available"}</p>
-                      <p>
-                        Dimensions:{" "}
-                        {dimensions?.source_text ??
-                          dimensionsText(dimensions?.width_cm, dimensions?.depth_cm, dimensions?.height_cm)}
-                      </p>
+                      <h3 className="mt-3 font-display text-display-xs font-light italic text-ink">
+                        {product?.name ?? "Product unavailable"}
+                      </h3>
+                      <div className="mt-4 space-y-2 font-body text-body-s text-ink-secondary">
+                        <p>
+                          Price: {formatAed(item.unit_price_aed)}
+                          {product?.sale_price_aed ? " sale" : ""}
+                        </p>
+                        <p>Availability: {product?.availability ?? "not available"}</p>
+                        <p>
+                          Dimensions:{" "}
+                          {dimensions?.source_text ??
+                            dimensionsText(dimensions?.width_cm, dimensions?.depth_cm, dimensions?.height_cm)}
+                        </p>
+                      </div>
+                      {warningText ? (
+                        <p className="mt-4 border border-line bg-page px-4 py-3 font-display text-body-s italic text-warning">
+                          {warningText}
+                        </p>
+                      ) : null}
+                      {canAccessCommerce && product?.canonical_url ? (
+                        <ButtonLink
+                          className="mt-5"
+                          href={product.canonical_url}
+                          rel="noreferrer"
+                          target="_blank"
+                          trailing="→"
+                          variant="quiet"
+                        >
+                          open retailer page
+                        </ButtonLink>
+                      ) : null}
+                      {canAccessCommerce && shoppingList ? (
+                        <form action={substituteProductAction} className="mt-5 border-t border-line pt-5">
+                          <input name="projectId" type="hidden" value={projectId} />
+                          <input name="roomId" type="hidden" value={roomId} />
+                          <input name="shoppingListId" type="hidden" value={shoppingList.id} />
+                          <input name="itemId" type="hidden" value={item.id} />
+                          <label
+                            className="mb-3 block font-body text-caption font-medium uppercase text-ink-muted"
+                            htmlFor={`mode-${item.id}`}
+                          >
+                            Swap request
+                          </label>
+                          <select
+                            className="h-[52px] w-full border border-line-strong bg-transparent px-4 font-body text-body-s text-ink focus:outline focus:outline-2 focus:outline-offset-2 focus:outline-ring"
+                            id={`mode-${item.id}`}
+                            name="mode"
+                          >
+                            <option value="cheaper">cheaper option</option>
+                            <option value="closer_style">closer style</option>
+                            <option value="same_retailer">same retailer</option>
+                            <option value="in_stock">in stock only</option>
+                          </select>
+                          <SubmitButton className="mt-4 w-full" pendingLabel="Finding substitute..." variant="secondary">
+                            Swap this item
+                          </SubmitButton>
+                        </form>
+                      ) : null}
                     </div>
-                    {warningText ? (
-                      <p className="mt-4 border border-line bg-page px-4 py-3 font-display text-body-s italic text-warning">
-                        {warningText}
-                      </p>
-                    ) : null}
-                    {canAccessCommerce && product?.canonical_url ? (
-                      <a
-                        className="mt-5 inline-flex font-display text-button-quiet italic text-ink transition-colors hover:text-accent-deep"
-                        href={product.canonical_url}
-                        rel="noreferrer"
-                        target="_blank"
-                      >
-                        open retailer page →
-                      </a>
-                    ) : null}
-                    {canAccessCommerce && shoppingList ? (
-                      <form action={substituteProductAction} className="mt-5 border-t border-line pt-5">
-                        <input name="projectId" type="hidden" value={projectId} />
-                        <input name="roomId" type="hidden" value={roomId} />
-                        <input name="shoppingListId" type="hidden" value={shoppingList.id} />
-                        <input name="itemId" type="hidden" value={item.id} />
-                        <label
-                          className="mb-3 block font-body text-caption font-medium uppercase text-ink-muted"
-                          htmlFor={`mode-${item.id}`}
-                        >
-                          Swap request
-                        </label>
-                        <select
-                          className="h-[52px] w-full border border-line-strong bg-transparent px-4 font-body text-body-s text-ink focus:outline focus:outline-2 focus:outline-offset-2 focus:outline-ring"
-                          id={`mode-${item.id}`}
-                          name="mode"
-                        >
-                          <option value="cheaper">cheaper option</option>
-                          <option value="closer_style">closer style</option>
-                          <option value="same_retailer">same retailer</option>
-                          <option value="in_stock">in stock only</option>
-                        </select>
-                        <SubmitButton className="mt-4 w-full" pendingLabel="Finding substitute..." variant="secondary">
-                          Swap this item
-                        </SubmitButton>
-                      </form>
-                    ) : null}
                   </article>
                 );
               })
@@ -383,16 +389,16 @@ export default async function ProductMatchingPage({
           <div className="mt-8 grid gap-6 md:grid-cols-2">
             {finalRenders.length > 0 ? (
               finalRenders.map((render) => (
-                <article className="border border-line bg-surface p-4" key={render.id}>
-                  <div className="flex aspect-[3/2] items-center justify-center bg-page">
+                <article className="border border-line bg-surface p-[14px]" key={render.id}>
+                  <div className="flex aspect-[4/3] items-center justify-center overflow-hidden bg-page">
                     {render.signedUrl ? (
                       <Image
                         alt="Final grounded room render"
                         className="h-full w-full object-cover"
-                        height={768}
+                        height={900}
                         unoptimized
                         src={render.signedUrl}
-                        width={1152}
+                        width={1200}
                       />
                     ) : (
                       <p className="font-display text-body-s italic text-error">
@@ -400,9 +406,11 @@ export default async function ProductMatchingPage({
                       </p>
                     )}
                   </div>
-                  <p className="mt-4 font-body text-caption font-medium uppercase text-ink-muted">
-                    Final render · {new Date(render.created_at).toLocaleDateString("en-AE")}
-                  </p>
+                  <div className="mt-5 border-t border-line px-[18px] pb-[18px] pt-5">
+                    <p className="font-body text-caption font-medium uppercase text-ink-muted">
+                      Final render · {new Date(render.created_at).toLocaleDateString("en-AE")}
+                    </p>
+                  </div>
                 </article>
               ))
             ) : null}

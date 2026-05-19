@@ -122,7 +122,11 @@ export default async function DashboardPage() {
                 : "/projects/new";
 
               return (
-                <Link href={href} key={project.id}>
+                <Link
+                  className="block focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[var(--rs-focus-ring)]"
+                  href={href}
+                  key={project.id}
+                >
                   <Card className="group h-full transition-colors duration-micro ease-standard hover:bg-surface-subtle">
                     <div className="aspect-[4/3] border-b border-line bg-surface-subtle" />
                     <div className="p-6">
