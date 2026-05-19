@@ -1813,7 +1813,13 @@ export async function generateFinalRenderAction(formData: FormData) {
         .download(conceptImageAsset.storage_path)
     : { data: null };
 
-  const { data: items = [] } = await serviceSupabase
+  const selectedItemIdsRaw = formData.get("selectedItemIds")?.toString() ?? "";
+  const selectedItemIds = selectedItemIdsRaw
+    .split(",")
+    .map((id) => id.trim())
+    .filter(Boolean);
+
+  let itemsQuery = serviceSupabase
     .from("shopping_list_items")
     .select(
       `
@@ -1825,8 +1831,13 @@ export async function generateFinalRenderAction(formData: FormData) {
       )
     `
     )
-    .eq("shopping_list_id", shoppingListId)
-    .order("sort_order", { ascending: true });
+    .eq("shopping_list_id", shoppingListId);
+
+  if (selectedItemIds.length > 0) {
+    itemsQuery = itemsQuery.in("id", selectedItemIds);
+  }
+
+  const { data: items = [] } = await itemsQuery.order("sort_order", { ascending: true });
 
   const selectedProducts = (items ?? []).filter((item) => item.product);
 
