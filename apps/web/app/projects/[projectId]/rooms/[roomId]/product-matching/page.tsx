@@ -104,13 +104,30 @@ export default async function ProductMatchingPage({
         .order("sort_order", { ascending: true })
     : { data: [] };
 
-  const { data: finalRenderAssets = [] } = await supabase
-    .from("room_assets")
-    .select("*")
+  const { data: conceptRenderJobs = [] } = await supabase
+    .from("render_jobs")
+    .select("output_asset_ids, status, error_message, completed_at, created_at")
     .eq("room_id", roomId)
-    .eq("asset_type", "final_render")
-    .order("created_at", { ascending: false })
-    .limit(4);
+    .eq("concept_id", selectedConcept.id)
+    .order("created_at", { ascending: false });
+
+  const conceptRenderAssetIds = Array.from(
+    new Set(
+      (conceptRenderJobs ?? [])
+        .filter((job) => job.status === "succeeded")
+        .flatMap((job) => job.output_asset_ids ?? [])
+    )
+  );
+
+  const { data: finalRenderAssets = [] } = conceptRenderAssetIds.length > 0
+    ? await supabase
+        .from("room_assets")
+        .select("*")
+        .eq("asset_type", "final_render")
+        .in("id", conceptRenderAssetIds)
+        .order("created_at", { ascending: false })
+        .limit(4)
+    : { data: [] };
 
   const finalRenders = await Promise.all(
     canAccessCommerce
@@ -124,14 +141,7 @@ export default async function ProductMatchingPage({
       : []
   );
 
-  const { data: latestRenderJob } = await supabase
-    .from("render_jobs")
-    .select("status, error_message, completed_at")
-    .eq("room_id", roomId)
-    .eq("concept_id", selectedConcept.id)
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
+  const latestRenderJob = (conceptRenderJobs ?? [])[0] ?? null;
 
   const shoppingItemsList = shoppingItems ?? [];
 
@@ -242,14 +252,27 @@ export default async function ProductMatchingPage({
               )}
             </div>
 
-            <form action={groundProductsAction} className="shrink-0">
-              <input name="projectId" type="hidden" value={projectId} />
-              <input name="roomId" type="hidden" value={roomId} />
-              <input name="conceptId" type="hidden" value={selectedConcept.id} />
-              <SubmitButton pendingLabel="Sourcing the shopping plan...">
-                {shoppingList ? "Refresh matches" : "Source the shopping plan"}
-              </SubmitButton>
-            </form>
+            <div className="flex shrink-0 flex-col items-stretch gap-3 md:flex-row md:items-center">
+              {shoppingList ? (
+                <ButtonLink
+                  href={`/projects/${projectId}/rooms/${roomId}/shopping-list`}
+                  trailing="→"
+                >
+                  Open shopping list
+                </ButtonLink>
+              ) : null}
+              <form action={groundProductsAction}>
+                <input name="projectId" type="hidden" value={projectId} />
+                <input name="roomId" type="hidden" value={roomId} />
+                <input name="conceptId" type="hidden" value={selectedConcept.id} />
+                <SubmitButton
+                  pendingLabel="Sourcing the shopping plan..."
+                  variant={shoppingList ? "secondary" : "primary"}
+                >
+                  {shoppingList ? "Refresh matches" : "Source the shopping plan"}
+                </SubmitButton>
+              </form>
+            </div>
           </div>
 
           <div className="mt-10 grid gap-5 md:grid-cols-2 xl:grid-cols-3">
