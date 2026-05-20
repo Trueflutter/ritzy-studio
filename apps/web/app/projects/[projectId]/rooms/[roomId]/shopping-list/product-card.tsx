@@ -21,6 +21,7 @@ type ProductCardProps = {
   roomId: string;
   selected: boolean;
   rejected: boolean;
+  selectionDisabled: boolean;
   canAccessCommerce: boolean;
   onToggleSelected: (id: string) => void;
   onToggleRejected: (id: string) => void;
@@ -33,6 +34,7 @@ export function ProductCard({
   roomId,
   selected,
   rejected,
+  selectionDisabled,
   canAccessCommerce,
   onToggleSelected,
   onToggleRejected,
@@ -160,9 +162,17 @@ export function ProductCard({
                 className={`inline-flex h-[44px] items-center justify-center gap-2 border px-5 font-body text-button font-medium uppercase tracking-[0.18em] transition-colors duration-micro ease-standard ${
                   selected
                     ? "border-ink bg-ink text-surface hover:bg-primary-hover"
-                    : "border-line-strong bg-transparent text-ink hover:border-ink"
+                    : selectionDisabled
+                      ? "cursor-not-allowed border-line bg-transparent text-ink-muted"
+                      : "border-line-strong bg-transparent text-ink hover:border-ink"
                 }`}
+                disabled={!selected && selectionDisabled}
                 onClick={() => onToggleSelected(item.id)}
+                title={
+                  !selected && selectionDisabled
+                    ? "This category's picks are full — deselect one to swap."
+                    : undefined
+                }
                 type="button"
               >
                 {selected ? "Selected" : "Select"}

@@ -136,6 +136,7 @@ export default async function ShoppingListPage({
       category: role.category,
       label: role.label,
       required: role.required,
+      quantity: role.quantity,
       items: roleItems
     });
     itemsByCategory.delete(role.category);
@@ -145,6 +146,7 @@ export default async function ShoppingListPage({
       category,
       label: category.replace(/_/g, " "),
       required: false,
+      quantity: 1,
       items: groupItems
     });
   }
@@ -188,14 +190,14 @@ export default async function ShoppingListPage({
             </p>
             <div className="mt-3 h-px w-32 bg-ink" />
             <h1 className="mt-8 font-display text-display-l font-light leading-[1] tracking-[-0.015em] text-ink">
-              Choose one piece per category.
+              Choose the pieces for each category.
             </h1>
             <p className="mt-5 max-w-[640px] font-body text-body-m text-ink-secondary">
               {project.name} · {room.name} · {shoppingList?.concept?.title ?? "No selected concept"}
             </p>
             <p className="mt-3 max-w-[640px] font-body text-body-s text-ink-muted">
-              Each section below is a piece your {room.room_type} needs. Pick the one you want —
-              tap any card for catalog detail.
+              Each section below is a category your {room.room_type} needs — some need more than
+              one piece. Tap any card for catalog detail.
             </p>
           </div>
 
