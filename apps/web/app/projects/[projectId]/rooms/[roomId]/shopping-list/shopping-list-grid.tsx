@@ -4,6 +4,8 @@ import { SubmitButton } from "@ritzy-studio/ui";
 import { useCallback, useMemo, useState, useTransition } from "react";
 
 import {
+  createDesignerSubscriptionCheckoutAction,
+  createHomeownerRoomUnlockCheckoutAction,
   findMoreShoppingOptionsAction,
   generateFinalRenderAction,
   refreshShoppingOptionsAction,
@@ -28,6 +30,9 @@ type ShoppingListGridProps = {
   shoppingListId: string;
   groups: CategoryGroup[];
   canAccessCommerce: boolean;
+  clientName: string | null;
+  roomType: string | null;
+  isDesignerMode: boolean;
 };
 
 const VISIBLE_PER_ROLE = 3;
@@ -38,7 +43,10 @@ export function ShoppingListGrid({
   conceptId,
   shoppingListId,
   groups,
-  canAccessCommerce
+  canAccessCommerce,
+  clientName,
+  roomType,
+  isDesignerMode
 }: ShoppingListGridProps) {
   // Optimistic picks for instant feedback; every change persists in the
   // background, so the server stays the source of truth on reload.
@@ -132,14 +140,26 @@ export function ShoppingListGrid({
   const selectedIds = Array.from(selectedByCategory.values());
   const selectedCount = selectedIds.length;
   const canGenerate = selectedCount > 0 && allRequiredChosen;
-
-  // The final render is a commerce feature — say so plainly rather than
-  // leaving the button greyed with no reason.
-  const renderLockReason = !canAccessCommerce
-    ? "The final render is part of the unlocked room — unlock it from the Estimate panel above."
-    : conceptId === null
+  const generationUnavailableReason =
+    conceptId === null
       ? "This room has no selected concept, so the render can't be generated."
-      : null;
+      : !canGenerate
+        ? "Pick a piece in every required category to generate the render."
+        : null;
+  const roomLabel = formatRoomLabel(clientName, roomType);
+  const renderCtaProps = {
+    canAccessCommerce,
+    canGenerate,
+    conceptId,
+    generationUnavailableReason,
+    isDesignerMode,
+    projectId,
+    roomId,
+    roomLabel,
+    selectedCount,
+    selectedIds,
+    shoppingListId
+  };
 
   const drawerItem = useMemo(() => (detailItem ? detailItem.detail : null), [detailItem]);
 
@@ -167,6 +187,8 @@ export function ShoppingListGrid({
           category to replace the unselected options.
         </p>
       </div>
+
+      <RenderCta className="mt-6" placement="top" {...renderCtaProps} />
 
       <div className="mt-12 space-y-14">
         {groups.map((group) => {
@@ -253,45 +275,7 @@ export function ShoppingListGrid({
         })}
       </div>
 
-      <div
-        aria-live="polite"
-        className="mt-14 flex flex-col gap-6 border-t border-line pt-10 md:flex-row md:items-end md:justify-between"
-      >
-        <div className="max-w-[560px]">
-          <p className="font-body text-caption font-medium uppercase tracking-[0.32em] text-ink-muted">
-            Final render
-          </p>
-          <h2 className="mt-3 font-display text-display-m font-light italic text-ink">
-            {canGenerate
-              ? "Confirm selections and generate the grounded render."
-              : "Choose a piece for every required category."}
-          </h2>
-          <p className="mt-3 font-body text-body-s text-ink-secondary">
-            {canGenerate
-              ? `${selectedCount} piece${selectedCount === 1 ? "" : "s"} chosen. The render uses them as visual references.`
-              : "Pick a piece in every required category to generate the render."}
-          </p>
-        </div>
-
-        {canGenerate ? (
-          renderLockReason ? (
-            <p className="shrink-0 border border-line bg-surface px-4 py-3 font-display text-body-m italic text-ink-secondary md:max-w-[320px]">
-              {renderLockReason}
-            </p>
-          ) : (
-            <form action={generateFinalRenderAction} className="shrink-0">
-              <input name="projectId" type="hidden" value={projectId} />
-              <input name="roomId" type="hidden" value={roomId} />
-              <input name="conceptId" type="hidden" value={conceptId ?? ""} />
-              <input name="shoppingListId" type="hidden" value={shoppingListId} />
-              <input name="selectedItemIds" type="hidden" value={selectedIds.join(",")} />
-              <SubmitButton pendingLabel="Generating final render...">
-                Confirm selections and generate render
-              </SubmitButton>
-            </form>
-          )
-        ) : null}
-      </div>
+      <RenderCta className="mt-14 border-t border-line pt-10" placement="bottom" {...renderCtaProps} />
 
       <DetailDrawer
         canAccessCommerce={canAccessCommerce}
@@ -301,4 +285,154 @@ export function ShoppingListGrid({
       />
     </div>
   );
+}
+
+type RenderCtaProps = {
+  canAccessCommerce: boolean;
+  canGenerate: boolean;
+  className?: string;
+  conceptId: string | null;
+  generationUnavailableReason: string | null;
+  isDesignerMode: boolean;
+  placement: "top" | "bottom";
+  projectId: string;
+  roomId: string;
+  roomLabel: string;
+  selectedCount: number;
+  selectedIds: string[];
+  shoppingListId: string;
+};
+
+function RenderCta({
+  canAccessCommerce,
+  canGenerate,
+  className,
+  conceptId,
+  generationUnavailableReason,
+  isDesignerMode,
+  placement,
+  projectId,
+  roomId,
+  roomLabel,
+  selectedCount,
+  selectedIds,
+  shoppingListId
+}: RenderCtaProps) {
+  const selectedLabel = `${selectedCount} piece${selectedCount === 1 ? "" : "s"} selected.`;
+  const title = canGenerate
+    ? `Generate ${roomLabel} with selected pieces.`
+    : `Choose the remaining pieces for ${roomLabel}.`;
+  const description = canGenerate
+    ? `${selectedLabel} The final render uses them as visual references.`
+    : generationUnavailableReason ?? "Pick a piece in every required category to generate the render.";
+
+  return (
+    <div
+      aria-live="polite"
+      className={`flex flex-col gap-5 border border-line bg-surface px-5 py-5 md:flex-row md:items-center md:justify-between md:px-6 ${className ?? ""}`}
+    >
+      <div className="max-w-[640px]">
+        <p className="font-body text-caption font-medium uppercase tracking-[0.32em] text-ink-muted">
+          Final render
+        </p>
+        <h2
+          className={
+            placement === "top"
+              ? "mt-3 font-display text-display-xs font-light italic text-ink"
+              : "mt-3 font-display text-display-m font-light italic text-ink"
+          }
+        >
+          {title}
+        </h2>
+        <p className="mt-3 font-body text-body-s text-ink-secondary">{description}</p>
+      </div>
+
+      <RenderCtaForm
+        canAccessCommerce={canAccessCommerce}
+        canGenerate={canGenerate}
+        conceptId={conceptId}
+        isDesignerMode={isDesignerMode}
+        projectId={projectId}
+        roomId={roomId}
+        selectedIds={selectedIds}
+        shoppingListId={shoppingListId}
+      />
+    </div>
+  );
+}
+
+function RenderCtaForm({
+  canAccessCommerce,
+  canGenerate,
+  conceptId,
+  isDesignerMode,
+  projectId,
+  roomId,
+  selectedIds,
+  shoppingListId
+}: {
+  canAccessCommerce: boolean;
+  canGenerate: boolean;
+  conceptId: string | null;
+  isDesignerMode: boolean;
+  projectId: string;
+  roomId: string;
+  selectedIds: string[];
+  shoppingListId: string;
+}) {
+  const button = (
+    <SubmitButton
+      className="w-full md:w-auto"
+      disabled={!canGenerate || conceptId === null}
+      pendingLabel={canAccessCommerce ? "Generating render..." : "Opening secure checkout..."}
+    >
+      Generate render
+    </SubmitButton>
+  );
+
+  if (!canGenerate || conceptId === null) {
+    return <div className="shrink-0 md:min-w-[220px]">{button}</div>;
+  }
+
+  if (!canAccessCommerce && isDesignerMode) {
+    return (
+      <form action={createDesignerSubscriptionCheckoutAction} className="shrink-0 md:min-w-[220px]">
+        <input
+          name="returnTo"
+          type="hidden"
+          value={`/projects/${projectId}/rooms/${roomId}/shopping-list`}
+        />
+        {button}
+      </form>
+    );
+  }
+
+  if (!canAccessCommerce) {
+    return (
+      <form action={createHomeownerRoomUnlockCheckoutAction} className="shrink-0 md:min-w-[220px]">
+        <input name="projectId" type="hidden" value={projectId} />
+        <input name="roomId" type="hidden" value={roomId} />
+        {button}
+      </form>
+    );
+  }
+
+  return (
+    <form action={generateFinalRenderAction} className="shrink-0 md:min-w-[220px]">
+      <input name="projectId" type="hidden" value={projectId} />
+      <input name="roomId" type="hidden" value={roomId} />
+      <input name="conceptId" type="hidden" value={conceptId} />
+      <input name="shoppingListId" type="hidden" value={shoppingListId} />
+      <input name="selectedItemIds" type="hidden" value={selectedIds.join(",")} />
+      {button}
+    </form>
+  );
+}
+
+function formatRoomLabel(clientName: string | null, roomType: string | null) {
+  const firstName = clientName?.trim().split(/\s+/)[0];
+  const possessiveName = firstName ? `${firstName}${firstName.endsWith("s") ? "'" : "'s"}` : "your";
+  const normalizedRoomType = roomType?.trim().toLowerCase() || "room";
+
+  return `${possessiveName} ${normalizedRoomType}`;
 }

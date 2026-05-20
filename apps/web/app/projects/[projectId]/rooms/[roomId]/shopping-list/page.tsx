@@ -1,4 +1,4 @@
-import { ButtonLink, SubmitButton } from "@ritzy-studio/ui";
+import { ButtonLink } from "@ritzy-studio/ui";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
@@ -6,11 +6,6 @@ import { groupShoppingItemsByRole, selectedItemsTotalAed } from "@ritzy-studio/d
 
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
-import {
-  createDesignerSubscriptionCheckoutAction,
-  createHomeownerRoomUnlockCheckoutAction
-} from "@/app/actions";
-
 import type { ProductCardItem } from "./product-card";
 import { ShoppingListGrid, type CategoryGroup } from "./shopping-list-grid";
 
@@ -87,7 +82,6 @@ export default async function ShoppingListPage({
     .eq("user_id", user.id)
     .maybeSingle();
   const isDesignerMode = profile?.intended_mode === "designer" || profile?.intended_mode === "both";
-
   const cardItems: ProductCardItem[] = listItems.map((item) => {
     const product = item.product;
     const dimensions = product?.dimensions?.[0];
@@ -192,38 +186,6 @@ export default async function ShoppingListPage({
             <p className="mt-4 font-body text-body-s text-ink-secondary">
               {selectedItemCount} piece{selectedItemCount === 1 ? "" : "s"} selected.
             </p>
-            {!commerceUnlocked && isDesignerMode ? (
-              <form action={createDesignerSubscriptionCheckoutAction} className="mt-6 border-t border-line pt-5">
-                <input
-                  name="returnTo"
-                  type="hidden"
-                  value={`/projects/${projectId}/rooms/${roomId}/shopping-list`}
-                />
-                <p className="mb-5 font-body text-body-s text-ink-secondary">
-                  Start the designer plan to reveal retailer links, presentations, product swaps,
-                  final renders, and additional rooms.
-                </p>
-                <SubmitButton className="w-full" pendingLabel="Opening secure checkout...">
-                  Start designer plan
-                </SubmitButton>
-              </form>
-            ) : !commerceUnlocked ? (
-              <form action={createHomeownerRoomUnlockCheckoutAction} className="mt-6 border-t border-line pt-5">
-                <input name="projectId" type="hidden" value={projectId} />
-                <input name="roomId" type="hidden" value={roomId} />
-                <p className="mb-5 font-body text-body-s text-ink-secondary">
-                  Unlock retailer links, eligible partner discounts, and the final room plan for
-                  AED 100.
-                </p>
-                <SubmitButton className="w-full" pendingLabel="Opening secure checkout...">
-                  Unlock room
-                </SubmitButton>
-              </form>
-            ) : (
-              <p className="mt-6 border-t border-line pt-5 font-display text-body-s italic text-success">
-                Room commerce unlocked.
-              </p>
-            )}
           </aside>
         </div>
 
@@ -232,8 +194,11 @@ export default async function ShoppingListPage({
             <ShoppingListGrid
               canAccessCommerce={commerceUnlocked}
               conceptId={shoppingList.concept_id ?? null}
+              clientName={project.client_name}
               groups={roleGroups}
+              isDesignerMode={isDesignerMode}
               projectId={projectId}
+              roomType={room.room_type}
               roomId={roomId}
               shoppingListId={shoppingList.id}
             />
