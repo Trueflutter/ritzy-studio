@@ -4,8 +4,6 @@ import { SubmitButton } from "@ritzy-studio/ui";
 import { useCallback, useMemo, useState, useTransition } from "react";
 
 import {
-  createDesignerSubscriptionCheckoutAction,
-  createHomeownerRoomUnlockCheckoutAction,
   findMoreShoppingOptionsAction,
   generateFinalRenderAction,
   refreshShoppingOptionsAction,
@@ -32,7 +30,6 @@ type ShoppingListGridProps = {
   canAccessCommerce: boolean;
   clientName: string | null;
   roomType: string | null;
-  isDesignerMode: boolean;
 };
 
 const VISIBLE_PER_ROLE = 3;
@@ -45,8 +42,7 @@ export function ShoppingListGrid({
   groups,
   canAccessCommerce,
   clientName,
-  roomType,
-  isDesignerMode
+  roomType
 }: ShoppingListGridProps) {
   // Optimistic picks for instant feedback; every change persists in the
   // background, so the server stays the source of truth on reload.
@@ -148,11 +144,9 @@ export function ShoppingListGrid({
         : null;
   const roomLabel = formatRoomLabel(clientName, roomType);
   const renderCtaProps = {
-    canAccessCommerce,
     canGenerate,
     conceptId,
     generationUnavailableReason,
-    isDesignerMode,
     projectId,
     roomId,
     roomLabel,
@@ -288,12 +282,10 @@ export function ShoppingListGrid({
 }
 
 type RenderCtaProps = {
-  canAccessCommerce: boolean;
   canGenerate: boolean;
   className?: string;
   conceptId: string | null;
   generationUnavailableReason: string | null;
-  isDesignerMode: boolean;
   placement: "top" | "bottom";
   projectId: string;
   roomId: string;
@@ -304,12 +296,10 @@ type RenderCtaProps = {
 };
 
 function RenderCta({
-  canAccessCommerce,
   canGenerate,
   className,
   conceptId,
   generationUnavailableReason,
-  isDesignerMode,
   placement,
   projectId,
   roomId,
@@ -348,10 +338,8 @@ function RenderCta({
       </div>
 
       <RenderCtaForm
-        canAccessCommerce={canAccessCommerce}
         canGenerate={canGenerate}
         conceptId={conceptId}
-        isDesignerMode={isDesignerMode}
         projectId={projectId}
         roomId={roomId}
         selectedIds={selectedIds}
@@ -362,19 +350,15 @@ function RenderCta({
 }
 
 function RenderCtaForm({
-  canAccessCommerce,
   canGenerate,
   conceptId,
-  isDesignerMode,
   projectId,
   roomId,
   selectedIds,
   shoppingListId
 }: {
-  canAccessCommerce: boolean;
   canGenerate: boolean;
   conceptId: string | null;
-  isDesignerMode: boolean;
   projectId: string;
   roomId: string;
   selectedIds: string[];
@@ -384,7 +368,7 @@ function RenderCtaForm({
     <SubmitButton
       className="w-full md:w-auto"
       disabled={!canGenerate || conceptId === null}
-      pendingLabel={canAccessCommerce ? "Generating render..." : "Opening secure checkout..."}
+      pendingLabel="Generating render..."
     >
       Generate render
     </SubmitButton>
@@ -392,29 +376,6 @@ function RenderCtaForm({
 
   if (!canGenerate || conceptId === null) {
     return <div className="shrink-0 md:min-w-[220px]">{button}</div>;
-  }
-
-  if (!canAccessCommerce && isDesignerMode) {
-    return (
-      <form action={createDesignerSubscriptionCheckoutAction} className="shrink-0 md:min-w-[220px]">
-        <input
-          name="returnTo"
-          type="hidden"
-          value={`/projects/${projectId}/rooms/${roomId}/shopping-list`}
-        />
-        {button}
-      </form>
-    );
-  }
-
-  if (!canAccessCommerce) {
-    return (
-      <form action={createHomeownerRoomUnlockCheckoutAction} className="shrink-0 md:min-w-[220px]">
-        <input name="projectId" type="hidden" value={projectId} />
-        <input name="roomId" type="hidden" value={roomId} />
-        {button}
-      </form>
-    );
   }
 
   return (

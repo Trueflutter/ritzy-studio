@@ -486,10 +486,7 @@ export default async function ProductMatchingPage({
                 <input name="roomId" type="hidden" value={roomId} />
                 <input name="conceptId" type="hidden" value={selectedConcept.id} />
                 <input name="shoppingListId" type="hidden" value={shoppingList?.id ?? ""} />
-                <SubmitButton
-                  disabled={!canAccessCommerce}
-                  pendingLabel="Generating final render..."
-                >
+                <SubmitButton pendingLabel="Generating final render...">
                   {finalRenders.length > 0 ? "Regenerate render" : "Generate final render"}
                 </SubmitButton>
               </form>

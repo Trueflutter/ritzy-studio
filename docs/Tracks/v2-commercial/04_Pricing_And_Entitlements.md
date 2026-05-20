@@ -15,12 +15,12 @@ Free or freemium access:
 - generate initial concept
 - see shopping-list preview
 - see estimated total
+- generate the final product-grounded render as the value reveal
 
 Paid room unlock:
 
 - exact retailer shopping links
 - eligible retailer discount code or auto-discount link
-- final product-grounded render
 - export/shareable shopping list
 - product substitution within defined limits
 
@@ -60,7 +60,7 @@ Recommendation for V2:
 | User state | Concept generation | Shopping preview | Raw retailer link | Discount code | Final grounded render |
 | --- | --- | --- | --- | --- | --- |
 | Signed-out | No | No | No | No | No |
-| Homeowner free | Yes, limited | Yes, gated | No | No | No or watermarked/limited |
+| Homeowner free | Yes, limited | Yes, preview only | No | No | Yes |
 | Homeowner room unlocked | Yes | Yes | Yes, tracked | Yes, if eligible | Yes |
 | Designer inactive subscription | Limited/account screen | No or existing only | No | No | No |
 | Designer active subscription | Yes | Yes | Yes, tracked | Yes, if eligible | Yes |
@@ -87,11 +87,13 @@ The upgrade screen should answer:
 
 Recommended copy posture:
 
-> Unlock this room's shopping plan, retailer links, eligible partner discounts, and final product-grounded render.
+> Generate the final shopping list for AED 100 to reveal retailer links, product details, and eligible partner discounts.
 
 Avoid:
 
 > Guaranteed 5% off everywhere.
+
+The final render is the pre-paywall value reveal. Payment begins when a homeowner asks to generate the final shopping list after seeing the rendered room and estimated furniture total.
 
 ## Designer Subscription UX
 
