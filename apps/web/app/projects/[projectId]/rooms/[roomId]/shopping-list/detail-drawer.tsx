@@ -105,7 +105,7 @@ export function DetailDrawer({ item, open, canAccessCommerce, onClose }: DetailD
               {item.name}
             </h2>
 
-            {item.description ? (
+            {canAccessCommerce && item.description ? (
               <p className="mx-auto mt-5 max-w-[620px] font-body text-body-m text-ink-secondary">
                 {item.description}
               </p>
