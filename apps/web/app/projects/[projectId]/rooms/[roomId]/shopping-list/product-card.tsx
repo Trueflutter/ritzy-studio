@@ -20,8 +20,10 @@ type ProductCardProps = {
   projectId: string;
   roomId: string;
   selected: boolean;
+  rejected: boolean;
   canAccessCommerce: boolean;
   onToggleSelected: (id: string) => void;
+  onToggleRejected: (id: string) => void;
   onOpenDetail: (item: ProductCardItem) => void;
 };
 
@@ -30,17 +32,24 @@ export function ProductCard({
   projectId,
   roomId,
   selected,
+  rejected,
   canAccessCommerce,
   onToggleSelected,
+  onToggleRejected,
   onOpenDetail
 }: ProductCardProps) {
   const [showSwap, setShowSwap] = useState(false);
   const detail = item.detail;
+  const showSwapForm = !selected && !rejected && canAccessCommerce && showSwap;
 
   return (
     <article
       className={`relative flex h-full flex-col border bg-surface p-[14px] transition-colors duration-micro ease-standard ${
-        selected ? "border-ink" : "border-line hover:bg-surface-subtle"
+        rejected
+          ? "border-line opacity-60"
+          : selected
+            ? "border-ink"
+            : "border-line hover:bg-surface-subtle"
       }`}
     >
       {selected ? (
@@ -131,35 +140,62 @@ export function ProductCard({
         ) : null}
 
         <div className="mt-5 flex flex-wrap items-center gap-3 border-t border-line pt-5">
-          <button
-            aria-pressed={selected}
-            className={`inline-flex h-[44px] items-center justify-center gap-2 border px-5 font-body text-button font-medium uppercase tracking-[0.18em] transition-colors duration-micro ease-standard ${
-              selected
-                ? "border-ink bg-ink text-surface hover:bg-primary-hover"
-                : "border-line-strong bg-transparent text-ink hover:border-ink"
-            }`}
-            onClick={() => onToggleSelected(item.id)}
-            type="button"
-          >
-            {selected ? "Selected" : "Select"}
-          </button>
-
-          {!selected && canAccessCommerce ? (
-            <button
-              aria-expanded={showSwap}
-              className="inline-flex items-center gap-1 font-display text-button-quiet italic text-ink transition-colors duration-micro ease-standard hover:text-accent-deep"
-              onClick={() => setShowSwap((prev) => !prev)}
-              type="button"
-            >
-              {showSwap ? "Cancel swap" : "Swap"}
-              <span aria-hidden className="text-accent-deep">
-                →
+          {rejected ? (
+            <>
+              <span className="font-body text-caption font-medium uppercase tracking-[0.32em] text-ink-muted">
+                Rejected
               </span>
-            </button>
-          ) : null}
+              <button
+                className="inline-flex items-center gap-1 font-display text-button-quiet italic text-ink transition-colors duration-micro ease-standard hover:text-accent-deep"
+                onClick={() => onToggleRejected(item.id)}
+                type="button"
+              >
+                Undo
+              </button>
+            </>
+          ) : (
+            <>
+              <button
+                aria-pressed={selected}
+                className={`inline-flex h-[44px] items-center justify-center gap-2 border px-5 font-body text-button font-medium uppercase tracking-[0.18em] transition-colors duration-micro ease-standard ${
+                  selected
+                    ? "border-ink bg-ink text-surface hover:bg-primary-hover"
+                    : "border-line-strong bg-transparent text-ink hover:border-ink"
+                }`}
+                onClick={() => onToggleSelected(item.id)}
+                type="button"
+              >
+                {selected ? "Selected" : "Select"}
+              </button>
+
+              {selected ? null : (
+                <button
+                  className="inline-flex items-center gap-1 font-display text-button-quiet italic text-ink-muted transition-colors duration-micro ease-standard hover:text-ink"
+                  onClick={() => onToggleRejected(item.id)}
+                  type="button"
+                >
+                  Reject
+                </button>
+              )}
+
+              {!selected && canAccessCommerce ? (
+                <button
+                  aria-expanded={showSwap}
+                  className="inline-flex items-center gap-1 font-display text-button-quiet italic text-ink transition-colors duration-micro ease-standard hover:text-accent-deep"
+                  onClick={() => setShowSwap((prev) => !prev)}
+                  type="button"
+                >
+                  {showSwap ? "Cancel swap" : "Swap"}
+                  <span aria-hidden className="text-accent-deep">
+                    →
+                  </span>
+                </button>
+              ) : null}
+            </>
+          )}
         </div>
 
-        {!selected && canAccessCommerce && showSwap ? (
+        {showSwapForm ? (
           <form
             action={substituteProductAction}
             className="mt-4 border-t border-line pt-4"
