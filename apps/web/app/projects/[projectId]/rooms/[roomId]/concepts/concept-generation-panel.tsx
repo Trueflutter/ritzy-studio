@@ -28,10 +28,18 @@ export function ConceptGenerationPanel({
   const formRef = useRef<HTMLFormElement>(null);
 
   useEffect(() => {
-    if (autoGenerate && canGenerate) {
-      formRef.current?.requestSubmit();
+    if (!autoGenerate || !canGenerate) {
+      return;
     }
-  }, [autoGenerate, canGenerate]);
+
+    const submissionKey = `ritzy:concept-autogenerate:${roomId}`;
+    if (window.sessionStorage.getItem(submissionKey)) {
+      return;
+    }
+
+    window.sessionStorage.setItem(submissionKey, "1");
+    formRef.current?.requestSubmit();
+  }, [autoGenerate, canGenerate, roomId]);
 
   return (
     <form action={generateInitialConceptAction} className="mt-8" ref={formRef}>

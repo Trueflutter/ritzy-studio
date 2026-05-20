@@ -1433,6 +1433,20 @@ export async function generateInitialConceptAction(formData: FormData) {
     redirect(`/projects/${projectId}/rooms/${roomId}/brief`);
   }
 
+  const { data: existingConcept } = await supabase
+    .from("concepts")
+    .select("id")
+    .eq("room_id", roomId)
+    .eq("design_brief_id", designBrief.id)
+    .in("status", ["generated", "selected"])
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (existingConcept) {
+    redirect(`${redirectPath}?message=${encodeURIComponent("Initial concept already generated.")}`);
+  }
+
   const { data: roomPhoto } = await supabase
     .from("room_assets")
     .select("*")
@@ -1444,6 +1458,23 @@ export async function generateInitialConceptAction(formData: FormData) {
 
   if (!roomPhoto) {
     redirect(`/projects/${projectId}/rooms/${roomId}/photos`);
+  }
+
+  const serviceSupabase = createServiceClient();
+  const runningSince = new Date(Date.now() - 15 * 60 * 1000).toISOString();
+  const { data: runningConceptJob } = await serviceSupabase
+    .from("ai_jobs")
+    .select("id")
+    .eq("room_id", roomId)
+    .eq("job_type", "initial_concept_generation")
+    .eq("status", "running")
+    .gte("created_at", runningSince)
+    .contains("input_summary", { designBriefId: designBrief.id })
+    .limit(1)
+    .maybeSingle();
+
+  if (runningConceptJob) {
+    redirect(`${redirectPath}?message=${encodeURIComponent("Concept generation is already running.")}`);
   }
 
   const { data: signedPhoto } = await supabase.storage
@@ -1494,7 +1525,6 @@ export async function generateInitialConceptAction(formData: FormData) {
     .order("created_at", { ascending: true })
     .order("id", { ascending: true });
 
-  const serviceSupabase = createServiceClient();
   const { data: job, error: jobError } = await serviceSupabase
     .from("ai_jobs")
     .insert({
