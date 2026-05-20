@@ -49,14 +49,14 @@ export function InspirationUploader({
   const inputRef = useRef<HTMLInputElement>(null);
   const [lastFile, setLastFile] = useState<File | null>(null);
   const [status, setStatus] = useState<UploadStatus>("idle");
-  const [message, setMessage] = useState("Upload references the room should feel close to");
+  const [message, setMessage] = useState("Drag an inspiration photo here, or click to upload");
   const [isPending, startTransition] = useTransition();
   const router = useRouter();
 
   async function uploadFile(file: File) {
     setLastFile(file);
     setStatus("uploading");
-    setMessage("Uploading inspiration image...");
+    setMessage("Uploading inspiration photo...");
 
     const supabase = createClient();
     const extension = file.name.split(".").pop() ?? "jpg";
@@ -94,7 +94,7 @@ export function InspirationUploader({
     }
 
     setStatus("complete");
-    setMessage("Inspiration image added");
+    setMessage("Inspiration photo uploaded");
     return true;
   }
 
@@ -131,7 +131,7 @@ export function InspirationUploader({
         type="file"
       />
       <button
-        className="flex min-h-40 w-full flex-col items-center justify-center border border-dashed border-line-strong bg-page px-6 text-center transition-colors duration-micro ease-standard hover:border-accent-deep hover:bg-surface-subtle focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--rs-focus-ring)]"
+        className="flex aspect-[4/3] w-full flex-col items-center justify-center border border-dashed border-line-strong bg-surface px-8 text-center transition-colors duration-micro ease-standard hover:border-accent-deep hover:bg-surface-subtle focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--rs-focus-ring)]"
         disabled={status === "uploading" || isPending}
         onDragOver={(event) => event.preventDefault()}
         onDrop={(event) => {
@@ -144,11 +144,14 @@ export function InspirationUploader({
         onClick={() => inputRef.current?.click()}
         type="button"
       >
-        <span className="font-display text-body-l font-light italic text-ink">
+        <span className="mb-6 flex size-16 items-center justify-center border border-line-strong bg-page text-ink">
+          <ImageUploadIcon />
+        </span>
+        <span className="font-display text-display-xs font-light italic text-ink">
           {status === "error" ? "reference could not upload" : message}
         </span>
-        <span className="mt-3 font-body text-caption font-medium uppercase text-ink-muted">
-          Drag or click to add JPG, PNG, or WEBP
+        <span className="mt-3 font-body text-body-s text-ink-muted">
+          JPG, PNG, or WEBP · up to 10 MB
         </span>
       </button>
 
@@ -163,5 +166,30 @@ export function InspirationUploader({
         </div>
       ) : null}
     </div>
+  );
+}
+
+function ImageUploadIcon() {
+  return (
+    <svg aria-hidden="true" className="size-7" fill="none" viewBox="0 0 24 24">
+      <path
+        d="M4.75 6.75A2 2 0 0 1 6.75 4.75h10.5a2 2 0 0 1 2 2v10.5a2 2 0 0 1-2 2H6.75a2 2 0 0 1-2-2V6.75Z"
+        stroke="currentColor"
+        strokeWidth="1.5"
+      />
+      <path
+        d="m7.25 16.25 3.2-3.2a1.25 1.25 0 0 1 1.77 0l.73.73 1.62-1.62a1.25 1.25 0 0 1 1.77 0l2.41 2.41"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.5"
+      />
+      <path
+        d="M8.5 8.75h.01"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeWidth="2"
+      />
+    </svg>
   );
 }
