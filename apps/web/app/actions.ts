@@ -2663,6 +2663,8 @@ export async function generateFinalRenderAction(formData: FormData) {
   const selectedShoppingItemIds = selectedProducts.map((item) => item.id).sort();
   const selectionKey = selectedShoppingItemIds.join(",");
   const revealPath = `/projects/${projectId}/rooms/${roomId}/presentation`;
+  const revealPathForRenderJob = (renderJobId: string) =>
+    `${revealPath}?renderJobId=${encodeURIComponent(renderJobId)}`;
   const commerceUnlocked = await canAccessRoomCommerce(roomId);
   const { data: matchingRenderJobs = [] } = await supabase
     .from("render_jobs")
@@ -2681,7 +2683,11 @@ export async function generateFinalRenderAction(formData: FormData) {
     const isStale = Number.isFinite(startedAt) && Date.now() - startedAt > staleAfterMs;
 
     if (!isStale) {
-      redirect(`${revealPath}?message=${encodeURIComponent("Final render is already running.")}`);
+      redirect(
+        `${revealPathForRenderJob(matchingRenderJob.id)}&message=${encodeURIComponent(
+          "Final render is already running."
+        )}`
+      );
     }
 
     await supabase
@@ -2699,7 +2705,7 @@ export async function generateFinalRenderAction(formData: FormData) {
     (matchingRenderJob.output_asset_ids?.length ?? 0) > 0 &&
     !commerceUnlocked
   ) {
-    redirect(`${revealPath}?message=${encodeURIComponent("Final render is ready.")}`);
+    redirect(`${revealPathForRenderJob(matchingRenderJob.id)}&message=${encodeURIComponent("Final render is ready.")}`);
   }
 
   const productIds = selectedProducts.map((item) => item.product!.id);
@@ -2823,7 +2829,7 @@ export async function generateFinalRenderAction(formData: FormData) {
 
   revalidatePath(redirectPath);
   revalidatePath(revealPath);
-  redirect(`${revealPath}?message=${encodeURIComponent("Final render generated.")}`);
+  redirect(`${revealPathForRenderJob(renderJob.id)}&message=${encodeURIComponent("Final render generated.")}`);
 }
 
 export async function reviseConceptAction(formData: FormData) {
