@@ -11,7 +11,8 @@ import {
 import type { Database } from "@ritzy-studio/db";
 import {
   createHomeownerRoomSchema,
-  createProjectWithRoomSchema,
+  createProjectSchema,
+  createRoomSchema,
   designBriefSchema,
   composeRoomProductSet,
   filterSubstitutionCandidates,
@@ -655,16 +656,26 @@ export async function deleteRoomPhotoAction(formData: FormData) {
   redirect(`${redirectPath}?message=${encodeURIComponent("Photograph removed.")}`);
 }
 
-export async function createProjectWithRoomAction(formData: FormData) {
-  const parsed = createProjectWithRoomSchema.parse({
+export async function createProjectAction(formData: FormData) {
+  const parsed = createProjectSchema.parse({
     name: String(formData.get("name") ?? "").trim(),
     clientName: optionalString(formData, "clientName"),
     location: optionalString(formData, "location"),
     budgetMinAed: optionalNumber(formData, "budgetMinAed"),
-    budgetMaxAed: optionalNumber(formData, "budgetMaxAed"),
-    roomName: String(formData.get("roomName") ?? "").trim(),
-    roomType: String(formData.get("roomType") ?? "").trim()
+    budgetMaxAed: optionalNumber(formData, "budgetMaxAed")
   });
+
+  if (
+    parsed.budgetMinAed !== undefined &&
+    parsed.budgetMaxAed !== undefined &&
+    parsed.budgetMinAed > parsed.budgetMaxAed
+  ) {
+    redirect(
+      `/projects/new?message=${encodeURIComponent(
+        "Budget minimum must be less than or equal to budget maximum."
+      )}`
+    );
+  }
 
   const supabase = await createClient();
   const {
@@ -690,18 +701,6 @@ export async function createProjectWithRoomAction(formData: FormData) {
     redirect("/onboarding");
   }
 
-  const isDesignerMode = profile?.intended_mode === "designer" || profile?.intended_mode === "both";
-  const designerIsSubscribed = isDesignerMode ? await hasActiveDesignerSubscription(user.id) : false;
-  const existingRoomCount = isDesignerMode ? await countOwnedRooms(user.id) : 0;
-
-  if (isDesignerMode && !designerIsSubscribed && existingRoomCount >= 1) {
-    redirect(
-      `/projects/new?message=${encodeURIComponent(
-        "Your free designer room is already in progress. Start the designer plan to create another room."
-      )}`
-    );
-  }
-
   const { data: project, error: projectError } = await supabase
     .from("projects")
     .insert({
@@ -720,11 +719,72 @@ export async function createProjectWithRoomAction(formData: FormData) {
     throw new Error(projectError.message);
   }
 
+  revalidatePath("/");
+  redirect(`/projects/${project.id}/rooms/new`);
+}
+
+export async function createRoomAction(formData: FormData) {
+  const parsed = createRoomSchema.parse({
+    projectId: String(formData.get("projectId") ?? "").trim(),
+    name: String(formData.get("name") ?? "").trim(),
+    roomType: String(formData.get("roomType") ?? "").trim()
+  });
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+    error: userError
+  } = await supabase.auth.getUser();
+
+  if (userError || !user) {
+    redirect("/login");
+  }
+
+  const { data: project, error: projectError } = await supabase
+    .from("projects")
+    .select("id, owner_user_id")
+    .eq("id", parsed.projectId)
+    .maybeSingle();
+
+  if (projectError) {
+    throw new Error(projectError.message);
+  }
+
+  if (!project || project.owner_user_id !== user.id) {
+    redirect("/");
+  }
+
+  const { data: profile, error: profileError } = await supabase
+    .from("user_profiles")
+    .select("intended_mode")
+    .eq("user_id", user.id)
+    .maybeSingle();
+
+  if (profileError) {
+    throw new Error(profileError.message);
+  }
+
+  if (!profile || profile.intended_mode === "unknown") {
+    redirect("/onboarding");
+  }
+
+  const isDesignerMode = profile.intended_mode === "designer" || profile.intended_mode === "both";
+  const designerIsSubscribed = isDesignerMode ? await hasActiveDesignerSubscription(user.id) : false;
+  const existingRoomCount = isDesignerMode ? await countOwnedRooms(user.id) : 0;
+
+  if (isDesignerMode && !designerIsSubscribed && existingRoomCount >= 1) {
+    redirect(
+      `/projects/${parsed.projectId}/rooms/new?message=${encodeURIComponent(
+        "Your free designer room is already in progress. Start the designer plan to create another room."
+      )}`
+    );
+  }
+
   const { data: room, error: roomError } = await supabase
     .from("rooms")
     .insert({
       project_id: project.id,
-      name: parsed.roomName,
+      name: parsed.name,
       room_type: parsed.roomType,
       status: "draft"
     })

@@ -119,7 +119,8 @@ export default async function DashboardPage() {
               const firstRoom = rooms.find((room) => room.project_id === project.id);
               const href = firstRoom
                 ? `/projects/${project.id}/rooms/${firstRoom.id}/photos`
-                : "/projects/new";
+                : `/projects/${project.id}/rooms/new`;
+              const ctaLabel = firstRoom ? "open project →" : "add the first room →";
 
               return (
                 <Link
@@ -140,7 +141,7 @@ export default async function DashboardPage() {
                         {roomCountByProject[project.id] ?? 0} rooms · {formatBudget(project)}
                       </p>
                       <p className="mt-8 font-display text-button-quiet italic text-accent-deep">
-                        open project →
+                        {ctaLabel}
                       </p>
                     </div>
                   </Card>
