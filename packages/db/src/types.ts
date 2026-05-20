@@ -1047,11 +1047,17 @@ export type Database = {
           dimension_fit_note: string | null
           id: string
           line_total_aed: number | null
+          option_rank: number
           product_id: string
           quantity: number
+          role_label: string
+          role_priority: string
+          role_quantity: number
+          role_visual_brief: string | null
           selection_reason: string | null
           shopping_list_id: string
           sort_order: number
+          status: string
           unit_price_aed: number | null
           updated_at: string
         }
@@ -1061,11 +1067,17 @@ export type Database = {
           dimension_fit_note?: string | null
           id?: string
           line_total_aed?: number | null
+          option_rank?: number
           product_id: string
           quantity?: number
+          role_label?: string
+          role_priority?: string
+          role_quantity?: number
+          role_visual_brief?: string | null
           selection_reason?: string | null
           shopping_list_id: string
           sort_order?: number
+          status?: string
           unit_price_aed?: number | null
           updated_at?: string
         }
@@ -1075,11 +1087,17 @@ export type Database = {
           dimension_fit_note?: string | null
           id?: string
           line_total_aed?: number | null
+          option_rank?: number
           product_id?: string
           quantity?: number
+          role_label?: string
+          role_priority?: string
+          role_quantity?: number
+          role_visual_brief?: string | null
           selection_reason?: string | null
           shopping_list_id?: string
           sort_order?: number
+          status?: string
           unit_price_aed?: number | null
           updated_at?: string
         }

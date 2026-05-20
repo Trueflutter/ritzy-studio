@@ -10,8 +10,9 @@ import { ProductCard, type ProductCardItem } from "./product-card";
 export type CategoryGroup = {
   category: string;
   label: string;
-  required: boolean;
+  priority: "required" | "supporting";
   quantity: number;
+  selectedId: string | null;
   items: ProductCardItem[];
 };
 
@@ -32,8 +33,10 @@ export function ShoppingListGrid({
   groups,
   canAccessCommerce
 }: ShoppingListGridProps) {
-  // Each category needs a set number of pieces; selecting fills up to that cap.
-  const [selectedByCategory, setSelectedByCategory] = useState<Map<string, string[]>>(new Map());
+  // One pick per role; the sourced selection seeds the picker.
+  const [selectedByCategory, setSelectedByCategory] = useState<Map<string, string>>(
+    () => new Map(groups.filter((g) => g.selectedId).map((g) => [g.category, g.selectedId!]))
+  );
   const [rejectedIds, setRejectedIds] = useState<Set<string>>(new Set());
   const [detailItem, setDetailItem] = useState<ProductCardItem | null>(null);
 
@@ -47,38 +50,19 @@ export function ShoppingListGrid({
     return map;
   }, [groups]);
 
-  // A category can ask for more pieces than the catalog returned — cap the
-  // target at what's actually pickable so progress can still complete.
-  const capByCategory = useMemo(() => {
-    const map = new Map<string, number>();
-    for (const group of groups) {
-      map.set(group.category, Math.max(1, Math.min(group.quantity, group.items.length)));
-    }
-    return map;
-  }, [groups]);
-
   const toggleSelected = useCallback(
     (id: string) => {
       const category = idToCategory.get(id);
       if (!category) {
         return;
       }
-      const cap = capByCategory.get(category) ?? 1;
       setSelectedByCategory((prev) => {
-        const current = prev.get(category) ?? [];
-        if (current.includes(id)) {
-          const next = new Map(prev);
-          next.set(
-            category,
-            current.filter((value) => value !== id)
-          );
-          return next;
-        }
-        if (current.length >= cap) {
-          return prev;
-        }
         const next = new Map(prev);
-        next.set(category, [...current, id]);
+        if (next.get(category) === id) {
+          next.delete(category);
+        } else {
+          next.set(category, id);
+        }
         return next;
       });
       // A piece can't be both chosen and rejected.
@@ -91,7 +75,7 @@ export function ShoppingListGrid({
         return next;
       });
     },
-    [capByCategory, idToCategory]
+    [idToCategory]
   );
 
   const toggleRejected = useCallback(
@@ -108,15 +92,11 @@ export function ShoppingListGrid({
       });
       if (category) {
         setSelectedByCategory((prev) => {
-          const current = prev.get(category) ?? [];
-          if (!current.includes(id)) {
+          if (prev.get(category) !== id) {
             return prev;
           }
           const next = new Map(prev);
-          next.set(
-            category,
-            current.filter((value) => value !== id)
-          );
+          next.delete(category);
           return next;
         });
       }
@@ -127,21 +107,20 @@ export function ShoppingListGrid({
   const openDetail = useCallback((item: ProductCardItem) => setDetailItem(item), []);
   const closeDetail = useCallback(() => setDetailItem(null), []);
 
-  const requiredGroups = useMemo(() => groups.filter((group) => group.required), [groups]);
+  const requiredGroups = useMemo(
+    () => groups.filter((group) => group.priority === "required"),
+    [groups]
+  );
   const optionalCount = groups.length - requiredGroups.length;
   const progressGroups = requiredGroups.length > 0 ? requiredGroups : groups;
   const progressLabel = requiredGroups.length > 0 ? "essentials" : "categories";
-  const chosenGroupCount = progressGroups.filter((group) => {
-    const cap = capByCategory.get(group.category) ?? 1;
-    return (selectedByCategory.get(group.category) ?? []).length >= cap;
-  }).length;
+  const chosenGroupCount = progressGroups.filter((group) =>
+    selectedByCategory.has(group.category)
+  ).length;
   const progressPct =
     progressGroups.length > 0 ? (chosenGroupCount / progressGroups.length) * 100 : 0;
 
-  const selectedIds = useMemo(
-    () => Array.from(selectedByCategory.values()).flat(),
-    [selectedByCategory]
-  );
+  const selectedIds = Array.from(selectedByCategory.values());
   const selectedCount = selectedIds.length;
 
   // The final render is a commerce feature — say so plainly rather than
@@ -174,22 +153,14 @@ export function ShoppingListGrid({
           />
         </div>
         <p className="mt-4 font-body text-body-s text-ink-secondary">
-          Each category shows how many pieces it needs — pick that many, or reject the ones that
+          Each category offers a few options — pick the one you want, or reject the ones that
           miss.
         </p>
       </div>
 
       <div className="mt-12 space-y-14">
         {groups.map((group) => {
-          const cap = capByCategory.get(group.category) ?? 1;
-          const chosen = selectedByCategory.get(group.category) ?? [];
-          const atCap = chosen.length >= cap;
-          const status =
-            cap === 1
-              ? atCap
-                ? "Chosen"
-                : "Choose one"
-              : `${chosen.length} of ${cap} chosen`;
+          const chosenId = selectedByCategory.get(group.category) ?? null;
           return (
             <section key={group.category}>
               <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-2 border-b border-line pb-4">
@@ -198,36 +169,33 @@ export function ShoppingListGrid({
                     {group.label}
                   </h2>
                   <span className="font-body text-caption font-medium uppercase tracking-[0.32em] text-ink-muted">
-                    {group.required ? "Required" : "Optional"}
+                    {group.priority === "required" ? "Required" : "Optional"}
+                    {group.quantity > 1 ? ` · Buy ${group.quantity}` : ""}
                   </span>
                 </div>
                 <p
                   className={`font-body text-caption font-medium uppercase tracking-[0.32em] ${
-                    atCap ? "text-accent-deep" : "text-ink-muted"
+                    chosenId ? "text-accent-deep" : "text-ink-muted"
                   }`}
                 >
-                  {status}
+                  {chosenId ? "Chosen" : "Choose one"}
                 </p>
               </div>
               <div className="mt-6 grid gap-5 md:grid-cols-2 xl:grid-cols-3">
-                {group.items.map((item) => {
-                  const selected = chosen.includes(item.id);
-                  return (
-                    <ProductCard
-                      canAccessCommerce={canAccessCommerce}
-                      item={item}
-                      key={item.id}
-                      onOpenDetail={openDetail}
-                      onToggleRejected={toggleRejected}
-                      onToggleSelected={toggleSelected}
-                      projectId={projectId}
-                      rejected={rejectedIds.has(item.id)}
-                      roomId={roomId}
-                      selected={selected}
-                      selectionDisabled={!selected && atCap}
-                    />
-                  );
-                })}
+                {group.items.map((item) => (
+                  <ProductCard
+                    canAccessCommerce={canAccessCommerce}
+                    item={item}
+                    key={item.id}
+                    onOpenDetail={openDetail}
+                    onToggleRejected={toggleRejected}
+                    onToggleSelected={toggleSelected}
+                    projectId={projectId}
+                    rejected={rejectedIds.has(item.id)}
+                    roomId={roomId}
+                    selected={chosenId === item.id}
+                  />
+                ))}
               </div>
             </section>
           );
@@ -250,7 +218,7 @@ export function ShoppingListGrid({
           <p className="mt-3 font-body text-body-s text-ink-secondary">
             {selectedCount > 0
               ? `${selectedCount} piece${selectedCount === 1 ? "" : "s"} chosen. The render uses them as visual references.`
-              : "Pick the pieces in each category above. Selection is held locally for now."}
+              : "Pick a piece in each category above. Selection is held locally for now."}
           </p>
         </div>
 

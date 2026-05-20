@@ -100,6 +100,7 @@ export default async function PresentationPage({
         `
         )
         .eq("shopping_list_id", shoppingList.id)
+        .eq("status", "selected")
         .order("sort_order", { ascending: true })
     : { data: [] };
   const listItems = items ?? [];

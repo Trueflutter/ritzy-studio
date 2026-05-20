@@ -172,6 +172,7 @@ export default async function ProductMatchingPage({
         `
         )
         .eq("shopping_list_id", shoppingList.id)
+        .neq("status", "rejected")
         .order("sort_order", { ascending: true })
     : { data: [] };
 
