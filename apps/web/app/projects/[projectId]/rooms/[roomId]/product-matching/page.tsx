@@ -13,6 +13,16 @@ import { createServiceClient } from "@/lib/supabase/service";
 
 export const dynamic = "force-dynamic";
 
+function possessiveClientFirstName(clientName: string | null | undefined) {
+  const firstName = clientName?.trim().split(/\s+/)[0];
+
+  if (!firstName) {
+    return "Your";
+  }
+
+  return firstName.endsWith("s") ? `${firstName}'` : `${firstName}'s`;
+}
+
 export default async function ProductMatchingPage({
   params,
   searchParams
@@ -47,6 +57,8 @@ export default async function ProductMatchingPage({
   if (!project || !room) {
     notFound();
   }
+
+  const roomDisplayName = `${possessiveClientFirstName(project.client_name)} ${room.name}`;
 
   const serviceSupabase = createServiceClient();
   const { data: canAccessCommerce = false } = await supabase.rpc("can_access_room_commerce", {
@@ -129,7 +141,7 @@ export default async function ProductMatchingPage({
           ) : (
             <>
               <h1 className="mt-9 font-display text-display-m font-light italic leading-[1.1] text-ink">
-                Sourcing pieces for {selectedConcept.title}.
+                Sourcing pieces for {roomDisplayName}.
               </h1>
               <p className="mt-4 max-w-[460px] font-body text-body-m text-ink-muted">
                 Matching catalog products to your concept — prices, dimensions, and retailer
@@ -145,10 +157,13 @@ export default async function ProductMatchingPage({
                   ]}
                 />
               </div>
-              <form action={groundProductsAction} className="hidden" id="auto-source">
+              <form action={groundProductsAction} className="mt-10" id="auto-source">
                 <input name="projectId" type="hidden" value={projectId} />
                 <input name="roomId" type="hidden" value={roomId} />
                 <input name="conceptId" type="hidden" value={selectedConcept.id} />
+                <SubmitButton pendingLabel="Sourcing pieces..." variant="primary">
+                  Start sourcing
+                </SubmitButton>
               </form>
               <AutoSubmit formId="auto-source" />
             </>
