@@ -44,7 +44,9 @@ function optionalString(formData: FormData, key: string) {
 }
 
 function optionalNumber(formData: FormData, key: string) {
-  const value = String(formData.get(key) ?? "").trim();
+  const value = String(formData.get(key) ?? "")
+    .replace(/,/g, "")
+    .trim();
   if (value.length === 0) {
     return undefined;
   }
