@@ -50,7 +50,7 @@ export function ProductCard({
         </span>
       ) : null}
 
-      <div className="relative block aspect-square w-full overflow-hidden border border-line bg-page text-left">
+      <div className="group/image relative block aspect-square w-full overflow-hidden border border-line bg-page text-left">
         {detail.imageUrl ? (
           <Image
             alt={`${detail.name} product image`}
@@ -67,14 +67,14 @@ export function ProductCard({
         )}
         <button
           aria-label={`Open larger view for ${detail.name}`}
-          className="absolute bottom-3 right-3 flex h-8 w-8 items-center justify-center border border-white/70 bg-black/35 text-white shadow-[0_1px_8px_rgba(0,0,0,0.18)] backdrop-blur-sm transition-colors duration-micro ease-standard hover:bg-black/50"
+          className="pointer-events-none absolute right-3 top-3 flex h-10 w-10 items-center justify-center rounded-full border border-white/80 bg-white text-ink opacity-0 shadow-[0_2px_16px_rgba(0,0,0,0.18)] transition-[opacity,background-color] duration-micro ease-standard hover:bg-page focus-visible:pointer-events-auto focus-visible:opacity-100 group-hover/image:pointer-events-auto group-hover/image:opacity-100 [@media(hover:none)]:pointer-events-auto [@media(hover:none)]:opacity-100"
           onClick={(event) => {
             event.stopPropagation();
             onOpenDetail(item);
           }}
           type="button"
         >
-          <ExpandIcon className="text-white" />
+          <ExpandIcon className="text-ink" />
         </button>
       </div>
 
