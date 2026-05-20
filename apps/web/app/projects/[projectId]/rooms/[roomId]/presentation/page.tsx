@@ -25,11 +25,15 @@ const renderRevealPhases = [
 ];
 
 export default async function PresentationPage({
-  params
+  params,
+  searchParams
 }: {
   params: Promise<{ projectId: string; roomId: string }>;
+  searchParams: Promise<{ renderJobId?: string | string[] }>;
 }) {
   const { projectId, roomId } = await params;
+  const query = await searchParams;
+  const renderJobId = Array.isArray(query.renderJobId) ? query.renderJobId[0] : query.renderJobId;
   const supabase = await createClient();
   const {
     data: { user }
@@ -98,9 +102,17 @@ export default async function PresentationPage({
   const listItems = items ?? [];
   const selectedItemIds = listItems.map((item) => item.id).sort();
   const selectionKey = selectedItemIds.join(",");
-  const { data: latestRenderJob } =
-    shoppingList && selectedConcept
-      ? await supabase
+  const { data: routedRenderJob } = renderJobId
+    ? await serviceSupabase
+        .from("render_jobs")
+        .select("id, status, error_message, created_at, output_asset_ids")
+        .eq("id", renderJobId)
+        .eq("room_id", roomId)
+        .maybeSingle()
+    : { data: null };
+  const { data: selectionRenderJob } =
+    !routedRenderJob && shoppingList && selectedConcept
+      ? await serviceSupabase
           .from("render_jobs")
           .select("id, status, error_message, created_at, output_asset_ids")
           .eq("room_id", roomId)
@@ -111,6 +123,7 @@ export default async function PresentationPage({
           .limit(1)
           .maybeSingle()
       : { data: null };
+  const latestRenderJob = routedRenderJob ?? selectionRenderJob;
   const matchingRenderAssetId = Array.isArray(latestRenderJob?.output_asset_ids)
     ? latestRenderJob.output_asset_ids[0]
     : null;
@@ -242,13 +255,13 @@ export default async function PresentationPage({
                     Final render
                   </p>
                   <h2 className="mt-6 font-display text-display-xs font-light italic text-ink">
-                    {renderJobStatus === "failed" ? "The render needs another try." : "The render has not started yet."}
+                    {renderJobStatus === "failed" ? "The render needs another try." : "Ready to generate your room."}
                   </h2>
                   <p className="mx-auto mt-4 max-w-[440px] font-body text-body-s text-ink-secondary">
                     {renderJobStatus === "failed"
                       ? (latestRenderJob?.error_message ??
                         "The previous render attempt failed before it could create an image.")
-                      : "Generate the room image once your selected catalog pieces are ready."}
+                      : "Create the final image with your selected catalog pieces."}
                   </p>
                   <FinalRenderForm
                     canRequestRender={canRequestRender}
