@@ -2,6 +2,8 @@ import { ButtonLink, SubmitButton } from "@ritzy-studio/ui";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
+import { productRolesForRoom } from "@ritzy-studio/domain";
+
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import {
@@ -10,7 +12,7 @@ import {
 } from "@/app/actions";
 
 import type { ProductCardItem } from "./product-card";
-import { ShoppingListGrid } from "./shopping-list-grid";
+import { ShoppingListGrid, type CategoryGroup } from "./shopping-list-grid";
 
 export const dynamic = "force-dynamic";
 
@@ -115,6 +117,38 @@ export default async function ShoppingListPage({
     };
   });
 
+  // Group the matched pieces into the categories a room of this type needs,
+  // ordered by role so the essentials lead and stray catalog categories trail.
+  const itemsByCategory = new Map<string, ProductCardItem[]>();
+  for (const cardItem of cardItems) {
+    const group = itemsByCategory.get(cardItem.detail.category) ?? [];
+    group.push(cardItem);
+    itemsByCategory.set(cardItem.detail.category, group);
+  }
+
+  const categoryGroups: CategoryGroup[] = [];
+  for (const role of productRolesForRoom(room.room_type)) {
+    const roleItems = itemsByCategory.get(role.category);
+    if (!roleItems || roleItems.length === 0) {
+      continue;
+    }
+    categoryGroups.push({
+      category: role.category,
+      label: role.label,
+      required: role.required,
+      items: roleItems
+    });
+    itemsByCategory.delete(role.category);
+  }
+  for (const [category, groupItems] of itemsByCategory) {
+    categoryGroups.push({
+      category,
+      label: category.replace(/_/g, " "),
+      required: false,
+      items: groupItems
+    });
+  }
+
   return (
     <main className="min-h-dvh bg-page text-ink">
       <header className="flex min-h-20 items-center justify-between border-b border-line bg-surface px-5 md:px-8 lg:px-12 xl:px-16">
@@ -154,14 +188,14 @@ export default async function ShoppingListPage({
             </p>
             <div className="mt-3 h-px w-32 bg-ink" />
             <h1 className="mt-8 font-display text-display-l font-light leading-[1] tracking-[-0.015em] text-ink">
-              Choose the pieces for the final render.
+              Choose one piece per category.
             </h1>
             <p className="mt-5 max-w-[640px] font-body text-body-m text-ink-secondary">
               {project.name} · {room.name} · {shoppingList?.concept?.title ?? "No selected concept"}
             </p>
             <p className="mt-3 max-w-[640px] font-body text-body-s text-ink-muted">
-              Tap any piece to see the catalog detail. Select the pieces you want included, then
-              generate the grounded render.
+              Each section below is a piece your {room.room_type} needs. Pick the one you want —
+              tap any card for catalog detail.
             </p>
           </div>
 
@@ -212,11 +246,11 @@ export default async function ShoppingListPage({
         </div>
 
         <section className="mt-12">
-          {shoppingList && cardItems.length > 0 ? (
+          {shoppingList && categoryGroups.length > 0 ? (
             <ShoppingListGrid
               canAccessCommerce={commerceUnlocked}
               conceptId={shoppingList.concept_id ?? null}
-              items={cardItems}
+              groups={categoryGroups}
               projectId={projectId}
               roomId={roomId}
               shoppingListId={shoppingList.id}

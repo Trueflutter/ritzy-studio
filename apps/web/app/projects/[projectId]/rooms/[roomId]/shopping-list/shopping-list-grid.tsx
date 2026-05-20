@@ -7,12 +7,19 @@ import { generateFinalRenderAction } from "@/app/actions";
 import { DetailDrawer } from "./detail-drawer";
 import { ProductCard, type ProductCardItem } from "./product-card";
 
+export type CategoryGroup = {
+  category: string;
+  label: string;
+  required: boolean;
+  items: ProductCardItem[];
+};
+
 type ShoppingListGridProps = {
   projectId: string;
   roomId: string;
   conceptId: string | null;
   shoppingListId: string;
-  items: ProductCardItem[];
+  groups: CategoryGroup[];
   canAccessCommerce: boolean;
 };
 
@@ -21,57 +28,168 @@ export function ShoppingListGrid({
   roomId,
   conceptId,
   shoppingListId,
-  items,
+  groups,
   canAccessCommerce
 }: ShoppingListGridProps) {
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  // One pick per category — selecting a card replaces its category's choice.
+  const [selectedByCategory, setSelectedByCategory] = useState<Map<string, string>>(new Map());
+  const [rejectedIds, setRejectedIds] = useState<Set<string>>(new Set());
   const [detailItem, setDetailItem] = useState<ProductCardItem | null>(null);
 
-  const toggleSelected = useCallback((id: string) => {
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) {
-        next.delete(id);
-      } else {
-        next.add(id);
+  const idToCategory = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const group of groups) {
+      for (const item of group.items) {
+        map.set(item.id, group.category);
       }
-      return next;
-    });
-  }, []);
+    }
+    return map;
+  }, [groups]);
 
-  const openDetail = useCallback((item: ProductCardItem) => {
-    setDetailItem(item);
-  }, []);
+  const toggleSelected = useCallback(
+    (id: string) => {
+      const category = idToCategory.get(id);
+      if (!category) {
+        return;
+      }
+      setSelectedByCategory((prev) => {
+        const next = new Map(prev);
+        if (next.get(category) === id) {
+          next.delete(category);
+        } else {
+          next.set(category, id);
+        }
+        return next;
+      });
+      // A piece can't be both chosen and rejected.
+      setRejectedIds((prev) => {
+        if (!prev.has(id)) {
+          return prev;
+        }
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+    },
+    [idToCategory]
+  );
 
-  const closeDetail = useCallback(() => {
-    setDetailItem(null);
-  }, []);
+  const toggleRejected = useCallback(
+    (id: string) => {
+      const category = idToCategory.get(id);
+      setRejectedIds((prev) => {
+        const next = new Set(prev);
+        if (next.has(id)) {
+          next.delete(id);
+        } else {
+          next.add(id);
+        }
+        return next;
+      });
+      if (category) {
+        setSelectedByCategory((prev) => {
+          if (prev.get(category) !== id) {
+            return prev;
+          }
+          const next = new Map(prev);
+          next.delete(category);
+          return next;
+        });
+      }
+    },
+    [idToCategory]
+  );
 
-  const selectedCount = selectedIds.size;
+  const openDetail = useCallback((item: ProductCardItem) => setDetailItem(item), []);
+  const closeDetail = useCallback(() => setDetailItem(null), []);
+
+  const requiredGroups = useMemo(() => groups.filter((group) => group.required), [groups]);
+  const optionalCount = groups.length - requiredGroups.length;
+  const progressGroups = requiredGroups.length > 0 ? requiredGroups : groups;
+  const progressLabel = requiredGroups.length > 0 ? "essentials" : "categories";
+  const chosenCount = progressGroups.filter((group) =>
+    selectedByCategory.has(group.category)
+  ).length;
+  const progressPct =
+    progressGroups.length > 0 ? (chosenCount / progressGroups.length) * 100 : 0;
+
+  const selectedIds = Array.from(selectedByCategory.values());
+  const selectedCount = selectedIds.length;
   const canRender = selectedCount > 0 && canAccessCommerce && conceptId !== null;
 
   const drawerItem = useMemo(() => (detailItem ? detailItem.detail : null), [detailItem]);
 
   return (
     <div>
-      <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
-        {items.map((item) => (
-          <ProductCard
-            canAccessCommerce={canAccessCommerce}
-            item={item}
-            key={item.id}
-            onOpenDetail={openDetail}
-            onToggleSelected={toggleSelected}
-            projectId={projectId}
-            roomId={roomId}
-            selected={selectedIds.has(item.id)}
+      <div aria-live="polite" className="border border-line bg-surface px-5 py-5 md:px-6">
+        <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-2">
+          <p className="font-body text-caption font-medium uppercase tracking-[0.32em] text-ink-muted">
+            {chosenCount} of {progressGroups.length} {progressLabel} chosen
+          </p>
+          {optionalCount > 0 ? (
+            <p className="font-body text-body-s text-ink-muted">
+              {optionalCount} optional categor{optionalCount === 1 ? "y" : "ies"} below
+            </p>
+          ) : null}
+        </div>
+        <div className="mt-3 h-[2px] w-full bg-line">
+          <div
+            className="h-full bg-ink transition-[width] duration-standard ease-standard"
+            style={{ width: `${progressPct}%` }}
           />
-        ))}
+        </div>
+        <p className="mt-4 font-body text-body-s text-ink-secondary">
+          Each category below is one piece your room needs — pick the option you want, or reject
+          the ones that miss.
+        </p>
+      </div>
+
+      <div className="mt-12 space-y-14">
+        {groups.map((group) => {
+          const chosenId = selectedByCategory.get(group.category) ?? null;
+          return (
+            <section key={group.category}>
+              <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-2 border-b border-line pb-4">
+                <div className="flex items-baseline gap-3">
+                  <h2 className="font-display text-display-xs font-light italic capitalize text-ink">
+                    {group.label}
+                  </h2>
+                  <span className="font-body text-caption font-medium uppercase tracking-[0.32em] text-ink-muted">
+                    {group.required ? "Required" : "Optional"}
+                  </span>
+                </div>
+                <p
+                  className={`font-body text-caption font-medium uppercase tracking-[0.32em] ${
+                    chosenId ? "text-accent-deep" : "text-ink-muted"
+                  }`}
+                >
+                  {chosenId ? "Chosen" : "Choose one"}
+                </p>
+              </div>
+              <div className="mt-6 grid gap-5 md:grid-cols-2 xl:grid-cols-3">
+                {group.items.map((item) => (
+                  <ProductCard
+                    canAccessCommerce={canAccessCommerce}
+                    item={item}
+                    key={item.id}
+                    onOpenDetail={openDetail}
+                    onToggleRejected={toggleRejected}
+                    onToggleSelected={toggleSelected}
+                    projectId={projectId}
+                    rejected={rejectedIds.has(item.id)}
+                    roomId={roomId}
+                    selected={chosenId === item.id}
+                  />
+                ))}
+              </div>
+            </section>
+          );
+        })}
       </div>
 
       <div
         aria-live="polite"
-        className="mt-12 flex flex-col gap-6 border-t border-line pt-10 md:flex-row md:items-end md:justify-between"
+        className="mt-14 flex flex-col gap-6 border-t border-line pt-10 md:flex-row md:items-end md:justify-between"
       >
         <div className="max-w-[560px]">
           <p className="font-body text-caption font-medium uppercase tracking-[0.32em] text-ink-muted">
@@ -80,12 +198,12 @@ export function ShoppingListGrid({
           <h2 className="mt-3 font-display text-display-m font-light italic text-ink">
             {selectedCount > 0
               ? "Confirm selections and generate the grounded render."
-              : "Select pieces to generate the grounded render."}
+              : "Choose pieces to generate the grounded render."}
           </h2>
           <p className="mt-3 font-body text-body-s text-ink-secondary">
             {selectedCount > 0
-              ? `${selectedCount} piece${selectedCount === 1 ? "" : "s"} chosen. The render uses the selected pieces as visual references.`
-              : "Tap Select on any piece you want included in the final render. Selection is held locally for now."}
+              ? `${selectedCount} piece${selectedCount === 1 ? "" : "s"} chosen — one per category. The render uses them as visual references.`
+              : "Pick one piece in each category above. Selection is held locally for now."}
           </p>
         </div>
 
@@ -95,11 +213,8 @@ export function ShoppingListGrid({
             <input name="roomId" type="hidden" value={roomId} />
             <input name="conceptId" type="hidden" value={conceptId ?? ""} />
             <input name="shoppingListId" type="hidden" value={shoppingListId} />
-            <input name="selectedItemIds" type="hidden" value={Array.from(selectedIds).join(",")} />
-            <SubmitButton
-              disabled={!canRender}
-              pendingLabel="Generating final render..."
-            >
+            <input name="selectedItemIds" type="hidden" value={selectedIds.join(",")} />
+            <SubmitButton disabled={!canRender} pendingLabel="Generating final render...">
               Confirm selections and generate render
             </SubmitButton>
           </form>
