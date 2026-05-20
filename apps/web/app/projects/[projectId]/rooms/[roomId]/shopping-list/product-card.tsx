@@ -1,10 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { SubmitButton } from "@ritzy-studio/ui";
-import { useState } from "react";
 
-import { substituteProductAction } from "@/app/actions";
 import { CheckIcon, LockIcon } from "./icons";
 import type { DetailDrawerItem } from "./detail-drawer";
 
@@ -17,39 +14,27 @@ export type ProductCardItem = {
 
 type ProductCardProps = {
   item: ProductCardItem;
-  projectId: string;
-  roomId: string;
   selected: boolean;
-  rejected: boolean;
   canAccessCommerce: boolean;
-  onToggleSelected: (id: string) => void;
-  onToggleRejected: (id: string) => void;
+  onSelect: (id: string) => void;
+  onReject: (id: string) => void;
   onOpenDetail: (item: ProductCardItem) => void;
 };
 
 export function ProductCard({
   item,
-  projectId,
-  roomId,
   selected,
-  rejected,
   canAccessCommerce,
-  onToggleSelected,
-  onToggleRejected,
+  onSelect,
+  onReject,
   onOpenDetail
 }: ProductCardProps) {
-  const [showSwap, setShowSwap] = useState(false);
   const detail = item.detail;
-  const showSwapForm = !selected && !rejected && canAccessCommerce && showSwap;
 
   return (
     <article
       className={`relative flex h-full flex-col border bg-surface p-[14px] transition-colors duration-micro ease-standard ${
-        rejected
-          ? "border-line opacity-60"
-          : selected
-            ? "border-ink"
-            : "border-line hover:bg-surface-subtle"
+        selected ? "border-ink" : "border-line hover:bg-surface-subtle"
       }`}
     >
       {selected ? (
@@ -140,96 +125,29 @@ export function ProductCard({
         ) : null}
 
         <div className="mt-5 flex flex-wrap items-center gap-3 border-t border-line pt-5">
-          {rejected ? (
-            <>
-              <span className="font-body text-caption font-medium uppercase tracking-[0.32em] text-ink-muted">
-                Rejected
-              </span>
-              <button
-                className="inline-flex items-center gap-1 font-display text-button-quiet italic text-ink transition-colors duration-micro ease-standard hover:text-accent-deep"
-                onClick={() => onToggleRejected(item.id)}
-                type="button"
-              >
-                Undo
-              </button>
-            </>
-          ) : (
-            <>
-              <button
-                aria-pressed={selected}
-                className={`inline-flex h-[44px] items-center justify-center gap-2 border px-5 font-body text-button font-medium uppercase tracking-[0.18em] transition-colors duration-micro ease-standard ${
-                  selected
-                    ? "border-ink bg-ink text-surface hover:bg-primary-hover"
-                    : "border-line-strong bg-transparent text-ink hover:border-ink"
-                }`}
-                onClick={() => onToggleSelected(item.id)}
-                type="button"
-              >
-                {selected ? "Selected" : "Select"}
-              </button>
+          <button
+            aria-pressed={selected}
+            className={`inline-flex h-[44px] items-center justify-center gap-2 border px-5 font-body text-button font-medium uppercase tracking-[0.18em] transition-colors duration-micro ease-standard ${
+              selected
+                ? "border-ink bg-ink text-surface hover:bg-primary-hover"
+                : "border-line-strong bg-transparent text-ink hover:border-ink"
+            }`}
+            onClick={() => onSelect(item.id)}
+            type="button"
+          >
+            {selected ? "Selected" : "Select"}
+          </button>
 
-              {selected ? null : (
-                <button
-                  className="inline-flex items-center gap-1 font-display text-button-quiet italic text-ink-muted transition-colors duration-micro ease-standard hover:text-ink"
-                  onClick={() => onToggleRejected(item.id)}
-                  type="button"
-                >
-                  Reject
-                </button>
-              )}
-
-              {!selected && canAccessCommerce ? (
-                <button
-                  aria-expanded={showSwap}
-                  className="inline-flex items-center gap-1 font-display text-button-quiet italic text-ink transition-colors duration-micro ease-standard hover:text-accent-deep"
-                  onClick={() => setShowSwap((prev) => !prev)}
-                  type="button"
-                >
-                  {showSwap ? "Cancel swap" : "Swap"}
-                  <span aria-hidden className="text-accent-deep">
-                    →
-                  </span>
-                </button>
-              ) : null}
-            </>
+          {selected ? null : (
+            <button
+              className="inline-flex items-center gap-1 font-display text-button-quiet italic text-ink-muted transition-colors duration-micro ease-standard hover:text-ink"
+              onClick={() => onReject(item.id)}
+              type="button"
+            >
+              Reject
+            </button>
           )}
         </div>
-
-        {showSwapForm ? (
-          <form
-            action={substituteProductAction}
-            className="mt-4 border-t border-line pt-4"
-          >
-            <input name="projectId" type="hidden" value={projectId} />
-            <input name="roomId" type="hidden" value={roomId} />
-            <input name="shoppingListId" type="hidden" value={item.shoppingListId} />
-            <input name="itemId" type="hidden" value={item.id} />
-            <label
-              className="mb-2 block font-body text-caption font-medium uppercase tracking-[0.32em] text-ink-muted"
-              htmlFor={`swap-mode-${item.id}`}
-            >
-              Swap request
-            </label>
-            <select
-              className="h-[44px] w-full border border-line-strong bg-transparent px-3 font-body text-body-s text-ink focus:outline focus:outline-2 focus:outline-offset-2 focus:outline-ring"
-              defaultValue="cheaper"
-              id={`swap-mode-${item.id}`}
-              name="mode"
-            >
-              <option value="cheaper">cheaper option</option>
-              <option value="closer_style">closer style</option>
-              <option value="same_retailer">same retailer</option>
-              <option value="in_stock">in stock only</option>
-            </select>
-            <SubmitButton
-              className="mt-3 w-full"
-              pendingLabel="Finding substitute..."
-              variant="secondary"
-            >
-              Swap this item
-            </SubmitButton>
-          </form>
-        ) : null}
       </div>
     </article>
   );
