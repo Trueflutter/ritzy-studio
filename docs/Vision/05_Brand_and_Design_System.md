@@ -526,12 +526,23 @@ Base unit **4px**. Allowed values are scale steps below — no off-scale spacing
 - **Forbidden:** stacking three or more callouts on a single hero, animating callouts in/out per-pixel (they fade as a group on page load).
 
 ### 8.26 Helper text (contextual hint below a control)
-- One short italic Cormorant sentence below an input, group of inputs, or a card primary CTA, in `--rs-text-helper` (`#8A8175`).
+- One short italic Cormorant sentence below an input, group of inputs, or a card primary CTA, in `--rs-text-helper` (`rgba(31, 31, 29, 0.42)`).
 - Font: Cormorant Garamond 300 italic, `body-s` (13.5px), line-height 1.55.
 - Placement: 8px below the input's bottom border (or below the input's own error message if one is shown). One line preferred; two lines maximum.
 - Voice: tells the user *what this field affects downstream* — not *what to type*. "Used as the project name on your dashboard." beats "Enter your project name."
-- Distinct from chrome buttons. A chrome button is uppercase DM Sans 12.5px tracked in `--rs-text-muted` (`#6F6963`); helper text is italic Cormorant in `--rs-text-helper` (`#8A8175`). The lighter shade plus the serif italic must read as "information," not as a clickable affordance.
-- **Forbidden:** helper text in uppercase, helper text in DM Sans, helper text that restates the label, helper text on every input in a form (use only where the field's downstream effect isn't obvious from the label).
+
+**Gray-scale hierarchy for in-form text** — these tokens are intentionally separated so a form never reads as a wall of one gray. From most present to most recessive:
+
+| Use | Token | Approx. value | Font |
+|---|---|---|---|
+| Chrome button label (Cancel, Skip, etc.) | `--rs-text-muted` | `#6F6963` (≈ 0.58 ink) | DM Sans uppercase tracked |
+| Caption / field label | `--rs-text-muted` | `#6F6963` (≈ 0.58 ink) | DM Sans uppercase tracked |
+| Helper text | `--rs-text-helper` | `rgba(31,31,29,0.42)` | Cormorant italic body-s |
+| Input placeholder | `--rs-text-placeholder` | `rgba(31,31,29,0.22)` | Cormorant italic (input font-size) |
+
+If a chrome button starts to read as helper text (or vice versa) on a given screen, the colors above are not being honoured — fix that before reaching for another visual fix.
+
+- **Forbidden:** helper text in uppercase, helper text in DM Sans, helper text that restates the label, helper text on every input in a form (use only where the field's downstream effect isn't obvious from the label), helper text in `--rs-text-muted` (it collapses against chrome buttons).
 
 ---
 
@@ -1070,8 +1081,8 @@ Do not improvise alternative copy.
   --rs-text-muted:      #6F6963;
   --rs-text-subtle:      #8A8175;
   --rs-text-disabled:    #B5AC9C;
-  --rs-text-placeholder: rgba(31, 31, 29, 0.32);  /* input placeholder hints (italic Cormorant) */
-  --rs-text-helper:      #8A8175;                  /* helper text below a control (italic Cormorant body-s) */
+  --rs-text-placeholder: rgba(31, 31, 29, 0.22);  /* input placeholder hints — must read lighter than helper text and chrome buttons */
+  --rs-text-helper:      rgba(31, 31, 29, 0.42);  /* helper text below a control (italic Cormorant body-s); quieter than chrome button labels, more present than placeholders */
 
   --rs-primary:         #1F1F1D;
   --rs-primary-hover:   #36352F;
@@ -1194,8 +1205,8 @@ const config: Config = {
           muted:       '#6F6963',
           subtle:      '#8A8175',
           disabled:    '#B5AC9C',
-          placeholder: 'rgba(31,31,29,0.32)',
-          helper:      '#8A8175',
+          placeholder: 'rgba(31,31,29,0.22)',
+          helper:      'rgba(31,31,29,0.42)',
         },
         primary: { DEFAULT: '#1F1F1D', hover: '#36352F' },
         accent:  { DEFAULT: '#B58E5A', deep: '#8C6A3E', tint: 'rgba(181,142,90,0.10)' },
