@@ -67,7 +67,7 @@ export default async function NewProjectPage({
               id="clientName"
               label="Your name"
               name="clientName"
-              placeholder="Ayo Olatoye"
+              placeholder="Layla Hassan"
             />
             <TextInput
               autoComplete="address-level2"
