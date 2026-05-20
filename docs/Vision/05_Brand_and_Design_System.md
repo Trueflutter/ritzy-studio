@@ -1187,6 +1187,10 @@ const config: Config = {
         },
         primary: { DEFAULT: '#1F1F1D', hover: '#36352F' },
         accent:  { DEFAULT: '#B58E5A', deep: '#8C6A3E', tint: 'rgba(181,142,90,0.10)' },
+        'surface-ink':        '#1F1F1D',
+        'surface-ink-subtle': '#2A2926',
+        'ink-on-dark':        '#F2EDE4',
+        'ink-on-dark-muted':  'rgba(242,237,228,0.62)',
         success: '#4D6840',
         warning: '#8C6A28',
         error:   '#7E3326',
@@ -1216,8 +1220,18 @@ const config: Config = {
         '6': '24px', '8': '32px', '10': '40px', '12': '48px', '16': '64px',
         '20': '80px', '24': '96px', '32': '128px',
       },
-      borderRadius: { 'none': '0', 'tight': '2px', 'pill': '9999px' },
-      boxShadow: { 'hairline': '0 0 0 1px rgba(31,31,29,0.06)' },
+      borderRadius: {
+        'none':    '0',
+        'tight':   '2px',
+        'card':    '4px',   // refined floating cards (auth, marketing, spotlight)
+        'feature': '6px',   // feature dark card + larger spotlight surfaces
+        'pill':    '9999px',
+      },
+      boxShadow: {
+        'hairline': '0 0 0 1px rgba(31,31,29,0.06)',
+        'card':     '0 1px 2px rgba(31,31,29,0.04), 0 4px 12px rgba(31,31,29,0.04)',
+        'overlay':  '0 2px 4px rgba(31,31,29,0.05), 0 16px 32px rgba(31,31,29,0.06)',
+      },
       transitionDuration: { 'micro': '220ms', 'standard': '320ms', 'reveal': '480ms' },
       transitionTimingFunction: { 'standard': 'cubic-bezier(0.2,0.7,0.2,1)' },
       screens: { sm: '480px', md: '768px', lg: '1024px', xl: '1440px' },
@@ -1244,7 +1258,7 @@ export default config;
 7. Show italic Cormorant assumption notes whenever AI-derived data is displayed.
 8. Letterbox a non-4:3 room photo with `--rs-page` bars instead of cropping.
 9. Use the `#E8DECB → #C9B690` gradient only for empty concept slots and empty rooms.
-10. Use square corners (`border-radius: 0`) on cards, buttons, inputs, and modals.
+10. Use square corners (`border-radius: 0`) on buttons, inputs, modals, and default cards (concept, product, project, empty). Refined cards may use `--rs-radius-2` (4px); feature-dark cards may use `--rs-radius-3` (6px). Radii above 8px are forbidden.
 11. Use pill radius (`9999px`) only on chips, total labels, and focus pills.
 12. Use 1px hairline borders for every divider.
 13. Apply a 2px `--rs-focus-ring` outline on every focusable control.
