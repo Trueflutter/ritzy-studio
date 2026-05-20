@@ -43,7 +43,7 @@ export default async function OnboardingPage({
           <p className="font-body text-caption font-medium uppercase text-ink-muted">
             N° 01 — First use
           </p>
-          <h1 className="mt-6 max-w-[780px] font-display text-display-l font-light leading-none tracking-[-0.015em] text-ink">
+          <h1 className="mt-6 font-display text-display-l font-light leading-none tracking-[-0.015em] text-ink">
             Tell us how you want to design.
           </h1>
           <p className="mt-6 max-w-[58ch] font-body text-body-m text-ink-secondary">
@@ -57,45 +57,45 @@ export default async function OnboardingPage({
               {message}
             </p>
           ) : null}
+        </div>
 
-          <div className="mt-12 grid items-stretch gap-5 md:grid-cols-2">
-            <Panel className="flex h-full flex-col p-8">
-              <p className="font-body text-caption font-medium uppercase text-ink-muted">
-                Homeowner
-              </p>
-              <h2 className="mt-5 font-display text-display-s font-light italic text-ink">
-                My own space
-              </h2>
-              <p className="mt-4 font-body text-body-s text-ink-secondary">
-                Create one personal room, shape the brief, and unlock shopping links only when the
-                plan is ready.
-              </p>
-              <form action={setUserModeAction} className="mt-auto pt-10">
-                <input name="intendedMode" type="hidden" value="homeowner" />
-                <SubmitButton className="w-full" pendingLabel="Preparing room flow..." variant="secondary">
-                  Homeowner mode
-                </SubmitButton>
-              </form>
-            </Panel>
+        <div className="mt-12 grid items-stretch gap-5 md:grid-cols-2">
+          <Panel className="flex h-full flex-col rounded-card p-8">
+            <p className="font-body text-caption font-medium uppercase text-ink-muted">
+              Homeowner
+            </p>
+            <h2 className="mt-5 font-display text-display-s font-light italic text-ink">
+              My own space
+            </h2>
+            <p className="mt-4 font-body text-body-s text-ink-secondary">
+              Create one personal room, shape the brief, and unlock shopping links only when the
+              plan is ready.
+            </p>
+            <form action={setUserModeAction} className="mt-auto pt-10">
+              <input name="intendedMode" type="hidden" value="homeowner" />
+              <SubmitButton className="w-full" pendingLabel="Preparing room flow..." variant="secondary">
+                Homeowner mode
+              </SubmitButton>
+            </form>
+          </Panel>
 
-            <Panel className="flex h-full flex-col p-8">
-              <p className="font-body text-caption font-medium uppercase text-ink-muted">
-                Designer
-              </p>
-              <h2 className="mt-5 font-display text-display-s font-light italic text-ink">
-                Client studio
-              </h2>
-              <p className="mt-4 font-body text-body-s text-ink-secondary">
-                Create one client room, shape the brief, and subscribe only when sourcing is ready.
-              </p>
-              <form action={setUserModeAction} className="mt-auto pt-10">
-                <input name="intendedMode" type="hidden" value="designer" />
-                <SubmitButton className="w-full" pendingLabel="Preparing studio...">
-                  Designer mode
-                </SubmitButton>
-              </form>
-            </Panel>
-          </div>
+          <Panel className="flex h-full flex-col rounded-card p-8">
+            <p className="font-body text-caption font-medium uppercase text-ink-muted">
+              Designer
+            </p>
+            <h2 className="mt-5 font-display text-display-s font-light italic text-ink">
+              Client studio
+            </h2>
+            <p className="mt-4 font-body text-body-s text-ink-secondary">
+              Create one client room, shape the brief, and subscribe only when sourcing is ready.
+            </p>
+            <form action={setUserModeAction} className="mt-auto pt-10">
+              <input name="intendedMode" type="hidden" value="designer" />
+              <SubmitButton className="w-full" pendingLabel="Preparing studio...">
+                Designer mode
+              </SubmitButton>
+            </form>
+          </Panel>
         </div>
       </section>
     </main>
