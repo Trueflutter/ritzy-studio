@@ -2050,7 +2050,9 @@ export async function substituteProductAction(formData: FormData) {
 
   const previousPrice = Number(item.line_total_aed ?? item.unit_price_aed ?? 0);
   const unitPrice = replacement.salePriceAed ?? replacement.priceAed ?? 0;
-  const priceImpact = unitPrice - previousPrice;
+  // The swap keeps the row's purchase quantity — a "Buy 2" role still buys 2.
+  const lineTotal = unitPrice * item.quantity;
+  const priceImpact = lineTotal - previousPrice;
 
   const { error: updateError } = await supabase
     .from("shopping_list_items")
@@ -2058,7 +2060,7 @@ export async function substituteProductAction(formData: FormData) {
       product_id: replacement.id,
       category: replacement.categoryNormalized ?? item.category,
       unit_price_aed: unitPrice,
-      line_total_aed: unitPrice,
+      line_total_aed: lineTotal,
       selection_reason: [
         replacement.selectionReason,
         ...replacement.warnings.filter((warning) => warning !== replacement.dimensionFitNote)
@@ -2072,14 +2074,12 @@ export async function substituteProductAction(formData: FormData) {
     throw new Error(updateError.message);
   }
 
+  // Estimate selected rows only — option pools must not inflate the total.
   const { data: updatedItems = [] } = await supabase
     .from("shopping_list_items")
-    .select("line_total_aed")
+    .select("status, unit_price_aed, quantity")
     .eq("shopping_list_id", shoppingListId);
-  const estimatedTotal = (updatedItems ?? []).reduce(
-    (sum, updatedItem) => sum + Number(updatedItem.line_total_aed ?? 0),
-    0
-  );
+  const estimatedTotal = selectedItemsTotalAed(updatedItems ?? []);
 
   await supabase
     .from("shopping_lists")
