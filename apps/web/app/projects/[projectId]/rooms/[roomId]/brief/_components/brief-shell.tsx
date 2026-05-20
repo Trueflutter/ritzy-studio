@@ -22,8 +22,8 @@ export function BriefShell({
   projectName: string;
   roomName: string;
   roomType: string;
-  subtitle: string;
-  title: string;
+  subtitle?: string;
+  title?: string;
 }) {
   return (
     <main className="min-h-dvh bg-page text-ink">
@@ -40,10 +40,14 @@ export function BriefShell({
         <BriefProgress currentStep={currentStep} />
         <div className="mt-12">
           <p className="font-body text-caption font-medium uppercase text-ink-muted">{eyebrow}</p>
-          <h1 className="mt-6 max-w-[780px] font-display text-display-l font-light leading-none tracking-[-0.015em] text-ink">
-            {title}
-          </h1>
-          <p className="mt-6 max-w-[640px] font-body text-body-m text-ink-secondary">{subtitle}</p>
+          {title ? (
+            <h1 className="mt-6 max-w-[780px] font-display text-display-l font-light leading-none tracking-[-0.015em] text-ink">
+              {title}
+            </h1>
+          ) : null}
+          {subtitle ? (
+            <p className="mt-6 max-w-[640px] font-body text-body-m text-ink-secondary">{subtitle}</p>
+          ) : null}
           <p className="mt-5 font-body text-body-s text-ink-muted">
             {projectName} · {roomName} · {roomType}
           </p>

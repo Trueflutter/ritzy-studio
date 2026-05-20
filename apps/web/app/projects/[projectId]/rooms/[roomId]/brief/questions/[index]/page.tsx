@@ -80,8 +80,6 @@ export default async function BriefQuestionPage({
       projectName={project.name}
       roomName={room.name}
       roomType={room.room_type}
-      subtitle="Answer only what improves the first concept. Each answer saves as you move forward."
-      title="One useful question at a time."
     >
       <QuestionDots answeredCount={answeredCount} currentIndex={currentIndex} total={questions.length} />
       <div className="mt-12">
