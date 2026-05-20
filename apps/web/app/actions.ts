@@ -2531,6 +2531,15 @@ export async function reviseConceptAction(formData: FormData) {
       .from("concepts")
       .update({ primary_image_asset_id: renderAsset.id })
       .eq("id", revisedConcept.id);
+
+    // A revision is the room's new current direction. Clear the prior
+    // selection so the concepts page surfaces this revision as the hero
+    // instead of the now-superseded concept it was revised from.
+    await supabase
+      .from("concepts")
+      .update({ status: "generated" })
+      .eq("room_id", roomId)
+      .eq("status", "selected");
   } catch (error) {
     await serviceSupabase
       .from("ai_jobs")
