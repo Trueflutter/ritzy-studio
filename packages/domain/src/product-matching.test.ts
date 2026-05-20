@@ -1,11 +1,16 @@
 import assert from "node:assert/strict";
 
 import {
+  buildShoppingListItemRows,
+  composeRoomProductOptions,
   composeRoomProductSet,
   filterSubstitutionCandidates,
+  groupShoppingItemsByRole,
   quantityForProductCategory,
   rankProductMatches,
-  type ProductMatchCandidate
+  selectedItemsTotalAed,
+  type ProductMatchCandidate,
+  type RoomProductRoleSpec
 } from "./product-matching";
 
 const now = new Date().toISOString();
@@ -174,5 +179,108 @@ assert.deepEqual(
   ["sofas", "armchairs", "coffee_tables", "rugs", "wall_art", "sofas"]
 );
 assert.equal(quantityForProductCategory("living room", "armchairs"), 2);
+
+// --- PR B: role option pools ----------------------------------------------
+
+const sofaRanked = rankProductMatches({
+  roomType: "living room",
+  conceptText: "contemporary living room with a soft fabric sofa",
+  budgetMaxAed: 10000,
+  candidates: [1, 2, 3, 4].map((n) => ({
+    ...base,
+    id: `00000000-0000-4000-8000-00000000010${n}`,
+    name: `Sofa ${n}`,
+    categoryNormalized: "sofas",
+    priceAed: 4000 + n * 100,
+    availability: "in stock",
+    primaryImageUrl: `https://example.com/sofa-${n}.jpg`
+  }))
+});
+
+const sofaRole: RoomProductRoleSpec = {
+  category: "sofas",
+  label: "anchor seating",
+  visualBrief: "a soft contemporary sofa",
+  quantity: 1,
+  priority: "required"
+};
+
+// multiple options per role
+const sofaOptions = composeRoomProductOptions({
+  ranked: sofaRanked,
+  roles: [sofaRole],
+  optionsPerRole: 3
+});
+assert.equal(sofaOptions.length, 1);
+assert.equal(sofaOptions[0].category, "sofas");
+assert.equal(sofaOptions[0].options.length, 3);
+
+// selected estimate uses selected rows only
+assert.equal(
+  selectedItemsTotalAed([
+    { status: "selected", unit_price_aed: 1000, quantity: 1 },
+    { status: "option", unit_price_aed: 9999, quantity: 1 },
+    { status: "rejected", unit_price_aed: 9999, quantity: 1 }
+  ]),
+  1000
+);
+
+// quantity > 1 is preserved through to row totals
+const accentChairOptions = composeRoomProductOptions({
+  ranked: rankProductMatches({
+    roomType: "living room",
+    conceptText: "living room with two matching accent chairs",
+    budgetMaxAed: 10000,
+    candidates: [1, 2].map((n) => ({
+      ...base,
+      id: `00000000-0000-4000-8000-00000000020${n}`,
+      name: `Accent Chair ${n}`,
+      categoryNormalized: "armchairs",
+      priceAed: 1500,
+      availability: "in stock",
+      primaryImageUrl: `https://example.com/chair-${n}.jpg`
+    }))
+  }),
+  roles: [
+    { category: "armchairs", label: "accent chairs", visualBrief: null, quantity: 2, priority: "required" }
+  ]
+});
+const chairTopId = accentChairOptions[0].options[0].id;
+const chairRows = buildShoppingListItemRows({
+  roleOptions: accentChairOptions,
+  selectedProductIdByRole: new Map([["armchairs", chairTopId]])
+});
+const chairSelected = chairRows.find((row) => row.status === "selected");
+assert.ok(chairSelected);
+assert.equal(chairSelected.quantity, 2);
+assert.equal(chairSelected.role_quantity, 2);
+assert.equal(chairSelected.line_total_aed, chairSelected.unit_price_aed * 2);
+assert.equal(selectedItemsTotalAed(chairRows), chairSelected.unit_price_aed * 2);
+
+// existing one-row-per-product lists still group and render after migration
+const legacyGroups = groupShoppingItemsByRole([
+  {
+    id: "legacy-1",
+    status: "selected",
+    category: "sofas",
+    role_label: "sofas",
+    role_priority: "supporting",
+    role_quantity: 1,
+    option_rank: 0
+  },
+  {
+    id: "legacy-2",
+    status: "selected",
+    category: "rugs",
+    role_label: "rugs",
+    role_priority: "supporting",
+    role_quantity: 1,
+    option_rank: 3
+  }
+]);
+assert.equal(legacyGroups.length, 2);
+assert.equal(legacyGroups[0].options.length, 1);
+assert.equal(legacyGroups[0].selectedId, "legacy-1");
+assert.equal(legacyGroups[1].selectedId, "legacy-2");
 
 console.log("product matching tests passed");

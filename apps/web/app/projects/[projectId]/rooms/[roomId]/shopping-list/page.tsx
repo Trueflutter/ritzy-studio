@@ -2,7 +2,7 @@ import { ButtonLink, SubmitButton } from "@ritzy-studio/ui";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
-import { productRolesForRoom } from "@ritzy-studio/domain";
+import { groupShoppingItemsByRole, selectedItemsTotalAed } from "@ritzy-studio/domain";
 
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
@@ -75,9 +75,8 @@ export default async function ShoppingListPage({
     : { data: [] };
   const listItems = items ?? [];
   const currentEstimateAed =
-    listItems.length > 0
-      ? listItems.reduce((total, item) => total + currentLineTotalAed(item), 0)
-      : shoppingList?.estimated_total_aed;
+    listItems.length > 0 ? selectedItemsTotalAed(listItems) : shoppingList?.estimated_total_aed;
+  const selectedItemCount = listItems.filter((item) => item.status === "selected").length;
   const { data: canAccessCommerce = false } = await supabase.rpc("can_access_room_commerce", {
     room_id: roomId
   });
@@ -117,39 +116,20 @@ export default async function ShoppingListPage({
     };
   });
 
-  // Group the matched pieces into the categories a room of this type needs,
-  // ordered by role so the essentials lead and stray catalog categories trail.
-  const itemsByCategory = new Map<string, ProductCardItem[]>();
-  for (const cardItem of cardItems) {
-    const group = itemsByCategory.get(cardItem.detail.category) ?? [];
-    group.push(cardItem);
-    itemsByCategory.set(cardItem.detail.category, group);
-  }
-
-  const categoryGroups: CategoryGroup[] = [];
-  for (const role of productRolesForRoom(room.room_type)) {
-    const roleItems = itemsByCategory.get(role.category);
-    if (!roleItems || roleItems.length === 0) {
-      continue;
-    }
-    categoryGroups.push({
-      category: role.category,
-      label: role.label,
-      required: role.required,
-      quantity: role.quantity,
-      items: roleItems
-    });
-    itemsByCategory.delete(role.category);
-  }
-  for (const [category, groupItems] of itemsByCategory) {
-    categoryGroups.push({
-      category,
-      label: category.replace(/_/g, " "),
-      required: false,
-      quantity: 1,
-      items: groupItems
-    });
-  }
+  // Sourced items arrive as ranked options grouped by room role. Rebuild those
+  // role groups for the picker — grouping drops rejected options and surfaces
+  // the selected pick. Legacy one-row-per-product lists group cleanly too.
+  const cardItemById = new Map(cardItems.map((card) => [card.id, card]));
+  const roleGroups: CategoryGroup[] = groupShoppingItemsByRole(listItems).map((group) => ({
+    category: group.category,
+    label: group.label,
+    priority: group.priority,
+    quantity: group.quantity,
+    selectedId: group.selectedId,
+    items: group.options
+      .map((option) => cardItemById.get(option.id))
+      .filter((card): card is ProductCardItem => Boolean(card))
+  }));
 
   return (
     <main className="min-h-dvh bg-page text-ink">
@@ -210,7 +190,7 @@ export default async function ShoppingListPage({
               {formatAed(currentEstimateAed)}
             </p>
             <p className="mt-4 font-body text-body-s text-ink-secondary">
-              {listItems.length} catalog item{listItems.length === 1 ? "" : "s"} in draft.
+              {selectedItemCount} piece{selectedItemCount === 1 ? "" : "s"} selected.
             </p>
             {!commerceUnlocked && isDesignerMode ? (
               <form action={createDesignerSubscriptionCheckoutAction} className="mt-6 border-t border-line pt-5">
@@ -248,11 +228,11 @@ export default async function ShoppingListPage({
         </div>
 
         <section className="mt-12">
-          {shoppingList && categoryGroups.length > 0 ? (
+          {shoppingList && roleGroups.length > 0 ? (
             <ShoppingListGrid
               canAccessCommerce={commerceUnlocked}
               conceptId={shoppingList.concept_id ?? null}
-              groups={categoryGroups}
+              groups={roleGroups}
               projectId={projectId}
               roomId={roomId}
               shoppingListId={shoppingList.id}

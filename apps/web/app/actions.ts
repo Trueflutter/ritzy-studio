@@ -14,17 +14,19 @@ import {
   createProjectSchema,
   createRoomSchema,
   designBriefSchema,
-  composeRoomProductSet,
+  buildShoppingListItemRows,
+  composeRoomProductOptions,
   filterSubstitutionCandidates,
   productRolesForRoom,
-  quantityForProductCategory,
   rankProductMatches,
+  selectedItemsTotalAed,
   setUserModeSchema,
   substitutionModeSchema,
   visualStyleOptions,
   visualStyleSummary,
   type RankedProductMatch,
-  type ProductMatchCandidate
+  type ProductMatchCandidate,
+  type RoomProductRoleSpec
 } from "@ritzy-studio/domain";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
@@ -1784,29 +1786,41 @@ export async function groundProductsAction(formData: FormData) {
       : null,
     candidates
   });
-  const visualRankedById = new Map(visualRanked.map((match) => [match.id, match]));
   const sourceSelectionsById = new Map(
     (sourcingResult?.selectedProducts ?? []).map((selection) => [selection.productId, selection])
   );
-  const visuallySelected = (sourcingResult?.selectedProducts ?? [])
-    .map((selection) => visualRankedById.get(selection.productId))
-    .filter((match): match is RankedProductMatch => Boolean(match));
-  const composedSet = composeRoomProductSet({
+
+  // The AI's read of the concept defines the room's roles; fall back to the
+  // static room roles, and append any required static role the AI didn't name.
+  const aiRoles: RoomProductRoleSpec[] = (sourcingResult?.needs ?? []).map((need) => ({
+    category: normalizeSourcingCategory(need.category, need.roleLabel),
+    label: need.roleLabel,
+    visualBrief: need.visualBrief,
+    quantity: Math.max(1, need.quantity),
+    priority: need.priority === "required" ? "required" : "supporting"
+  }));
+  const staticRoles: RoomProductRoleSpec[] = productRolesForRoom(room.room_type).map((role) => ({
+    category: role.category,
+    label: role.label,
+    visualBrief: role.visualBrief ?? null,
+    quantity: role.quantity,
+    priority: role.required ? "required" : "supporting"
+  }));
+  const aiRoleCategories = new Set(aiRoles.map((role) => role.category));
+  const roles =
+    aiRoles.length > 0
+      ? [...aiRoles, ...staticRoles.filter((role) => !aiRoleCategories.has(role.category))]
+      : staticRoles;
+
+  const roleOptions = composeRoomProductOptions({
     ranked: visualRanked,
-    roomType: room.room_type,
-    desiredRoles: sourcingResult?.needs.map((need) => ({
-      category: normalizeSourcingCategory(need.category, need.roleLabel),
-      label: need.roleLabel,
-      quantity: need.quantity,
-      required: need.priority === "required",
-      visualBrief: need.visualBrief
-    })),
-    limit: 12
+    roles,
+    optionsPerRole: 3
   });
-  const roomProductSet = dedupeMatches([...visuallySelected, ...composedSet]).slice(0, 12);
-  const selectedCategories = new Set(roomProductSet.map((match) => match.categoryNormalized).filter(Boolean));
-  const missingRequiredRoles = productRolesForRoom(room.room_type)
-    .filter((role) => role.required && !selectedCategories.has(role.category))
+
+  const coveredCategories = new Set(roleOptions.map((role) => role.category));
+  const missingRequiredRoles = roles
+    .filter((role) => role.priority === "required" && !coveredCategories.has(role.category))
     .map((role) => role.label);
 
   if (missingRequiredRoles.length > 0) {
@@ -1844,38 +1858,47 @@ export async function groundProductsAction(formData: FormData) {
   const shoppingListId = shoppingListResult.data.id;
   await supabase.from("shopping_list_items").delete().eq("shopping_list_id", shoppingListId);
 
-  const items = roomProductSet.map((match, index) => {
-    const unitPrice = match.salePriceAed ?? match.priceAed ?? 0;
-    const sourceSelection = sourceSelectionsById.get(match.id);
-    const quantity =
-      sourceSelection?.quantity ?? quantityForProductCategory(room.room_type, match.categoryNormalized);
-    return {
-      shopping_list_id: shoppingListId,
-      product_id: match.id,
-      category: match.categoryNormalized ?? "uncategorized",
-      quantity,
-      unit_price_aed: unitPrice,
-      line_total_aed: unitPrice * quantity,
-      selection_reason: [
+  // Pre-select the AI's recommended product per role. A required role with no
+  // AI pick falls back to its top-ranked option so the room has a baseline.
+  const selectedProductIdByRole = new Map<string, string>();
+  for (const role of roleOptions) {
+    const aiPick = (sourcingResult?.selectedProducts ?? []).find(
+      (selection) =>
+        normalizeSourcingCategory(selection.category, selection.roleLabel) === role.category &&
+        role.options.some((option) => option.id === selection.productId)
+    );
+    if (aiPick) {
+      selectedProductIdByRole.set(role.category, aiPick.productId);
+    } else if (role.priority === "required") {
+      selectedProductIdByRole.set(role.category, role.options[0].id);
+    }
+  }
+
+  const itemRows = buildShoppingListItemRows({
+    roleOptions,
+    selectedProductIdByRole,
+    reasonFor: (match) => {
+      const sourceSelection = sourceSelectionsById.get(match.id);
+      return [
         sourceSelection?.visualMatchReason ? `visual match: ${sourceSelection.visualMatchReason}` : null,
         sourceSelection?.mismatchNote ? `mismatch: ${sourceSelection.mismatchNote}` : null,
         match.selectionReason,
         ...match.warnings.filter((warning) => warning !== match.dimensionFitNote)
       ]
         .filter(Boolean)
-        .join(" "),
-      dimension_fit_note: match.dimensionFitNote,
-      sort_order: index
-    };
+        .join(" ");
+    }
   });
 
-  const { error: itemError } = await supabase.from("shopping_list_items").insert(items);
+  const { error: itemError } = await supabase
+    .from("shopping_list_items")
+    .insert(itemRows.map((row) => ({ ...row, shopping_list_id: shoppingListId })));
 
   if (itemError) {
     throw new Error(itemError.message);
   }
 
-  const estimatedTotal = items.reduce((sum, item) => sum + Number(item.line_total_aed ?? 0), 0);
+  const estimatedTotal = selectedItemsTotalAed(itemRows);
   await supabase
     .from("shopping_lists")
     .update({
@@ -2167,10 +2190,15 @@ export async function generateFinalRenderAction(formData: FormData) {
       )
     `
     )
-    .eq("shopping_list_id", shoppingListId);
+    .eq("shopping_list_id", shoppingListId)
+    .neq("status", "rejected");
 
   if (selectedItemIds.length > 0) {
+    // The picker passed an explicit selection — render exactly those pieces.
     itemsQuery = itemsQuery.in("id", selectedItemIds);
+  } else {
+    // No explicit picks — fall back to the sourced selected options.
+    itemsQuery = itemsQuery.eq("status", "selected");
   }
 
   const { data: items = [] } = await itemsQuery.order("sort_order", { ascending: true });
@@ -2682,22 +2710,6 @@ function matchToSourcingCandidate(match: RankedProductMatch) {
       ...match.roomTags
     ].filter((tag): tag is string => Boolean(tag))
   };
-}
-
-function dedupeMatches(matches: RankedProductMatch[]) {
-  const seen = new Set<string>();
-  const deduped: RankedProductMatch[] = [];
-
-  for (const match of matches) {
-    if (seen.has(match.id)) {
-      continue;
-    }
-
-    seen.add(match.id);
-    deduped.push(match);
-  }
-
-  return deduped;
 }
 
 function normalizeSourcingCategory(category: string, roleLabel: string) {

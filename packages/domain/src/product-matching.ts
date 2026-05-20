@@ -424,3 +424,187 @@ function isStale(value: string | null) {
 
   return Date.now() - checkedAt > 1000 * 60 * 60 * 24 * 7;
 }
+
+// --- Room roles as option pools -------------------------------------------
+// A sourced shopping list is a pool of ranked options grouped by room role.
+// Each role offers a few candidates; one is the selected pick.
+
+export type RoomProductRoleSpec = {
+  category: string;
+  label: string;
+  visualBrief: string | null;
+  quantity: number;
+  priority: "required" | "supporting";
+};
+
+export type RoleProductOptions = RoomProductRoleSpec & {
+  options: RankedProductMatch[];
+};
+
+export type ShoppingListItemStatus = "option" | "selected" | "rejected";
+
+export type ShoppingListItemDraft = {
+  product_id: string;
+  category: string;
+  status: ShoppingListItemStatus;
+  role_label: string;
+  role_visual_brief: string | null;
+  role_priority: "required" | "supporting";
+  role_quantity: number;
+  option_rank: number;
+  quantity: number;
+  unit_price_aed: number;
+  line_total_aed: number;
+  selection_reason: string;
+  dimension_fit_note: string | null;
+  sort_order: number;
+};
+
+export type ShoppingItemRoleFields = {
+  id: string;
+  status: string;
+  category: string;
+  role_label: string;
+  role_priority: string;
+  role_quantity: number;
+  option_rank: number;
+};
+
+export type ShoppingRoleGroup<T> = {
+  category: string;
+  label: string;
+  priority: "required" | "supporting";
+  quantity: number;
+  selectedId: string | null;
+  options: T[];
+};
+
+// Take the top `optionsPerRole` ranked candidates for each role's category.
+// A product is offered under one role only, so distinct roles never collide.
+export function composeRoomProductOptions({
+  ranked,
+  roles,
+  optionsPerRole = 3
+}: {
+  ranked: RankedProductMatch[];
+  roles: RoomProductRoleSpec[];
+  optionsPerRole?: number;
+}): RoleProductOptions[] {
+  const perRole = Math.max(1, optionsPerRole);
+  const used = new Set<string>();
+  const result: RoleProductOptions[] = [];
+
+  for (const role of roles) {
+    const options: RankedProductMatch[] = [];
+    for (const match of ranked) {
+      if (used.has(match.id) || match.categoryNormalized !== role.category) {
+        continue;
+      }
+      options.push(match);
+      used.add(match.id);
+      if (options.length >= perRole) {
+        break;
+      }
+    }
+    if (options.length > 0) {
+      result.push({ ...role, options });
+    }
+  }
+
+  return result;
+}
+
+// Flatten role option pools into shopping_list_item rows. The chosen product
+// per role is `selected`; the rest are `option`. Purchase quantity carries the
+// role quantity so a "2 accent chairs" role totals at price x 2.
+export function buildShoppingListItemRows({
+  roleOptions,
+  selectedProductIdByRole,
+  reasonFor
+}: {
+  roleOptions: RoleProductOptions[];
+  selectedProductIdByRole: Map<string, string>;
+  reasonFor?: (match: RankedProductMatch) => string;
+}): ShoppingListItemDraft[] {
+  const rows: ShoppingListItemDraft[] = [];
+  let sortOrder = 0;
+
+  for (const role of roleOptions) {
+    const selectedId = selectedProductIdByRole.get(role.category) ?? null;
+    role.options.forEach((match, rank) => {
+      const unitPrice = match.salePriceAed ?? match.priceAed ?? 0;
+      rows.push({
+        product_id: match.id,
+        category: role.category,
+        status: match.id === selectedId ? "selected" : "option",
+        role_label: role.label,
+        role_visual_brief: role.visualBrief,
+        role_priority: role.priority,
+        role_quantity: role.quantity,
+        option_rank: rank,
+        quantity: role.quantity,
+        unit_price_aed: unitPrice,
+        line_total_aed: unitPrice * role.quantity,
+        selection_reason: reasonFor ? reasonFor(match) : match.selectionReason,
+        dimension_fit_note: match.dimensionFitNote,
+        sort_order: sortOrder
+      });
+      sortOrder += 1;
+    });
+  }
+
+  return rows;
+}
+
+// The room estimate is the sum of selected rows only, multiplied by quantity.
+export function selectedItemsTotalAed(
+  items: ReadonlyArray<{
+    status: string;
+    unit_price_aed: number | null;
+    quantity: number | null;
+  }>
+): number {
+  return items
+    .filter((item) => item.status === "selected")
+    .reduce((total, item) => total + (item.unit_price_aed ?? 0) * (item.quantity ?? 1), 0);
+}
+
+// Group sourced items back into role groups for the picker. Rejected items are
+// dropped; options are ordered best-first; the selected option seeds the pick.
+// Legacy one-row-per-product lists group cleanly too — each row is its category.
+export function groupShoppingItemsByRole<T extends ShoppingItemRoleFields>(
+  items: ReadonlyArray<T>
+): ShoppingRoleGroup<T>[] {
+  const byCategory = new Map<string, T[]>();
+  const order: string[] = [];
+
+  for (const item of items) {
+    if (item.status === "rejected") {
+      continue;
+    }
+    const existing = byCategory.get(item.category);
+    if (existing) {
+      existing.push(item);
+    } else {
+      byCategory.set(item.category, [item]);
+      order.push(item.category);
+    }
+  }
+
+  return order.map((category) => {
+    const options = byCategory
+      .get(category)!
+      .slice()
+      .sort((left, right) => left.option_rank - right.option_rank);
+    const first = options[0];
+    const selected = options.find((item) => item.status === "selected") ?? null;
+    return {
+      category,
+      label: first.role_label || category.replace(/_/g, " "),
+      priority: first.role_priority === "required" ? "required" : "supporting",
+      quantity: Math.max(1, first.role_quantity),
+      selectedId: selected ? selected.id : null,
+      options
+    };
+  });
+}
