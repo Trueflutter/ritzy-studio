@@ -180,8 +180,16 @@ export function ShoppingListGrid({
       <div className="mt-12 space-y-14">
         {groups.map((group) => {
           const available = group.items.filter((item) => !rejectedIds.has(item.id));
-          const shown = available.slice(0, VISIBLE_PER_ROLE);
           const chosenId = selectedByCategory.get(group.category) ?? null;
+          const chosenItem = chosenId ? available.find((item) => item.id === chosenId) : null;
+          const shown = chosenItem
+            ? [
+                chosenItem,
+                ...available
+                  .filter((item) => item.id !== chosenId)
+                  .slice(0, VISIBLE_PER_ROLE - 1)
+              ]
+            : available.slice(0, VISIBLE_PER_ROLE);
           const needsMore = available.length < VISIBLE_PER_ROLE;
           const finding = isPending && pendingCategory === group.category;
           return (
