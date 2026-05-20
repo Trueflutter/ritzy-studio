@@ -656,6 +656,66 @@ export async function deleteRoomPhotoAction(formData: FormData) {
   redirect(`${redirectPath}?message=${encodeURIComponent("Photograph removed.")}`);
 }
 
+export async function deleteInspirationImageAction(formData: FormData) {
+  const projectId = String(formData.get("projectId") ?? "");
+  const roomId = String(formData.get("roomId") ?? "");
+  const assetId = String(formData.get("assetId") ?? "");
+  const redirectPath = `/projects/${projectId}/rooms/${roomId}/brief/inspiration`;
+  const supabase = await createClient();
+  const {
+    data: { user },
+    error: userError
+  } = await supabase.auth.getUser();
+
+  if (userError || !user) {
+    redirect("/login");
+  }
+
+  const { data: room } = await supabase
+    .from("rooms")
+    .select("id")
+    .eq("id", roomId)
+    .eq("project_id", projectId)
+    .single();
+
+  if (!room) {
+    redirect("/");
+  }
+
+  const { data: asset, error: assetError } = await supabase
+    .from("room_assets")
+    .select("id, storage_path")
+    .eq("id", assetId)
+    .eq("room_id", roomId)
+    .eq("asset_type", "inspiration_image")
+    .single();
+
+  if (assetError || !asset) {
+    redirect(`${redirectPath}?message=${encodeURIComponent("The inspiration photo could not be found.")}`);
+  }
+
+  const { error: storageError } = await supabase.storage
+    .from("room-assets")
+    .remove([asset.storage_path]);
+
+  if (storageError) {
+    redirect(`${redirectPath}?message=${encodeURIComponent(storageError.message)}`);
+  }
+
+  const { error: deleteError } = await supabase
+    .from("room_assets")
+    .delete()
+    .eq("id", asset.id)
+    .eq("room_id", roomId);
+
+  if (deleteError) {
+    redirect(`${redirectPath}?message=${encodeURIComponent(deleteError.message)}`);
+  }
+
+  revalidatePath(redirectPath);
+  redirect(redirectPath);
+}
+
 export async function createProjectAction(formData: FormData) {
   const parsed = createProjectSchema.parse({
     name: String(formData.get("name") ?? "").trim(),
