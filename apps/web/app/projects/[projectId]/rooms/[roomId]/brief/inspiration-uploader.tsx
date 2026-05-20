@@ -2,7 +2,8 @@
 
 import type { Database } from "@ritzy-studio/db";
 import { ImageDropzone } from "@ritzy-studio/ui";
-import { useState, useTransition } from "react";
+import Image from "next/image";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
 import { analyzeInspirationAction } from "@/app/actions";
@@ -23,8 +24,25 @@ export function InspirationUploader({
   const [lastFile, setLastFile] = useState<File | null>(null);
   const [status, setStatus] = useState<UploadStatus>("idle");
   const [message, setMessage] = useState("Drag an inspiration photo here, or click to upload");
+  const [previews, setPreviews] = useState<string[]>([]);
   const [isPending, startTransition] = useTransition();
+  const awaitingRefresh = useRef(false);
   const router = useRouter();
+
+  // The previews are local object URLs shown the instant a file is uploaded.
+  // Once the server refresh lands, the real thumbnails are on screen, so the
+  // previews are dropped and their object URLs released.
+  useEffect(() => {
+    if (isPending) {
+      awaitingRefresh.current = true;
+      return;
+    }
+    if (awaitingRefresh.current && previews.length > 0) {
+      awaitingRefresh.current = false;
+      previews.forEach((url) => URL.revokeObjectURL(url));
+      setPreviews([]);
+    }
+  }, [isPending, previews]);
 
   async function uploadFile(file: File) {
     setLastFile(file);
@@ -72,13 +90,20 @@ export function InspirationUploader({
   }
 
   async function uploadFiles(files: File[]) {
+    const uploaded: File[] = [];
     for (const file of files) {
-      const uploaded = await uploadFile(file);
-      if (!uploaded) {
+      const ok = await uploadFile(file);
+      if (!ok) {
         break;
       }
+      uploaded.push(file);
     }
 
+    if (uploaded.length === 0) {
+      return;
+    }
+
+    setPreviews(uploaded.map((file) => URL.createObjectURL(file)));
     startTransition(() => router.refresh());
 
     void analyzeInspirationAction(roomId)
@@ -87,18 +112,39 @@ export function InspirationUploader({
   }
 
   return (
-    <ImageDropzone
-      accept="image/jpeg,image/png,image/webp"
-      busy={status === "uploading" || isPending}
-      error={
-        status === "error"
-          ? { message, onRetry: lastFile ? () => void uploadFile(lastFile) : undefined }
-          : null
-      }
-      hint="JPG, PNG, or WEBP · up to 10 MB"
-      multiple
-      onFiles={(files) => void uploadFiles(files)}
-      prompt={status === "error" ? "reference could not upload" : message}
-    />
+    <div>
+      <ImageDropzone
+        accept="image/jpeg,image/png,image/webp"
+        busy={status === "uploading"}
+        error={
+          status === "error"
+            ? { message, onRetry: lastFile ? () => void uploadFile(lastFile) : undefined }
+            : null
+        }
+        hint="JPG, PNG, or WEBP · up to 10 MB"
+        multiple
+        onFiles={(files) => void uploadFiles(files)}
+        prompt={status === "error" ? "reference could not upload" : message}
+      />
+
+      {previews.length > 0 ? (
+        <div className="mt-6 grid grid-cols-2 gap-3 md:grid-cols-4">
+          {previews.map((url) => (
+            <figure className="border border-line bg-surface p-2" key={url}>
+              <div className="flex aspect-square items-center justify-center bg-surface-subtle">
+                <Image
+                  alt="Inspiration reference, just uploaded"
+                  className="h-full w-full object-cover"
+                  height={220}
+                  src={url}
+                  unoptimized
+                  width={220}
+                />
+              </div>
+            </figure>
+          ))}
+        </div>
+      ) : null}
+    </div>
   );
 }
