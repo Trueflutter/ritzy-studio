@@ -11,6 +11,8 @@
   --rs-text-muted: #6f6963;
   --rs-text-subtle: #8a8175;
   --rs-text-disabled: #b5ac9c;
+  --rs-text-placeholder: rgba(31, 31, 29, 0.32);
+  --rs-text-helper: #8a8175;
   --rs-primary: #1f1f1d;
   --rs-primary-hover: #36352f;
   --rs-accent: #b58e5a;
@@ -99,6 +101,8 @@
   --color-ink-muted: var(--rs-text-muted);
   --color-ink-subtle: var(--rs-text-subtle);
   --color-ink-disabled: var(--rs-text-disabled);
+  --color-ink-placeholder: var(--rs-text-placeholder);
+  --color-ink-helper: var(--rs-text-helper);
   --color-primary: var(--rs-primary);
   --color-primary-hover: var(--rs-primary-hover);
   --color-accent: var(--rs-accent);

@@ -397,15 +397,15 @@ Base unit **4px**. Allowed values are scale steps below — no off-scale spacing
 **Forbidden:** radii above 8px on any card variant. Consumer SaaS softness is not Ritzy.
 
 ### 8.6 Forms / inputs
-- Inputs: hairline bottom border only (`1px solid --rs-border-strong`). No box.
+- Inputs: hairline bottom border only. **Rest** `1px solid --rs-border` (softer at idle so a long form doesn't read as a stack of stark rules). **Hover** lifts to `1px solid --rs-border-strong` to signal interactivity. No box.
 - Label `caption` above the input, 14px gap.
 - Narrative inputs (search, brief, project name): Cormorant 300 italic 24px (`display-xs`).
 - Functional inputs (filters, dimensions, numbers): DM Sans 400 15px (`body-m`).
 - Focus: bottom border becomes `--rs-accent-deep`; an extra 1px `--rs-accent` line slides in beneath over 220ms.
 - Error: bottom border `--rs-error`; error message below in DM Sans italic 13.5px `--rs-error`.
 - Disabled: text `--rs-text-disabled`; border `--rs-border`.
-- Placeholder uses input's font and `--rs-text-disabled`.
-- Forbidden: filled input backgrounds, rounded input boxes, floating labels.
+- Placeholder uses input's font and `--rs-text-placeholder` (a quieter shade than `--rs-text-disabled` so the hint never competes with active UI text such as chrome button labels). Placeholder copy is the **example value itself**, not prefixed with `e.g.` — the italic Cormorant treatment already signals "hint."
+- Forbidden: filled input backgrounds, rounded input boxes, floating labels, `e.g.` / `Example:` prefixes inside the placeholder.
 
 ### 8.7 Textarea
 - Same anatomy as input. Min height 96px. Auto-grow to a maximum of 320px before scrolling internally.
@@ -524,6 +524,14 @@ Base unit **4px**. Allowed values are scale steps below — no off-scale spacing
 - Used at most twice per hero. Position respects the architectural region rule — never overlap the top one-third of a room photo.
 - Hidden below `md` breakpoint; revealed at `md+` only.
 - **Forbidden:** stacking three or more callouts on a single hero, animating callouts in/out per-pixel (they fade as a group on page load).
+
+### 8.26 Helper text (contextual hint below a control)
+- One short italic Cormorant sentence below an input, group of inputs, or a card primary CTA, in `--rs-text-helper` (`#8A8175`).
+- Font: Cormorant Garamond 300 italic, `body-s` (13.5px), line-height 1.55.
+- Placement: 8px below the input's bottom border (or below the input's own error message if one is shown). One line preferred; two lines maximum.
+- Voice: tells the user *what this field affects downstream* — not *what to type*. "Used as the project name on your dashboard." beats "Enter your project name."
+- Distinct from chrome buttons. A chrome button is uppercase DM Sans 12.5px tracked in `--rs-text-muted` (`#6F6963`); helper text is italic Cormorant in `--rs-text-helper` (`#8A8175`). The lighter shade plus the serif italic must read as "information," not as a clickable affordance.
+- **Forbidden:** helper text in uppercase, helper text in DM Sans, helper text that restates the label, helper text on every input in a form (use only where the field's downstream effect isn't obvious from the label).
 
 ---
 
@@ -1060,8 +1068,10 @@ Do not improvise alternative copy.
   --rs-text:            #1F1F1D;
   --rs-text-secondary:  #36352F;
   --rs-text-muted:      #6F6963;
-  --rs-text-subtle:     #8A8175;
-  --rs-text-disabled:   #B5AC9C;
+  --rs-text-subtle:      #8A8175;
+  --rs-text-disabled:    #B5AC9C;
+  --rs-text-placeholder: rgba(31, 31, 29, 0.32);  /* input placeholder hints (italic Cormorant) */
+  --rs-text-helper:      #8A8175;                  /* helper text below a control (italic Cormorant body-s) */
 
   --rs-primary:         #1F1F1D;
   --rs-primary-hover:   #36352F;
@@ -1179,11 +1189,13 @@ const config: Config = {
         surface: { DEFAULT: '#FBF8F2', subtle: '#EBE3D4' },
         line:    { DEFAULT: 'rgba(31,31,29,0.08)', strong: 'rgba(31,31,29,0.16)' },
         ink: {
-          DEFAULT:   '#1F1F1D',
-          secondary: '#36352F',
-          muted:     '#6F6963',
-          subtle:    '#8A8175',
-          disabled:  '#B5AC9C',
+          DEFAULT:     '#1F1F1D',
+          secondary:   '#36352F',
+          muted:       '#6F6963',
+          subtle:      '#8A8175',
+          disabled:    '#B5AC9C',
+          placeholder: 'rgba(31,31,29,0.32)',
+          helper:      '#8A8175',
         },
         primary: { DEFAULT: '#1F1F1D', hover: '#36352F' },
         accent:  { DEFAULT: '#B58E5A', deep: '#8C6A3E', tint: 'rgba(181,142,90,0.10)' },

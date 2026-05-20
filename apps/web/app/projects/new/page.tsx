@@ -59,7 +59,7 @@ export default async function NewProjectPage({
               label="Project name"
               name="name"
               narrative
-              placeholder="e.g. Al Barsha villa"
+              placeholder="Al Barsha villa"
               required
             />
             <TextInput
@@ -67,14 +67,14 @@ export default async function NewProjectPage({
               id="clientName"
               label="Your name"
               name="clientName"
-              placeholder="e.g. Ayo Olatoye"
+              placeholder="Ayo Olatoye"
             />
             <TextInput
               autoComplete="address-level2"
               id="location"
               label="Location"
               name="location"
-              placeholder="e.g. Dubai"
+              placeholder="Dubai"
             />
 
             <div className="grid gap-x-8 md:grid-cols-2">
@@ -83,18 +83,18 @@ export default async function NewProjectPage({
                 inputMode="numeric"
                 label="Budget minimum"
                 name="budgetMinAed"
-                placeholder="e.g. AED 35,000"
+                placeholder="AED 35,000"
               />
               <TextInput
                 id="budgetMaxAed"
                 inputMode="numeric"
                 label="Budget maximum"
                 name="budgetMaxAed"
-                placeholder="e.g. AED 100,000"
+                placeholder="AED 100,000"
               />
             </div>
 
-            <div className="flex flex-col-reverse gap-4 border-t border-line pt-8 sm:flex-row sm:items-center sm:justify-between">
+            <div className="mt-4 flex flex-col-reverse gap-4 sm:flex-row sm:items-center sm:justify-between">
               <ButtonLink href="/" variant="chrome">
                 Cancel
               </ButtonLink>

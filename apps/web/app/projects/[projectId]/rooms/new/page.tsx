@@ -133,7 +133,7 @@ export default async function NewRoomPage({
                 label="Room name"
                 name="name"
                 narrative
-                placeholder="e.g. Living room"
+                placeholder="Living room"
                 required
               />
               <TextInput
@@ -141,11 +141,11 @@ export default async function NewRoomPage({
                 id="roomType"
                 label="Room type"
                 name="roomType"
-                placeholder="e.g. Living, bedroom, dining"
+                placeholder="Living, bedroom, dining"
                 required
               />
 
-              <div className="flex flex-col-reverse gap-4 border-t border-line pt-8 sm:flex-row sm:items-center sm:justify-between">
+              <div className="mt-4 flex flex-col-reverse gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <ButtonLink href="/" variant="chrome">
                   {isFirstRoom ? "Add room later" : "Cancel"}
                 </ButtonLink>
