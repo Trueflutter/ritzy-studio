@@ -1815,7 +1815,9 @@ export async function groundProductsAction(formData: FormData) {
   const roleOptions = composeRoomProductOptions({
     ranked: visualRanked,
     roles,
-    optionsPerRole: 3
+    // Store a reserve beyond the three shown, so rejecting an option reveals a
+    // replacement instantly with no catalog round-trip.
+    optionsPerRole: 6
   });
 
   const coveredCategories = new Set(roleOptions.map((role) => role.category));
@@ -2096,6 +2098,235 @@ export async function substituteProductAction(formData: FormData) {
 
   revalidatePath(redirectPath);
   redirect(`${redirectPath}?message=${encodeURIComponent(`Product swapped. Price impact: ${impactText}.`)}`);
+}
+
+async function recalculateShoppingListTotal(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  shoppingListId: string
+) {
+  const { data: rows } = await supabase
+    .from("shopping_list_items")
+    .select("status, unit_price_aed, quantity")
+    .eq("shopping_list_id", shoppingListId);
+  await supabase
+    .from("shopping_lists")
+    .update({
+      estimated_total_aed: selectedItemsTotalAed(rows ?? []),
+      updated_at: new Date().toISOString()
+    })
+    .eq("id", shoppingListId);
+}
+
+export async function selectShoppingItemAction(input: {
+  projectId: string;
+  roomId: string;
+  shoppingListId: string;
+  itemId: string;
+}) {
+  const { projectId, roomId, shoppingListId, itemId } = input;
+  const supabase = await createClient();
+  const {
+    data: { user },
+    error: userError
+  } = await supabase.auth.getUser();
+
+  if (userError || !user) {
+    redirect("/login");
+  }
+
+  const { data: item } = await supabase
+    .from("shopping_list_items")
+    .select("id, category")
+    .eq("id", itemId)
+    .eq("shopping_list_id", shoppingListId)
+    .single();
+
+  if (!item) {
+    return;
+  }
+
+  // One pick per role — clear the category's current selection, then set this.
+  await supabase
+    .from("shopping_list_items")
+    .update({ status: "option" })
+    .eq("shopping_list_id", shoppingListId)
+    .eq("category", item.category)
+    .eq("status", "selected");
+  await supabase
+    .from("shopping_list_items")
+    .update({ status: "selected" })
+    .eq("id", itemId)
+    .eq("shopping_list_id", shoppingListId);
+
+  await recalculateShoppingListTotal(supabase, shoppingListId);
+  revalidatePath(`/projects/${projectId}/rooms/${roomId}/shopping-list`);
+}
+
+export async function rejectShoppingItemAction(input: {
+  projectId: string;
+  roomId: string;
+  shoppingListId: string;
+  itemId: string;
+}) {
+  const { projectId, roomId, shoppingListId, itemId } = input;
+  const supabase = await createClient();
+  const {
+    data: { user },
+    error: userError
+  } = await supabase.auth.getUser();
+
+  if (userError || !user) {
+    redirect("/login");
+  }
+
+  await supabase
+    .from("shopping_list_items")
+    .update({ status: "rejected" })
+    .eq("id", itemId)
+    .eq("shopping_list_id", shoppingListId);
+
+  await recalculateShoppingListTotal(supabase, shoppingListId);
+  revalidatePath(`/projects/${projectId}/rooms/${roomId}/shopping-list`);
+}
+
+// Rare path: every loaded option for a role was rejected. Rank the catalog for
+// that category, skip products already in the list, and append fresh options.
+export async function findMoreShoppingOptionsAction(input: {
+  projectId: string;
+  roomId: string;
+  shoppingListId: string;
+  category: string;
+}) {
+  const { projectId, roomId, shoppingListId, category } = input;
+  const supabase = await createClient();
+  const {
+    data: { user },
+    error: userError
+  } = await supabase.auth.getUser();
+
+  if (userError || !user) {
+    redirect("/login");
+  }
+
+  const shoppingListPath = `/projects/${projectId}/rooms/${roomId}/shopping-list`;
+
+  const { data: shoppingList } = await supabase
+    .from("shopping_lists")
+    .select("id, concept_id")
+    .eq("id", shoppingListId)
+    .single();
+
+  const { data: room } = await supabase
+    .from("rooms")
+    .select("id, room_type")
+    .eq("id", roomId)
+    .eq("project_id", projectId)
+    .single();
+
+  const { data: project } = await supabase
+    .from("projects")
+    .select("id, budget_max_aed")
+    .eq("id", projectId)
+    .single();
+
+  if (!shoppingList?.concept_id || !room || !project) {
+    return;
+  }
+
+  const { data: concept } = await supabase
+    .from("concepts")
+    .select("title, description")
+    .eq("id", shoppingList.concept_id)
+    .single();
+
+  const { data: existingRows } = await supabase
+    .from("shopping_list_items")
+    .select("product_id, role_label, role_visual_brief, role_priority, role_quantity, option_rank")
+    .eq("shopping_list_id", shoppingListId)
+    .eq("category", category);
+
+  if (!concept || !existingRows || existingRows.length === 0) {
+    return;
+  }
+
+  const usedProductIds = new Set(existingRows.map((row) => row.product_id));
+  const template = existingRows.reduce(
+    (best, row) => (row.option_rank > best.option_rank ? row : best),
+    existingRows[0]
+  );
+
+  const { data: measurements } = await supabase
+    .from("room_measurements")
+    .select("wall_length_cm, room_depth_cm")
+    .eq("room_id", roomId)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  const serviceSupabase = createServiceClient();
+  const { data: products } = await serviceSupabase
+    .from("products")
+    .select(
+      `
+      *,
+      retailer:retailers(name, status),
+      dimensions:product_dimensions(width_cm, depth_cm, height_cm, source_text)
+    `
+    )
+    .not("price_aed", "is", null)
+    .not("primary_image_url", "is", null)
+    .limit(250);
+
+  const candidates = (products ?? [])
+    .map(productToMatchCandidate)
+    .filter((candidate): candidate is ProductMatchCandidate => Boolean(candidate));
+
+  const ranked = rankProductMatches({
+    roomType: room.room_type,
+    conceptText: `${concept.title}\n${concept.description ?? ""}`,
+    budgetMaxAed: project.budget_max_aed,
+    roomMeasurements: measurements
+      ? { wallLengthCm: measurements.wall_length_cm, roomDepthCm: measurements.room_depth_cm }
+      : null,
+    candidates
+  });
+
+  const fresh = ranked
+    .filter((match) => match.categoryNormalized === category && !usedProductIds.has(match.id))
+    .slice(0, 3);
+
+  if (fresh.length > 0) {
+    const rows = fresh.map((match, index) => {
+      const unitPrice = match.salePriceAed ?? match.priceAed ?? 0;
+      const optionRank = template.option_rank + 1 + index;
+      return {
+        shopping_list_id: shoppingListId,
+        product_id: match.id,
+        category,
+        status: "option" as const,
+        role_label: template.role_label,
+        role_visual_brief: template.role_visual_brief,
+        role_priority: template.role_priority,
+        role_quantity: template.role_quantity,
+        option_rank: optionRank,
+        quantity: template.role_quantity,
+        unit_price_aed: unitPrice,
+        line_total_aed: unitPrice * template.role_quantity,
+        selection_reason: [
+          match.selectionReason,
+          ...match.warnings.filter((warning) => warning !== match.dimensionFitNote)
+        ]
+          .filter(Boolean)
+          .join(" "),
+        dimension_fit_note: match.dimensionFitNote,
+        sort_order: optionRank
+      };
+    });
+
+    await supabase.from("shopping_list_items").insert(rows);
+  }
+
+  revalidatePath(shoppingListPath);
 }
 
 export async function generateFinalRenderAction(formData: FormData) {
