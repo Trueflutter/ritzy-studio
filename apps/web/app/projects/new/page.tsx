@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 
 import { createProjectAction } from "@/app/actions";
 import { createClient } from "@/lib/supabase/server";
+import { MoneyInput } from "./money-input";
 
 export const dynamic = "force-dynamic";
 
@@ -78,19 +79,17 @@ export default async function NewProjectPage({
             />
 
             <div className="grid gap-x-8 md:grid-cols-2">
-              <TextInput
+              <MoneyInput
                 id="budgetMinAed"
-                inputMode="numeric"
                 label="Budget minimum"
                 name="budgetMinAed"
-                placeholder="AED 35,000"
+                placeholder="35,000"
               />
-              <TextInput
+              <MoneyInput
                 id="budgetMaxAed"
-                inputMode="numeric"
                 label="Budget maximum"
                 name="budgetMaxAed"
-                placeholder="AED 100,000"
+                placeholder="100,000"
               />
             </div>
 
