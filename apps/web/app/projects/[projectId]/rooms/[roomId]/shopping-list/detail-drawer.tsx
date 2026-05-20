@@ -57,122 +57,116 @@ export function DetailDrawer({ item, open, canAccessCommerce, onClose }: DetailD
     >
       <button
         aria-label="Close detail"
-        className="absolute inset-0 bg-[rgba(31,31,29,0.30)] backdrop-blur-[8px] transition-opacity duration-standard ease-standard"
+        className="absolute inset-0 bg-[rgba(31,31,29,0.45)] backdrop-blur-[10px] transition-opacity duration-standard ease-standard"
         onClick={onClose}
         type="button"
       />
-      <aside
+      <div
         aria-labelledby={`drawer-title-${item.id}`}
         aria-modal="true"
-        className="absolute right-0 top-0 flex h-full w-[min(92vw,480px)] flex-col border-l border-line bg-surface"
+        className="absolute inset-0 overflow-y-auto px-4 py-6 md:px-8 md:py-8"
         role="dialog"
       >
-        <header className="flex items-center justify-between border-b border-line px-8 py-6">
-          <p className="font-body text-caption font-medium uppercase tracking-[0.32em] text-ink-muted">
-            Catalog detail
-          </p>
+        <div className="mx-auto flex min-h-full w-full max-w-[1180px] flex-col items-center justify-center">
           <button
-            aria-label="Close"
-            className="flex h-10 w-10 items-center justify-center border border-transparent text-ink transition-colors duration-micro ease-standard hover:border-line"
+            aria-label="Close detail"
+            className="fixed right-5 top-5 z-10 flex h-10 w-10 items-center justify-center rounded-full border border-white/70 bg-white text-ink shadow-[0_2px_18px_rgba(0,0,0,0.18)] transition-colors duration-micro ease-standard hover:bg-page"
             onClick={onClose}
             type="button"
           >
             <CloseIcon />
           </button>
-        </header>
 
-        <div className="flex-1 overflow-y-auto px-8 py-6">
-          <div className="aspect-square border border-line bg-page">
+          <div className="flex w-full items-center justify-center">
             {item.imageUrl ? (
               <Image
                 alt={`${item.name} product image`}
-                className="h-full w-full object-cover"
-                height={960}
+                className="max-h-[72dvh] w-auto max-w-full object-contain"
+                height={1400}
                 src={item.imageUrl}
                 unoptimized
-                width={960}
+                width={1400}
               />
             ) : (
-              <div className="flex h-full items-center justify-center font-display text-body-s italic text-error">
+              <div className="flex min-h-[420px] w-full max-w-[720px] items-center justify-center border border-line bg-surface font-display text-body-s italic text-error">
                 image missing
               </div>
             )}
           </div>
 
-          <h2
-            className="mt-6 font-display text-display-s font-light italic text-ink"
-            id={`drawer-title-${item.id}`}
-          >
-            {item.name}
-          </h2>
-
-          {item.retailerName ? (
-            <p className="mt-3 font-body text-caption font-medium uppercase tracking-[0.32em] text-ink-muted">
-              {item.retailerName} · {item.category}
+          <section className="mt-6 w-full max-w-[760px] bg-surface px-5 py-5 text-center shadow-[0_16px_60px_rgba(0,0,0,0.18)] md:px-8 md:py-7">
+            <p className="font-body text-caption font-medium uppercase tracking-[0.32em] text-ink-muted">
+              Catalog detail
             </p>
-          ) : null}
+            <h2
+              className="mt-4 font-display text-display-s font-light italic text-ink"
+              id={`drawer-title-${item.id}`}
+            >
+              {item.name}
+            </h2>
 
-          {item.description ? (
-            <p className="mt-6 font-body text-body-m text-ink-secondary">
-              {item.description}
-            </p>
-          ) : null}
+            {canAccessCommerce && item.description ? (
+              <p className="mx-auto mt-5 max-w-[620px] font-body text-body-m text-ink-secondary">
+                {item.description}
+              </p>
+            ) : null}
 
-          <dl className="mt-8 space-y-5 border-t border-line pt-6">
-            <div>
-              <dt className="font-body text-caption font-medium uppercase tracking-[0.32em] text-ink-muted">
-                Price
-              </dt>
-              <dd className="mt-2 font-display text-body-l font-light italic text-ink">
-                {item.priceLabel}
-              </dd>
-            </div>
-            <div>
-              <dt className="font-body text-caption font-medium uppercase tracking-[0.32em] text-ink-muted">
-                Dimensions
-              </dt>
-              <dd className="mt-2 font-body text-body-s text-ink-secondary">
-                {item.dimensionsLabel}
-              </dd>
-            </div>
-            <div>
-              <dt className="font-body text-caption font-medium uppercase tracking-[0.32em] text-ink-muted">
-                Retailer
-              </dt>
-              <dd className="mt-2">
-                {canAccessCommerce && item.retailerUrl ? (
-                  <a
-                    className="group inline-flex items-center gap-2 font-display text-button-quiet italic text-ink transition-colors duration-micro ease-standard hover:text-accent-deep"
-                    href={item.retailerUrl}
-                    rel="noreferrer"
-                    target="_blank"
-                  >
-                    Open retailer page
-                    <span aria-hidden className="text-accent-deep transition-transform duration-standard ease-standard group-hover:translate-x-1">
-                      →
+            <dl className="mt-7 grid gap-5 border-t border-line pt-6 text-left md:grid-cols-3">
+              <div>
+                <dt className="font-body text-caption font-medium uppercase tracking-[0.32em] text-ink-muted">
+                  Price
+                </dt>
+                <dd className="mt-2 font-display text-body-l font-light italic text-ink">
+                  {item.priceLabel}
+                </dd>
+              </div>
+              <div>
+                <dt className="font-body text-caption font-medium uppercase tracking-[0.32em] text-ink-muted">
+                  Dimensions
+                </dt>
+                <dd className="mt-2 font-body text-body-s text-ink-secondary">
+                  {item.dimensionsLabel}
+                </dd>
+              </div>
+              <div>
+                <dt className="font-body text-caption font-medium uppercase tracking-[0.32em] text-ink-muted">
+                  Retailer
+                </dt>
+                <dd className="mt-2">
+                  {canAccessCommerce && item.retailerUrl ? (
+                    <a
+                      className="group inline-flex items-center gap-2 font-display text-button-quiet italic text-ink transition-colors duration-micro ease-standard hover:text-accent-deep"
+                      href={item.retailerUrl}
+                      rel="noreferrer"
+                      target="_blank"
+                    >
+                      Open retailer page
+                      <span aria-hidden className="text-accent-deep transition-transform duration-standard ease-standard group-hover:translate-x-1">
+                        →
+                      </span>
+                    </a>
+                  ) : (
+                    <span
+                      aria-label="Locked. Unlock the room to view the retailer link."
+                      className="inline-flex items-center gap-2 font-body text-body-s text-ink-muted"
+                      title="Locked — unlock to view retailer"
+                    >
+                      <LockIcon className="text-ink-muted" />
+                      Locked
                     </span>
-                  </a>
-                ) : (
-                  <span
-                    aria-label="Locked. Unlock the room to view the retailer link."
-                    className="inline-flex items-center gap-2 font-body text-body-s text-ink-muted"
-                    title="Locked — unlock to view retailer"
-                  >
-                    <LockIcon className="text-ink-muted" />
-                    Locked
-                  </span>
-                )}
-              </dd>
-            </div>
-          </dl>
+                  )}
+                </dd>
+              </div>
+            </dl>
 
-          {item.warning ? (
-            <p className="mt-6 border border-line bg-page px-4 py-3 font-display text-body-s italic text-warning">
-              {item.warning}
-            </p>
-          ) : null}
+            {item.warning ? (
+              <p className="mt-6 border border-line bg-page px-4 py-3 text-left font-display text-body-s italic text-warning">
+                {item.warning}
+              </p>
+            ) : null}
+          </section>
         </div>
-      </aside>
+      </div>
     </div>,
     document.body
   );

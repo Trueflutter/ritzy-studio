@@ -177,7 +177,7 @@ export default async function ShoppingListPage({
             </p>
             <p className="mt-3 max-w-[640px] font-body text-body-s text-ink-muted">
               Each section below is a category your {room.room_type} needs — some need more than
-              one piece. Tap any card for catalog detail.
+              one piece. Click a card to choose it, or expand the image for detail.
             </p>
           </div>
 

@@ -6,7 +6,7 @@ import { useCallback, useMemo, useState, useTransition } from "react";
 import {
   findMoreShoppingOptionsAction,
   generateFinalRenderAction,
-  rejectShoppingItemAction,
+  refreshShoppingOptionsAction,
   selectShoppingItemAction
 } from "@/app/actions";
 import { DetailDrawer } from "./detail-drawer";
@@ -83,37 +83,28 @@ export function ShoppingListGrid({
     [idToCategory, selectedByCategory, projectId, roomId, shoppingListId]
   );
 
-  const handleReject = useCallback(
-    (id: string) => {
-      const category = idToCategory.get(id);
-      setPendingCategory(null);
-      setRejectedIds((prev) => {
-        const next = new Set(prev);
-        next.add(id);
-        return next;
-      });
-      if (category) {
-        setSelectedByCategory((prev) => {
-          if (prev.get(category) !== id) {
-            return prev;
-          }
-          const next = new Map(prev);
-          next.delete(category);
-          return next;
-        });
-      }
-      startTransition(async () => {
-        await rejectShoppingItemAction({ projectId, roomId, shoppingListId, itemId: id });
-      });
-    },
-    [idToCategory, projectId, roomId, shoppingListId]
-  );
-
   const handleFindMore = useCallback(
     (category: string) => {
       setPendingCategory(category);
       startTransition(async () => {
         await findMoreShoppingOptionsAction({ projectId, roomId, shoppingListId, category });
+      });
+    },
+    [projectId, roomId, shoppingListId]
+  );
+
+  const handleRefreshOptions = useCallback(
+    (category: string, visibleOptionIds: string[]) => {
+      setPendingCategory(category);
+      setRejectedIds((prev) => {
+        const next = new Set(prev);
+        for (const id of visibleOptionIds) {
+          next.add(id);
+        }
+        return next;
+      });
+      startTransition(async () => {
+        await refreshShoppingOptionsAction({ projectId, roomId, shoppingListId, category });
       });
     },
     [projectId, roomId, shoppingListId]
@@ -172,8 +163,8 @@ export function ShoppingListGrid({
           />
         </div>
         <p className="mt-4 font-body text-body-s text-ink-secondary">
-          Each category offers a few options — pick the one you want, or reject the ones that
-          miss and a replacement takes its place.
+          Each category offers a few options — click a card to choose it, or refresh the
+          category to replace the unselected options.
         </p>
       </div>
 
@@ -192,6 +183,9 @@ export function ShoppingListGrid({
             : available.slice(0, VISIBLE_PER_ROLE);
           const needsMore = available.length < VISIBLE_PER_ROLE;
           const finding = isPending && pendingCategory === group.category;
+          const refreshableIds = shown
+            .filter((item) => item.id !== chosenId)
+            .map((item) => item.id);
           return (
             <section key={group.category}>
               <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-2 border-b border-line pb-4">
@@ -204,13 +198,20 @@ export function ShoppingListGrid({
                     {group.quantity > 1 ? ` · Buy ${group.quantity}` : ""}
                   </span>
                 </div>
-                <p
-                  className={`font-body text-caption font-medium uppercase tracking-[0.32em] ${
-                    chosenId ? "text-accent-deep" : "text-ink-muted"
-                  }`}
-                >
-                  {chosenId ? "Chosen" : "Choose one"}
-                </p>
+                {chosenId ? (
+                  <button
+                    className="font-body text-caption font-medium uppercase tracking-[0.32em] text-accent-deep transition-colors duration-micro ease-standard hover:text-ink disabled:text-ink-muted"
+                    disabled={finding || refreshableIds.length === 0}
+                    onClick={() => handleRefreshOptions(group.category, refreshableIds)}
+                    type="button"
+                  >
+                    {finding ? "Refreshing..." : "Refresh options"}
+                  </button>
+                ) : (
+                  <p className="font-body text-caption font-medium uppercase tracking-[0.32em] text-ink-muted">
+                    Choose one
+                  </p>
+                )}
               </div>
 
               {shown.length > 0 ? (
@@ -221,7 +222,6 @@ export function ShoppingListGrid({
                       item={item}
                       key={item.id}
                       onOpenDetail={openDetail}
-                      onReject={handleReject}
                       onSelect={handleSelect}
                       selected={chosenId === item.id}
                     />

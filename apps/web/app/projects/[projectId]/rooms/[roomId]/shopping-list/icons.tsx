@@ -57,3 +57,22 @@ export function CloseIcon(props: SVGProps<SVGSVGElement>) {
     </svg>
   );
 }
+
+export function ExpandIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg
+      aria-hidden
+      fill="none"
+      height="16"
+      stroke="currentColor"
+      strokeLinecap="square"
+      strokeLinejoin="miter"
+      strokeWidth="1.25"
+      viewBox="0 0 16 16"
+      width="16"
+      {...props}
+    >
+      <path d="M6.25 3.25h-3v3M3.25 3.25l4 4M9.75 12.75h3v-3M12.75 12.75l-4-4" />
+    </svg>
+  );
+}
