@@ -137,7 +137,7 @@ export function RoomPhotoUploader({
       />
 
       <button
-        className="flex aspect-[4/3] w-full flex-col items-center justify-center border border-dashed border-line-strong bg-surface px-8 text-center transition-colors duration-micro ease-standard hover:border-accent-deep hover:bg-surface-subtle focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--rs-focus-ring)]"
+        className="flex min-h-[240px] w-full flex-col items-center justify-center border border-dashed border-line-strong bg-surface px-8 py-10 text-center transition-colors duration-micro ease-standard hover:border-accent-deep hover:bg-surface-subtle focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--rs-focus-ring)]"
         disabled={status === "uploading" || isPending}
         onDragOver={(event) => {
           event.preventDefault();
