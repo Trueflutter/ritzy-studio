@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 
-import { CheckIcon, LockIcon } from "./icons";
+import { CheckIcon, ExpandIcon, LockIcon } from "./icons";
 import type { DetailDrawerItem } from "./detail-drawer";
 
 export type ProductCardItem = {
@@ -17,7 +17,6 @@ type ProductCardProps = {
   selected: boolean;
   canAccessCommerce: boolean;
   onSelect: (id: string) => void;
-  onReject: (id: string) => void;
   onOpenDetail: (item: ProductCardItem) => void;
 };
 
@@ -26,16 +25,21 @@ export function ProductCard({
   selected,
   canAccessCommerce,
   onSelect,
-  onReject,
   onOpenDetail
 }: ProductCardProps) {
   const detail = item.detail;
+  const handleSelect = () => {
+    if (!selected) {
+      onSelect(item.id);
+    }
+  };
 
   return (
     <article
-      className={`relative flex h-full flex-col border bg-surface p-[14px] transition-colors duration-micro ease-standard ${
+      className={`relative flex h-full cursor-pointer flex-col border bg-surface p-[14px] transition-colors duration-micro ease-standard ${
         selected ? "border-ink" : "border-line hover:bg-surface-subtle"
       }`}
+      onClick={handleSelect}
     >
       {selected ? (
         <span
@@ -46,12 +50,7 @@ export function ProductCard({
         </span>
       ) : null}
 
-      <button
-        aria-label={`Open detail for ${detail.name}`}
-        className="block aspect-square w-full overflow-hidden border border-line bg-page text-left"
-        onClick={() => onOpenDetail(item)}
-        type="button"
-      >
+      <div className="relative block aspect-square w-full overflow-hidden border border-line bg-page text-left">
         {detail.imageUrl ? (
           <Image
             alt={`${detail.name} product image`}
@@ -66,11 +65,22 @@ export function ProductCard({
             image missing
           </div>
         )}
-      </button>
+        <button
+          aria-label={`Open larger view for ${detail.name}`}
+          className="absolute bottom-3 right-3 flex h-8 w-8 items-center justify-center border border-white/70 bg-black/35 text-white shadow-[0_1px_8px_rgba(0,0,0,0.18)] backdrop-blur-sm transition-colors duration-micro ease-standard hover:bg-black/50"
+          onClick={(event) => {
+            event.stopPropagation();
+            onOpenDetail(item);
+          }}
+          type="button"
+        >
+          <ExpandIcon className="text-white" />
+        </button>
+      </div>
 
       <div className="mt-5 flex flex-1 flex-col px-[6px] pb-[6px]">
         <p className="font-body text-caption font-medium uppercase tracking-[0.32em] text-ink-muted">
-          {detail.retailerName ?? "Retailer"} · {detail.category}
+          {canAccessCommerce ? `${detail.retailerName ?? "Retailer"} · ${detail.category}` : "Retailer · locked"}
         </p>
         <h3 className="mt-3 font-display text-display-xs font-light italic leading-snug text-ink">
           {detail.name}
@@ -132,21 +142,15 @@ export function ProductCard({
                 ? "border-ink bg-ink text-surface hover:bg-primary-hover"
                 : "border-line-strong bg-transparent text-ink hover:border-ink"
             }`}
-            onClick={() => onSelect(item.id)}
+            onClick={(event) => {
+              event.stopPropagation();
+              onSelect(item.id);
+            }}
             type="button"
           >
             {selected ? "Selected" : "Select"}
           </button>
 
-          {selected ? null : (
-            <button
-              className="inline-flex items-center gap-1 font-display text-button-quiet italic text-ink-muted transition-colors duration-micro ease-standard hover:text-ink"
-              onClick={() => onReject(item.id)}
-              type="button"
-            >
-              Reject
-            </button>
-          )}
         </div>
       </div>
     </article>
