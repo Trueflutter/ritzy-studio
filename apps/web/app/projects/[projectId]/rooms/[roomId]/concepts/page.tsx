@@ -3,15 +3,29 @@ import Image from "next/image";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
-import {
-  reviseConceptAction,
-  selectConceptAction
-} from "@/app/actions";
+import { reviseConceptAction, selectConceptAction } from "@/app/actions";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import { ConceptGenerationPanel } from "./concept-generation-panel";
 
 export const dynamic = "force-dynamic";
+
+function splitDescription(description: string | null) {
+  if (!description) {
+    return { rationale: "", uncertainty: "" };
+  }
+
+  const marker = "Uncertainty:";
+  const index = description.indexOf(marker);
+  if (index === -1) {
+    return { rationale: description.trim(), uncertainty: "" };
+  }
+
+  return {
+    rationale: description.slice(0, index).trim(),
+    uncertainty: description.slice(index + marker.length).trim()
+  };
+}
 
 export default async function ConceptsPage({
   params,
@@ -101,9 +115,22 @@ export default async function ConceptsPage({
       return { ...concept, signedUrl: data?.signedUrl ?? null };
     })
   );
-  const selectedConcept = conceptsWithImages.find((concept) => concept.status === "selected") ?? null;
 
+  const selectedConcept = conceptsWithImages.find((concept) => concept.status === "selected") ?? null;
+  // The hero is the room's current direction — the selected concept, or the
+  // most recent one. Older concepts are revisions kept as quiet history.
+  const heroConcept = selectedConcept ?? conceptsWithImages[0] ?? null;
+  const earlierConcepts = conceptsWithImages.filter((concept) => concept.id !== heroConcept?.id);
   const canGenerate = Boolean(designBrief && roomPhoto);
+
+  const hero = heroConcept
+    ? {
+        ...heroConcept,
+        ...splitDescription(heroConcept.description),
+        critiques: critiquesByConcept.get(heroConcept.id) ?? [],
+        isSelected: heroConcept.status === "selected"
+      }
+    : null;
 
   return (
     <main className="min-h-dvh bg-page text-ink">
@@ -125,21 +152,17 @@ export default async function ConceptsPage({
         <div className="mt-10 flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
           <div className="max-w-[860px]">
             <p className="font-body text-caption font-medium uppercase tracking-[0.32em] text-ink-muted">
-              N° 05 — Initial Concepts
+              N° 05 — The Concept
             </p>
             <h1 className="mt-4 font-display text-display-l font-light leading-[1.05] tracking-[-0.015em] text-ink">
-              {conceptsWithImages.length === 0
-                ? "Generate the first room direction."
-                : conceptsWithImages.length === 1
-                  ? "Your first room direction."
-                  : "Review the room directions."}
+              {hero ? "Your room, reimagined." : "Generate the first room direction."}
             </h1>
             <p className="mt-4 font-body text-body-m text-ink-muted">
               {project.name} · {room.name} · {room.room_type}
             </p>
           </div>
 
-          {conceptsWithImages.length > 0 ? (
+          {hero ? (
             <ButtonLink
               href={`/projects/${projectId}/rooms/${roomId}/brief`}
               leading="←"
@@ -156,194 +179,159 @@ export default async function ConceptsPage({
           </p>
         ) : null}
 
-        {conceptsWithImages.length === 0 ? (
+        {!hero ? (
           <ConceptGenerationPanel
             autoGenerate={autogenerate === "1"}
             canGenerate={canGenerate}
             projectId={projectId}
             roomId={roomId}
           />
-        ) : null}
-
-        {conceptsWithImages.length === 1 ? (
-          (() => {
-            const concept = conceptsWithImages[0];
-            const conceptCritiques = critiquesByConcept.get(concept.id) ?? [];
-            const isSelected = concept.status === "selected";
-
-            return (
-              <article className="mt-12 border border-line bg-surface p-[14px]">
+        ) : (
+          <>
+            <article className="mt-10">
+              <div className="border border-line bg-surface p-[14px]">
                 <div className="flex aspect-[4/3] items-center justify-center overflow-hidden bg-page">
-                  {concept.signedUrl ? (
+                  {hero.signedUrl ? (
                     <Image
-                      alt={`${concept.title} generated room concept`}
+                      alt={`${hero.title} — generated concept for ${room.name}`}
                       className="h-full w-full object-cover"
                       height={1200}
-                      unoptimized
                       priority
-                      src={concept.signedUrl}
+                      src={hero.signedUrl}
+                      unoptimized
                       width={1600}
                     />
                   ) : (
-                    <p className="font-display text-body-s italic text-error">
-                      render could not load
-                    </p>
+                    <p className="font-display text-body-s italic text-error">render could not load</p>
                   )}
                 </div>
-                <div className="mx-auto mt-5 max-w-[880px] border-t border-line px-6 pb-8 pt-10 md:px-10">
-                  <p className="font-body text-caption font-medium uppercase tracking-[0.32em] text-ink-muted">
-                    {isSelected ? "Selected" : "Initial concept"}
+              </div>
+
+              <div className="mx-auto mt-10 max-w-[720px]">
+                <p className="font-body text-caption font-medium uppercase tracking-[0.32em] text-accent-deep">
+                  {hero.isSelected ? "Selected direction" : "Initial concept"}
+                </p>
+                <h2 className="mt-4 font-display text-display-m font-light italic leading-[1.1] text-ink">
+                  {hero.title}
+                </h2>
+                {hero.rationale ? (
+                  <p className="mt-6 whitespace-pre-line font-body text-body-l text-ink-secondary">
+                    {hero.rationale}
                   </p>
-                  <h2 className="mt-5 font-display text-display-m font-light italic text-ink">
-                    {concept.title}
-                  </h2>
-                  {concept.description ? (
-                    <p className="mt-6 whitespace-pre-line font-body text-body-l text-ink-secondary">
-                      {concept.description}
-                    </p>
-                  ) : null}
+                ) : null}
 
-                  {conceptCritiques.length > 0 ? (
-                    <div className="mt-10 border-t border-line pt-8">
-                      <p className="font-body text-caption font-medium uppercase tracking-[0.32em] text-ink-muted">
-                        Past critiques
-                      </p>
-                      <div className="mt-5 space-y-3">
-                        {conceptCritiques.map((critique) => (
-                          <p
-                            className="border border-line bg-page px-5 py-4 font-display text-body-m italic text-ink-secondary"
-                            key={critique.id}
-                          >
-                            {critique.critique_text}
-                          </p>
-                        ))}
-                      </div>
-                    </div>
-                  ) : null}
-
-                  <div className="mt-10 grid gap-6 border-t border-line pt-8 md:grid-cols-2">
-                    <form action={selectConceptAction} className="flex flex-col md:justify-end">
-                      <input name="projectId" type="hidden" value={projectId} />
-                      <input name="roomId" type="hidden" value={roomId} />
-                      <input name="conceptId" type="hidden" value={concept.id} />
-                      <SubmitButton
-                        className="w-full"
-                        disabled={isSelected}
-                        pendingLabel="Selecting..."
-                        variant={isSelected ? "secondary" : "primary"}
-                      >
-                        {isSelected ? "Selected" : "Select concept"}
-                      </SubmitButton>
-                    </form>
-
-                    <form action={reviseConceptAction} className="flex flex-col">
-                      <input name="projectId" type="hidden" value={projectId} />
-                      <input name="roomId" type="hidden" value={roomId} />
-                      <input name="conceptId" type="hidden" value={concept.id} />
-                      <Textarea
-                        id={`critique-${concept.id}`}
-                        label="Or describe what to change"
-                        name="critique"
-                        placeholder="make the palette warmer, keep the sofa placement, reduce ornament..."
-                      />
-                      <SubmitButton className="w-full" pendingLabel="Generating revision..." variant="secondary">
-                        Generate revision
-                      </SubmitButton>
-                    </form>
-                  </div>
-                </div>
-              </article>
-            );
-          })()
-        ) : conceptsWithImages.length > 1 ? (
-          <div className="mt-12 grid gap-6 md:grid-cols-2">
-            {conceptsWithImages.map((concept) => {
-              const conceptCritiques = critiquesByConcept.get(concept.id) ?? [];
-              const isSelected = concept.status === "selected";
-
-              return (
-                <article className="border border-line bg-surface p-[14px]" key={concept.id}>
-                  <div className="flex aspect-[4/3] items-center justify-center overflow-hidden bg-page">
-                    {concept.signedUrl ? (
-                      <Image
-                        alt={`${concept.title} generated room concept`}
-                        className="h-full w-full object-cover"
-                        height={900}
-                        unoptimized
-                        src={concept.signedUrl}
-                        width={1200}
-                      />
-                    ) : (
-                      <p className="font-display text-body-s italic text-error">
-                        render could not load
-                      </p>
-                    )}
-                  </div>
-                  <div className="mt-5 border-t border-line px-[18px] pb-[18px] pt-5">
+                {hero.uncertainty ? (
+                  <div className="mt-8 border-t border-line pt-6">
                     <p className="font-body text-caption font-medium uppercase tracking-[0.32em] text-ink-muted">
-                      {isSelected ? "Selected" : "Concept"}
+                      What we assumed
                     </p>
-                    <h2 className="mt-3 font-display text-display-xs font-light italic text-ink">
-                      {concept.title}
-                    </h2>
-                    {concept.description ? (
-                      <p className="mt-4 whitespace-pre-line font-body text-body-s text-ink-secondary">
-                        {concept.description}
-                      </p>
-                    ) : null}
-
-                    {conceptCritiques.length > 0 ? (
-                      <div className="mt-6 border-t border-line pt-5">
-                        <p className="font-body text-caption font-medium uppercase tracking-[0.32em] text-ink-muted">
-                          Past critiques
-                        </p>
-                        <div className="mt-4 space-y-3">
-                          {conceptCritiques.map((critique) => (
-                            <p
-                              className="border border-line bg-page px-4 py-3 font-display text-body-s italic text-ink-secondary"
-                              key={critique.id}
-                            >
-                              {critique.critique_text}
-                            </p>
-                          ))}
-                        </div>
-                      </div>
-                    ) : null}
-
-                    <form action={selectConceptAction} className="mt-6 border-t border-line pt-5">
-                      <input name="projectId" type="hidden" value={projectId} />
-                      <input name="roomId" type="hidden" value={roomId} />
-                      <input name="conceptId" type="hidden" value={concept.id} />
-                      <SubmitButton
-                        className="w-full"
-                        disabled={isSelected}
-                        pendingLabel="Selecting..."
-                        variant={isSelected ? "secondary" : "primary"}
-                      >
-                        {isSelected ? "Selected" : "Select concept"}
-                      </SubmitButton>
-                    </form>
-
-                    <form action={reviseConceptAction} className="mt-4">
-                      <input name="projectId" type="hidden" value={projectId} />
-                      <input name="roomId" type="hidden" value={roomId} />
-                      <input name="conceptId" type="hidden" value={concept.id} />
-                      <Textarea
-                        id={`critique-${concept.id}`}
-                        label="Or describe what to change"
-                        name="critique"
-                        placeholder="make the palette warmer, keep the sofa placement, reduce ornament..."
-                      />
-                      <SubmitButton className="w-full" pendingLabel="Generating revision..." variant="secondary">
-                        Generate revision
-                      </SubmitButton>
-                    </form>
+                    <p className="mt-3 font-display text-body-m italic text-ink-muted">
+                      {hero.uncertainty}
+                    </p>
                   </div>
-                </article>
-              );
-            })}
-          </div>
-        ) : null}
+                ) : null}
+
+                {hero.critiques.length > 0 ? (
+                  <div className="mt-8 border-t border-line pt-6">
+                    <p className="font-body text-caption font-medium uppercase tracking-[0.32em] text-ink-muted">
+                      Past critiques
+                    </p>
+                    <div className="mt-4 space-y-3">
+                      {hero.critiques.map((critique) => (
+                        <p
+                          className="border border-line bg-page px-5 py-4 font-display text-body-m italic text-ink-secondary"
+                          key={critique.id}
+                        >
+                          {critique.critique_text}
+                        </p>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+
+                <div className="mt-10 grid gap-6 border-t border-line pt-8 md:grid-cols-2">
+                  <form action={selectConceptAction} className="flex flex-col md:justify-end">
+                    <input name="projectId" type="hidden" value={projectId} />
+                    <input name="roomId" type="hidden" value={roomId} />
+                    <input name="conceptId" type="hidden" value={hero.id} />
+                    <SubmitButton
+                      className="w-full"
+                      disabled={hero.isSelected}
+                      pendingLabel="Selecting..."
+                      variant={hero.isSelected ? "secondary" : "primary"}
+                    >
+                      {hero.isSelected ? "Selected" : "Select this direction"}
+                    </SubmitButton>
+                  </form>
+
+                  <form action={reviseConceptAction} className="flex flex-col">
+                    <input name="projectId" type="hidden" value={projectId} />
+                    <input name="roomId" type="hidden" value={roomId} />
+                    <input name="conceptId" type="hidden" value={hero.id} />
+                    <Textarea
+                      id={`critique-${hero.id}`}
+                      label="Or describe what to change"
+                      name="critique"
+                      placeholder="make the palette warmer, keep the sofa placement, reduce ornament..."
+                    />
+                    <SubmitButton className="w-full" pendingLabel="Generating revision..." variant="secondary">
+                      Generate revision
+                    </SubmitButton>
+                  </form>
+                </div>
+              </div>
+            </article>
+
+            {earlierConcepts.length > 0 ? (
+              <section className="mt-16 border-t border-line pt-10">
+                <p className="font-body text-caption font-medium uppercase tracking-[0.32em] text-ink-muted">
+                  Earlier versions
+                </p>
+                <p className="mt-3 max-w-[560px] font-body text-body-s text-ink-muted">
+                  Previous directions for this room. Select one to bring it back as the current
+                  concept.
+                </p>
+                <div className="mt-6 grid gap-6 md:grid-cols-3">
+                  {earlierConcepts.map((concept) => (
+                    <article className="border border-line bg-surface p-3" key={concept.id}>
+                      <div className="flex aspect-[4/3] items-center justify-center overflow-hidden bg-page">
+                        {concept.signedUrl ? (
+                          <Image
+                            alt={`${concept.title} — earlier concept for ${room.name}`}
+                            className="h-full w-full object-cover"
+                            height={600}
+                            src={concept.signedUrl}
+                            unoptimized
+                            width={800}
+                          />
+                        ) : (
+                          <p className="font-display text-body-s italic text-error">
+                            render could not load
+                          </p>
+                        )}
+                      </div>
+                      <h3 className="mt-4 font-display text-display-xs font-light italic leading-snug text-ink">
+                        {concept.title}
+                      </h3>
+                      <form action={selectConceptAction} className="mt-4">
+                        <input name="projectId" type="hidden" value={projectId} />
+                        <input name="roomId" type="hidden" value={roomId} />
+                        <input name="conceptId" type="hidden" value={concept.id} />
+                        <SubmitButton
+                          className="h-10 w-full px-4"
+                          pendingLabel="Selecting..."
+                          variant="secondary"
+                        >
+                          Make this the direction
+                        </SubmitButton>
+                      </form>
+                    </article>
+                  ))}
+                </div>
+              </section>
+            ) : null}
+          </>
+        )}
 
         {selectedConcept ? (
           <section className="mt-16 flex flex-col gap-6 border-t border-line pt-10 md:flex-row md:items-end md:justify-between">
