@@ -1152,8 +1152,10 @@ export async function saveDesignBriefAction(formData: FormData) {
     await supabase.from("clarifying_questions").delete().eq("design_brief_id", designBriefId);
 
     if (result.questions.length > 0) {
+      const generatedAt = Date.now();
       const { error: questionsError } = await supabase.from("clarifying_questions").insert(
-        result.questions.map((question) => ({
+        result.questions.map((question, index) => ({
+          created_at: new Date(generatedAt + index).toISOString(),
           design_brief_id: designBriefId,
           question: question.question,
           status: "open" as const
@@ -1489,7 +1491,8 @@ export async function generateInitialConceptAction(formData: FormData) {
     .select("question, answer")
     .eq("design_brief_id", designBrief.id)
     .eq("status", "answered")
-    .order("created_at", { ascending: true });
+    .order("created_at", { ascending: true })
+    .order("id", { ascending: true });
 
   const serviceSupabase = createServiceClient();
   const { data: job, error: jobError } = await serviceSupabase
@@ -2661,7 +2664,8 @@ export async function reviseConceptAction(formData: FormData) {
     .select("question, answer")
     .eq("design_brief_id", designBrief.id)
     .eq("status", "answered")
-    .order("created_at", { ascending: true });
+    .order("created_at", { ascending: true })
+    .order("id", { ascending: true });
 
   const serviceSupabase = createServiceClient();
   const { data: job, error: jobError } = await serviceSupabase

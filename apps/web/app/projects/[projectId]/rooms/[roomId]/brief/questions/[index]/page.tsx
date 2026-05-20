@@ -55,7 +55,8 @@ export default async function BriefQuestionPage({
     .from("clarifying_questions")
     .select("*")
     .eq("design_brief_id", designBrief.id)
-    .order("created_at", { ascending: true });
+    .order("created_at", { ascending: true })
+    .order("id", { ascending: true });
 
   if (!questions || questions.length === 0) {
     redirect(`/projects/${projectId}/rooms/${roomId}/concepts?autogenerate=1`);
@@ -86,6 +87,7 @@ export default async function BriefQuestionPage({
         <QuestionAdvanceForm
           answer={question.answer ?? ""}
           currentIndex={currentIndex}
+          key={question.id}
           projectId={projectId}
           question={question.question}
           questionCount={questions.length}
