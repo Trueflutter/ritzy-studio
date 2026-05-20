@@ -17,7 +17,7 @@ export const roomUnlockStatusSchema = z.enum([
   "revoked"
 ]);
 
-export const HOMEOWNER_ROOM_UNLOCK_PRICE_AED = 100;
+export const HOMEOWNER_ROOM_UNLOCK_PRICE_AED = 500;
 export const DESIGNER_MONTHLY_PLAN_KEY = "designer_monthly_usd_99";
 export const DESIGNER_MONTHLY_PRICE_USD = 99;
 

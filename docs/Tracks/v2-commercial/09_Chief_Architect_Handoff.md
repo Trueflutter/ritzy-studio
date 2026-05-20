@@ -16,7 +16,7 @@ Draft docs created for founder review.
 
 - V2 serves homeowners and designers.
 - Homeowners pay per room.
-- Homeowner target price is AED 100 per room unlock.
+- Homeowner target price is AED 500 per room unlock.
 - Designers pay a monthly subscription.
 - Designer target price is USD 99/month.
 - Product links should be retailer-backed and attribution-safe.

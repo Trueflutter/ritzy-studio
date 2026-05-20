@@ -24,7 +24,7 @@ Founder inputs captured:
 - Designer flow can be more advanced.
 - Homeowners pay per room.
 - Designers pay subscription.
-- Homeowner target price: AED 100 per room.
+- Homeowner target price: AED 500 per room.
 - Designer target price: USD 99/month.
 - Retailer data should move toward clean SKU feeds/APIs/partnerships.
 - Retailer attribution and discount control are required.
@@ -40,7 +40,7 @@ Open founder decisions:
 - Should the homeowner first concept be free for every account or only as a launch promotion?
 - In free preview, should exact product names be visible or hidden until unlock?
 - Should unpaid users see retailer names?
-- Should final grounded render be fully locked until AED 100 payment?
+- Should final grounded render be fully locked until AED 500 payment?
 - Should designer subscription include unlimited rooms or monthly fair-use limits?
 - Which billing provider should be used for AED one-time payments and USD subscriptions?
 - Should retailer reporting be internal export only for V2, or should retailer partners get a dashboard?
@@ -175,7 +175,7 @@ Reasoning:
 
 - supports Checkout for one-time payments and subscriptions
 - AED and USD are supported currencies in Stripe currency documentation
-- fits homeowner AED 100 room unlock and designer USD 99/month subscription
+- fits homeowner AED 500 room unlock and designer USD 99/month subscription
 
 Implemented:
 
@@ -195,7 +195,7 @@ Verification:
 - `pnpm --filter @ritzy-studio/web typecheck` passed
 - `pnpm check` passed
 - Stripe Checkout opened from the room unlock CTA
-- AED 100 test card payment completed successfully
+- AED 500 test card payment completed successfully
 - Stripe Checkout session reported `complete` / `paid`
 - signed local webhook request returned `200`
 - Supabase room unlock changed from `pending` to `active`

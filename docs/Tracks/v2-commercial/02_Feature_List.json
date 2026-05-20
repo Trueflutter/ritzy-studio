@@ -14,7 +14,7 @@
       "passes": true,
       "done_when": [
         "V2 docs exist under docs/Tracks/v2-commercial",
-        "homeowner AED 100 room unlock is specified",
+        "homeowner AED 500 room unlock is specified",
         "designer USD 99/month subscription is specified",
         "retailer attribution model is specified",
         "founder open questions are listed"
@@ -85,7 +85,7 @@
       "dependencies": ["V2-002", "V2-003"],
       "passes": true,
       "done_when": [
-        "homeowner can pay AED 100 for a room unlock",
+        "homeowner can pay AED 500 for a room unlock",
         "designer can subscribe at USD 99/month",
         "webhook updates entitlements idempotently",
         "failed/cancelled payment states are visible",

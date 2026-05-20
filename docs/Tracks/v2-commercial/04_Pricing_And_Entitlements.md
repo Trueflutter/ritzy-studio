@@ -6,7 +6,7 @@
 
 Target price:
 
-- `AED 100 per room unlock`
+- `AED 500 per room unlock`
 
 Free or freemium access:
 
@@ -87,7 +87,7 @@ The upgrade screen should answer:
 
 Recommended copy posture:
 
-> Generate the final shopping list for AED 100 to reveal retailer links, product details, and eligible partner discounts.
+> Generate the final shopping list for AED 500 to reveal retailer links, product details, and eligible partner discounts.
 
 Avoid:
 
