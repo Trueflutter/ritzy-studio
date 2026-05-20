@@ -40,9 +40,28 @@ import {
   HOMEOWNER_ROOM_UNLOCK_AMOUNT_AED
 } from "@/lib/billing/stripe";
 
+const PRODUCT_SOURCING_AI_TIMEOUT_MS = 20_000;
+
 function optionalString(formData: FormData, key: string) {
   const value = String(formData.get(key) ?? "").trim();
   return value.length > 0 ? value : undefined;
+}
+
+async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((_, reject) => {
+        timeout = setTimeout(() => reject(new Error(message)), timeoutMs);
+      })
+    ]);
+  } finally {
+    if (timeout) {
+      clearTimeout(timeout);
+    }
+  }
 }
 
 function optionalNumber(formData: FormData, key: string) {
@@ -1760,13 +1779,17 @@ export async function groundProductsAction(formData: FormData) {
         .createSignedUrl(conceptImageAsset.storage_path, 60 * 30)
     : { data: null };
   const sourcingResult = conceptSignedImage?.signedUrl
-    ? await sourceProductsFromConcept({
-        roomType: room.room_type,
-        conceptTitle: concept.title,
-        conceptDescription: concept.description,
-        conceptImageUrl: conceptSignedImage.signedUrl,
-        candidates: shortlistSourcingCandidates(ranked).slice(0, 16).map(matchToSourcingCandidate)
-      }).catch(() => null)
+    ? await withTimeout(
+        sourceProductsFromConcept({
+          roomType: room.room_type,
+          conceptTitle: concept.title,
+          conceptDescription: concept.description,
+          conceptImageUrl: conceptSignedImage.signedUrl,
+          candidates: shortlistSourcingCandidates(ranked).slice(0, 16).map(matchToSourcingCandidate)
+        }),
+        PRODUCT_SOURCING_AI_TIMEOUT_MS,
+        "Product visual sourcing timed out."
+      ).catch(() => null)
     : null;
   const visualConceptText = [
     baseConceptText,
