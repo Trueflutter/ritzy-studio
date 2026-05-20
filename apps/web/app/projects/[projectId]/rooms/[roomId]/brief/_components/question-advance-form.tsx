@@ -1,7 +1,7 @@
 "use client";
 
 import { SubmitButton } from "@ritzy-studio/ui";
-import { useRef } from "react";
+import { useEffect, useRef } from "react";
 
 import { saveClarifyingQuestionAction } from "@/app/actions";
 
@@ -23,7 +23,13 @@ export function QuestionAdvanceForm({
   roomId: string;
 }) {
   const formRef = useRef<HTMLFormElement>(null);
-  const inputName = "answer";
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Focus the answer field without scrolling — autoFocus would jump the page
+  // on every new question.
+  useEffect(() => {
+    textareaRef.current?.focus({ preventScroll: true });
+  }, []);
 
   return (
     <form action={saveClarifyingQuestionAction} className="mx-auto max-w-[760px]" ref={formRef}>
@@ -36,30 +42,26 @@ export function QuestionAdvanceForm({
       <p className="font-body text-caption font-medium uppercase text-ink-muted">
         Question {String(currentIndex + 1).padStart(2, "0")} of {questionCount}
       </p>
-      <h1 className="mt-8 font-display text-display-s font-light italic leading-tight text-ink">
+      <h1 className="mt-4 font-display text-display-xs font-light italic leading-snug text-ink">
         {question}
       </h1>
       <textarea
-        autoFocus
-        className="mt-10 min-h-32 w-full resize-y border-0 border-b border-line-strong bg-transparent px-0 pb-5 font-display text-display-xs font-light italic text-ink outline-none transition-colors duration-micro ease-standard placeholder:text-ink-disabled focus:border-accent-deep"
+        className="mt-6 min-h-20 w-full resize-y border-0 border-b border-line-strong bg-transparent px-0 pb-3 font-display text-display-xs font-light italic leading-snug text-ink outline-none transition-colors duration-micro ease-standard placeholder:text-ink-placeholder focus:border-accent-deep"
         defaultValue={answer}
-        name={inputName}
+        name="answer"
         onKeyDown={(event) => {
-          if (event.key !== "Enter") {
-            return;
-          }
-
-          if (event.metaKey || event.ctrlKey) {
+          if (event.key === "Enter" && !event.shiftKey) {
             event.preventDefault();
             formRef.current?.requestSubmit();
           }
         }}
-        placeholder="Type your answer here..."
+        placeholder="Type your answer..."
+        ref={textareaRef}
       />
 
-      <div className="mt-8 flex flex-col gap-4 border-t border-line pt-6 md:flex-row md:items-center md:justify-between">
+      <div className="mt-6 flex flex-col gap-4 border-t border-line pt-6 md:flex-row md:items-center md:justify-between">
         <p className="font-body text-caption font-medium uppercase text-ink-muted">
-          Press Cmd+Enter to continue
+          Press Enter to continue — answers save as you go
         </p>
         <div className="flex items-center gap-6">
           <button
@@ -70,7 +72,9 @@ export function QuestionAdvanceForm({
           >
             Skip
           </button>
-          <SubmitButton pendingLabel={currentIndex + 1 >= questionCount ? "Starting concept..." : "Saving..."}>
+          <SubmitButton
+            pendingLabel={currentIndex + 1 >= questionCount ? "Starting concept..." : "Saving..."}
+          >
             Continue →
           </SubmitButton>
         </div>
