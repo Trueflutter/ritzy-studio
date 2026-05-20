@@ -1,5 +1,10 @@
 @import "tailwindcss";
 
+/* Scan the shared UI package so utility classes used only there
+   (e.g. ImageDropzone) are generated. Tailwind v4 only auto-detects
+   sources under apps/web by default. */
+@source "../../../packages/ui/src";
+
 :root {
   --rs-page: #f2ede4;
   --rs-surface: #fbf8f2;
