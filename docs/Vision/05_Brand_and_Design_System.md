@@ -2,10 +2,10 @@
 
 **Source of truth — Ritzy Studio.** This document is the canonical visual and interaction specification. Every Codex implementation agent must build against this file. Ambiguity is failure; deviation requires explicit human approval. Out of scope: dark mode, multi-theme support, alternative palettes.
 
-Direction: **Quiet Gallery** (locked).
+Direction: **Quiet Gallery — refined product** (locked).
 Type: **Cormorant Garamond × DM Sans** (locked).
-Surface: **Bone (`#F2EDE4`) on Paper (`#FBF8F2`)** with **Ochre (`#B58E5A`)** as the single warm accent (locked).
-Geometry: **square corners, 1px hairlines, no shadows above elevation 1** (locked).
+Surface: **Bone (`#F2EDE4`) on Paper (`#FBF8F2`)** with **Ochre (`#B58E5A`)** as the single warm accent (locked). A dark feature surface (**Ink `#1F1F1D`**) is permitted for spotlight surfaces only.
+Geometry: **predominantly square corners; 4–6px radius permitted on refined cards and feature surfaces only (buttons, inputs, modals stay square); 1px hairlines as the default border; one subtle elevation (`--rs-shadow-2`) permitted on floating surfaces only** (locked).
 
 ---
 
@@ -24,9 +24,9 @@ Ritzy Studio is a working tool that feels like a high-end residential design stu
 Each attribute below is operational. If a screen does not visibly enforce these, it is not a Ritzy screen.
 
 1. **Editorial.** Cormorant Garamond on every heading. Italic for accent words, never for whole sentences of body. Drop cap on the lede paragraph of any narrative section. Hairline rules between rows and columns. Section labels prefixed with `N°` and a numeric index.
-2. **Quiet.** Maximum one accent colour per screen. No shadow above elevation 1 (a single 1px hairline halo, opacity ≤ 0.06). No card inside a card. No decorative gradient behind data. All transitions ≥ 220ms.
+2. **Quiet.** Maximum one accent colour per screen. Default surfaces are hairline-bordered and shadow-free. A single subtle elevation (`--rs-shadow-2`) is permitted on floating surfaces only — drawers, popovers, hovering feature cards above hero imagery, and the dark feature card. Stronger elevation (`--rs-shadow-3`) is reserved for modals and right-side drawers. No card inside a card. No decorative gradient behind data. All transitions ≥ 220ms.
 3. **Precise.** All hairlines are 1px — never 2px. All numerals (prices, dimensions, counts, totals) use `font-feature-settings: "tnum", "lnum"`. Spacing snaps to the 4px scale only — no off-grid values. No soft pastels.
-4. **Architectural.** Square corners on cards, buttons, inputs, modals (`border-radius: 0`). Pill radius (`9999px`) is allowed only on chips, total labels, and focus pills. 12-column grid on desktop. Type hierarchy is structural (display / heading / body / caption); decorative tiers are forbidden.
+4. **Architectural.** Square corners on buttons, inputs, modals (`border-radius: 0`). Refined card surfaces may use `--rs-radius-2` (4px); feature surfaces and the dark spotlight card may use `--rs-radius-3` (6px). Radii above 8px are forbidden — Ritzy never rounds like a consumer SaaS. Pill radius (`9999px`) is allowed only on chips, total labels, and focus pills. 12-column grid on desktop. Type hierarchy is structural (display / heading / body / caption); decorative tiers are forbidden.
 5. **Considered.** Every label has a counterpart: every price has a currency label; every dimension has a unit; every product has a retailer; every AI render has a confidence note. Orphaned data is forbidden.
 6. **Reverent of the room.** Concept and room images dominate the viewport in review screens (≥ 60% width on desktop). UI chrome dims when an image is being inspected. Text never overlays the architectural region of a room photo (top one-third minimum kept clean).
 7. **Truthful.** AI uncertainty is shown as visible italic notes, never hover-only tooltips. SKU verification appears on every product line. Price-stale-as-of timestamps are required when retailer data is older than 7 days.
@@ -385,9 +385,16 @@ Base unit **4px**. Allowed values are scale steps below — no off-scale spacing
 | Product | `--rs-surface` | 1px `--rs-border` | 0 | none | 14px |
 | Project | `--rs-surface` | 1px `--rs-border` | 0 | none | none (cover image flush) |
 | Empty placeholder | `--rs-surface` | 1px dashed `--rs-border-strong` | 0 | none | n/a |
+| Refined (new) | `--rs-surface` | 1px `--rs-border` | `--rs-radius-2` (4px) | none, or `--rs-shadow-2` when floating | varies |
+| Feature dark (new) | `--rs-surface-ink` | none | `--rs-radius-3` (6px) | `--rs-shadow-2` | varies |
+
+**Refined cards** are used for spotlight panels, hovering callouts above a hero image, marketing/auth surfaces, or any card that needs to read as a *software product object* rather than a gallery plate. Use sparingly — the default still wins for working screens (concept, product, project).
+
+**Feature dark cards** are used at most once per screen as a spotlight — an AI explanation, a sourcing summary, a stat-heavy callout. Text uses `--rs-text-on-ink` (#F2EDE4 / bone) and muted text uses `--rs-text-on-ink-muted`. Ochre accent (`--rs-accent`) is the only chromatic permitted on this surface.
 
 **Forbidden:** card-in-card. A card cannot contain another card. Use hairline-divided sections within a single card.
-**Forbidden:** shadows on cards. Cards rely on hairlines, not elevation.
+**Forbidden:** shadows on default cards (concept, product, project, empty). They rely on hairlines, not elevation. Elevation belongs only to the refined and feature-dark variants — and only when they are floating elements.
+**Forbidden:** radii above 8px on any card variant. Consumer SaaS softness is not Ritzy.
 
 ### 8.6 Forms / inputs
 - Inputs: hairline bottom border only (`1px solid --rs-border-strong`). No box.
@@ -494,6 +501,29 @@ Base unit **4px**. Allowed values are scale steps below — no off-scale spacing
 - Anatomy: roman numeral (28px), name + meta block (flex), price (right tabular), quantity stepper.
 - Hover: row fills `--rs-surface-subtle` over 240ms.
 - Edit: clicking quantity opens an inline 64px-wide stepper. Click "Remove" (quiet link) to drop the row; the row fades out over 240ms.
+
+### 8.23 Icon tile (refined product)
+- 36×36px or 40×40px square container.
+- Surface `--rs-surface`. Border 1px `--rs-border`. Radius `--rs-radius-2` (4px). No shadow at rest.
+- Single line icon (1.5px stroke) in `--rs-text` or `--rs-accent-deep`, centred.
+- Used to introduce a feature, section, or methodology beat (e.g., "AI valuation", "verified retailers", "dimensions checked"). One per beat — never grouped in a row of more than four.
+- Hover (if interactive): border darkens to `--rs-border-strong`. Icon never colour-shifts on hover.
+- **Forbidden:** filled tile backgrounds, gradient icons, multi-colour icons, pill-shaped tiles (use chips for pill-shaped affordances).
+
+### 8.24 Italic word emphasis in display headings
+- Inside a roman Cormorant heading (display-l, display-xl), a single accent word or short phrase may be italicised to carry the emphasis (e.g., *"actually"*, *"exceptional"*, *"the room"*).
+- Italic accent must be the same Cormorant family, same size, same weight — only `font-style: italic` differs.
+- One italic accent per heading. Never two.
+- Allowed at: auth/landing surfaces, marketing pages, empty-state hero, presentation cover. **Forbidden on operational screens** (matching, render, list, settings).
+- The italic accent is the brand's quietest "voice" gesture; preserve it for moments that deserve emphasis.
+
+### 8.25 Floating stat overlay (hero imagery)
+- A small refined card (typically 200–280px wide) positioned absolutely over a hero image.
+- Surface `--rs-surface` or `--rs-surface-ink` (alternate between light and dark when two callouts sit together). Border 1px `--rs-border` on light, none on dark. Radius `--rs-radius-2` (4px). Shadow `--rs-shadow-2`.
+- Anatomy: stat value in Cormorant italic display-s or display-m, label below in DM Sans uppercase caption.
+- Used at most twice per hero. Position respects the architectural region rule — never overlap the top one-third of a room photo.
+- Hidden below `md` breakpoint; revealed at `md+` only.
+- **Forbidden:** stacking three or more callouts on a single hero, animating callouts in/out per-pixel (they fade as a group on page load).
 
 ---
 
@@ -1093,14 +1123,25 @@ Do not improvise alternative copy.
   --rs-space-32: 128px;
 
   /* ── Radii ── */
-  --rs-radius-0:    0;
+  --rs-radius-0:    0;       /* default — buttons, inputs, modals, default cards */
   --rs-radius-1:    2px;     /* reserved for chip/tag override only */
+  --rs-radius-2:    4px;     /* refined cards (auth, marketing, spotlight surfaces) */
+  --rs-radius-3:    6px;     /* feature dark cards, larger spotlight surfaces */
   --rs-radius-pill: 9999px;  /* chips, total labels, focus pills */
+  /* Radii above 8px are forbidden. */
+
+  /* ── Dark feature surface ── */
+  --rs-surface-ink:        #1F1F1D;                      /* dark spotlight card surface */
+  --rs-surface-ink-subtle: #2A2926;                      /* layered dark, hairline-divided sections within a dark card */
+  --rs-text-on-ink:        #F2EDE4;                      /* bone — primary text on dark */
+  --rs-text-on-ink-muted:  rgba(242, 237, 228, 0.62);    /* muted text on dark */
 
   /* ── Elevation ── */
   --rs-shadow-0: none;
-  --rs-shadow-1: 0 0 0 1px rgba(31, 31, 29, 0.06);
-  /* No --rs-shadow-2 — elevations 2+ are forbidden. */
+  --rs-shadow-1: 0 0 0 1px rgba(31, 31, 29, 0.06);                                                /* hairline halo */
+  --rs-shadow-2: 0 1px 2px rgba(31, 31, 29, 0.04), 0 4px 12px rgba(31, 31, 29, 0.04);             /* refined floating card */
+  --rs-shadow-3: 0 2px 4px rgba(31, 31, 29, 0.05), 0 16px 32px rgba(31, 31, 29, 0.06);            /* drawer, modal */
+  /* Shadows above --rs-shadow-3 are forbidden. */
 
   /* ── Z-index ── */
   --rs-z-base:     0;
@@ -1146,6 +1187,10 @@ const config: Config = {
         },
         primary: { DEFAULT: '#1F1F1D', hover: '#36352F' },
         accent:  { DEFAULT: '#B58E5A', deep: '#8C6A3E', tint: 'rgba(181,142,90,0.10)' },
+        'surface-ink':        '#1F1F1D',
+        'surface-ink-subtle': '#2A2926',
+        'ink-on-dark':        '#F2EDE4',
+        'ink-on-dark-muted':  'rgba(242,237,228,0.62)',
         success: '#4D6840',
         warning: '#8C6A28',
         error:   '#7E3326',
@@ -1175,8 +1220,18 @@ const config: Config = {
         '6': '24px', '8': '32px', '10': '40px', '12': '48px', '16': '64px',
         '20': '80px', '24': '96px', '32': '128px',
       },
-      borderRadius: { 'none': '0', 'tight': '2px', 'pill': '9999px' },
-      boxShadow: { 'hairline': '0 0 0 1px rgba(31,31,29,0.06)' },
+      borderRadius: {
+        'none':    '0',
+        'tight':   '2px',
+        'card':    '4px',   // refined floating cards (auth, marketing, spotlight)
+        'feature': '6px',   // feature dark card + larger spotlight surfaces
+        'pill':    '9999px',
+      },
+      boxShadow: {
+        'hairline': '0 0 0 1px rgba(31,31,29,0.06)',
+        'card':     '0 1px 2px rgba(31,31,29,0.04), 0 4px 12px rgba(31,31,29,0.04)',
+        'overlay':  '0 2px 4px rgba(31,31,29,0.05), 0 16px 32px rgba(31,31,29,0.06)',
+      },
       transitionDuration: { 'micro': '220ms', 'standard': '320ms', 'reveal': '480ms' },
       transitionTimingFunction: { 'standard': 'cubic-bezier(0.2,0.7,0.2,1)' },
       screens: { sm: '480px', md: '768px', lg: '1024px', xl: '1440px' },
@@ -1203,7 +1258,7 @@ export default config;
 7. Show italic Cormorant assumption notes whenever AI-derived data is displayed.
 8. Letterbox a non-4:3 room photo with `--rs-page` bars instead of cropping.
 9. Use the `#E8DECB → #C9B690` gradient only for empty concept slots and empty rooms.
-10. Use square corners (`border-radius: 0`) on cards, buttons, inputs, and modals.
+10. Use square corners (`border-radius: 0`) on buttons, inputs, modals, and default cards (concept, product, project, empty). Refined cards may use `--rs-radius-2` (4px); feature-dark cards may use `--rs-radius-3` (6px). Radii above 8px are forbidden.
 11. Use pill radius (`9999px`) only on chips, total labels, and focus pills.
 12. Use 1px hairline borders for every divider.
 13. Apply a 2px `--rs-focus-ring` outline on every focusable control.
@@ -1218,7 +1273,7 @@ export default config;
 ### Don't
 
 21. Don't put a card inside a card. Use hairline-divided sections instead.
-22. Don't use shadows above elevation 1. No drop shadows on cards.
+22. Don't add shadows to default cards (concept, product, project) or to working-screen surfaces. `--rs-shadow-2` is reserved for refined floating cards and the dark feature card; `--rs-shadow-3` is reserved for drawers and modals. Elevation above `--rs-shadow-3` is forbidden.
 23. Don't use `display-xl` (84px) on operational screens. It is for empty states and auth only.
 24. Don't show AI confidence as a percentage. Use prose: `high confidence` / `estimated` / `assumed` / `verified`.
 25. Don't hide dimensions, retailer name, or price behind hover-only interactions.
