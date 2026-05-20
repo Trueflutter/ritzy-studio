@@ -33,7 +33,7 @@ V2 uses different monetization by user mode.
 - Shopping-list preview may show categories, images, prices, and estimated total.
 - The final grounded render is the pre-paywall value reveal after product selection.
 - Exact retailer links, exact SKU details where needed, final shopping-list export, and eligible discount access require a paid room unlock.
-- Initial target price: `AED 100 per room`.
+- Initial target price: `AED 500 per room`.
 
 ### Designer
 

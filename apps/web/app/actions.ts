@@ -492,7 +492,7 @@ export async function createHomeownerRoomUnlockCheckoutAction(formData: FormData
         .from("room_unlocks")
         .update({
           status: "pending",
-          price_aed: 100,
+          price_aed: 500,
           billing_provider: "stripe",
           billing_checkout_id: session.id,
           updated_at: new Date().toISOString()
@@ -503,7 +503,7 @@ export async function createHomeownerRoomUnlockCheckoutAction(formData: FormData
         room_id: roomId,
         user_id: user.id,
         status: "pending",
-        price_aed: 100,
+        price_aed: 500,
         billing_provider: "stripe",
         billing_checkout_id: session.id
       });

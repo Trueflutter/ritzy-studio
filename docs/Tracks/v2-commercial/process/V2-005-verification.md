@@ -12,7 +12,7 @@ Passed for application readiness. Public deployed webhook configuration remains 
 
 Added Stripe Checkout foundation for:
 
-- homeowner AED 100 room unlock checkout
+- homeowner AED 500 room unlock checkout
 - designer USD 99/month subscription checkout
 - Stripe webhook endpoint
 - room unlock activation
@@ -46,7 +46,7 @@ Result:
 Browser and Stripe verification:
 
 - Stripe Checkout opened from the shopping-list `Unlock room` CTA.
-- AED 100 test card payment completed successfully.
+- AED 500 test card payment completed successfully.
 - Stripe Checkout session reported `status = complete` and `payment_status = paid`.
 - The local webhook handler accepted a correctly signed `checkout.session.completed` event and returned `200`.
 - Supabase updated the tested room unlock to `active`.

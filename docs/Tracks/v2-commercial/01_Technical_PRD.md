@@ -59,7 +59,7 @@ Needs:
 9. Generate initial concept.
 10. Approve or revise the concept.
 11. View shopping-list preview.
-12. Pay AED 100 to unlock the room.
+12. Pay AED 500 to unlock the room.
 13. Get retailer links, eligible discount code, and final grounded render.
 14. Click tracked shopping links and shop on retailer sites.
 
@@ -198,7 +198,7 @@ Needs:
 
 V2 is accepted when:
 
-- A homeowner can generate a guided room concept, see a shopping preview, pay AED 100, unlock tracked retailer links, and receive a final grounded render.
+- A homeowner can generate a guided room concept, see a shopping preview, pay AED 500, unlock tracked retailer links, and receive a final grounded render.
 - A designer can subscribe at USD 99/month and use the professional workflow without per-room homeowner unlock friction.
 - Retailer links are tracked through Ritzy redirects.
 - Discount access is controlled by campaign/code rules.

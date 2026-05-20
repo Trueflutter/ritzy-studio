@@ -1,6 +1,6 @@
 import Stripe from "stripe";
 
-export const HOMEOWNER_ROOM_UNLOCK_AMOUNT_AED = 10000;
+export const HOMEOWNER_ROOM_UNLOCK_AMOUNT_AED = 50000;
 export const DESIGNER_MONTHLY_AMOUNT_USD = 9900;
 
 let stripeClient: Stripe | null = null;
