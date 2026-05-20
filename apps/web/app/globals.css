@@ -16,7 +16,7 @@
   --rs-text-muted: #6f6963;
   --rs-text-subtle: #8a8175;
   --rs-text-disabled: #b5ac9c;
-  --rs-text-placeholder: rgba(31, 31, 29, 0.22);
+  --rs-text-placeholder: rgba(31, 31, 29, 0.4);
   --rs-text-helper: rgba(31, 31, 29, 0.42);
   --rs-primary: #1f1f1d;
   --rs-primary-hover: #36352f;

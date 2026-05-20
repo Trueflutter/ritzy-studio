@@ -404,7 +404,7 @@ Base unit **4px**. Allowed values are scale steps below — no off-scale spacing
 - Focus: bottom border becomes `--rs-accent-deep`; an extra 1px `--rs-accent` line slides in beneath over 220ms.
 - Error: bottom border `--rs-error`; error message below in DM Sans italic 13.5px `--rs-error`.
 - Disabled: text `--rs-text-disabled`; border `--rs-border`.
-- Placeholder uses input's font and `--rs-text-placeholder` (a quieter shade than `--rs-text-disabled` so the hint never competes with active UI text such as chrome button labels). Placeholder copy is the **example value itself**, not prefixed with `e.g.` — the italic Cormorant treatment already signals "hint."
+- Placeholder uses input's font and `--rs-text-placeholder` (quieter than the filled input value and the field label so the hint never competes with active UI text, but legible enough to read at body size). Placeholder copy is the **example value itself**, not prefixed with `e.g.` — the italic Cormorant treatment already signals "hint."
 - Forbidden: filled input backgrounds, rounded input boxes, floating labels, `e.g.` / `Example:` prefixes inside the placeholder.
 
 ### 8.7 Textarea
@@ -538,9 +538,11 @@ Base unit **4px**. Allowed values are scale steps below — no off-scale spacing
 | Chrome button label (Cancel, Skip, etc.) | `--rs-text-muted` | `#6F6963` (≈ 0.58 ink) | DM Sans uppercase tracked |
 | Caption / field label | `--rs-text-muted` | `#6F6963` (≈ 0.58 ink) | DM Sans uppercase tracked |
 | Helper text | `--rs-text-helper` | `rgba(31,31,29,0.42)` | Cormorant italic body-s |
-| Input placeholder | `--rs-text-placeholder` | `rgba(31,31,29,0.22)` | Cormorant italic (input font-size) |
+| Input placeholder | `--rs-text-placeholder` | `rgba(31,31,29,0.40)` | Cormorant italic (input font-size) |
 
 If a chrome button starts to read as helper text (or vice versa) on a given screen, the colors above are not being honoured — fix that before reaching for another visual fix.
+
+Helper text and placeholder text sit at a similar weight (`0.42` / `0.40`); they are separated by **size and position** — helper is `body-s` below the field, placeholder is input-size inside it — not by colour. The meaningful colour step is between this quiet pair and the chrome/label tier (`≈0.58`). Placeholder was lifted from `0.22` to `0.40` because at `0.22` the example value was effectively unreadable.
 
 - **Forbidden:** helper text in uppercase, helper text in DM Sans, helper text that restates the label, helper text on every input in a form (use only where the field's downstream effect isn't obvious from the label), helper text in `--rs-text-muted` (it collapses against chrome buttons).
 
@@ -1081,7 +1083,7 @@ Do not improvise alternative copy.
   --rs-text-muted:      #6F6963;
   --rs-text-subtle:      #8A8175;
   --rs-text-disabled:    #B5AC9C;
-  --rs-text-placeholder: rgba(31, 31, 29, 0.22);  /* input placeholder hints — must read lighter than helper text and chrome buttons */
+  --rs-text-placeholder: rgba(31, 31, 29, 0.40);  /* input placeholder hints — quieter than the filled value and labels, but legible at body size */
   --rs-text-helper:      rgba(31, 31, 29, 0.42);  /* helper text below a control (italic Cormorant body-s); quieter than chrome button labels, more present than placeholders */
 
   --rs-primary:         #1F1F1D;
@@ -1205,7 +1207,7 @@ const config: Config = {
           muted:       '#6F6963',
           subtle:      '#8A8175',
           disabled:    '#B5AC9C',
-          placeholder: 'rgba(31,31,29,0.22)',
+          placeholder: 'rgba(31,31,29,0.40)',
           helper:      'rgba(31,31,29,0.42)',
         },
         primary: { DEFAULT: '#1F1F1D', hover: '#36352F' },
