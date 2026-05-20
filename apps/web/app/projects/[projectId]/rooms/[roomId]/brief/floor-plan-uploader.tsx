@@ -1,40 +1,14 @@
 "use client";
 
 import type { Database } from "@ritzy-studio/db";
-import { Button } from "@ritzy-studio/ui";
-import { useRef, useState, useTransition } from "react";
+import { ImageDropzone } from "@ritzy-studio/ui";
+import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
 import { createClient } from "@/lib/supabase/client";
+import { readImageSize, slugFileName } from "@/lib/upload";
 
 type UploadStatus = "idle" | "uploading" | "complete" | "error";
-
-function slugFileName(name: string) {
-  return name
-    .toLowerCase()
-    .replace(/[^a-z0-9.]+/g, "-")
-    .replace(/-+/g, "-")
-    .replace(/^-|-$/g, "");
-}
-
-async function readImageSize(file: File): Promise<{ width: number | null; height: number | null }> {
-  if (!file.type.startsWith("image/")) {
-    return { width: null, height: null };
-  }
-
-  const objectUrl = URL.createObjectURL(file);
-
-  try {
-    return await new Promise((resolve) => {
-      const image = new Image();
-      image.onload = () => resolve({ width: image.naturalWidth, height: image.naturalHeight });
-      image.onerror = () => resolve({ width: null, height: null });
-      image.src = objectUrl;
-    });
-  } finally {
-    URL.revokeObjectURL(objectUrl);
-  }
-}
 
 export function FloorPlanUploader({
   existingStoragePath,
@@ -45,11 +19,10 @@ export function FloorPlanUploader({
   roomId: string;
   userId: string;
 }) {
-  const inputRef = useRef<HTMLInputElement>(null);
   const [lastFile, setLastFile] = useState<File | null>(null);
   const [status, setStatus] = useState<UploadStatus>("idle");
   const [message, setMessage] = useState(
-    existingStoragePath ? "Floor plan attached" : "Add the floor plan for this room only"
+    existingStoragePath ? "Floor plan attached" : "Drag the floor plan here, or click to upload"
   );
   const [isPending, startTransition] = useTransition();
   const router = useRouter();
@@ -124,59 +97,25 @@ export function FloorPlanUploader({
   }
 
   return (
-    <div>
-      <input
-        accept="image/jpeg,image/png,application/pdf"
-        className="sr-only"
-        onChange={(event) => {
-          const file = event.target.files?.[0];
-          if (file) {
-            void uploadFile(file);
-          }
-          event.target.value = "";
-        }}
-        ref={inputRef}
-        type="file"
-      />
-      <button
-        className="flex min-h-40 w-full flex-col items-center justify-center border border-dashed border-line-strong bg-page px-6 text-center transition-colors duration-micro ease-standard hover:border-accent-deep hover:bg-surface-subtle focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--rs-focus-ring)]"
-        disabled={status === "uploading" || isPending}
-        onClick={() => inputRef.current?.click()}
-        onDragOver={(event) => event.preventDefault()}
-        onDrop={(event) => {
-          event.preventDefault();
-          const file = event.dataTransfer.files?.[0];
-          if (file) {
-            void uploadFile(file);
-          }
-        }}
-        type="button"
-      >
-        <span className="mb-5 flex size-14 items-center justify-center border border-line-strong bg-surface text-ink">
-          <FloorPlanIcon />
-        </span>
-        <span className="font-display text-body-l font-light italic text-ink">
-          {status === "error" ? "floor plan could not upload" : message}
-        </span>
-        <span className="mt-3 max-w-[36ch] font-body text-body-s text-ink-muted">
-          Add the floor plan for this room only — not the whole property.
-        </span>
-        <span className="mt-2 font-body text-caption font-medium uppercase text-ink-muted">
-          JPG, PNG, or PDF · up to 10 MB
-        </span>
-      </button>
-
-      {status === "error" ? (
-        <div className="mt-4 border-t border-error pt-4">
-          <p className="font-display text-body-s italic text-error">{message}</p>
-          {lastFile ? (
-            <Button className="mt-4" onClick={() => void uploadFile(lastFile)} variant="secondary">
-              Retry
-            </Button>
-          ) : null}
-        </div>
-      ) : null}
-    </div>
+    <ImageDropzone
+      accept="image/jpeg,image/png,application/pdf"
+      busy={status === "uploading" || isPending}
+      description="Add the floor plan for this room only — not the whole property."
+      error={
+        status === "error"
+          ? { message, onRetry: lastFile ? () => void uploadFile(lastFile) : undefined }
+          : null
+      }
+      hint="JPG, PNG, or PDF · up to 10 MB"
+      icon={<FloorPlanIcon />}
+      onFiles={(files) => {
+        const file = files[0];
+        if (file) {
+          void uploadFile(file);
+        }
+      }}
+      prompt={status === "error" ? "floor plan could not upload" : message}
+    />
   );
 }
 
