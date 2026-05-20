@@ -7,7 +7,9 @@ import { generateFinalRenderAction } from "@/app/actions";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
 
+import { RenderExpectationNote } from "../render-expectation-note";
 import { PrintButton } from "./print-button";
+import { RenderRefresh } from "./render-refresh";
 import { UnlockShoppingListCta } from "./unlock-shopping-list-cta";
 
 export const dynamic = "force-dynamic";
@@ -156,6 +158,7 @@ export default async function PresentationPage({
 
   return (
     <main className="min-h-dvh bg-surface text-ink print:bg-surface">
+      <RenderRefresh enabled={showRenderProgress} />
       <header className="flex min-h-20 items-center justify-between border-b border-line bg-surface px-5 md:px-8 lg:px-12 xl:px-16 print:hidden">
         <Link className="font-display text-[28px] font-light text-ink" href="/">
           Ri <span className="font-body text-caption font-medium uppercase text-ink-muted">Ritzy Studio</span>
@@ -245,7 +248,8 @@ export default async function PresentationPage({
                   <p className="font-body text-caption font-medium uppercase tracking-[0.32em] text-ink-muted">
                     Rendering the room
                   </p>
-                  <AnimatedStatus className="mt-6" phases={renderRevealPhases} />
+                  <RenderExpectationNote className="mx-auto mt-5 max-w-[360px]" />
+                  <AnimatedStatus className="mt-8" phases={renderRevealPhases} />
                 </div>
               </div>
             ) : (

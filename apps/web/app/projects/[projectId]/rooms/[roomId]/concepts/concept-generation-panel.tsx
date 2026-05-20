@@ -4,13 +4,16 @@ import { useEffect, useRef } from "react";
 import { AnimatedStatus, SubmitButton } from "@ritzy-studio/ui";
 
 import { generateInitialConceptAction } from "@/app/actions";
+import { RenderExpectationNote } from "../render-expectation-note";
 
 const generationPhases = [
   "Reading the room photo",
   "Studying the brief",
   "Extracting style cues",
+  "Reviewing proportions",
   "Refining colour direction",
   "Composing the first layout",
+  "Balancing light and materials",
   "Preparing the concept render"
 ];
 
@@ -54,7 +57,8 @@ export function ConceptGenerationPanel({
             <h2 className="mt-6 font-display text-display-s font-light italic text-ink">
               Building the first room direction.
             </h2>
-            <AnimatedStatus className="mt-10" phases={generationPhases} />
+            <RenderExpectationNote className="mx-auto mt-5 max-w-[360px]" />
+            <AnimatedStatus className="mt-8" phases={generationPhases} />
             <SubmitButton
               className="mt-10 w-full"
               disabled={!canGenerate}

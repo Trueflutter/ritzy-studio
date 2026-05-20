@@ -30,6 +30,7 @@ import {
 } from "@ritzy-studio/domain";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { after } from "next/server";
 
 import { createServiceClient } from "@/lib/supabase/service";
 import { createClient } from "@/lib/supabase/server";
@@ -1921,8 +1922,8 @@ export async function groundProductsAction(formData: FormData) {
   const shoppingListId = shoppingListResult.data.id;
   await supabase.from("shopping_list_items").delete().eq("shopping_list_id", shoppingListId);
 
-  // Pre-select the AI's recommended product per role. A required role with no
-  // AI pick falls back to its top-ranked option so the room has a baseline.
+  // Pre-select the AI's recommended product per role. If the AI does not pick
+  // one, fall back to the top-ranked option so every role starts chosen.
   const selectedProductIdByRole = new Map<string, string>();
   for (const role of roleOptions) {
     const aiPick = (sourcingResult?.selectedProducts ?? []).find(
@@ -1932,7 +1933,7 @@ export async function groundProductsAction(formData: FormData) {
     );
     if (aiPick) {
       selectedProductIdByRole.set(role.category, aiPick.productId);
-    } else if (role.priority === "required") {
+    } else if (role.options[0]) {
       selectedProductIdByRole.set(role.category, role.options[0].id);
     }
   }
@@ -2736,100 +2737,102 @@ export async function generateFinalRenderAction(formData: FormData) {
     throw new Error(renderJobError.message);
   }
 
-  try {
-    const productsForRender = await Promise.all(
-      selectedProducts.slice(0, 8).map(async (item) => {
-        const product = item.product!;
-        const image = product.primary_image_url
-          ? await fetchRemoteImage(product.primary_image_url)
-          : null;
-        const dimensions = product.dimensions?.[0]?.source_text ?? null;
+  after(async () => {
+    try {
+      const productsForRender = await Promise.all(
+        selectedProducts.slice(0, 8).map(async (item) => {
+          const product = item.product!;
+          const image = product.primary_image_url
+            ? await fetchRemoteImage(product.primary_image_url)
+            : null;
+          const dimensions = product.dimensions?.[0]?.source_text ?? null;
 
-        return {
-          name: product.name,
-          retailerName: product.retailer?.name ?? "Retailer",
-          category: item.category,
-          roleLabel: roleLabelFromSelectionReason(item.selection_reason) ?? item.category,
-          visualMatchReason: item.selection_reason,
-          priceAed: item.unit_price_aed,
-          dimensions,
-          imageBytes: image?.bytes ?? null,
-          imageMimeType: image?.mimeType ?? null
-        };
-      })
-    );
-    const result = await generateFinalGroundedRender({
-      roomPhotoBytes: Buffer.from(await roomBlob.arrayBuffer()),
-      roomPhotoMimeType: roomPhoto.mime_type,
-      conceptImageBytes: conceptBlob ? Buffer.from(await conceptBlob.arrayBuffer()) : null,
-      conceptImageMimeType: conceptImageAsset?.mime_type ?? null,
-      conceptTitle: concept.title,
-      conceptDescription: concept.description,
-      products: productsForRender
-    });
-    const renderPath = `${user.id}/${roomId}/final-${renderJob.id}.png`;
-    const { error: uploadError } = await serviceSupabase.storage
-      .from("generated-renders")
-      .upload(renderPath, Buffer.from(result.imageBase64, "base64"), {
-        contentType: "image/png",
-        upsert: true
+          return {
+            name: product.name,
+            retailerName: product.retailer?.name ?? "Retailer",
+            category: item.category,
+            roleLabel: roleLabelFromSelectionReason(item.selection_reason) ?? item.category,
+            visualMatchReason: item.selection_reason,
+            priceAed: item.unit_price_aed,
+            dimensions,
+            imageBytes: image?.bytes ?? null,
+            imageMimeType: image?.mimeType ?? null
+          };
+        })
+      );
+      const result = await generateFinalGroundedRender({
+        roomPhotoBytes: Buffer.from(await roomBlob.arrayBuffer()),
+        roomPhotoMimeType: roomPhoto.mime_type,
+        conceptImageBytes: conceptBlob ? Buffer.from(await conceptBlob.arrayBuffer()) : null,
+        conceptImageMimeType: conceptImageAsset?.mime_type ?? null,
+        conceptTitle: concept.title,
+        conceptDescription: concept.description,
+        products: productsForRender
       });
+      const renderPath = `${user.id}/${roomId}/final-${renderJob.id}.png`;
+      const { error: uploadError } = await serviceSupabase.storage
+        .from("generated-renders")
+        .upload(renderPath, Buffer.from(result.imageBase64, "base64"), {
+          contentType: "image/png",
+          upsert: true
+        });
 
-    if (uploadError) {
-      throw new Error(uploadError.message);
+      if (uploadError) {
+        throw new Error(uploadError.message);
+      }
+
+      const { data: renderAsset, error: renderAssetError } = await serviceSupabase
+        .from("room_assets")
+        .insert({
+          room_id: roomId,
+          asset_type: "final_render",
+          storage_path: renderPath,
+          mime_type: "image/png",
+          is_primary: false
+        })
+        .select("id")
+        .single();
+
+      if (renderAssetError) {
+        throw new Error(renderAssetError.message);
+      }
+
+      await serviceSupabase
+        .from("render_jobs")
+        .update({
+          status: "succeeded",
+          completed_at: new Date().toISOString(),
+          prompt_key: result.promptKey,
+          prompt_version: result.promptVersion,
+          model: result.imageModel,
+          output_asset_ids: [renderAsset.id],
+          input_summary: {
+            selectionKey,
+            selectedShoppingItemIds,
+            productCount: selectedProducts.length,
+            productImageReferencesUsed: productsForRender.filter((product) => product.imageBytes).length,
+            revisedPrompt: result.revisedPrompt ?? null
+          }
+        })
+        .eq("id", renderJob.id);
+      await serviceSupabase.from("rooms").update({ status: "rendering" }).eq("id", roomId);
+      revalidatePath(revealPath);
+    } catch (error) {
+      await serviceSupabase
+        .from("render_jobs")
+        .update({
+          status: "failed",
+          completed_at: new Date().toISOString(),
+          error_message: error instanceof Error ? error.message : "Final render generation failed."
+        })
+        .eq("id", renderJob.id);
+      revalidatePath(revealPath);
     }
-
-    const { data: renderAsset, error: renderAssetError } = await supabase
-      .from("room_assets")
-      .insert({
-        room_id: roomId,
-        asset_type: "final_render",
-        storage_path: renderPath,
-        mime_type: "image/png",
-        is_primary: false
-      })
-      .select("id")
-      .single();
-
-    if (renderAssetError) {
-      throw new Error(renderAssetError.message);
-    }
-
-    await supabase
-      .from("render_jobs")
-      .update({
-        status: "succeeded",
-        completed_at: new Date().toISOString(),
-        prompt_key: result.promptKey,
-        prompt_version: result.promptVersion,
-        model: result.imageModel,
-        output_asset_ids: [renderAsset.id],
-        input_summary: {
-          selectionKey,
-          selectedShoppingItemIds,
-          productCount: selectedProducts.length,
-          productImageReferencesUsed: productsForRender.filter((product) => product.imageBytes).length,
-          revisedPrompt: result.revisedPrompt ?? null
-        }
-      })
-      .eq("id", renderJob.id);
-    await supabase.from("rooms").update({ status: "rendering" }).eq("id", roomId);
-  } catch (error) {
-    await supabase
-      .from("render_jobs")
-      .update({
-        status: "failed",
-        completed_at: new Date().toISOString(),
-        error_message: error instanceof Error ? error.message : "Final render generation failed."
-      })
-      .eq("id", renderJob.id);
-
-    redirect(`${redirectPath}?message=${encodeURIComponent("Final render failed. You can retry after checking product images.")}`);
-  }
+  });
 
   revalidatePath(redirectPath);
   revalidatePath(revealPath);
-  redirect(`${revealPathForRenderJob(renderJob.id)}&message=${encodeURIComponent("Final render generated.")}`);
+  redirect(`${revealPathForRenderJob(renderJob.id)}&message=${encodeURIComponent("Final render started.")}`);
 }
 
 export async function reviseConceptAction(formData: FormData) {

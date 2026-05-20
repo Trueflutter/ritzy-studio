@@ -1,7 +1,7 @@
 "use client";
 
 import { SubmitButton } from "@ritzy-studio/ui";
-import { useCallback, useMemo, useState, useTransition } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 
 import {
   findMoreShoppingOptionsAction,
@@ -47,12 +47,42 @@ export function ShoppingListGrid({
   // Optimistic picks for instant feedback; every change persists in the
   // background, so the server stays the source of truth on reload.
   const [selectedByCategory, setSelectedByCategory] = useState<Map<string, string>>(
-    () => new Map(groups.filter((g) => g.selectedId).map((g) => [g.category, g.selectedId!]))
+    () =>
+      new Map(
+        groups
+          .map((group) => {
+            const defaultId = group.selectedId ?? group.items[0]?.id ?? null;
+            return defaultId ? ([group.category, defaultId] as const) : null;
+          })
+          .filter((entry): entry is readonly [string, string] => entry !== null)
+      )
   );
   const [rejectedIds, setRejectedIds] = useState<Set<string>>(new Set());
   const [detailItem, setDetailItem] = useState<ProductCardItem | null>(null);
   const [pendingCategory, setPendingCategory] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+  const persistedDefaultsRef = useRef(false);
+
+  useEffect(() => {
+    if (persistedDefaultsRef.current) {
+      return;
+    }
+
+    const defaultItemIds = groups
+      .filter((group) => !group.selectedId && group.items[0])
+      .map((group) => group.items[0].id);
+
+    if (defaultItemIds.length === 0) {
+      return;
+    }
+
+    persistedDefaultsRef.current = true;
+    startTransition(async () => {
+      for (const itemId of defaultItemIds) {
+        await selectShoppingItemAction({ projectId, roomId, shoppingListId, itemId });
+      }
+    });
+  }, [groups, projectId, roomId, shoppingListId, startTransition]);
 
   const idToCategory = useMemo(() => {
     const map = new Map<string, string>();
@@ -117,30 +147,22 @@ export function ShoppingListGrid({
   const openDetail = useCallback((item: ProductCardItem) => setDetailItem(item), []);
   const closeDetail = useCallback(() => setDetailItem(null), []);
 
-  const requiredGroups = useMemo(
-    () => groups.filter((group) => group.priority === "required"),
-    [groups]
-  );
-  const optionalCount = groups.length - requiredGroups.length;
-  const progressGroups = requiredGroups.length > 0 ? requiredGroups : groups;
-  const progressLabel = requiredGroups.length > 0 ? "essentials" : "categories";
-  const chosenGroupCount = progressGroups.filter((group) =>
+  const progressGroups = groups;
+  const chosenGroupCount = groups.filter((group) =>
     selectedByCategory.has(group.category)
   ).length;
   const progressPct =
     progressGroups.length > 0 ? (chosenGroupCount / progressGroups.length) * 100 : 0;
-  const allRequiredChosen = requiredGroups.every((group) =>
-    selectedByCategory.has(group.category)
-  );
+  const allGroupsChosen = groups.every((group) => selectedByCategory.has(group.category));
 
   const selectedIds = Array.from(selectedByCategory.values());
   const selectedCount = selectedIds.length;
-  const canGenerate = selectedCount > 0 && allRequiredChosen;
+  const canGenerate = selectedCount > 0 && allGroupsChosen;
   const generationUnavailableReason =
     conceptId === null
       ? "This room has no selected concept, so the render can't be generated."
       : !canGenerate
-        ? "Pick a piece in every required category to generate the render."
+        ? "Choose a piece in every category to generate the render."
         : null;
   const roomLabel = formatRoomLabel(clientName, roomType);
   const renderCtaProps = {
@@ -162,13 +184,8 @@ export function ShoppingListGrid({
       <div aria-live="polite" className="border border-line bg-surface px-5 py-5 md:px-6">
         <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-2">
           <p className="font-body text-caption font-medium uppercase tracking-[0.32em] text-ink-muted">
-            {chosenGroupCount} of {progressGroups.length} {progressLabel} chosen
+            {chosenGroupCount} of {progressGroups.length} categories chosen
           </p>
-          {optionalCount > 0 ? (
-            <p className="font-body text-body-s text-ink-muted">
-              {optionalCount} optional categor{optionalCount === 1 ? "y" : "ies"} below
-            </p>
-          ) : null}
         </div>
         <div className="mt-3 h-[2px] w-full bg-line">
           <div
@@ -210,7 +227,7 @@ export function ShoppingListGrid({
                     {group.label}
                   </h2>
                   <span className="font-body text-caption font-medium uppercase tracking-[0.32em] text-ink-muted">
-                    {group.priority === "required" ? "Required" : "Optional"}
+                    {group.priority === "required" ? "Core" : "Recommended"}
                     {group.quantity > 1 ? ` · Buy ${group.quantity}` : ""}
                   </span>
                 </div>
@@ -314,7 +331,7 @@ function RenderCta({
     : `Choose the remaining pieces for ${roomLabel}.`;
   const description = canGenerate
     ? `${selectedLabel} The final render uses them as visual references.`
-    : generationUnavailableReason ?? "Pick a piece in every required category to generate the render.";
+    : generationUnavailableReason ?? "Choose a piece in every category to generate the render.";
 
   return (
     <div
