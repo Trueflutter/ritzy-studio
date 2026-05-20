@@ -1,4 +1,4 @@
-import { SubmitButton, TextInput, Textarea } from "@ritzy-studio/ui";
+import { ButtonLink, SubmitButton, TextInput, Textarea } from "@ritzy-studio/ui";
 import { notFound, redirect } from "next/navigation";
 
 import { saveDesignBriefAction } from "@/app/actions";
@@ -64,8 +64,11 @@ export default async function BriefDetailsPage({
     .maybeSingle();
 
   const inspirationAnalysis = inspirationAnalysisFromStructuredJson(designBrief?.structured_json);
-  const inferredStyleNotes = !designBrief?.style_notes?.trim() ? inspirationAnalysis?.styleDirection : null;
-  const styleNotes = designBrief?.style_notes || inferredStyleNotes || "";
+  const selectedStyles = selectedStylesFromStructuredJson(designBrief?.structured_json);
+  const palette = palettePlaceholder(inspirationAnalysis);
+  const colorNotes = designBrief?.color_notes?.trim() ?? "";
+  const colorNotesValue = colorNotes || palette;
+  const colorPrefilled = !colorNotes && palette.length > 0;
 
   return (
     <BriefShell
@@ -75,7 +78,7 @@ export default async function BriefDetailsPage({
       projectName={project.name}
       roomName={room.name}
       roomType={room.room_type}
-      subtitle="Add the details that change product choices, fit, and the final design direction."
+      subtitle="A few of these are already filled from your earlier steps — review them, then answer whatever still applies. Nothing here is required."
       title="Complete the design brief."
     >
       {message ? (
@@ -95,35 +98,56 @@ export default async function BriefDetailsPage({
           value={project.budget_max_aed ? `AED ${Number(project.budget_max_aed).toLocaleString("en-AE")} maximum` : ""}
         />
 
-        {inferredStyleNotes ? (
-          <p className="mb-3 font-display text-body-s italic text-ink-secondary">
-            Inferred from your inspiration images — edit anything.
-          </p>
+        {selectedStyles.liked.length > 0 ? (
+          <div className="mb-9 border border-line bg-surface px-5 py-4">
+            <div className="flex items-baseline justify-between gap-4">
+              <p className="font-body text-caption font-medium uppercase text-ink-muted">
+                Style — from your earlier choices
+              </p>
+              <ButtonLink
+                href={`/projects/${projectId}/rooms/${roomId}/brief/style`}
+                trailing="→"
+                variant="quiet"
+              >
+                change
+              </ButtonLink>
+            </div>
+            <p className="mt-2 font-body text-body-m text-ink">{selectedStyles.liked.join(", ")}</p>
+            {selectedStyles.avoided.length > 0 ? (
+              <p className="mt-1 font-body text-body-s text-ink-muted">
+                Avoiding: {selectedStyles.avoided.join(", ")}
+              </p>
+            ) : null}
+          </div>
         ) : null}
+
         <Textarea
-          defaultValue={styleNotes}
-          id="styleNotes"
-          label="Style direction"
-          name="styleNotes"
-          placeholder="quiet contemporary, warm editorial, tailored villa, family-friendly luxury..."
-        />
-        <Textarea
-          defaultValue={designBrief?.color_notes ?? palettePlaceholder(inspirationAnalysis)}
+          defaultValue={colorNotesValue}
+          helper={
+            colorPrefilled
+              ? "Pulled from your inspiration photos — edit anything that's off."
+              : "Which colours do you want, and any to avoid?"
+          }
           id="colorNotes"
           label="Colour preferences"
           name="colorNotes"
-          placeholder="Tell us the colours you want, and anything to avoid..."
+          placeholder="warm neutrals, brushed brass, deep walnut; nothing cold or grey..."
         />
+
         {project.budget_min_aed || project.budget_max_aed ? (
           <div className="mb-9 border border-line bg-surface px-5 py-4">
-            <p className="font-body text-caption font-medium uppercase text-ink-muted">Budget</p>
+            <p className="font-body text-caption font-medium uppercase text-ink-muted">
+              Budget — from your project setup
+            </p>
             <p className="mt-2 font-body text-body-m text-ink">
               {formatBudget(project.budget_min_aed, project.budget_max_aed)}
             </p>
           </div>
         ) : null}
+
         <Textarea
           defaultValue={designBrief?.functional_requirements ?? ""}
+          helper="What does this room need to do day to day?"
           id="functionalRequirements"
           label="Functional requirements"
           name="functionalRequirements"
@@ -131,6 +155,7 @@ export default async function BriefDetailsPage({
         />
         <Textarea
           defaultValue={designBrief?.avoid_notes ?? ""}
+          helper="Anything we should keep out of the design?"
           id="avoidNotes"
           label="Avoid"
           name="avoidNotes"
@@ -138,14 +163,18 @@ export default async function BriefDetailsPage({
         />
         <Textarea
           defaultValue={designBrief?.inspiration_notes ?? ""}
+          helper="Anything else about your references we should know — what to copy, what to ignore?"
           id="inspirationNotes"
           label="Inspiration notes"
           name="inspirationNotes"
-          placeholder="Anything else about the references: what to copy, what to ignore, what matters most..."
+          placeholder="copy the calm of the second image; ignore the dark wall..."
         />
 
         <div className="mt-10 border-t border-line pt-8">
           <p className="font-body text-caption font-medium uppercase text-ink-muted">Measurements</p>
+          <p className="mt-2 font-display text-body-s italic text-ink-helper">
+            Optional — measurements sharpen product sizing and fit. Skip if you don&apos;t have them.
+          </p>
           <div className="mt-6 grid gap-x-6 md:grid-cols-3">
             <TextInput
               defaultValue={measurements?.wall_length_cm ?? ""}
@@ -175,17 +204,13 @@ export default async function BriefDetailsPage({
               type="number"
             />
           </div>
-          <Textarea
-            defaultValue={measurements?.notes ?? ""}
-            id="measurementNotes"
-            label="Measurement notes"
-            name="measurementNotes"
-            placeholder="window wall estimated; ceiling height confirmed by contractor..."
-          />
         </div>
 
         <div className="mt-10 border-t border-line pt-8">
           <p className="font-body text-caption font-medium uppercase text-ink-muted">Floor plan</p>
+          <p className="mt-2 font-display text-body-s italic text-ink-helper">
+            Optional — a plan helps us place built-ins and get proportions right.
+          </p>
           <div className="mt-5">
             <FloorPlanUploader existingStoragePath={floorPlan?.storage_path} roomId={roomId} userId={user.id} />
           </div>
@@ -238,4 +263,34 @@ function inspirationAnalysisFromStructuredJson(value: unknown) {
 
 function palettePlaceholder(analysis: { palette: string[] } | null) {
   return analysis?.palette.length ? analysis.palette.join(", ") : "";
+}
+
+function selectedStylesFromStructuredJson(value: unknown): { liked: string[]; avoided: string[] } {
+  const empty = { liked: [] as string[], avoided: [] as string[] };
+  if (!value || typeof value !== "object" || !("visualPreferences" in value)) {
+    return empty;
+  }
+
+  const prefs = (value as { visualPreferences?: unknown }).visualPreferences;
+  if (!prefs || typeof prefs !== "object") {
+    return empty;
+  }
+
+  const { likedStyles, avoidedStyles } = prefs as {
+    likedStyles?: unknown;
+    avoidedStyles?: unknown;
+  };
+
+  const names = (input: unknown): string[] =>
+    Array.isArray(input)
+      ? input
+          .map((item) =>
+            item && typeof item === "object" && "name" in item
+              ? (item as { name?: unknown }).name
+              : null
+          )
+          .filter((name): name is string => typeof name === "string")
+      : [];
+
+  return { liked: names(likedStyles), avoided: names(avoidedStyles) };
 }
