@@ -31,7 +31,8 @@ V2 uses different monetization by user mode.
 
 - First concept experience may be free or freemium.
 - Shopping-list preview may show categories, images, prices, and estimated total.
-- Exact retailer links, exact SKU details where needed, final grounded render, export, and eligible discount access require a paid room unlock.
+- The final grounded render is the pre-paywall value reveal after product selection.
+- Exact retailer links, exact SKU details where needed, final shopping-list export, and eligible discount access require a paid room unlock.
 - Initial target price: `AED 100 per room`.
 
 ### Designer

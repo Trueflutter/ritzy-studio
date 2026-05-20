@@ -111,7 +111,7 @@ async function canAccessRoomCommerce(roomId: string) {
 
 async function requireRoomCommerceAccess(roomId: string, redirectPath: string) {
   if (!(await canAccessRoomCommerce(roomId))) {
-    redirect(`${redirectPath}?message=${encodeURIComponent("Unlock this room to use retailer links, product swaps, and final renders.")}`);
+    redirect(`${redirectPath}?message=${encodeURIComponent("Generate the shopping list to use retailer links and product swaps.")}`);
   }
 }
 
@@ -414,7 +414,12 @@ export async function createHomeownerRoomAction(formData: FormData) {
 export async function createHomeownerRoomUnlockCheckoutAction(formData: FormData) {
   const projectId = String(formData.get("projectId") ?? "");
   const roomId = String(formData.get("roomId") ?? "");
-  const redirectPath = `/projects/${projectId}/rooms/${roomId}/shopping-list`;
+  const defaultRedirectPath = `/projects/${projectId}/rooms/${roomId}/shopping-list`;
+  const requestedReturnTo = optionalString(formData, "returnTo");
+  const redirectPath =
+    requestedReturnTo?.startsWith("/") && !requestedReturnTo.startsWith("//")
+      ? requestedReturnTo
+      : defaultRedirectPath;
   const supabase = await createClient();
   const {
     data: { user },
@@ -454,8 +459,8 @@ export async function createHomeownerRoomUnlockCheckoutAction(formData: FormData
           currency: "aed",
           unit_amount: HOMEOWNER_ROOM_UNLOCK_AMOUNT_AED,
           product_data: {
-            name: `Ritzy Studio room unlock — ${room.name}`,
-            description: "Unlock retailer links, eligible partner discounts, and final room plan."
+            name: `Ritzy Studio shopping list — ${room.name}`,
+            description: "Generate the final shopping list with retailer links and eligible partner discounts."
           }
         }
       }
@@ -466,8 +471,8 @@ export async function createHomeownerRoomUnlockCheckoutAction(formData: FormData
       room_id: roomId,
       project_id: projectId
     },
-    success_url: `${baseUrl}${redirectPath}?message=${encodeURIComponent("Room unlock payment complete.")}`,
-    cancel_url: `${baseUrl}${redirectPath}?message=${encodeURIComponent("Room unlock payment cancelled.")}`
+    success_url: `${baseUrl}${redirectPath}?message=${encodeURIComponent("Shopping list payment complete.")}`,
+    cancel_url: `${baseUrl}${redirectPath}?message=${encodeURIComponent("Shopping list payment cancelled.")}`
   });
 
   const { data: existingUnlock } = await serviceSupabase
@@ -2552,7 +2557,6 @@ export async function generateFinalRenderAction(formData: FormData) {
     redirect("/login");
   }
 
-  await requireRoomCommerceAccess(roomId, redirectPath);
   const serviceSupabase = createServiceClient();
 
   const { data: room } = await supabase
@@ -2656,6 +2660,48 @@ export async function generateFinalRenderAction(formData: FormData) {
     );
   }
 
+  const selectedShoppingItemIds = selectedProducts.map((item) => item.id).sort();
+  const selectionKey = selectedShoppingItemIds.join(",");
+  const revealPath = `/projects/${projectId}/rooms/${roomId}/presentation`;
+  const commerceUnlocked = await canAccessRoomCommerce(roomId);
+  const { data: matchingRenderJobs = [] } = await supabase
+    .from("render_jobs")
+    .select("id, status, output_asset_ids, input_summary, created_at")
+    .eq("room_id", roomId)
+    .eq("concept_id", conceptId)
+    .eq("shopping_list_id", shoppingListId)
+    .contains("input_summary", { selectionKey })
+    .order("created_at", { ascending: false })
+    .limit(1);
+  const matchingRenderJob = matchingRenderJobs?.[0] ?? null;
+
+  if (matchingRenderJob?.status === "running" || matchingRenderJob?.status === "queued") {
+    const startedAt = matchingRenderJob.created_at ? Date.parse(matchingRenderJob.created_at) : Date.now();
+    const staleAfterMs = 15 * 60 * 1000;
+    const isStale = Number.isFinite(startedAt) && Date.now() - startedAt > staleAfterMs;
+
+    if (!isStale) {
+      redirect(`${revealPath}?message=${encodeURIComponent("Final render is already running.")}`);
+    }
+
+    await supabase
+      .from("render_jobs")
+      .update({
+        status: "failed",
+        completed_at: new Date().toISOString(),
+        error_message: "Final render timed out before completion. Please retry."
+      })
+      .eq("id", matchingRenderJob.id);
+  }
+
+  if (
+    matchingRenderJob?.status === "succeeded" &&
+    (matchingRenderJob.output_asset_ids?.length ?? 0) > 0 &&
+    !commerceUnlocked
+  ) {
+    redirect(`${revealPath}?message=${encodeURIComponent("Final render is ready.")}`);
+  }
+
   const productIds = selectedProducts.map((item) => item.product!.id);
   const { data: renderJob, error: renderJobError } = await supabase
     .from("render_jobs")
@@ -2667,6 +2713,8 @@ export async function generateFinalRenderAction(formData: FormData) {
       input_asset_ids: [roomPhoto.id],
       product_ids: productIds,
       input_summary: {
+        selectionKey,
+        selectedShoppingItemIds,
         productCount: selectedProducts.length,
         conceptTitle: concept.title
       }
@@ -2675,6 +2723,10 @@ export async function generateFinalRenderAction(formData: FormData) {
     .single();
 
   if (renderJobError) {
+    if (renderJobError.code === "23505") {
+      redirect(`${revealPath}?message=${encodeURIComponent("Final render is already running.")}`);
+    }
+
     throw new Error(renderJobError.message);
   }
 
@@ -2747,6 +2799,8 @@ export async function generateFinalRenderAction(formData: FormData) {
         model: result.imageModel,
         output_asset_ids: [renderAsset.id],
         input_summary: {
+          selectionKey,
+          selectedShoppingItemIds,
           productCount: selectedProducts.length,
           productImageReferencesUsed: productsForRender.filter((product) => product.imageBytes).length,
           revisedPrompt: result.revisedPrompt ?? null
@@ -2768,7 +2822,8 @@ export async function generateFinalRenderAction(formData: FormData) {
   }
 
   revalidatePath(redirectPath);
-  redirect(`${redirectPath}?message=${encodeURIComponent("Final grounded render generated.")}`);
+  revalidatePath(revealPath);
+  redirect(`${revealPath}?message=${encodeURIComponent("Final render generated.")}`);
 }
 
 export async function reviseConceptAction(formData: FormData) {

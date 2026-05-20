@@ -76,12 +76,6 @@ export default async function ShoppingListPage({
     room_id: roomId
   });
   const commerceUnlocked = Boolean(canAccessCommerce);
-  const { data: profile } = await supabase
-    .from("user_profiles")
-    .select("intended_mode")
-    .eq("user_id", user.id)
-    .maybeSingle();
-  const isDesignerMode = profile?.intended_mode === "designer" || profile?.intended_mode === "both";
   const cardItems: ProductCardItem[] = listItems.map((item) => {
     const product = item.product;
     const dimensions = product?.dimensions?.[0];
@@ -196,7 +190,6 @@ export default async function ShoppingListPage({
               conceptId={shoppingList.concept_id ?? null}
               clientName={project.client_name}
               groups={roleGroups}
-              isDesignerMode={isDesignerMode}
               projectId={projectId}
               roomType={room.room_type}
               roomId={roomId}

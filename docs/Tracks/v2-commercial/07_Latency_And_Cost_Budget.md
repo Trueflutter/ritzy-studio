@@ -63,6 +63,6 @@ Job records must store:
 ## Commercial Guardrails
 
 - Do not let unpaid users trigger unlimited image generation.
-- Do not let expired designer subscriptions trigger new final renders.
+- Do not let expired designer subscriptions trigger unlimited final renders.
 - Do not regenerate final render unnecessarily when selected product set has not changed.
 - Prefer polling/durable status over request blocking for long AI operations.

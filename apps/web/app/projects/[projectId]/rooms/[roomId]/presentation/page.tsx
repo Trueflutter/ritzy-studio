@@ -1,14 +1,28 @@
-import { ButtonLink } from "@ritzy-studio/ui";
+import { AnimatedStatus, ButtonLink, SubmitButton } from "@ritzy-studio/ui";
 import Image from "next/image";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
+import { generateFinalRenderAction } from "@/app/actions";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
 
 import { PrintButton } from "./print-button";
+import { UnlockShoppingListCta } from "./unlock-shopping-list-cta";
 
 export const dynamic = "force-dynamic";
+
+const renderRevealPhases = [
+  "Reading the room photograph",
+  "Reviewing selected dimensions",
+  "Placing the rug",
+  "Anchoring the seating",
+  "Balancing coffee table proportions",
+  "Layering wall art and soft accents",
+  "Checking walkways and clearances",
+  "Tuning daylight and material warmth",
+  "Preparing the final reveal"
+];
 
 export default async function PresentationPage({
   params
@@ -45,13 +59,7 @@ export default async function PresentationPage({
   const { data: canAccessCommerce = false } = await supabase.rpc("can_access_room_commerce", {
     room_id: roomId
   });
-  if (!canAccessCommerce) {
-    redirect(
-      `/projects/${projectId}/rooms/${roomId}/shopping-list?message=${encodeURIComponent(
-        "Unlock this room before opening the client presentation."
-      )}`
-    );
-  }
+  const commerceUnlocked = Boolean(canAccessCommerce);
 
   const serviceSupabase = createServiceClient();
   const { data: selectedConcept } = await supabase
@@ -61,22 +69,6 @@ export default async function PresentationPage({
     .eq("status", "selected")
     .limit(1)
     .maybeSingle();
-
-  const { data: finalRenderAsset } = await supabase
-    .from("room_assets")
-    .select("*")
-    .eq("room_id", roomId)
-    .eq("asset_type", "final_render")
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  const finalRenderUrl = finalRenderAsset?.storage_path
-    ? (
-        await serviceSupabase.storage
-          .from("generated-renders")
-          .createSignedUrl(finalRenderAsset.storage_path, 60 * 60)
-      ).data?.signedUrl
-    : null;
 
   const { data: shoppingList } = await supabase
     .from("shopping_lists")
@@ -104,10 +96,50 @@ export default async function PresentationPage({
         .order("sort_order", { ascending: true })
     : { data: [] };
   const listItems = items ?? [];
+  const selectedItemIds = listItems.map((item) => item.id).sort();
+  const selectionKey = selectedItemIds.join(",");
+  const { data: latestRenderJob } =
+    shoppingList && selectedConcept
+      ? await supabase
+          .from("render_jobs")
+          .select("id, status, error_message, created_at, output_asset_ids")
+          .eq("room_id", roomId)
+          .eq("concept_id", selectedConcept.id)
+          .eq("shopping_list_id", shoppingList.id)
+          .contains("input_summary", { selectionKey })
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle()
+      : { data: null };
+  const matchingRenderAssetId = Array.isArray(latestRenderJob?.output_asset_ids)
+    ? latestRenderJob.output_asset_ids[0]
+    : null;
+  const { data: finalRenderAsset } = matchingRenderAssetId
+    ? await supabase
+        .from("room_assets")
+        .select("*")
+        .eq("id", matchingRenderAssetId)
+        .eq("room_id", roomId)
+        .eq("asset_type", "final_render")
+        .maybeSingle()
+    : { data: null };
+  const finalRenderUrl = finalRenderAsset?.storage_path
+    ? (
+        await serviceSupabase.storage
+          .from("generated-renders")
+          .createSignedUrl(finalRenderAsset.storage_path, 60 * 60)
+      ).data?.signedUrl
+    : null;
+  const renderJobStatus = latestRenderJob?.status ?? null;
+  const showRenderProgress =
+    !finalRenderUrl && (renderJobStatus === "running" || renderJobStatus === "queued");
+  const canRequestRender = Boolean(selectedConcept && shoppingList && selectedItemIds.length > 0);
   const currentEstimateAed =
     listItems.length > 0
       ? listItems.reduce((total, item) => total + currentLineTotalAed(item), 0)
       : shoppingList?.estimated_total_aed;
+  const revealPath = `/projects/${projectId}/rooms/${roomId}/presentation`;
+  const roomLabel = `${project.client_name?.trim().split(/\s+/)[0] ?? "Your"}'s ${room.room_type.toLowerCase()}`;
 
   return (
     <main className="min-h-dvh bg-surface text-ink print:bg-surface">
@@ -126,14 +158,16 @@ export default async function PresentationPage({
           >
             Concepts
           </ButtonLink>
-          <ButtonLink
-            href={`/projects/${projectId}/rooms/${roomId}/shopping-list`}
-            trailing="→"
-            variant="primary"
-          >
-            Shopping list
-          </ButtonLink>
-          <PrintButton />
+          {commerceUnlocked ? (
+            <ButtonLink
+              href={`/projects/${projectId}/rooms/${roomId}/shopping-list`}
+              trailing="→"
+              variant="primary"
+            >
+              Shopping list
+            </ButtonLink>
+          ) : null}
+          {commerceUnlocked ? <PrintButton /> : null}
         </div>
       </header>
 
@@ -141,27 +175,43 @@ export default async function PresentationPage({
         <div className="grid gap-10 lg:grid-cols-[minmax(0,1fr)_320px] print:block">
           <div>
             <p className="font-body text-caption font-medium uppercase text-ink-muted">
-              Ritzy Studio Presentation
+              {commerceUnlocked ? "Ritzy Studio Presentation" : "The reveal"}
             </p>
             <div className="mt-3 h-px w-32 bg-ink" />
             <h1 className="mt-10 font-display text-display-l font-light leading-none tracking-[-0.015em] text-ink print:text-display-m">
-              {project.client_name ?? project.name}
+              {commerceUnlocked ? (project.client_name ?? project.name) : roomLabel}
             </h1>
             <p className="mt-5 max-w-[680px] font-body text-body-m text-ink-secondary">
-              {room.name} · {room.room_type} · {project.location ?? "Dubai / UAE"}
+              {commerceUnlocked
+                ? `${room.name} · ${room.room_type} · ${project.location ?? "Dubai / UAE"}`
+                : "Your selected pieces, brought together in the room."}
             </p>
           </div>
 
           <aside className="border border-line bg-page p-5 print:mt-8">
             <p className="font-body text-caption font-medium uppercase text-ink-muted">
-              Estimate
+              Estimated furniture total
             </p>
             <p className="mt-5 font-display text-display-xs font-light italic text-ink">
               {formatAed(currentEstimateAed)}
             </p>
             <p className="mt-4 font-body text-body-s text-ink-secondary">
-              {listItems.length} selected catalog item{listItems.length === 1 ? "" : "s"}.
+              {listItems.length} selected catalog item{listItems.length === 1 ? "" : "s"}
+              {commerceUnlocked ? "." : " included in this direction."}
             </p>
+            {!commerceUnlocked ? (
+              <div className="mt-6 border-t border-line pt-5">
+                <p className="mb-5 font-body text-body-s text-ink-secondary">
+                  Generate the final shopping list when you are ready for retailer links and
+                  product details.
+                </p>
+                <UnlockShoppingListCta
+                  projectId={projectId}
+                  returnTo={revealPath}
+                  roomId={roomId}
+                />
+              </div>
+            ) : null}
           </aside>
         </div>
 
@@ -176,11 +226,39 @@ export default async function PresentationPage({
                 src={finalRenderUrl}
                 width={1536}
               />
+            ) : showRenderProgress ? (
+              <div className="flex h-full items-center justify-center p-8">
+                <div className="max-w-[520px] text-center">
+                  <p className="font-body text-caption font-medium uppercase tracking-[0.32em] text-ink-muted">
+                    Rendering the room
+                  </p>
+                  <AnimatedStatus className="mt-6" phases={renderRevealPhases} />
+                </div>
+              </div>
             ) : (
               <div className="flex h-full items-center justify-center p-8">
-                <p className="font-display text-display-xs font-light italic text-ink">
-                  Final render pending.
-                </p>
+                <div className="max-w-[560px] text-center">
+                  <p className="font-body text-caption font-medium uppercase tracking-[0.32em] text-ink-muted">
+                    Final render
+                  </p>
+                  <h2 className="mt-6 font-display text-display-xs font-light italic text-ink">
+                    {renderJobStatus === "failed" ? "The render needs another try." : "The render has not started yet."}
+                  </h2>
+                  <p className="mx-auto mt-4 max-w-[440px] font-body text-body-s text-ink-secondary">
+                    {renderJobStatus === "failed"
+                      ? (latestRenderJob?.error_message ??
+                        "The previous render attempt failed before it could create an image.")
+                      : "Generate the room image once your selected catalog pieces are ready."}
+                  </p>
+                  <FinalRenderForm
+                    canRequestRender={canRequestRender}
+                    conceptId={selectedConcept?.id ?? null}
+                    projectId={projectId}
+                    roomId={roomId}
+                    selectedIds={selectedItemIds}
+                    shoppingListId={shoppingList?.id ?? null}
+                  />
+                </div>
               </div>
             )}
           </div>
@@ -201,84 +279,127 @@ export default async function PresentationPage({
           </div>
         </section>
 
-        <section className="mt-12 border border-line">
-          <div className="border-b border-line bg-page px-4 py-4">
-            <p className="font-body text-caption font-medium uppercase text-ink-muted">
-              Selected Products
-            </p>
-          </div>
-          <div className="divide-y divide-line">
-            {listItems.length > 0 ? (
-              listItems.map((item) => {
-                const product = item.product;
-                const dimensions = product?.dimensions?.[0];
+        {commerceUnlocked ? (
+          <section className="mt-12 border border-line">
+            <div className="border-b border-line bg-page px-4 py-4">
+              <p className="font-body text-caption font-medium uppercase text-ink-muted">
+                Selected Products
+              </p>
+            </div>
+            <div className="divide-y divide-line">
+              {listItems.length > 0 ? (
+                listItems.map((item) => {
+                  const product = item.product;
+                  const dimensions = product?.dimensions?.[0];
 
-                return (
-                  <article className="grid gap-4 p-4 md:grid-cols-[96px_minmax(0,1fr)_180px] print:grid-cols-[80px_minmax(0,1fr)_150px]" key={item.id}>
-                    <div className="aspect-[4/3] bg-page">
-                      {product?.primary_image_url ? (
-                        <Image
-                          alt={`${product.name} product image`}
-                          className="h-full w-full object-cover"
-                          height={180}
-                          unoptimized
-                          src={product.primary_image_url}
-                          width={240}
-                        />
-                      ) : null}
-                    </div>
-                    <div>
-                      <p className="font-display text-body-l font-light italic leading-snug text-ink">
-                        {product?.name ?? "Product unavailable"}
-                      </p>
-                      <p className="mt-2 font-body text-body-s text-ink-secondary">
-                        {product?.retailer?.name ?? "Retailer"} · {item.category} ·{" "}
-                        {product?.availability ?? "availability unavailable"}
-                      </p>
-                      <p className="mt-2 font-body text-caption text-ink-muted">
-                        Dimensions:{" "}
-                        {dimensions?.source_text ??
-                          dimensionsText(dimensions?.width_cm, dimensions?.depth_cm, dimensions?.height_cm)}
-                      </p>
-                    </div>
-                    <div className="font-body text-body-s text-ink-secondary md:text-right">
-                      <p>{formatAed(currentLineTotalAed(item))}</p>
-                      {product?.canonical_url ? (
-                        <a
-                          className="mt-2 inline-flex font-display text-button-quiet italic text-ink print:hidden"
-                          href={product.canonical_url}
-                          rel="noreferrer"
-                          target="_blank"
-                        >
-                          retailer page →
-                        </a>
-                      ) : null}
-                    </div>
-                  </article>
-                );
-              })
-            ) : (
-              <div className="p-6">
-                <p className="font-display text-display-xs font-light italic text-ink">
-                  Shopping list pending.
-                </p>
-              </div>
-            )}
-          </div>
-        </section>
+                  return (
+                    <article className="grid gap-4 p-4 md:grid-cols-[96px_minmax(0,1fr)_180px] print:grid-cols-[80px_minmax(0,1fr)_150px]" key={item.id}>
+                      <div className="aspect-[4/3] bg-page">
+                        {product?.primary_image_url ? (
+                          <Image
+                            alt={`${product.name} product image`}
+                            className="h-full w-full object-cover"
+                            height={180}
+                            unoptimized
+                            src={product.primary_image_url}
+                            width={240}
+                          />
+                        ) : null}
+                      </div>
+                      <div>
+                        <p className="font-display text-body-l font-light italic leading-snug text-ink">
+                          {product?.name ?? "Product unavailable"}
+                        </p>
+                        <p className="mt-2 font-body text-body-s text-ink-secondary">
+                          {product?.retailer?.name ?? "Retailer"} · {item.category} ·{" "}
+                          {product?.availability ?? "availability unavailable"}
+                        </p>
+                        <p className="mt-2 font-body text-caption text-ink-muted">
+                          Dimensions:{" "}
+                          {dimensions?.source_text ??
+                            dimensionsText(dimensions?.width_cm, dimensions?.depth_cm, dimensions?.height_cm)}
+                        </p>
+                      </div>
+                      <div className="font-body text-body-s text-ink-secondary md:text-right">
+                        <p>{formatAed(currentLineTotalAed(item))}</p>
+                        {product?.canonical_url ? (
+                          <a
+                            className="mt-2 inline-flex font-display text-button-quiet italic text-ink print:hidden"
+                            href={product.canonical_url}
+                            rel="noreferrer"
+                            target="_blank"
+                          >
+                            retailer page →
+                          </a>
+                        ) : null}
+                      </div>
+                    </article>
+                  );
+                })
+              ) : (
+                <div className="p-6">
+                  <p className="font-display text-display-xs font-light italic text-ink">
+                    Shopping list pending.
+                  </p>
+                </div>
+              )}
+            </div>
+          </section>
+        ) : null}
 
         <section className="mt-10 border border-line bg-page p-5">
           <p className="font-body text-caption font-medium uppercase text-ink-muted">
             Notes
           </p>
           <p className="mt-4 font-body text-body-s text-ink-secondary">
-            Product names, prices, availability, dimensions, images, and retailer links come from
-            catalog records and should be rechecked before purchasing. The render is a best-effort
-            visual composition and may not exactly reproduce every selected SKU.
+            {commerceUnlocked
+              ? "Product names, prices, availability, dimensions, images, and retailer links come from catalog records and should be rechecked before purchasing. The render is a best-effort visual composition and may not exactly reproduce every selected SKU."
+              : "The render is a best-effort visual composition based on your selected pieces. Generate the shopping list to reveal retailer links and product details."}
           </p>
         </section>
       </section>
     </main>
+  );
+}
+
+function FinalRenderForm({
+  canRequestRender,
+  conceptId,
+  projectId,
+  roomId,
+  selectedIds,
+  shoppingListId
+}: {
+  canRequestRender: boolean;
+  conceptId: string | null;
+  projectId: string;
+  roomId: string;
+  selectedIds: string[];
+  shoppingListId: string | null;
+}) {
+  const button = (
+    <SubmitButton
+      className="mt-8"
+      disabled={!canRequestRender || conceptId === null || shoppingListId === null}
+      pendingLabel="Generating render..."
+    >
+      Generate render
+    </SubmitButton>
+  );
+
+  if (!canRequestRender || conceptId === null || shoppingListId === null) {
+    return button;
+  }
+
+  return (
+    <form action={generateFinalRenderAction}>
+      <input name="projectId" type="hidden" value={projectId} />
+      <input name="roomId" type="hidden" value={roomId} />
+      <input name="conceptId" type="hidden" value={conceptId} />
+      <input name="shoppingListId" type="hidden" value={shoppingListId} />
+      <input name="selectedItemIds" type="hidden" value={selectedIds.join(",")} />
+      {button}
+    </form>
   );
 }
 
