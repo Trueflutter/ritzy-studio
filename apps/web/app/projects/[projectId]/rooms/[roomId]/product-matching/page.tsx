@@ -87,6 +87,77 @@ export default async function ProductMatchingPage({
     .limit(1)
     .maybeSingle();
 
+  // Sourcing is its own screen. Until a shopping list exists, this route shows
+  // only the sourcing progress — or a retry on failure — never the workspace.
+  if (!shoppingList) {
+    return (
+      <main className="flex min-h-dvh flex-col bg-page text-ink">
+        <header className="flex min-h-20 items-center justify-between border-b border-line bg-surface px-5 md:px-8 lg:px-12 xl:px-16">
+          <Link className="font-display text-[28px] font-light text-ink" href="/">
+            Ri <span className="font-body text-caption font-medium uppercase text-ink-muted">Ritzy Studio</span>
+          </Link>
+          <ButtonLink
+            href={`/projects/${projectId}/rooms/${roomId}/concepts`}
+            leading="←"
+            variant="chrome"
+          >
+            Back to concepts
+          </ButtonLink>
+        </header>
+
+        <section className="mx-auto flex w-full max-w-[640px] flex-1 flex-col items-center justify-center px-5 py-24 text-center">
+          <p className="font-body text-caption font-medium uppercase tracking-[0.32em] text-ink-muted">
+            N° 06 — Product Matching
+          </p>
+          <div className="mt-3 h-px w-24 bg-ink" />
+
+          {message ? (
+            <>
+              <h1 className="mt-9 font-display text-display-m font-light italic leading-[1.1] text-ink">
+                Sourcing didn’t complete.
+              </h1>
+              <p className="mt-4 font-body text-body-m text-ink-muted">{message}</p>
+              <form action={groundProductsAction} className="mt-9">
+                <input name="projectId" type="hidden" value={projectId} />
+                <input name="roomId" type="hidden" value={roomId} />
+                <input name="conceptId" type="hidden" value={selectedConcept.id} />
+                <SubmitButton pendingLabel="Sourcing pieces..." variant="primary">
+                  Try sourcing again
+                </SubmitButton>
+              </form>
+            </>
+          ) : (
+            <>
+              <h1 className="mt-9 font-display text-display-m font-light italic leading-[1.1] text-ink">
+                Sourcing pieces for {selectedConcept.title}.
+              </h1>
+              <p className="mt-4 max-w-[460px] font-body text-body-m text-ink-muted">
+                Matching catalog products to your concept — prices, dimensions, and retailer
+                links follow.
+              </p>
+              <div className="mt-12">
+                <AnimatedStatus
+                  phases={[
+                    "Sourcing the seating",
+                    "Pricing the lighting",
+                    "Matching the textiles",
+                    "Composing the plan"
+                  ]}
+                />
+              </div>
+              <form action={groundProductsAction} className="hidden" id="auto-source">
+                <input name="projectId" type="hidden" value={projectId} />
+                <input name="roomId" type="hidden" value={roomId} />
+                <input name="conceptId" type="hidden" value={selectedConcept.id} />
+              </form>
+              <AutoSubmit formId="auto-source" />
+            </>
+          )}
+        </section>
+      </main>
+    );
+  }
+
   const { data: shoppingItems = [] } = shoppingList
     ? await serviceSupabase
         .from("shopping_list_items")
@@ -144,8 +215,6 @@ export default async function ProductMatchingPage({
   const latestRenderJob = (conceptRenderJobs ?? [])[0] ?? null;
 
   const shoppingItemsList = shoppingItems ?? [];
-  const shouldAutoSource = !shoppingList && !message;
-  const showRetryAfterError = !shoppingList && Boolean(message);
 
   return (
     <main className="min-h-dvh bg-page text-ink">
@@ -171,9 +240,7 @@ export default async function ProductMatchingPage({
           <h1 className="mt-4 font-display text-display-l font-light leading-[1.05] tracking-[-0.015em] text-ink">
             {finalRenders.length > 0
               ? "Your grounded room is ready."
-              : shoppingList
-                ? "Pieces matched to your concept."
-                : "Match the selected direction to real products."}
+              : "Pieces matched to your concept."}
           </h1>
           <p className="mt-4 font-body text-body-m text-ink-muted">
             {project.name} · {room.name} · {room.room_type}
@@ -181,19 +248,9 @@ export default async function ProductMatchingPage({
         </div>
 
         {message ? (
-          <div className="mt-8 border border-line bg-surface px-4 py-4">
-            <p className="font-display text-body-m italic text-ink-secondary">{message}</p>
-            {showRetryAfterError ? (
-              <form action={groundProductsAction} className="mt-4">
-                <input name="projectId" type="hidden" value={projectId} />
-                <input name="roomId" type="hidden" value={roomId} />
-                <input name="conceptId" type="hidden" value={selectedConcept.id} />
-                <SubmitButton pendingLabel="Generating shopping list..." variant="secondary">
-                  Try sourcing again
-                </SubmitButton>
-              </form>
-            ) : null}
-          </div>
+          <p className="mt-8 border border-line bg-surface px-4 py-3 font-display text-body-m italic text-ink-secondary">
+            {message}
+          </p>
         ) : null}
 
         {(() => {
@@ -240,25 +297,6 @@ export default async function ProductMatchingPage({
           );
         })()}
 
-        {shouldAutoSource ? (
-          <div className="mt-10 flex flex-col items-center text-center">
-            <AnimatedStatus
-              phases={[
-                "Sourcing the seating",
-                "Pricing the lighting",
-                "Matching the textiles",
-                "Composing the plan"
-              ]}
-            />
-            <form action={groundProductsAction} className="hidden" id="auto-source">
-              <input name="projectId" type="hidden" value={projectId} />
-              <input name="roomId" type="hidden" value={roomId} />
-              <input name="conceptId" type="hidden" value={selectedConcept.id} />
-            </form>
-            <AutoSubmit formId="auto-source" />
-          </div>
-        ) : null}
-
         <section className="mt-16 border-t border-line pt-10">
           <div className="flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
             <div className="max-w-[680px]">
@@ -266,41 +304,29 @@ export default async function ProductMatchingPage({
                 Shopping plan
               </p>
               <h2 className="mt-4 font-display text-display-m font-light italic text-ink">
-                {shoppingList ? "Sourced from the live catalog." : "Generate the shopping list."}
+                Sourced from the live catalog.
               </h2>
-              {shoppingList ? (
-                <p className="mt-3 font-body text-body-s text-ink-muted">
-                  Estimated total ·{" "}
-                  <span className="font-display text-body-l font-light italic text-ink">
-                    {formatAed(shoppingList.estimated_total_aed)}
-                  </span>
-                </p>
-              ) : (
-                <p className="mt-3 max-w-[560px] font-body text-body-s text-ink-secondary">
-                  The system will match catalog products to this concept and return prices,
-                  dimensions, and retailer links.
-                </p>
-              )}
+              <p className="mt-3 font-body text-body-s text-ink-muted">
+                Estimated total ·{" "}
+                <span className="font-display text-body-l font-light italic text-ink">
+                  {formatAed(shoppingList.estimated_total_aed)}
+                </span>
+              </p>
             </div>
 
             <div className="flex shrink-0 flex-col items-stretch gap-3 md:flex-row md:items-center">
-              {shoppingList ? (
-                <ButtonLink
-                  href={`/projects/${projectId}/rooms/${roomId}/shopping-list`}
-                  trailing="→"
-                >
-                  Open shopping list
-                </ButtonLink>
-              ) : null}
+              <ButtonLink
+                href={`/projects/${projectId}/rooms/${roomId}/shopping-list`}
+                trailing="→"
+              >
+                Open shopping list
+              </ButtonLink>
               <form action={groundProductsAction}>
                 <input name="projectId" type="hidden" value={projectId} />
                 <input name="roomId" type="hidden" value={roomId} />
                 <input name="conceptId" type="hidden" value={selectedConcept.id} />
-                <SubmitButton
-                  pendingLabel="Generating shopping list..."
-                  variant={shoppingList ? "secondary" : "primary"}
-                >
-                  {shoppingList ? "Refresh matches" : "Generate shopping list"}
+                <SubmitButton pendingLabel="Refreshing matches..." variant="secondary">
+                  Refresh matches
                 </SubmitButton>
               </form>
             </div>
@@ -408,8 +434,8 @@ export default async function ProductMatchingPage({
                   No pieces sourced yet.
                 </p>
                 <p className="mt-3 max-w-[560px] font-body text-body-s text-ink-secondary">
-                  Press <span className="italic">Generate shopping list</span> above to match
-                  catalog products with prices, dimensions, and retailer links.
+                  Press <span className="italic">Refresh matches</span> above to match catalog
+                  products with prices, dimensions, and retailer links.
                 </p>
               </div>
             )}

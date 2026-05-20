@@ -256,11 +256,10 @@ export default async function ConceptsPage({
                     <input name="conceptId" type="hidden" value={hero.id} />
                     <SubmitButton
                       className="w-full"
-                      disabled={hero.isSelected}
-                      pendingLabel="Selecting..."
-                      variant={hero.isSelected ? "secondary" : "primary"}
+                      pendingLabel="Generating shopping list..."
+                      variant="primary"
                     >
-                      {hero.isSelected ? "Selected" : "Select this direction"}
+                      Generate shopping list
                     </SubmitButton>
                   </form>
 
@@ -333,29 +332,6 @@ export default async function ConceptsPage({
           </>
         )}
 
-        {selectedConcept ? (
-          <section className="mt-16 flex flex-col gap-6 border-t border-line pt-10 md:flex-row md:items-end md:justify-between">
-            <div className="max-w-[680px]">
-              <p className="font-body text-caption font-medium uppercase tracking-[0.32em] text-ink-muted">
-                N° 06 — Product Matching
-              </p>
-              <h2 className="mt-4 font-display text-display-m font-light italic text-ink">
-                Next, source the shopping plan.
-              </h2>
-              <p className="mt-3 max-w-[560px] font-body text-body-s text-ink-secondary">
-                Open product matching for the selected concept. Catalog products, prices, and
-                retailer links follow.
-              </p>
-            </div>
-            <ButtonLink
-              className="shrink-0"
-              href={`/projects/${projectId}/rooms/${roomId}/product-matching`}
-              trailing="→"
-            >
-              Continue to sourcing
-            </ButtonLink>
-          </section>
-        ) : null}
       </section>
     </main>
   );
