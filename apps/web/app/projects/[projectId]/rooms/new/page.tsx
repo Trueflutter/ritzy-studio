@@ -129,19 +129,21 @@ export default async function NewRoomPage({
               <input name="projectId" type="hidden" value={project.id} />
               <TextInput
                 autoComplete="off"
+                helper="A short label you'll recognise on the dashboard — make it personal."
                 id="name"
                 label="Room name"
                 name="name"
                 narrative
-                placeholder="Living room"
+                placeholder="Ground floor lounge"
                 required
               />
               <TextInput
                 autoComplete="off"
+                helper="Common types: living, bedroom, dining, kitchen, bathroom, office, hallway."
                 id="roomType"
                 label="Room type"
                 name="roomType"
-                placeholder="Living, bedroom, dining"
+                placeholder="Living"
                 required
               />
 
