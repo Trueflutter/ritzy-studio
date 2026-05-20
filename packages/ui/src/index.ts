@@ -4,6 +4,8 @@ export { Button, ButtonLink } from "./button";
 export { Card, Panel } from "./card";
 export { Chip } from "./chip";
 export { Field, Label, Textarea, TextInput } from "./form";
+export { ImageDropzone } from "./image-dropzone";
+export type { DropzoneProgress, ImageDropzoneError } from "./image-dropzone";
 export { SegmentedControl, Tab, Tabs } from "./tabs";
 export { SubmitButton } from "./submit-button";
 export { cx } from "./utils";
