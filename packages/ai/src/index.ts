@@ -21,6 +21,7 @@ import {
   initialConceptPrompt,
   initialConceptResponseSchema,
   finalGroundedRenderPrompt,
+  roomBlueprintDefaultsLanguage,
   roomDesignLanguage,
   sourceRoomPreservationLanguage,
   styleDesignLanguage,
@@ -279,7 +280,7 @@ function enhancedRitzyInteriorStylingLanguage({
     "Use correctly scaled rugs with believable placement under seating or dining zones; add curtains or window treatment where softness, privacy, or proportion calls for it.",
     "Specify sofas and seating with clear material and color behavior; show tactile upholstery, cushion compression, seams, legs, and true scale.",
     "Layer side tables, coffee table styling, books, trays, vessels, branches or greenery, cushions, throws, and styled surfaces so the room feels complete.",
-    "Only include a TV or media unit when it makes sense from the source room, user intent, or selected concept; do not force a TV into every room.",
+    "Follow the room blueprint defaults before leaving major room roles empty; user avoid-notes and fixed source-room constraints override these defaults.",
     "Avoid generic beige luxury, IKEA catalog feel, fantasy architecture, sterile hotel lobby styling, overdecorated render fluff, visible generated text, fake labels, and watermarks.",
     "Preserve source-room architecture exactly: windows, doors, ceiling, openings, fireplace, columns, staircase, built-ins, AC, fixed services, proportions, camera perspective, and fixed architectural constraints.",
     mode === "final-grounded-render"
@@ -308,6 +309,7 @@ export function buildInitialConceptSystemPrompt({
     sourceRoomPreservationLanguage(roomType),
     globalPhotorealismLanguage(),
     roomDesignLanguage(roomType),
+    roomBlueprintDefaultsLanguage(roomType),
     styleDesignLanguage(styleSlugs)
   ]
     .filter(Boolean)
@@ -336,6 +338,7 @@ export function buildInitialConceptImagePrompt({
         ? "Use the uploaded inspiration images as style references for palette, materials, atmosphere, and composition. Do not reproduce them exactly."
         : null,
       "Preserve visible architecture, walls, windows, doors, ceiling details, AC vents, sockets, built-ins, and fixed bathroom fixtures where present.",
+      roomBlueprintDefaultsLanguage(roomType),
       enhancedRitzyInteriorStylingLanguage({ mode: "initial-concept" }),
       "Redesign movable furniture, lighting, textiles, accessories, and decor according to the concept direction.",
       "Output must look like a photorealistic editorial interior photograph, not an illustration, 3D showroom render, sketch, or mood board.",
@@ -355,6 +358,7 @@ export function buildInitialConceptImagePrompt({
       : null,
     sourceRoomPreservationLanguage(roomType),
     roomDesignLanguage(roomType),
+    roomBlueprintDefaultsLanguage(roomType),
     styleDesignLanguage(styleSlugs),
     globalPhotorealismLanguage(),
     enhancedRitzyInteriorStylingLanguage({ mode: "initial-concept" }),

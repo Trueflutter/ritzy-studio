@@ -1,4 +1,4 @@
-export type RitzyRoomType = "living" | "dining" | "bedroom" | "bathroom" | "default";
+export type RitzyRoomType = "living" | "dining" | "bedroom" | "bathroom" | "office" | "default";
 
 export type RitzyStyleModule = {
   slug: string;
@@ -15,8 +15,39 @@ const roomLanguage: Record<RitzyRoomType, string> = {
     "Design the bedroom around a credible bed wall: scaled headboard, usable bedside tables, warm layered bedside lighting, properly sized rug under the bed, finished window treatments, tactile layered bedding, and restrained art or wall treatment. Make it restful, residential, materially specific, and softly lived-in rather than generic hotel or catalog styling.",
   bathroom:
     "Preserve the existing bathroom layout and fixed fixtures. Upgrade only finishes, vanity/mirror/lighting composition, hardware, glass, towels, and decor unless renovation changes are requested. Resolve the vanity wall as a coherent designer elevation, define wet/dry zones, use believable stone/tile scale and aligned grout/seams, show realistic glass thickness and mirror reflections, and keep styling edited and residential.",
+  office:
+    "Design the home office as a composed residential work room: proper desk placement, ergonomic task chair, storage or shelving, task lighting, softened acoustics/textiles, art or styled background, and cable-conscious practical details. Make it productive, elegant, warm, and camera-ready without becoming corporate.",
   default:
     "Design the room as high-end editorial residential interior photography: layered, warm, tactile, realistic, and livable. Use credible furniture scale, restrained styling, layered lighting, real material texture, and residential composition. Avoid generic catalog staging, fantasy architecture, showroom smoothness, and decorative clutter."
+};
+
+const roomBlueprintLanguage: Record<RitzyRoomType, string> = {
+  living: [
+    "Ritzy living room blueprint: assume a complete Dubai living room includes a TV/media focal wall and media console by default, plus sofa or sectional, secondary seating, coffee table, generous rug, side tables, layered lamps or sconces, wall art or mirror/wall treatment, cushions, throws, greenery, and edited decor.",
+    "Do not omit the TV/media layer unless the brief explicitly asks for no TV, a formal TV-free salon, a protected existing media wall, or a source-room constraint makes it impossible.",
+    "Treat the TV and console as residential and elegant: widescreen TV, refined low console or built-in media unit, concealed cable logic, calm styling, and proportionate placement rather than a showroom electronics wall."
+  ].join(" "),
+  dining: [
+    "Ritzy dining room blueprint: assume a complete dining room includes a correctly scaled dining table, enough dining chairs for the implied household/hosting count, an over-table pendant or chandelier, sideboard/credenza or console where wall space allows, wall art or mirror/wall treatment, restrained table styling, and warm secondary lighting.",
+    "Do not omit the sideboard/credenza layer unless the source room has no credible wall or circulation clearance for it.",
+    "Use a rug only when chair pull-out clearance and scale remain believable."
+  ].join(" "),
+  bedroom: [
+    "Ritzy bedroom blueprint: assume a complete bedroom includes a bed or bed frame, considered headboard or bed wall, paired bedside tables where space allows, bedside lamps or sconces, properly scaled rug, curtains or window softness, layered bedding, wall art or mirror, and a dresser, bench, chair, or storage piece when the room size supports it.",
+    "Keep the bedroom calm and uncluttered, but not unfinished; the result should feel designed, not like a bed placed in an empty room."
+  ].join(" "),
+  bathroom: [
+    "Ritzy bathroom blueprint: preserve plumbing and fixed wet/dry zones while completing the designer layer with vanity lighting, mirror composition, towels, bath mat, tray/vessel styling, hardware, and edited greenery or decor where appropriate.",
+    "Do not invent major plumbing moves unless the brief explicitly requests renovation-level change."
+  ].join(" "),
+  office: [
+    "Ritzy home office blueprint: assume a complete home office includes a properly scaled desk, ergonomic task chair, storage/shelving or credenza, task lamp or layered lighting, rug or textile layer where appropriate, art/pinboard/shelves or a styled video-call background, and cable-conscious practical details.",
+    "Keep it residential and refined, not corporate; include enough storage and lighting that it feels usable rather than staged."
+  ].join(" "),
+  default: [
+    "Ritzy room blueprint: make the room feel complete by including the expected anchor furniture, supporting pieces, lighting, rug or textile layer where appropriate, storage or console where useful, wall art or mirror/wall treatment, and restrained decor.",
+    "Let explicit user avoid-notes override blueprint defaults."
+  ].join(" ")
 };
 
 export const styleDesignModules = [
@@ -113,6 +144,10 @@ export function roomDesignLanguage(roomType: string) {
   return roomLanguage[resolveRoomType(roomType)];
 }
 
+export function roomBlueprintDefaultsLanguage(roomType: string) {
+  return roomBlueprintLanguage[resolveRoomType(roomType)];
+}
+
 export function styleDesignLanguage(styleSlugs: string[]) {
   const resolvedSlugs = resolveStyleSlugs(styleSlugs);
   const selected = resolvedSlugs
@@ -177,6 +212,10 @@ export function productRoleLanguage(roomType: string) {
     return "Consider conservative bathroom product roles without moving plumbing: mirror or medicine cabinet, vanity lighting/sconces, towels, bath mat, stool/bench if space allows, tray/vessel/plant/decor, and only hard fixtures if catalog support and renovation scope are explicit.";
   }
 
+  if (resolved === "office") {
+    return "Consider layered home office product roles without forcing every item: desk, ergonomic task chair, storage/shelving or credenza, task lamp, rug/textiles, wall art or pinboard, and decor that makes the workspace residential, organized, and camera-ready.";
+  }
+
   return "Consider layered product roles that materially define the room: anchor furniture, supporting furniture, rug/textiles, lighting, art or mirror, storage where useful, and restrained decor. Do not force every layer into every room.";
 }
 
@@ -228,6 +267,10 @@ function resolveRoomType(roomType: string): RitzyRoomType {
     normalized.includes("wc")
   ) {
     return "bathroom";
+  }
+
+  if (normalized.includes("office") || normalized.includes("study") || normalized.includes("workspace")) {
+    return "office";
   }
 
   return "default";

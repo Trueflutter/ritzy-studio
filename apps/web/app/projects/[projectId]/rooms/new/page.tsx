@@ -1,3 +1,4 @@
+import { canonicalRoomTypes } from "@ritzy-studio/domain";
 import { ButtonLink, Panel, SubmitButton, TextInput } from "@ritzy-studio/ui";
 import { notFound, redirect } from "next/navigation";
 
@@ -6,6 +7,7 @@ import {
   createRoomAction
 } from "@/app/actions";
 import { createClient } from "@/lib/supabase/server";
+import { RoomTypeSelector } from "./room-type-selector";
 
 export const dynamic = "force-dynamic";
 
@@ -91,8 +93,8 @@ export default async function NewRoomPage({
           {isFirstRoom ? "Name the first room." : "Add a room."}
         </h1>
         <p className="mt-6 max-w-[58ch] font-body text-body-m text-ink-secondary">
-          {project.name} — give the room a short name and a type, then we&apos;ll move on to
-          photographs.
+          {project.name} — give the room a short name and choose what we&apos;re designing, then
+          we&apos;ll move on to photographs.
         </p>
 
         {message ? (
@@ -137,15 +139,7 @@ export default async function NewRoomPage({
                 placeholder="Ground floor lounge"
                 required
               />
-              <TextInput
-                autoComplete="off"
-                helper="Common types: living, bedroom, dining, kitchen, bathroom, office, hallway."
-                id="roomType"
-                label="Room type"
-                name="roomType"
-                placeholder="Living"
-                required
-              />
+              <RoomTypeSelector roomTypes={canonicalRoomTypes} />
 
               <div className="mt-4 flex flex-col-reverse gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <ButtonLink href="/" variant="chrome">

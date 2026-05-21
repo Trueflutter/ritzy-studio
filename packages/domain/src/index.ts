@@ -15,6 +15,45 @@ export const roomStatusSchema = z.enum([
   "complete"
 ]);
 
+export const canonicalRoomTypes = ["Living Room", "Dining Room", "Bedroom", "Home Office"] as const;
+
+export const canonicalRoomTypeSchema = z.enum(canonicalRoomTypes);
+
+export function normalizeRoomType(roomType: string) {
+  const normalized = roomType.trim().toLowerCase();
+
+  if (
+    [
+      "living",
+      "living room",
+      "lounge",
+      "family lounge",
+      "family room",
+      "sitting room",
+      "parlour",
+      "parlor",
+      "salon",
+      "majlis"
+    ].includes(normalized)
+  ) {
+    return "Living Room";
+  }
+
+  if (["dining", "dining room", "dining area"].includes(normalized)) {
+    return "Dining Room";
+  }
+
+  if (["bed", "bedroom", "primary bedroom", "master bedroom", "guest bedroom"].includes(normalized)) {
+    return "Bedroom";
+  }
+
+  if (["office", "home office", "study", "workspace", "work room"].includes(normalized)) {
+    return "Home Office";
+  }
+
+  return canonicalRoomTypeSchema.parse(roomType);
+}
+
 export const createProjectSchema = z.object({
   name: z.string().min(1),
   clientName: z.string().optional(),
@@ -26,7 +65,7 @@ export const createProjectSchema = z.object({
 export const createRoomSchema = z.object({
   projectId: z.uuid(),
   name: z.string().min(1),
-  roomType: z.string().min(1),
+  roomType: z.string().min(1).transform(normalizeRoomType),
   notes: z.string().optional()
 });
 
@@ -38,7 +77,7 @@ export const createProjectWithRoomSchema = z
     budgetMinAed: z.number().nonnegative().optional(),
     budgetMaxAed: z.number().nonnegative().optional(),
     roomName: z.string().min(1),
-    roomType: z.string().min(1)
+    roomType: z.string().min(1).transform(normalizeRoomType)
   })
   .refine(
     (value) =>
@@ -58,7 +97,7 @@ export const setUserModeSchema = z.object({
 export const createHomeownerRoomSchema = z
   .object({
     roomName: z.string().min(1),
-    roomType: z.string().min(1),
+    roomType: z.string().min(1).transform(normalizeRoomType),
     location: z.string().optional(),
     budgetMaxAed: z.number().nonnegative().optional()
   })
