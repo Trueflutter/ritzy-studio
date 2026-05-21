@@ -59,6 +59,22 @@ export type RoomProductRole = {
   visualBrief?: string;
 };
 
+export type ProductRoleImportance = "anchor" | "supporting" | "styling";
+export type ProductRoleInclusion = "always" | "space_allows" | "catalog_supports" | "brief_mentions";
+
+export type EnhancedRoomProductRole = RoomProductRole & {
+  importance: ProductRoleImportance;
+  includeWhen: ProductRoleInclusion;
+};
+
+export type ProductRenderReferenceCandidate = {
+  category: string | null;
+  roleLabel?: string | null;
+  role_label?: string | null;
+  selectionReason?: string | null;
+  selection_reason?: string | null;
+};
+
 export const substitutionModeSchema = z.enum(["cheaper", "closer_style", "same_retailer", "in_stock"]);
 export type SubstitutionMode = z.infer<typeof substitutionModeSchema>;
 
@@ -104,6 +120,58 @@ const roomProductRoles: Record<string, RoomProductRole[]> = {
     { category: "rugs", label: "rug", quantity: 1, required: false },
     { category: "lighting", label: "lighting", quantity: 1, required: false },
     { category: "decor", label: "decor accent", quantity: 2, required: false }
+  ]
+};
+
+const enhancedRoomProductRoles: Record<string, EnhancedRoomProductRole[]> = {
+  living: [
+    { category: "sofas", label: "anchor seating", quantity: 1, required: true, importance: "anchor", includeWhen: "always" },
+    { category: "armchairs", label: "secondary seating", quantity: 2, required: false, importance: "anchor", includeWhen: "space_allows" },
+    { category: "coffee_tables", label: "coffee table", quantity: 1, required: true, importance: "anchor", includeWhen: "always" },
+    { category: "rugs", label: "generous rug", quantity: 1, required: true, importance: "anchor", includeWhen: "always" },
+    { category: "side_tables", label: "side or end tables", quantity: 1, required: false, importance: "supporting", includeWhen: "space_allows" },
+    { category: "lighting", label: "floor or table lighting", quantity: 1, required: false, importance: "supporting", includeWhen: "catalog_supports" },
+    { category: "wall_art", label: "wall art or focal wall", quantity: 1, required: false, importance: "supporting", includeWhen: "catalog_supports" },
+    { category: "mirrors", label: "mirror", quantity: 1, required: false, importance: "supporting", includeWhen: "brief_mentions" },
+    { category: "curtains", label: "curtains or textile layer", quantity: 1, required: false, importance: "styling", includeWhen: "catalog_supports" },
+    { category: "decor", label: "cushions, tray, ceramics, and decor", quantity: 2, required: false, importance: "styling", includeWhen: "catalog_supports" },
+    { category: "storage", label: "console or media storage", quantity: 1, required: false, importance: "supporting", includeWhen: "space_allows" }
+  ],
+  dining: [
+    { category: "dining_tables", label: "dining table", quantity: 1, required: true, importance: "anchor", includeWhen: "always" },
+    { category: "chairs", label: "dining chairs", quantity: 6, required: true, importance: "anchor", includeWhen: "always" },
+    { category: "lighting", label: "over-table lighting", quantity: 1, required: false, importance: "anchor", includeWhen: "catalog_supports" },
+    { category: "side_tables", label: "sideboard or credenza", quantity: 1, required: false, importance: "supporting", includeWhen: "space_allows" },
+    { category: "rugs", label: "dining rug", quantity: 1, required: false, importance: "supporting", includeWhen: "space_allows" },
+    { category: "wall_art", label: "art or mirror", quantity: 1, required: false, importance: "supporting", includeWhen: "catalog_supports" },
+    { category: "mirrors", label: "mirror", quantity: 1, required: false, importance: "supporting", includeWhen: "catalog_supports" },
+    { category: "decor", label: "restrained table decor", quantity: 2, required: false, importance: "styling", includeWhen: "catalog_supports" },
+    { category: "curtains", label: "curtains or textile layer", quantity: 1, required: false, importance: "styling", includeWhen: "catalog_supports" }
+  ],
+  bedroom: [
+    { category: "beds", label: "bed or bed frame", quantity: 1, required: true, importance: "anchor", includeWhen: "always" },
+    { category: "headboards", label: "headboard", quantity: 1, required: false, importance: "anchor", includeWhen: "catalog_supports" },
+    { category: "side_tables", label: "bedside tables", quantity: 2, required: true, importance: "anchor", includeWhen: "always" },
+    { category: "lighting", label: "bedside lighting", quantity: 2, required: false, importance: "supporting", includeWhen: "catalog_supports" },
+    { category: "rugs", label: "bedroom rug", quantity: 1, required: false, importance: "supporting", includeWhen: "space_allows" },
+    { category: "bedding", label: "bedding and textile layer", quantity: 1, required: false, importance: "styling", includeWhen: "catalog_supports" },
+    { category: "curtains", label: "curtains or window treatment", quantity: 1, required: false, importance: "styling", includeWhen: "catalog_supports" },
+    { category: "wall_art", label: "wall art or mirror", quantity: 1, required: false, importance: "supporting", includeWhen: "catalog_supports" },
+    { category: "decor", label: "books, ceramics, and restrained decor", quantity: 2, required: false, importance: "styling", includeWhen: "catalog_supports" }
+  ],
+  bathroom: [
+    { category: "mirrors", label: "mirror or medicine cabinet", quantity: 1, required: true, importance: "anchor", includeWhen: "always" },
+    { category: "lighting", label: "vanity lighting or sconces", quantity: 1, required: false, importance: "supporting", includeWhen: "catalog_supports" },
+    { category: "towels", label: "towels or bath mat", quantity: 2, required: false, importance: "styling", includeWhen: "catalog_supports" },
+    { category: "decor", label: "tray, vessel, plant, or decor", quantity: 1, required: false, importance: "styling", includeWhen: "catalog_supports" },
+    { category: "stools", label: "stool or bench", quantity: 1, required: false, importance: "supporting", includeWhen: "space_allows" }
+  ],
+  default: [
+    { category: "sofas", label: "anchor furniture", quantity: 1, required: true, importance: "anchor", includeWhen: "always" },
+    { category: "rugs", label: "rug or textile foundation", quantity: 1, required: false, importance: "supporting", includeWhen: "space_allows" },
+    { category: "lighting", label: "lighting", quantity: 1, required: false, importance: "supporting", includeWhen: "catalog_supports" },
+    { category: "wall_art", label: "art or mirror", quantity: 1, required: false, importance: "supporting", includeWhen: "catalog_supports" },
+    { category: "decor", label: "restrained decor", quantity: 2, required: false, importance: "styling", includeWhen: "catalog_supports" }
   ]
 };
 
@@ -242,6 +310,49 @@ export function productRolesForRoom(roomType: string) {
   return match?.[1] ?? roomProductRoles.default;
 }
 
+export function enhancedProductRolesForRoom(roomType: string) {
+  const match = enhancedRoomProductRoles[enhancedRoomRoleKey(roomType)];
+  return match ?? enhancedRoomProductRoles.default;
+}
+
+export function renderReferencePriorityForProduct(
+  product: ProductRenderReferenceCandidate,
+  roomType: string
+) {
+  const category = product.category ?? "";
+  const roleText = `${product.roleLabel ?? product.role_label ?? ""} ${
+    product.selectionReason ?? product.selection_reason ?? ""
+  }`.toLowerCase();
+  const enhancedRole = enhancedProductRolesForRoom(roomType).find((role) => role.category === category);
+
+  let priority =
+    enhancedRole?.importance === "anchor" ? 0 : enhancedRole?.importance === "supporting" ? 20 : 40;
+
+  if (roleText.includes("anchor") || roleText.includes("required")) {
+    priority -= 5;
+  }
+
+  if (roleText.includes("decor") || roleText.includes("styling")) {
+    priority += 8;
+  }
+
+  return Math.max(0, priority + categoryPriority(category));
+}
+
+export function sortProductsForRenderReferences<T extends ProductRenderReferenceCandidate>(
+  products: ReadonlyArray<T>,
+  roomType: string
+): T[] {
+  return products
+    .map((product, index) => ({
+      product,
+      index,
+      priority: renderReferencePriorityForProduct(product, roomType)
+    }))
+    .sort((left, right) => left.priority - right.priority || left.index - right.index)
+    .map(({ product }) => product);
+}
+
 export function quantityForProductCategory(roomType: string, category: string | null) {
   if (!category) {
     return 1;
@@ -360,6 +471,59 @@ function categoriesForRoom(roomType: string) {
   const lower = roomType.toLowerCase();
   const match = Object.entries(roomCategoryHints).find(([key]) => lower.includes(key));
   return match?.[1] ?? roomCategoryHints.default;
+}
+
+function categoryPriority(category: string) {
+  const priorityByCategory: Record<string, number> = {
+    sofas: 0,
+    beds: 0,
+    dining_tables: 0,
+    coffee_tables: 2,
+    chairs: 2,
+    armchairs: 2,
+    rugs: 4,
+    side_tables: 6,
+    headboards: 6,
+    mirrors: 8,
+    storage: 8,
+    lighting: 10,
+    wall_art: 12,
+    curtains: 14,
+    bedding: 14,
+    towels: 16,
+    stools: 16,
+    decor: 20
+  };
+
+  return priorityByCategory[category] ?? 30;
+}
+
+function enhancedRoomRoleKey(roomType: string) {
+  const lower = roomType.toLowerCase();
+
+  if (lower.includes("living") || lower.includes("lounge") || lower.includes("family")) {
+    return "living";
+  }
+
+  if (lower.includes("dining")) {
+    return "dining";
+  }
+
+  if (lower.includes("bed") || lower.includes("primary suite")) {
+    return "bedroom";
+  }
+
+  if (
+    lower.includes("bath") ||
+    lower.includes("powder") ||
+    lower.includes("ensuite") ||
+    lower.includes("washroom") ||
+    lower.includes("wc")
+  ) {
+    return "bathroom";
+  }
+
+  return "default";
 }
 
 function allTags(candidate: ProductMatchCandidate) {

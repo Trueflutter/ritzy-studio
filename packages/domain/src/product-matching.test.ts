@@ -4,11 +4,14 @@ import {
   buildShoppingListItemRows,
   composeRoomProductOptions,
   composeRoomProductSet,
+  enhancedProductRolesForRoom,
   filterSubstitutionCandidates,
   groupShoppingItemsByRole,
   quantityForProductCategory,
   rankProductMatches,
+  renderReferencePriorityForProduct,
   selectedItemsTotalAed,
+  sortProductsForRenderReferences,
   type ProductMatchCandidate,
   type RoomProductRoleSpec
 } from "./product-matching";
@@ -282,5 +285,47 @@ assert.equal(legacyGroups.length, 2);
 assert.equal(legacyGroups[0].options.length, 1);
 assert.equal(legacyGroups[0].selectedId, "legacy-1");
 assert.equal(legacyGroups[1].selectedId, "legacy-2");
+
+const enhancedLivingRoles = enhancedProductRolesForRoom("living room");
+assert.deepEqual(
+  enhancedLivingRoles
+    .filter((role) => role.importance === "anchor")
+    .map((role) => role.category),
+  ["sofas", "armchairs", "coffee_tables", "rugs"]
+);
+assert.ok(enhancedLivingRoles.some((role) => role.category === "curtains" && role.includeWhen === "catalog_supports"));
+
+const enhancedBathroomRoles = enhancedProductRolesForRoom("powder room");
+assert.deepEqual(
+  enhancedBathroomRoles.map((role) => role.category),
+  ["mirrors", "lighting", "towels", "decor", "stools"]
+);
+
+const unorderedRenderRefs = [
+  { id: "decor", category: "decor", role_label: "decor accent" },
+  { id: "lamp", category: "lighting", role_label: "supporting lighting" },
+  { id: "sofa", category: "sofas", role_label: "anchor seating" },
+  { id: "rug", category: "rugs", role_label: "required rug" },
+  { id: "art", category: "wall_art", role_label: "wall art" }
+];
+const orderedRenderRefs = sortProductsForRenderReferences(unorderedRenderRefs, "living room");
+assert.deepEqual(
+  orderedRenderRefs.map((item) => item.id),
+  ["sofa", "rug", "lamp", "art", "decor"]
+);
+assert.ok(
+  renderReferencePriorityForProduct({ category: "sofas", roleLabel: "anchor seating" }, "living room") <
+    renderReferencePriorityForProduct({ category: "decor", roleLabel: "decor accent" }, "living room")
+);
+assert.deepEqual(
+  sortProductsForRenderReferences(
+    [
+      { id: "first", category: "lighting", role_label: "table lamp" },
+      { id: "second", category: "lighting", role_label: "floor lamp" }
+    ],
+    "living room"
+  ).map((item) => item.id),
+  ["first", "second"]
+);
 
 console.log("product matching tests passed");

@@ -21,6 +21,7 @@ import {
   rankProductMatches,
   selectedItemsTotalAed,
   setUserModeSchema,
+  sortProductsForRenderReferences,
   substitutionModeSchema,
   visualStyleOptions,
   visualStyleSummary,
@@ -42,6 +43,10 @@ import {
 } from "@/lib/billing/stripe";
 
 const PRODUCT_SOURCING_AI_TIMEOUT_MS = 20_000;
+
+function productReferenceOrderingV2Enabled() {
+  return process.env.RITZY_PRODUCT_REFERENCE_ORDERING_V2_ENABLED === "true";
+}
 
 function optionalString(formData: FormData, key: string) {
   const value = String(formData.get(key) ?? "").trim();
@@ -2754,8 +2759,11 @@ export async function generateFinalRenderAction(formData: FormData) {
 
   after(async () => {
     try {
+      const productReferencesForRender = productReferenceOrderingV2Enabled()
+        ? sortProductsForRenderReferences(selectedProducts, room.room_type)
+        : selectedProducts;
       const productsForRender = await Promise.all(
-        selectedProducts.slice(0, 8).map(async (item) => {
+        productReferencesForRender.slice(0, 8).map(async (item) => {
           const product = item.product!;
           const image = product.primary_image_url
             ? await fetchRemoteImage(product.primary_image_url)
