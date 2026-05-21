@@ -148,6 +148,7 @@ export default async function PresentationPage({
   const renderJobStatus = latestRenderJob?.status ?? null;
   const showRenderProgress =
     !finalRenderUrl && (renderJobStatus === "running" || renderJobStatus === "queued");
+  const showShoppingListUnlock = !commerceUnlocked && Boolean(finalRenderUrl);
   const canRequestRender = Boolean(selectedConcept && shoppingList && selectedItemIds.length > 0);
   const currentEstimateAed =
     listItems.length > 0
@@ -215,7 +216,7 @@ export default async function PresentationPage({
               {listItems.length} selected catalog item{listItems.length === 1 ? "" : "s"}
               {commerceUnlocked ? "." : " included in this direction."}
             </p>
-            {!commerceUnlocked ? (
+            {showShoppingListUnlock ? (
               <div className="mt-6 border-t border-line pt-5">
                 <p className="mb-5 font-body text-body-s text-ink-secondary">
                   Generate the final shopping list when you are ready for retailer links and

@@ -144,8 +144,11 @@ export default async function ProductMatchingPage({
                 Sourcing pieces for {roomDisplayName}.
               </h1>
               <p className="mt-4 max-w-[460px] font-body text-body-m text-ink-muted">
-                Matching catalog products to your concept — prices, dimensions, and retailer
-                links follow.
+                Matching catalog products to your concept. The prices, dimensions, and retailer
+                links will follow afterwards.
+              </p>
+              <p className="mt-3 max-w-[420px] font-body text-body-s text-ink-muted">
+                Sourcing usually takes about 3–5 minutes.
               </p>
               <div className="mt-12">
                 <AnimatedStatus
@@ -157,13 +160,11 @@ export default async function ProductMatchingPage({
                   ]}
                 />
               </div>
-              <form action={groundProductsAction} className="mt-10" id="auto-source">
+              <form action={groundProductsAction} className="sr-only" id="auto-source">
                 <input name="projectId" type="hidden" value={projectId} />
                 <input name="roomId" type="hidden" value={roomId} />
                 <input name="conceptId" type="hidden" value={selectedConcept.id} />
-                <SubmitButton pendingLabel="Sourcing pieces..." variant="primary">
-                  Start sourcing
-                </SubmitButton>
+                <button type="submit">Submit sourcing request</button>
               </form>
               <AutoSubmit formId="auto-source" />
             </>

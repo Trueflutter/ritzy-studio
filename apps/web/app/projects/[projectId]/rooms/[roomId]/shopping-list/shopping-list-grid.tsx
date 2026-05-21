@@ -206,14 +206,11 @@ export function ShoppingListGrid({
           const available = group.items.filter((item) => !rejectedIds.has(item.id));
           const chosenId = selectedByCategory.get(group.category) ?? null;
           const chosenItem = chosenId ? available.find((item) => item.id === chosenId) : null;
-          const shown = chosenItem
-            ? [
-                chosenItem,
-                ...available
-                  .filter((item) => item.id !== chosenId)
-                  .slice(0, VISIBLE_PER_ROLE - 1)
-              ]
-            : available.slice(0, VISIBLE_PER_ROLE);
+          const visibleOptions = available.slice(0, VISIBLE_PER_ROLE);
+          const shown =
+            chosenItem && !visibleOptions.some((item) => item.id === chosenId)
+              ? [...visibleOptions.slice(0, VISIBLE_PER_ROLE - 1), chosenItem]
+              : visibleOptions;
           const needsMore = available.length < VISIBLE_PER_ROLE;
           const finding = isPending && pendingCategory === group.category;
           const refreshableIds = shown
