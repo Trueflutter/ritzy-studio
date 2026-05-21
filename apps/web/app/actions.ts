@@ -44,6 +44,7 @@ import {
 } from "@/lib/billing/stripe";
 
 const PRODUCT_SOURCING_AI_TIMEOUT_MS = 20_000;
+const PRODUCT_MATCHING_CATALOG_LIMIT = 1500;
 
 function productReferenceOrderingV2Enabled() {
   return process.env.RITZY_PRODUCT_REFERENCE_ORDERING_V2_ENABLED === "true";
@@ -1813,7 +1814,8 @@ export async function groundProductsAction(formData: FormData) {
     )
     .not("price_aed", "is", null)
     .not("primary_image_url", "is", null)
-    .limit(250);
+    .order("last_checked_at", { ascending: false, nullsFirst: false })
+    .limit(PRODUCT_MATCHING_CATALOG_LIMIT);
 
   if (productsError) {
     throw new Error(productsError.message);
@@ -2114,7 +2116,8 @@ export async function substituteProductAction(formData: FormData) {
     )
     .not("price_aed", "is", null)
     .not("primary_image_url", "is", null)
-    .limit(250);
+    .order("last_checked_at", { ascending: false, nullsFirst: false })
+    .limit(PRODUCT_MATCHING_CATALOG_LIMIT);
 
   if (productsError) {
     throw new Error(productsError.message);
@@ -2382,7 +2385,8 @@ export async function refreshShoppingOptionsAction(input: {
     )
     .not("price_aed", "is", null)
     .not("primary_image_url", "is", null)
-    .limit(250);
+    .order("last_checked_at", { ascending: false, nullsFirst: false })
+    .limit(PRODUCT_MATCHING_CATALOG_LIMIT);
 
   const candidates = (products ?? [])
     .map(productToMatchCandidate)
@@ -2530,7 +2534,8 @@ export async function findMoreShoppingOptionsAction(input: {
     )
     .not("price_aed", "is", null)
     .not("primary_image_url", "is", null)
-    .limit(250);
+    .order("last_checked_at", { ascending: false, nullsFirst: false })
+    .limit(PRODUCT_MATCHING_CATALOG_LIMIT);
 
   const candidates = (products ?? [])
     .map(productToMatchCandidate)

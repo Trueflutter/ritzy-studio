@@ -38,6 +38,7 @@ assert.equal(parsed.imageUrls?.length, 3);
 
 const categoryHtml = `
 <a href="/ae/en/buy-narissa-3seater-fabric-sofa/p/168425236">Narissa</a>
+<a href="/ae/en/buy-narissa-3seater-fabric-sofa/p/168425236">Narissa duplicate</a>
 <script type="application/ld+json">{"@context":"https://schema.org","@type":"ItemList","itemListElement":[{"@type":"ListItem","item":{"@type":"Product","name":"Flow","url":"https://www.homecentre.com/ae/en/buy-flow-6seater-fabric-sofa/p/168243354"}}]}</script>
 `;
 
