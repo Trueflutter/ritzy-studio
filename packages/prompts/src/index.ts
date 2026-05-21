@@ -4,6 +4,7 @@ export {
   finalRenderProductFidelityLanguage,
   globalPhotorealismLanguage,
   productRoleLanguage,
+  roomBlueprintDefaultsLanguage,
   roomDesignLanguage,
   sourceRoomPreservationLanguage,
   styleDesignLanguage,
