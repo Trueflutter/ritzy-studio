@@ -105,7 +105,7 @@ const materialFamilies: Record<string, string[]> = {
 const roomCategoryHints: Record<string, string[]> = {
   living: ["sofas", "armchairs", "coffee_tables", "side_tables", "rugs", "lighting", "wall_art", "decor"],
   bedroom: ["beds", "side_tables", "rugs", "lighting", "wall_art", "decor"],
-  dining: ["dining_tables", "chairs", "side_tables", "rugs", "lighting", "wall_art", "decor"],
+  dining: ["dining_tables", "chairs", "armchairs", "side_tables", "rugs", "lighting", "wall_art", "decor"],
   bathroom: ["mirrors", "lighting", "decor"],
   default: ["sofas", "armchairs", "coffee_tables", "side_tables", "rugs", "lighting", "wall_art", "decor"]
 };
@@ -729,13 +729,16 @@ export function composeRoomProductOptions({
 
   for (const role of roles) {
     const options: RankedProductMatch[] = [];
+    const acceptedCategories = categoriesForRole(role.category);
     const categoryMatches = ranked
       .map((match, index) => ({
         match,
         index,
-        affinity: roleVisualAffinity(match, role.visualBrief)
+        affinity:
+          roleVisualAffinity(match, role.visualBrief) +
+          (match.categoryNormalized === role.category ? 0 : -18)
       }))
-      .filter(({ match }) => match.categoryNormalized === role.category)
+      .filter(({ match }) => Boolean(match.categoryNormalized && acceptedCategories.has(match.categoryNormalized)))
       .sort(
         (left, right) =>
           right.match.score + right.affinity - (left.match.score + left.affinity) ||
@@ -743,7 +746,7 @@ export function composeRoomProductOptions({
       );
 
     for (const { affinity, match } of categoryMatches) {
-      if (used.has(match.id) || match.categoryNormalized !== role.category) {
+      if (used.has(match.id) || !match.categoryNormalized || !acceptedCategories.has(match.categoryNormalized)) {
         continue;
       }
       options.push(
@@ -771,6 +774,16 @@ export function composeRoomProductOptions({
   }
 
   return result;
+}
+
+function categoriesForRole(category: string) {
+  const categories = new Set([category]);
+
+  if (category === "chairs") {
+    categories.add("armchairs");
+  }
+
+  return categories;
 }
 
 // Flatten role option pools into shopping_list_item rows. The chosen product
