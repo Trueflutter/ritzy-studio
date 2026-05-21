@@ -1428,7 +1428,7 @@ let cachedVertexToken:
       accessToken: string;
       expiresAtMs: number;
       projectId: string | null;
-      credentialsPath: string | null;
+      credentialsSource: string | null;
     }
   | null = null;
 
@@ -1442,14 +1442,18 @@ async function getVertexAuthContext() {
     };
   }
 
+  const credentialsJsonBase64 = process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON_BASE64;
   const credentialsPath = process.env.GOOGLE_APPLICATION_CREDENTIALS;
+  const credentialsSource = credentialsJsonBase64 ? "env:GOOGLE_APPLICATION_CREDENTIALS_JSON_BASE64" : credentialsPath;
 
-  if (!credentialsPath) {
-    throw new Error("GOOGLE_APPLICATION_CREDENTIALS or VERTEX_ACCESS_TOKEN is required for Gemini image generation.");
+  if (!credentialsSource) {
+    throw new Error(
+      "GOOGLE_APPLICATION_CREDENTIALS_JSON_BASE64, GOOGLE_APPLICATION_CREDENTIALS, or VERTEX_ACCESS_TOKEN is required for Gemini image generation."
+    );
   }
 
   if (
-    cachedVertexToken?.credentialsPath === credentialsPath &&
+    cachedVertexToken?.credentialsSource === credentialsSource &&
     cachedVertexToken.expiresAtMs > Date.now() + 60_000
   ) {
     return {
@@ -1458,7 +1462,9 @@ async function getVertexAuthContext() {
     };
   }
 
-  const credentials = JSON.parse(await readFile(credentialsPath, "utf8")) as VertexServiceAccountCredentials;
+  const credentials = credentialsJsonBase64
+    ? (JSON.parse(Buffer.from(credentialsJsonBase64, "base64").toString("utf8")) as VertexServiceAccountCredentials)
+    : (JSON.parse(await readFile(credentialsPath as string, "utf8")) as VertexServiceAccountCredentials);
 
   if (!credentials.client_email || !credentials.private_key) {
     throw new Error("Google service account JSON must include client_email and private_key.");
@@ -1506,7 +1512,7 @@ async function getVertexAuthContext() {
     accessToken: tokenPayload.access_token,
     expiresAtMs: Date.now() + (tokenPayload.expires_in ?? 3600) * 1000,
     projectId: credentials.project_id ?? null,
-    credentialsPath
+    credentialsSource
   };
 
   return {
