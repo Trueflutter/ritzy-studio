@@ -15,6 +15,7 @@ import {
   conceptProductSourcingPrompt,
   conceptProductSourcingResponseSchema,
   conceptRevisionPrompt,
+  finalRenderProductFidelityLanguage,
   globalPhotorealismLanguage,
   initialConceptJsonSchema,
   initialConceptPrompt,
@@ -160,6 +161,7 @@ export type EnrichAndEmbedProductResult = {
 };
 
 export type GenerateFinalGroundedRenderInput = {
+  roomType: string;
   roomPhotoBytes: Buffer;
   roomPhotoMimeType: string;
   conceptImageBytes?: Buffer | null;
@@ -233,6 +235,7 @@ export type SourceProductsFromConceptResult = {
 };
 
 const INITIAL_CONCEPT_PROMPT_V2_VERSION = "2026-05-21.1";
+const FINAL_GROUNDED_RENDER_PROMPT_V2_VERSION = "2026-05-21.1";
 
 export function buildInitialConceptSystemPrompt({
   roomType,
@@ -304,6 +307,72 @@ export function buildInitialConceptImagePrompt({
     globalPhotorealismLanguage(),
     "Redesign movable furniture, lighting, textiles, accessories, and decor according to the concept direction.",
     "Keep the source-photo camera perspective and lens feel. Do not add text labels, prices, product names, retailer claims, or fake product labels."
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+export function buildFinalGroundedRenderPrompt({
+  roomType,
+  conceptTitle,
+  conceptDescription,
+  hasConceptImage,
+  productSummary,
+  useFinalRenderPromptV2 = false
+}: {
+  roomType: string;
+  conceptTitle: string;
+  conceptDescription?: string | null;
+  hasConceptImage?: boolean;
+  productSummary: string;
+  useFinalRenderPromptV2?: boolean;
+}) {
+  if (!useFinalRenderPromptV2) {
+    return [
+      finalGroundedRenderPrompt.system,
+      "",
+      `Selected concept: ${conceptTitle}`,
+      conceptDescription ? `Concept notes: ${conceptDescription}` : null,
+      hasConceptImage
+        ? "The second input image is the approved concept image. Preserve its overall design intent while replacing invented items with the selected catalog products."
+        : null,
+      "",
+      "Selected catalog products:",
+      productSummary,
+      "",
+      "Generate a polished final client-facing photorealistic interior photograph.",
+      "The final image must be product-grounded: main visible furniture and decor should correspond to the selected catalog products by room role, silhouette, color family, and material where possible.",
+      "Do not introduce alternate sofas, armchairs, coffee tables, rugs, wall art, or decor that are not represented in the selected catalog references.",
+      "Use realistic camera exposure, natural shadows, true material texture, believable furniture scale, and residential lighting.",
+      "Avoid illustration, generic CGI showroom smoothness, warped furniture, and impossible reflections.",
+      "Keep the shopping list as the source of truth; the image is a best-effort visual composition."
+    ]
+      .filter(Boolean)
+      .join("\n");
+  }
+
+  return [
+    finalGroundedRenderPrompt.system,
+    "",
+    "Ritzy final render language v2:",
+    sourceRoomPreservationLanguage(roomType),
+    roomDesignLanguage(roomType),
+    globalPhotorealismLanguage(),
+    finalRenderProductFidelityLanguage(),
+    "",
+    `Selected concept: ${conceptTitle}`,
+    conceptDescription ? `Concept notes: ${conceptDescription}` : null,
+    hasConceptImage
+      ? "The second input image is the approved concept image. Preserve its overall design intent, but replace invented concept items with selected catalog products where product references are provided."
+      : null,
+    "",
+    "Selected catalog products, in current reference order:",
+    productSummary,
+    "",
+    "Generate a polished final client-facing editorial residential interior photograph.",
+    "Treat the first selected product references as highest-priority anchor items. Preserve selected product silhouettes, color families, materials, proportions, and visible distinctive features such as legs, arms, seams, tufting, handles, texture, pattern, hardware, or frame shape.",
+    "Do not introduce alternate anchor furniture, rugs, lighting, art, mirrors, or decor when selected product references exist for those roles.",
+    "Keep the shopping list and real product cards as the source of truth; the image remains a best-effort representative interior visualization, not a promise of exact SKU reproduction."
   ]
     .filter(Boolean)
     .join("\n");
@@ -928,6 +997,7 @@ export async function generateFinalGroundedRender(
 ): Promise<GenerateFinalGroundedRenderResult> {
   const env = parseServerEnv(process.env);
   const client = new OpenAI({ apiKey: env.OPENAI_API_KEY });
+  const useFinalRenderPromptV2 = env.RITZY_FINAL_RENDER_PROMPT_V2_ENABLED;
   const roomFile = await toFile(input.roomPhotoBytes, `room.${extensionForMime(input.roomPhotoMimeType)}`, {
     type: input.roomPhotoMimeType
   });
@@ -965,27 +1035,14 @@ export async function generateFinalGroundedRender(
         .join("; ")
     )
     .join("\n");
-  const prompt = [
-    finalGroundedRenderPrompt.system,
-    "",
-    `Selected concept: ${input.conceptTitle}`,
-    input.conceptDescription ? `Concept notes: ${input.conceptDescription}` : null,
-    conceptFile
-      ? "The second input image is the approved concept image. Preserve its overall design intent while replacing invented items with the selected catalog products."
-      : null,
-    "",
-    "Selected catalog products:",
+  const prompt = buildFinalGroundedRenderPrompt({
+    roomType: input.roomType,
+    conceptTitle: input.conceptTitle,
+    conceptDescription: input.conceptDescription,
+    hasConceptImage: Boolean(conceptFile),
     productSummary,
-    "",
-    "Generate a polished final client-facing photorealistic interior photograph.",
-    "The final image must be product-grounded: main visible furniture and decor should correspond to the selected catalog products by room role, silhouette, color family, and material where possible.",
-    "Do not introduce alternate sofas, armchairs, coffee tables, rugs, wall art, or decor that are not represented in the selected catalog references.",
-    "Use realistic camera exposure, natural shadows, true material texture, believable furniture scale, and residential lighting.",
-    "Avoid illustration, generic CGI showroom smoothness, warped furniture, and impossible reflections.",
-    "Keep the shopping list as the source of truth; the image is a best-effort visual composition."
-  ]
-    .filter(Boolean)
-    .join("\n");
+    useFinalRenderPromptV2
+  });
 
   const imageResponse = await client.images.edit({
     model: env.OPENAI_IMAGE_MODEL,
@@ -1005,7 +1062,9 @@ export async function generateFinalGroundedRender(
 
   return {
     promptKey: finalGroundedRenderPrompt.key,
-    promptVersion: finalGroundedRenderPrompt.version,
+    promptVersion: useFinalRenderPromptV2
+      ? FINAL_GROUNDED_RENDER_PROMPT_V2_VERSION
+      : finalGroundedRenderPrompt.version,
     imageModel: env.OPENAI_IMAGE_MODEL,
     imageBase64,
     revisedPrompt: firstImage.revised_prompt ?? null

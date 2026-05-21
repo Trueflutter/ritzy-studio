@@ -2776,6 +2776,7 @@ export async function generateFinalRenderAction(formData: FormData) {
         })
       );
       const result = await generateFinalGroundedRender({
+        roomType: room.room_type,
         roomPhotoBytes: Buffer.from(await roomBlob.arrayBuffer()),
         roomPhotoMimeType: roomPhoto.mime_type,
         conceptImageBytes: conceptBlob ? Buffer.from(await conceptBlob.arrayBuffer()) : null,
