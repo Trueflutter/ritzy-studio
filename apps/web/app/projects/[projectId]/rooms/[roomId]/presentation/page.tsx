@@ -227,6 +227,12 @@ export default async function PresentationPage({
                   returnTo={revealPath}
                   roomId={roomId}
                 />
+                <Link
+                  className="mt-4 inline-flex font-display text-button-quiet italic text-ink transition-colors duration-micro ease-standard hover:text-accent-deep"
+                  href={`/projects/${projectId}/rooms/${roomId}/shopping-list`}
+                >
+                  Change selected pieces →
+                </Link>
               </div>
             ) : null}
           </aside>
