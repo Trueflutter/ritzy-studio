@@ -12,7 +12,9 @@ export type DetailDrawerItem = {
   imageUrl: string | null;
   retailerName: string | null;
   category: string;
-  priceLabel: string;
+  unitPriceLabel: string;
+  lineTotalLabel: string;
+  quantity: number;
   dimensionsLabel: string;
   description: string | null;
   retailerUrl: string | null;
@@ -117,8 +119,13 @@ export function DetailDrawer({ item, open, canAccessCommerce, onClose }: DetailD
                   Price
                 </dt>
                 <dd className="mt-2 font-display text-body-l font-light italic text-ink">
-                  {item.priceLabel}
+                  {item.lineTotalLabel}
                 </dd>
+                {item.quantity > 1 ? (
+                  <dd className="mt-1 font-body text-caption text-ink-muted">
+                    {item.quantity} × {item.unitPriceLabel}
+                  </dd>
+                ) : null}
               </div>
               <div>
                 <dt className="font-body text-caption font-medium uppercase tracking-[0.32em] text-ink-muted">

@@ -82,6 +82,8 @@ export default async function ShoppingListPage({
     const warnings = warningsFor(item, product);
     const warning = warnings.length > 0 ? warnings.join(" ") : null;
     const lineTotal = currentLineTotalAed(item);
+    const unitPrice = currentUnitPriceAed(item);
+    const quantity = item.quantity ?? 1;
 
     return {
       id: item.id,
@@ -93,7 +95,9 @@ export default async function ShoppingListPage({
         imageUrl: product?.primary_image_url ?? null,
         retailerName: product?.retailer?.name ?? null,
         category: item.category,
-        priceLabel: formatAed(lineTotal),
+        unitPriceLabel: formatAed(unitPrice),
+        lineTotalLabel: formatAed(lineTotal),
+        quantity,
         dimensionsLabel:
           dimensions?.source_text ??
           dimensionsText(dimensions?.width_cm, dimensions?.depth_cm, dimensions?.height_cm),
@@ -251,6 +255,18 @@ function currentLineTotalAed(item: {
   }
 
   return item.line_total_aed ?? 0;
+}
+
+function currentUnitPriceAed(item: {
+  unit_price_aed: number | null;
+  product:
+    | {
+        sale_price_aed: number | null;
+        price_aed: number | null;
+      }
+    | null;
+}) {
+  return item.product?.sale_price_aed ?? item.product?.price_aed ?? item.unit_price_aed ?? 0;
 }
 
 function warningsFor(

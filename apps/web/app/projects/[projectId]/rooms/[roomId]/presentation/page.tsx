@@ -150,6 +150,7 @@ export default async function PresentationPage({
     !finalRenderUrl && (renderJobStatus === "running" || renderJobStatus === "queued");
   const showShoppingListUnlock = !commerceUnlocked && Boolean(finalRenderUrl);
   const canRequestRender = Boolean(selectedConcept && shoppingList && selectedItemIds.length > 0);
+  const selectedPieceCount = listItems.reduce((total, item) => total + (item.quantity ?? 1), 0);
   const currentEstimateAed =
     listItems.length > 0
       ? listItems.reduce((total, item) => total + currentLineTotalAed(item), 0)
@@ -213,7 +214,8 @@ export default async function PresentationPage({
               {formatAed(currentEstimateAed)}
             </p>
             <p className="mt-4 font-body text-body-s text-ink-secondary">
-              {listItems.length} selected catalog item{listItems.length === 1 ? "" : "s"}
+              {selectedPieceCount} selected piece{selectedPieceCount === 1 ? "" : "s"} across{" "}
+              {listItems.length} catalog item{listItems.length === 1 ? "" : "s"}
               {commerceUnlocked ? "." : " included in this direction."}
             </p>
             {showShoppingListUnlock ? (
@@ -315,6 +317,9 @@ export default async function PresentationPage({
                 listItems.map((item) => {
                   const product = item.product;
                   const dimensions = product?.dimensions?.[0];
+                  const quantity = item.quantity ?? 1;
+                  const unitPrice = currentUnitPriceAed(item);
+                  const lineTotal = currentLineTotalAed(item);
 
                   return (
                     <article className="grid gap-4 p-4 md:grid-cols-[96px_minmax(0,1fr)_180px] print:grid-cols-[80px_minmax(0,1fr)_150px]" key={item.id}>
@@ -345,7 +350,12 @@ export default async function PresentationPage({
                         </p>
                       </div>
                       <div className="font-body text-body-s text-ink-secondary md:text-right">
-                        <p>{formatAed(currentLineTotalAed(item))}</p>
+                        <p>{formatAed(lineTotal)}</p>
+                        {quantity > 1 ? (
+                          <p className="mt-1 text-caption text-ink-muted">
+                            {quantity} × {formatAed(unitPrice)}
+                          </p>
+                        ) : null}
                         {product?.canonical_url ? (
                           <a
                             className="mt-2 inline-flex font-display text-button-quiet italic text-ink print:hidden"
@@ -467,4 +477,16 @@ function currentLineTotalAed(item: {
   }
 
   return item.line_total_aed ?? 0;
+}
+
+function currentUnitPriceAed(item: {
+  unit_price_aed: number | null;
+  product:
+    | {
+        sale_price_aed: number | null;
+        price_aed: number | null;
+      }
+    | null;
+}) {
+  return item.product?.sale_price_aed ?? item.product?.price_aed ?? item.unit_price_aed ?? 0;
 }

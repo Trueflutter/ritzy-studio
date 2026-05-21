@@ -92,8 +92,13 @@ export function ProductCard({
               Price ·{" "}
             </span>
             <span className="font-display text-body-l font-light italic text-ink">
-              {detail.priceLabel}
+              {detail.lineTotalLabel}
             </span>
+            {detail.quantity > 1 ? (
+              <span className="ml-2 text-ink-muted">
+                {detail.quantity} × {detail.unitPriceLabel}
+              </span>
+            ) : null}
           </p>
           <p>
             <span className="font-body text-caption font-medium uppercase tracking-[0.32em] text-ink-muted">
