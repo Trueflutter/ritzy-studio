@@ -218,6 +218,49 @@ assert.equal(sofaOptions.length, 1);
 assert.equal(sofaOptions[0].category, "sofas");
 assert.equal(sofaOptions[0].options.length, 3);
 
+const colorSensitiveSofaOptions = composeRoomProductOptions({
+  ranked: rankProductMatches({
+    roomType: "living room",
+    conceptText: "living room with an anchor sofa",
+    budgetMaxAed: 10000,
+    candidates: [
+      {
+        ...base,
+        id: "00000000-0000-4000-8000-000000000301",
+        name: "Beige Fabric Sofa",
+        categoryNormalized: "sofas",
+        priceAed: 2600,
+        availability: "in stock",
+        primaryImageUrl: "https://example.com/beige-sofa.jpg",
+        colorTags: ["beige"],
+        materialTags: ["fabric"]
+      },
+      {
+        ...base,
+        id: "00000000-0000-4000-8000-000000000302",
+        name: "Olive Velvet Sofa",
+        categoryNormalized: "sofas",
+        priceAed: 3200,
+        availability: "in stock",
+        primaryImageUrl: "https://example.com/olive-sofa.jpg",
+        colorTags: ["olive", "green"],
+        materialTags: ["velvet"]
+      }
+    ]
+  }),
+  roles: [
+    {
+      category: "sofas",
+      label: "anchor seating",
+      visualBrief: "olive green velvet sofa with a low residential silhouette",
+      quantity: 1,
+      priority: "required"
+    }
+  ],
+  optionsPerRole: 2
+});
+assert.equal(colorSensitiveSofaOptions[0].options[0].name, "Olive Velvet Sofa");
+
 // selected estimate uses selected rows only
 assert.equal(
   selectedItemsTotalAed([
