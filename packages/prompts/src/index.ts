@@ -1,5 +1,17 @@
 import { z } from "zod";
 
+export {
+  finalRenderProductFidelityLanguage,
+  globalPhotorealismLanguage,
+  productRoleLanguage,
+  roomDesignLanguage,
+  sourceRoomPreservationLanguage,
+  styleDesignLanguage,
+  styleDesignModules,
+  type RitzyRoomType,
+  type RitzyStyleModule
+} from "./interior-design-language";
+
 export const clarifyingQuestionsPrompt = {
   key: "brief.clarifying_questions",
   version: "2026-04-29.1",

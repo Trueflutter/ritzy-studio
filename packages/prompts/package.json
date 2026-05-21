@@ -8,7 +8,7 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "tsx src/product-enrichment.test.ts"
+    "test": "tsx src/product-enrichment.test.ts && tsx src/interior-design-language.test.ts"
   },
   "dependencies": {
     "zod": "^4.2.1"

@@ -15,10 +15,14 @@ import {
   conceptProductSourcingPrompt,
   conceptProductSourcingResponseSchema,
   conceptRevisionPrompt,
+  globalPhotorealismLanguage,
   initialConceptJsonSchema,
   initialConceptPrompt,
   initialConceptResponseSchema,
   finalGroundedRenderPrompt,
+  roomDesignLanguage,
+  sourceRoomPreservationLanguage,
+  styleDesignLanguage,
   inspirationAnalysisJsonSchema,
   inspirationAnalysisPrompt,
   inspirationAnalysisResponseSchema,
@@ -79,6 +83,7 @@ export type GenerateInitialConceptInput = {
   roomPhotoBytes: Buffer;
   roomPhotoMimeType: string;
   inspirationImageUrls?: string[];
+  styleSlugs?: string[];
   styleNotes?: string | null;
   colorNotes?: string | null;
   budgetNotes?: string | null;
@@ -226,6 +231,83 @@ export type SourceProductsFromConceptResult = {
   }>;
   missingRoles: string[];
 };
+
+const INITIAL_CONCEPT_PROMPT_V2_VERSION = "2026-05-21.1";
+
+export function buildInitialConceptSystemPrompt({
+  roomType,
+  styleSlugs = [],
+  useInteriorPromptV2 = false
+}: {
+  roomType: string;
+  styleSlugs?: string[];
+  useInteriorPromptV2?: boolean;
+}) {
+  if (!useInteriorPromptV2) {
+    return initialConceptPrompt.system;
+  }
+
+  return [
+    initialConceptPrompt.system,
+    "",
+    "Ritzy interior design language v2:",
+    sourceRoomPreservationLanguage(roomType),
+    globalPhotorealismLanguage(),
+    roomDesignLanguage(roomType),
+    styleDesignLanguage(styleSlugs)
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+export function buildInitialConceptImagePrompt({
+  generationPrompt,
+  roomType,
+  hasInspirationImages,
+  styleSlugs = [],
+  useInteriorPromptV2 = false
+}: {
+  generationPrompt: string;
+  roomType: string;
+  hasInspirationImages?: boolean;
+  styleSlugs?: string[];
+  useInteriorPromptV2?: boolean;
+}) {
+  if (!useInteriorPromptV2) {
+    return [
+      generationPrompt,
+      "",
+      "Use the uploaded room photo as the base image.",
+      hasInspirationImages
+        ? "Use the uploaded inspiration images as style references for palette, materials, atmosphere, and composition. Do not reproduce them exactly."
+        : null,
+      "Preserve visible architecture, walls, windows, doors, ceiling details, AC vents, sockets, built-ins, and fixed bathroom fixtures where present.",
+      "Redesign movable furniture, lighting, textiles, accessories, and decor according to the concept direction.",
+      "Output must look like a photorealistic editorial interior photograph, not an illustration, 3D showroom render, sketch, or mood board.",
+      "Use physically plausible scale, natural shadows, realistic upholstery grain, wood texture, rug fibers, wall finish, and lighting falloff.",
+      "Keep the source-photo camera perspective and lens feel. Do not add text labels, prices, product names, or retailer claims."
+    ]
+      .filter(Boolean)
+      .join("\n");
+  }
+
+  return [
+    generationPrompt,
+    "",
+    "Use the uploaded room photo as the base image.",
+    hasInspirationImages
+      ? "Use the uploaded inspiration images as style references for palette, materials, atmosphere, and composition. Do not reproduce them exactly."
+      : null,
+    sourceRoomPreservationLanguage(roomType),
+    roomDesignLanguage(roomType),
+    styleDesignLanguage(styleSlugs),
+    globalPhotorealismLanguage(),
+    "Redesign movable furniture, lighting, textiles, accessories, and decor according to the concept direction.",
+    "Keep the source-photo camera perspective and lens feel. Do not add text labels, prices, product names, retailer claims, or fake product labels."
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
 
 export async function generateClarifyingQuestions(
   input: GenerateClarifyingQuestionsInput
@@ -453,9 +535,11 @@ export async function generateInitialConcept(
 ): Promise<GenerateInitialConceptResult> {
   const env = parseServerEnv(process.env);
   const client = new OpenAI({ apiKey: env.OPENAI_API_KEY });
+  const useInteriorPromptV2 = env.RITZY_INTERIOR_PROMPT_V2_ENABLED;
 
   const brief = {
     roomType: input.roomType,
+    ...(useInteriorPromptV2 && input.styleSlugs?.length ? { styleSlugs: input.styleSlugs } : {}),
     styleNotes: input.styleNotes,
     colorNotes: input.colorNotes,
     budgetNotes: input.budgetNotes,
@@ -471,7 +555,11 @@ export async function generateInitialConcept(
     input: [
       {
         role: "system",
-        content: initialConceptPrompt.system
+        content: buildInitialConceptSystemPrompt({
+          roomType: input.roomType,
+          styleSlugs: input.styleSlugs,
+          useInteriorPromptV2
+        })
       },
       {
         role: "user",
@@ -514,21 +602,13 @@ export async function generateInitialConcept(
     type: input.roomPhotoMimeType
   });
 
-  const imagePrompt = [
-    direction.concept.generationPrompt,
-    "",
-    "Use the uploaded room photo as the base image.",
-    input.inspirationImageUrls?.length
-      ? "Use the uploaded inspiration images as style references for palette, materials, atmosphere, and composition. Do not reproduce them exactly."
-      : null,
-    "Preserve visible architecture, walls, windows, doors, ceiling details, AC vents, sockets, built-ins, and fixed bathroom fixtures where present.",
-    "Redesign movable furniture, lighting, textiles, accessories, and decor according to the concept direction.",
-    "Output must look like a photorealistic editorial interior photograph, not an illustration, 3D showroom render, sketch, or mood board.",
-    "Use physically plausible scale, natural shadows, realistic upholstery grain, wood texture, rug fibers, wall finish, and lighting falloff.",
-    "Keep the source-photo camera perspective and lens feel. Do not add text labels, prices, product names, or retailer claims."
-  ]
-    .filter(Boolean)
-    .join("\n");
+  const imagePrompt = buildInitialConceptImagePrompt({
+    generationPrompt: direction.concept.generationPrompt,
+    roomType: input.roomType,
+    hasInspirationImages: Boolean(input.inspirationImageUrls?.length),
+    styleSlugs: input.styleSlugs,
+    useInteriorPromptV2
+  });
 
   const imageResponse = await client.images.edit({
     model: env.OPENAI_IMAGE_MODEL,
@@ -549,7 +629,7 @@ export async function generateInitialConcept(
 
   return {
     promptKey: initialConceptPrompt.key,
-    promptVersion: initialConceptPrompt.version,
+    promptVersion: useInteriorPromptV2 ? INITIAL_CONCEPT_PROMPT_V2_VERSION : initialConceptPrompt.version,
     textModel: env.OPENAI_TEXT_MODEL,
     imageModel: env.OPENAI_IMAGE_MODEL,
     analysis: direction.roomAnalysis,
