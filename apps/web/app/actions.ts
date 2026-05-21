@@ -89,6 +89,20 @@ function structuredBriefJson(value: unknown): StructuredBriefJson {
     : {};
 }
 
+function likedStyleSlugsFromStructuredBrief(value: unknown) {
+  const structuredJson = structuredBriefJson(value);
+  const visualPreferences = structuredJson.visualPreferences;
+
+  if (!visualPreferences || typeof visualPreferences !== "object" || Array.isArray(visualPreferences)) {
+    return [];
+  }
+
+  const likedStyleSlugs = (visualPreferences as { likedStyleSlugs?: unknown }).likedStyleSlugs;
+  return Array.isArray(likedStyleSlugs)
+    ? likedStyleSlugs.filter((slug): slug is string => typeof slug === "string")
+    : [];
+}
+
 function optionalValueForPresentField<T>(formData: FormData, key: string, value: T | undefined) {
   return formData.has(key) ? (value ?? null) : undefined;
 }
@@ -1583,6 +1597,7 @@ export async function generateInitialConceptAction(formData: FormData) {
       roomPhotoBytes: photoBytes,
       roomPhotoMimeType: roomPhoto.mime_type,
       inspirationImageUrls: signedInspirationUrls,
+      styleSlugs: likedStyleSlugsFromStructuredBrief(designBrief.structured_json),
       styleNotes: designBrief.style_notes,
       colorNotes: designBrief.color_notes,
       budgetNotes: designBrief.budget_notes,

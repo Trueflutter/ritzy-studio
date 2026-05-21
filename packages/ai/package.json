@@ -8,7 +8,7 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "tsx src/product-enrichment.test.ts"
+    "test": "tsx src/product-enrichment.test.ts && tsx src/initial-concept-prompt.test.ts"
   },
   "dependencies": {
     "@ritzy-studio/config": "workspace:*",
