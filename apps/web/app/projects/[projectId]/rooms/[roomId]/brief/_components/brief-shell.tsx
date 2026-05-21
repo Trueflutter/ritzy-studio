@@ -31,9 +31,14 @@ export function BriefShell({
         <Link className="font-display text-[28px] font-light text-ink" href="/">
           Ri <span className="font-body text-caption font-medium uppercase text-ink-muted">Ritzy Studio</span>
         </Link>
-        <ButtonLink href="/" leading="←" variant="chrome">
-          Back to studio
-        </ButtonLink>
+        <div className="flex items-center gap-3">
+          <ButtonLink href={backHref} leading="←" variant="chrome">
+            Previous step
+          </ButtonLink>
+          <ButtonLink href="/" variant="chrome">
+            Studio
+          </ButtonLink>
+        </div>
       </header>
 
       <div className="mx-auto max-w-[1040px] px-5 py-12 md:px-8 lg:px-12 xl:px-16">
@@ -57,7 +62,7 @@ export function BriefShell({
 
         <div className="mt-10">
           <ButtonLink href={backHref} leading="←" variant="chrome">
-            Back
+            Previous step
           </ButtonLink>
         </div>
       </div>
