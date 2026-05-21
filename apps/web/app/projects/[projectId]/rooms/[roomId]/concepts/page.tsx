@@ -256,10 +256,10 @@ export default async function ConceptsPage({
                     <input name="conceptId" type="hidden" value={hero.id} />
                     <SubmitButton
                       className="w-full"
-                      pendingLabel="Generating shopping list..."
+                      pendingLabel="Starting sourcing..."
                       variant="primary"
                     >
-                      Generate shopping list
+                      Proceed to sourcing
                     </SubmitButton>
                   </form>
 
