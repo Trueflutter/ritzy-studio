@@ -21,6 +21,7 @@ import {
   initialConceptPrompt,
   initialConceptResponseSchema,
   finalGroundedRenderPrompt,
+  productRoleLanguage,
   roomBlueprintDefaultsLanguage,
   roomDesignLanguage,
   sourceRoomPreservationLanguage,
@@ -755,7 +756,7 @@ export async function sourceProductsFromConcept(
 ): Promise<SourceProductsFromConceptResult> {
   const env = parseServerEnv(process.env);
   const client = new OpenAI({ apiKey: env.OPENAI_API_KEY });
-  const candidateLimit = 24;
+  const candidateLimit = 36;
   const allowedProductIds = new Set(input.candidates.map((candidate) => candidate.id));
   const candidateSummary = input.candidates
     .slice(0, candidateLimit)
@@ -808,6 +809,8 @@ export async function sourceProductsFromConcept(
             type: "input_text",
             text: [
               `Room type: ${input.roomType}`,
+              `Room blueprint: ${roomBlueprintDefaultsLanguage(input.roomType)}`,
+              `Expected product roles: ${productRoleLanguage(input.roomType)}`,
               `Approved concept title: ${input.conceptTitle}`,
               input.conceptDescription ? `Approved concept notes: ${input.conceptDescription}` : null,
               "",

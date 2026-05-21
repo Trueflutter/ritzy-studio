@@ -378,12 +378,23 @@ assert.deepEqual(
   ["sofas", "armchairs", "coffee_tables", "rugs"]
 );
 assert.ok(enhancedLivingRoles.some((role) => role.category === "curtains" && role.includeWhen === "catalog_supports"));
+assert.ok(enhancedLivingRoles.some((role) => role.category === "storage" && role.label.includes("TV media")));
+
+const enhancedDiningRoles = enhancedProductRolesForRoom("dining room");
+assert.ok(
+  enhancedDiningRoles.some((role) => role.category === "storage" && role.label.includes("sideboard"))
+);
 
 const enhancedBathroomRoles = enhancedProductRolesForRoom("powder room");
 assert.deepEqual(
   enhancedBathroomRoles.map((role) => role.category),
   ["mirrors", "lighting", "towels", "decor", "stools"]
 );
+
+const enhancedOfficeRoles = enhancedProductRolesForRoom("Home Office");
+assert.ok(enhancedOfficeRoles.some((role) => role.category === "desks"));
+assert.ok(enhancedOfficeRoles.some((role) => role.category === "office_chairs"));
+assert.ok(!enhancedOfficeRoles.some((role) => role.category === "sofas"));
 
 const unorderedRenderRefs = [
   { id: "decor", category: "decor", role_label: "decor accent" },
@@ -410,6 +421,55 @@ assert.deepEqual(
     "living room"
   ).map((item) => item.id),
   ["first", "second"]
+);
+
+const diverseSofaOptions = composeRoomProductOptions({
+  ranked: rankProductMatches({
+    roomType: "living room",
+    conceptText: "living room with a sofa",
+    budgetMaxAed: 10000,
+    candidates: [
+      {
+        ...base,
+        id: "00000000-0000-4000-8000-000000000401",
+        name: "Cream Fabric Sofa 1",
+        categoryNormalized: "sofas",
+        priceAed: 2500,
+        availability: "in stock",
+        primaryImageUrl: "https://example.com/cream-sofa-1.jpg",
+        colorTags: ["cream"],
+        materialTags: ["fabric"]
+      },
+      {
+        ...base,
+        id: "00000000-0000-4000-8000-000000000402",
+        name: "Cream Fabric Sofa 2",
+        categoryNormalized: "sofas",
+        priceAed: 2600,
+        availability: "in stock",
+        primaryImageUrl: "https://example.com/cream-sofa-2.jpg",
+        colorTags: ["cream"],
+        materialTags: ["fabric"]
+      },
+      {
+        ...base,
+        id: "00000000-0000-4000-8000-000000000403",
+        name: "Green Velvet Sofa",
+        categoryNormalized: "sofas",
+        priceAed: 4200,
+        availability: "in stock",
+        primaryImageUrl: "https://example.com/green-sofa.jpg",
+        colorTags: ["green"],
+        materialTags: ["velvet"]
+      }
+    ]
+  }),
+  roles: [{ category: "sofas", label: "anchor seating", visualBrief: null, quantity: 1, priority: "required" }],
+  optionsPerRole: 3
+});
+assert.deepEqual(
+  diverseSofaOptions[0].options.map((option) => option.name),
+  ["Cream Fabric Sofa 1", "Green Velvet Sofa", "Cream Fabric Sofa 2"]
 );
 
 console.log("product matching tests passed");
