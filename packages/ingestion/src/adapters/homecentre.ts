@@ -8,15 +8,23 @@ const BASE_URL = "https://www.homecentre.com";
 const DEFAULT_CATEGORY_URLS = [
   "https://www.homecentre.com/ae/en/c/furniture-sofaandseating-sofasandsofasets",
   "https://www.homecentre.com/ae/en/c/furniture-sofaandseating-armchairs",
+  "https://www.homecentre.com/ae/en/c/furniture-livingroom",
   "https://www.homecentre.com/ae/en/c/furniture-livingroom-coffeetables",
   "https://www.homecentre.com/ae/en/c/furniture-livingroom-sideandendtables",
+  "https://www.homecentre.com/ae/en/c/furniture-livingroom-tvandmediaunits",
   "https://www.homecentre.com/ae/en/c/household-rugsandcarpets-rugs",
   "https://www.homecentre.com/ae/en/c/household-walldecorandmirrors-wallart",
+  "https://www.homecentre.com/ae/en/c/household-walldecorandmirrors-mirrors",
   "https://www.homecentre.com/ae/en/c/household-decor-vasesandflowers-vases",
   "https://www.homecentre.com/ae/en/c/household-cushionsandthrows-filledcushions-decorativecushions",
-  "https://www.homecentre.com/ae/en/c/lighting-tablelamps",
+  "https://www.homecentre.com/ae/en/c/household-lighting-floorlamps",
+  "https://www.homecentre.com/ae/en/c/household-lighting-tableanddesklamps",
+  "https://www.homecentre.com/ae/en/c/household-lighting-walllamps",
   "https://www.homecentre.com/ae/en/c/furniture-bedroom-beds",
-  "https://www.homecentre.com/ae/en/c/furniture-diningroom-diningtables"
+  "https://www.homecentre.com/ae/en/c/furniture-diningroom",
+  "https://www.homecentre.com/ae/en/c/furniture-diningroom-diningtables",
+  "https://www.homecentre.com/ae/en/c/furniture-diningroom-chairsandbenches",
+  "https://www.homecentre.com/ae/en/c/furniture-office"
 ];
 
 const cache = new Map<string, string>();
@@ -147,6 +155,8 @@ export function parseHomeCentreProductHtml(
     material:
       extractAttributeValue(html, "Upholstery Material") ??
       extractAttributeValue(html, "Frame material") ??
+      extractAttributeValue(html, "Primary Material") ??
+      extractAttributeValue(html, "Secondary Material") ??
       null,
     dimensionsText: extractDimensionsText(html)
   };
