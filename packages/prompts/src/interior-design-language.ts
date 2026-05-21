@@ -197,11 +197,11 @@ export function productRoleLanguage(roomType: string) {
   const resolved = resolveRoomType(roomType);
 
   if (resolved === "living") {
-    return "Consider layered living room product roles without forcing every item: anchor seating, secondary seating, coffee table, side/end tables, generous rug, floor/table lighting, wall art or mirror, curtains/textiles when catalog supports them, cushions/decor, and console/media/storage when the room needs a wall anchor.";
+    return "Consider layered living room product roles from the Ritzy blueprint: anchor seating, secondary seating, coffee table, side/end tables, generous rug, TV/media console or built-in media unit by default, floor/table lighting, wall art or mirror, curtains/textiles when catalog supports them, and cushions/decor.";
   }
 
   if (resolved === "dining") {
-    return "Consider layered dining room product roles without forcing every item: dining table, dining chairs, over-table lighting, sideboard/credenza/bar cabinet when wall space allows, rug only when practical, wall art or mirror, restrained table decor, and curtains/textiles when visible and catalog-supported.";
+    return "Consider layered dining room product roles from the Ritzy blueprint: dining table, dining chairs, over-table lighting, sideboard/credenza/dining console where wall space allows, rug only when practical, wall art or mirror, restrained table decor, and curtains/textiles when visible and catalog-supported.";
   }
 
   if (resolved === "bedroom") {

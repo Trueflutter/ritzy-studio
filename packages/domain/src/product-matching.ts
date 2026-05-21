@@ -103,10 +103,32 @@ const materialFamilies: Record<string, string[]> = {
 };
 
 const roomCategoryHints: Record<string, string[]> = {
-  living: ["sofas", "armchairs", "coffee_tables", "side_tables", "rugs", "lighting", "wall_art", "decor"],
+  living: [
+    "sofas",
+    "armchairs",
+    "coffee_tables",
+    "side_tables",
+    "rugs",
+    "storage",
+    "lighting",
+    "wall_art",
+    "mirrors",
+    "decor"
+  ],
   bedroom: ["beds", "side_tables", "rugs", "lighting", "wall_art", "decor"],
-  dining: ["dining_tables", "chairs", "armchairs", "side_tables", "rugs", "lighting", "wall_art", "decor"],
+  dining: [
+    "dining_tables",
+    "chairs",
+    "armchairs",
+    "storage",
+    "rugs",
+    "lighting",
+    "wall_art",
+    "mirrors",
+    "decor"
+  ],
   bathroom: ["mirrors", "lighting", "decor"],
+  office: ["desks", "office_chairs", "chairs", "storage", "lighting", "rugs", "wall_art", "decor"],
   default: ["sofas", "armchairs", "coffee_tables", "side_tables", "rugs", "lighting", "wall_art", "decor"]
 };
 
@@ -159,13 +181,13 @@ const enhancedRoomProductRoles: Record<string, EnhancedRoomProductRole[]> = {
     { category: "mirrors", label: "mirror", quantity: 1, required: false, importance: "supporting", includeWhen: "brief_mentions" },
     { category: "curtains", label: "curtains or textile layer", quantity: 1, required: false, importance: "styling", includeWhen: "catalog_supports" },
     { category: "decor", label: "cushions, tray, ceramics, and decor", quantity: 2, required: false, importance: "styling", includeWhen: "catalog_supports" },
-    { category: "storage", label: "console or media storage", quantity: 1, required: false, importance: "supporting", includeWhen: "space_allows" }
+    { category: "storage", label: "TV media console or built-in media unit", quantity: 1, required: false, importance: "supporting", includeWhen: "catalog_supports" }
   ],
   dining: [
     { category: "dining_tables", label: "dining table", quantity: 1, required: true, importance: "anchor", includeWhen: "always" },
     { category: "chairs", label: "dining chairs", quantity: 6, required: true, importance: "anchor", includeWhen: "always" },
     { category: "lighting", label: "over-table lighting", quantity: 1, required: false, importance: "anchor", includeWhen: "catalog_supports" },
-    { category: "side_tables", label: "sideboard or credenza", quantity: 1, required: false, importance: "supporting", includeWhen: "space_allows" },
+    { category: "storage", label: "sideboard, credenza, or dining console", quantity: 1, required: false, importance: "supporting", includeWhen: "catalog_supports" },
     { category: "rugs", label: "dining rug", quantity: 1, required: false, importance: "supporting", includeWhen: "space_allows" },
     { category: "wall_art", label: "art or mirror", quantity: 1, required: false, importance: "supporting", includeWhen: "catalog_supports" },
     { category: "mirrors", label: "mirror", quantity: 1, required: false, importance: "supporting", includeWhen: "catalog_supports" },
@@ -189,6 +211,15 @@ const enhancedRoomProductRoles: Record<string, EnhancedRoomProductRole[]> = {
     { category: "towels", label: "towels or bath mat", quantity: 2, required: false, importance: "styling", includeWhen: "catalog_supports" },
     { category: "decor", label: "tray, vessel, plant, or decor", quantity: 1, required: false, importance: "styling", includeWhen: "catalog_supports" },
     { category: "stools", label: "stool or bench", quantity: 1, required: false, importance: "supporting", includeWhen: "space_allows" }
+  ],
+  office: [
+    { category: "desks", label: "desk", quantity: 1, required: true, importance: "anchor", includeWhen: "always" },
+    { category: "office_chairs", label: "ergonomic task chair", quantity: 1, required: true, importance: "anchor", includeWhen: "always" },
+    { category: "storage", label: "storage, shelving, or credenza", quantity: 1, required: false, importance: "supporting", includeWhen: "catalog_supports" },
+    { category: "lighting", label: "task lamp or layered lighting", quantity: 1, required: false, importance: "supporting", includeWhen: "catalog_supports" },
+    { category: "rugs", label: "rug or textile layer", quantity: 1, required: false, importance: "supporting", includeWhen: "space_allows" },
+    { category: "wall_art", label: "art, pinboard, or styled background", quantity: 1, required: false, importance: "supporting", includeWhen: "catalog_supports" },
+    { category: "decor", label: "organized desk decor", quantity: 1, required: false, importance: "styling", includeWhen: "catalog_supports" }
   ],
   default: [
     { category: "sofas", label: "anchor furniture", quantity: 1, required: true, importance: "anchor", includeWhen: "always" },
@@ -745,7 +776,7 @@ export function composeRoomProductOptions({
           left.index - right.index
       );
 
-    for (const { affinity, match } of categoryMatches) {
+    for (const { affinity, match } of diverseRoleMatches(categoryMatches, perRole)) {
       if (used.has(match.id) || !match.categoryNormalized || !acceptedCategories.has(match.categoryNormalized)) {
         continue;
       }
@@ -776,10 +807,67 @@ export function composeRoomProductOptions({
   return result;
 }
 
+function diverseRoleMatches(
+  matches: Array<{ match: RankedProductMatch; index: number; affinity: number }>,
+  limit: number
+) {
+  const selected: Array<{ match: RankedProductMatch; index: number; affinity: number }> = [];
+  const seenSignatures = new Set<string>();
+  const shortlist = matches.slice(0, Math.max(limit * 4, limit));
+
+  for (const candidate of shortlist) {
+    if (selected.length === 0) {
+      selected.push(candidate);
+      seenSignatures.add(diversitySignature(candidate.match));
+      continue;
+    }
+
+    const signature = diversitySignature(candidate.match);
+    if (seenSignatures.has(signature) && selected.length < Math.min(limit, 3)) {
+      continue;
+    }
+
+    selected.push(candidate);
+    seenSignatures.add(signature);
+
+    if (selected.length >= limit) {
+      return selected;
+    }
+  }
+
+  for (const candidate of matches) {
+    if (selected.some(({ match }) => match.id === candidate.match.id)) {
+      continue;
+    }
+
+    selected.push(candidate);
+
+    if (selected.length >= limit) {
+      break;
+    }
+  }
+
+  return selected;
+}
+
+function diversitySignature(match: RankedProductMatch) {
+  const price = match.salePriceAed ?? match.priceAed ?? 0;
+  const priceBand = price < 1000 ? "low" : price < 3000 ? "mid" : "high";
+  const color = match.colorTags[0] ?? match.color ?? "unknown-color";
+  const material = match.materialTags[0] ?? match.material ?? "unknown-material";
+
+  return `${match.categoryNormalized ?? "uncategorized"}:${priceBand}:${color}:${material}`;
+}
+
 function categoriesForRole(category: string) {
   const categories = new Set([category]);
 
   if (category === "chairs") {
+    categories.add("armchairs");
+  }
+
+  if (category === "office_chairs") {
+    categories.add("chairs");
     categories.add("armchairs");
   }
 

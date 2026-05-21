@@ -17,6 +17,7 @@ import {
   buildShoppingListItemRows,
   composeRoomProductOptions,
   filterSubstitutionCandidates,
+  enhancedProductRolesForRoom,
   productRolesForRoom,
   rankProductMatches,
   selectedItemsTotalAed,
@@ -1848,6 +1849,13 @@ export async function groundProductsAction(formData: FormData) {
         .from("generated-renders")
         .createSignedUrl(conceptImageAsset.storage_path, 60 * 30)
     : { data: null };
+  const blueprintRoles: RoomProductRoleSpec[] = enhancedProductRolesForRoom(room.room_type).map((role) => ({
+    category: role.category,
+    label: role.label,
+    visualBrief: role.visualBrief ?? null,
+    quantity: role.quantity,
+    priority: role.required ? "required" : "supporting"
+  }));
   const sourcingResult = conceptSignedImage?.signedUrl
     ? await withTimeout(
         sourceProductsFromConcept({
@@ -1855,7 +1863,7 @@ export async function groundProductsAction(formData: FormData) {
           conceptTitle: concept.title,
           conceptDescription: concept.description,
           conceptImageUrl: conceptSignedImage.signedUrl,
-          candidates: shortlistSourcingCandidates(ranked).slice(0, 24).map(matchToSourcingCandidate)
+          candidates: shortlistSourcingCandidates(ranked, blueprintRoles).map(matchToSourcingCandidate)
         }),
         PRODUCT_SOURCING_AI_TIMEOUT_MS,
         "Product visual sourcing timed out."
@@ -1892,13 +1900,16 @@ export async function groundProductsAction(formData: FormData) {
     quantity: Math.max(1, need.quantity),
     priority: need.priority === "required" ? "required" : "supporting"
   }));
-  const staticRoles: RoomProductRoleSpec[] = productRolesForRoom(room.room_type).map((role) => ({
-    category: role.category,
-    label: role.label,
-    visualBrief: role.visualBrief ?? null,
-    quantity: role.quantity,
-    priority: role.required ? "required" : "supporting"
-  }));
+  const legacyRequiredRoles: RoomProductRoleSpec[] = productRolesForRoom(room.room_type)
+    .filter((role) => role.required)
+    .map((role) => ({
+      category: role.category,
+      label: role.label,
+      visualBrief: role.visualBrief ?? null,
+      quantity: role.quantity,
+      priority: "required"
+    }));
+  const staticRoles = mergeRoomRoles(blueprintRoles, legacyRequiredRoles);
   const aiRoleCategories = new Set(aiRoles.map((role) => role.category));
   const roles =
     aiRoles.length > 0
@@ -3213,8 +3224,26 @@ function catalogUnavailableMessage(products: ProductRow[]) {
   return "The shopping catalog is refreshing eligible products. Please try again shortly.";
 }
 
-function shortlistSourcingCandidates(ranked: RankedProductMatch[]) {
+function mergeRoomRoles(primary: RoomProductRoleSpec[], secondary: RoomProductRoleSpec[]) {
+  const roles: RoomProductRoleSpec[] = [];
+  const categories = new Set<string>();
+
+  for (const role of [...primary, ...secondary]) {
+    if (categories.has(role.category)) {
+      continue;
+    }
+
+    roles.push(role);
+    categories.add(role.category);
+  }
+
+  return roles;
+}
+
+function shortlistSourcingCandidates(ranked: RankedProductMatch[], roles: RoomProductRoleSpec[] = []) {
   const byCategory = new Map<string, RankedProductMatch[]>();
+  const selectedIds = new Set<string>();
+  const selected: RankedProductMatch[] = [];
 
   for (const match of ranked) {
     const category = match.categoryNormalized ?? "uncategorized";
@@ -3225,10 +3254,24 @@ function shortlistSourcingCandidates(ranked: RankedProductMatch[]) {
     }
   }
 
-  return Array.from(byCategory.values())
+  for (const role of roles) {
+    const categoryMatches = byCategory.get(role.category) ?? [];
+    const take = role.priority === "required" ? 4 : 2;
+    for (const match of categoryMatches.slice(0, take)) {
+      if (selectedIds.has(match.id)) {
+        continue;
+      }
+      selected.push(match);
+      selectedIds.add(match.id);
+    }
+  }
+
+  const fill = Array.from(byCategory.values())
     .flat()
     .sort((left, right) => right.score - left.score)
-    .slice(0, 36);
+    .filter((match) => !selectedIds.has(match.id));
+
+  return [...selected, ...fill].slice(0, 36);
 }
 
 function matchToSourcingCandidate(match: RankedProductMatch) {
@@ -3299,8 +3342,8 @@ function normalizeSourcingCategory(category: string, roleLabel: string) {
     return "decor";
   }
 
-  if (text.includes("console") || text.includes("storage")) {
-    return "consoles";
+  if (text.includes("console") || text.includes("storage") || text.includes("media")) {
+    return "storage";
   }
 
   return category.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
