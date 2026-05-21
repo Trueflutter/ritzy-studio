@@ -3242,6 +3242,10 @@ function matchToSourcingCandidate(match: RankedProductMatch) {
 function normalizeSourcingCategory(category: string, roleLabel: string) {
   const text = `${category} ${roleLabel}`.toLowerCase();
 
+  if (text.includes("dining") && text.includes("chair")) {
+    return "chairs";
+  }
+
   if (text.includes("armchair") || text.includes("chair") || text.includes("lounge")) {
     return "armchairs";
   }

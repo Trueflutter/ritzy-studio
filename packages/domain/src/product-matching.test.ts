@@ -261,6 +261,47 @@ const colorSensitiveSofaOptions = composeRoomProductOptions({
 });
 assert.equal(colorSensitiveSofaOptions[0].options[0].name, "Olive Velvet Sofa");
 
+const diningChairFallbackOptions = composeRoomProductOptions({
+  ranked: rankProductMatches({
+    roomType: "dining room",
+    conceptText: "dining room with a dining table and six upholstered dining chairs",
+    budgetMaxAed: 10000,
+    candidates: [
+      {
+        ...base,
+        id: "00000000-0000-4000-8000-000000000311",
+        name: "Walnut Dining Table",
+        categoryNormalized: "dining_tables",
+        priceAed: 4500,
+        availability: "in stock",
+        primaryImageUrl: "https://example.com/dining-table.jpg"
+      },
+      {
+        ...base,
+        id: "00000000-0000-4000-8000-000000000312",
+        name: "Upholstered Chair",
+        categoryNormalized: "armchairs",
+        priceAed: 700,
+        availability: "in stock",
+        primaryImageUrl: "https://example.com/chair.jpg",
+        materialTags: ["upholstered", "fabric"]
+      }
+    ]
+  }),
+  roles: [
+    {
+      category: "chairs",
+      label: "dining chairs",
+      visualBrief: "six upholstered dining chairs",
+      quantity: 6,
+      priority: "required"
+    }
+  ],
+  optionsPerRole: 2
+});
+assert.equal(diningChairFallbackOptions[0].category, "chairs");
+assert.equal(diningChairFallbackOptions[0].options[0].name, "Upholstered Chair");
+
 // selected estimate uses selected rows only
 assert.equal(
   selectedItemsTotalAed([
