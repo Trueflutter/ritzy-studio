@@ -35,6 +35,7 @@ assert.equal(normalizeCategory("Furniture > Office > Office Desks"), "desks");
 assert.equal(normalizeCategory("Furniture > Office > Office Chairs"), "office_chairs");
 assert.equal(normalizeCategory("Furniture > Office > Bookcases"), "storage");
 assert.equal(normalizeCategory("Household > Lighting > Floor Lamps"), "lighting");
+assert.equal(normalizeCategory("Household > Lighting > Table & Desk Lamps"), "lighting");
 
 const normalized = normalizeProductCandidate({
   canonicalUrl: "https://example.com/products/sofa",
