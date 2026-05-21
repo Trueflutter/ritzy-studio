@@ -30,9 +30,28 @@ import {
   productMetadataEnrichmentJsonSchema,
   productMetadataEnrichmentPrompt
 } from "@ritzy-studio/prompts";
-import { createHash } from "node:crypto";
+import { createHash, createSign } from "node:crypto";
+import { readFile } from "node:fs/promises";
 import OpenAI, { toFile } from "openai";
 import type { SupabaseClient } from "@supabase/supabase-js";
+
+type ImageProvider = "gemini" | "openai";
+
+type ImageGenerationReference = {
+  bytes: Buffer;
+  mimeType: string;
+  name: string;
+};
+
+type ImageGenerationAttempt = {
+  provider: ImageProvider;
+  model: string;
+  imageBase64: string;
+  revisedPrompt?: string | null;
+  latencySeconds: number;
+  fallbackUsed: boolean;
+  error?: string | null;
+};
 
 export type GenerateClarifyingQuestionsInput = {
   roomType: string;
@@ -108,6 +127,10 @@ export type GenerateInitialConceptResult = {
   promptVersion: string;
   textModel: string;
   imageModel: string;
+  imageProvider: ImageProvider;
+  imageLatencySeconds: number;
+  imageFallbackUsed: boolean;
+  imageFallbackError?: string | null;
   analysis: {
     detectedRoomType: string;
     fixedArchitecture: string[];
@@ -184,7 +207,11 @@ export type GenerateFinalGroundedRenderInput = {
 export type GenerateFinalGroundedRenderResult = {
   promptKey: string;
   promptVersion: string;
+  imageProvider: ImageProvider;
   imageModel: string;
+  imageLatencySeconds: number;
+  imageFallbackUsed: boolean;
+  imageFallbackError?: string | null;
   imageBase64: string;
   revisedPrompt?: string | null;
 };
@@ -234,8 +261,32 @@ export type SourceProductsFromConceptResult = {
   missingRoles: string[];
 };
 
-const INITIAL_CONCEPT_PROMPT_V2_VERSION = "2026-05-21.1";
-const FINAL_GROUNDED_RENDER_PROMPT_V2_VERSION = "2026-05-21.1";
+const INITIAL_CONCEPT_PROMPT_V2_VERSION = "2026-05-21.2";
+const FINAL_GROUNDED_RENDER_PROMPT_V2_VERSION = "2026-05-21.2";
+const ENHANCED_RITZY_IMAGE_STYLING_VERSION = "enhanced-ritzy-styling-2026-05-21.1";
+
+function enhancedRitzyInteriorStylingLanguage({
+  mode
+}: {
+  mode: "initial-concept" | "final-grounded-render";
+}) {
+  return [
+    `Ritzy enhanced image styling layer (${ENHANCED_RITZY_IMAGE_STYLING_VERSION}):`,
+    "Make this editorial residential photography, not a CGI showroom, furniture catalog, mood board, hotel lobby, or bare staging.",
+    "Design for a high-end but livable Dubai villa or townhouse interior: polished, residential, warm, collected, and usable.",
+    "Add finished interior designer styling where appropriate: wall art, mirrors, paneling, shelves, or intentionally calm negative space; avoid empty walls unless the room architecture genuinely calls for restraint.",
+    "Use layered lighting where architecturally plausible: floor lamps, table lamps, sconces, picture lights, pendants, ceiling lighting, or concealed lighting that feels residential and motivated.",
+    "Use correctly scaled rugs with believable placement under seating or dining zones; add curtains or window treatment where softness, privacy, or proportion calls for it.",
+    "Specify sofas and seating with clear material and color behavior; show tactile upholstery, cushion compression, seams, legs, and true scale.",
+    "Layer side tables, coffee table styling, books, trays, vessels, branches or greenery, cushions, throws, and styled surfaces so the room feels complete.",
+    "Only include a TV or media unit when it makes sense from the source room, user intent, or selected concept; do not force a TV into every room.",
+    "Avoid generic beige luxury, IKEA catalog feel, fantasy architecture, sterile hotel lobby styling, overdecorated render fluff, visible generated text, fake labels, and watermarks.",
+    "Preserve source-room architecture exactly: windows, doors, ceiling, openings, fireplace, columns, staircase, built-ins, AC, fixed services, proportions, camera perspective, and fixed architectural constraints.",
+    mode === "final-grounded-render"
+      ? "For product-grounded final renders, preserve selected catalog product silhouette, color family, material, scale, and distinctive features wherever possible. Add non-commerce styling layers such as art, lamps, books, flowers, cushions, throws, and decor only when they do not conflict with the selected product list."
+      : "For concept generation, prioritize strong interior-design art direction while keeping the source room physically plausible and residential."
+  ].join("\n");
+}
 
 export function buildInitialConceptSystemPrompt({
   roomType,
@@ -285,6 +336,7 @@ export function buildInitialConceptImagePrompt({
         ? "Use the uploaded inspiration images as style references for palette, materials, atmosphere, and composition. Do not reproduce them exactly."
         : null,
       "Preserve visible architecture, walls, windows, doors, ceiling details, AC vents, sockets, built-ins, and fixed bathroom fixtures where present.",
+      enhancedRitzyInteriorStylingLanguage({ mode: "initial-concept" }),
       "Redesign movable furniture, lighting, textiles, accessories, and decor according to the concept direction.",
       "Output must look like a photorealistic editorial interior photograph, not an illustration, 3D showroom render, sketch, or mood board.",
       "Use physically plausible scale, natural shadows, realistic upholstery grain, wood texture, rug fibers, wall finish, and lighting falloff.",
@@ -305,6 +357,7 @@ export function buildInitialConceptImagePrompt({
     roomDesignLanguage(roomType),
     styleDesignLanguage(styleSlugs),
     globalPhotorealismLanguage(),
+    enhancedRitzyInteriorStylingLanguage({ mode: "initial-concept" }),
     "Redesign movable furniture, lighting, textiles, accessories, and decor according to the concept direction.",
     "Keep the source-photo camera perspective and lens feel. Do not add text labels, prices, product names, retailer claims, or fake product labels."
   ]
@@ -342,6 +395,7 @@ export function buildFinalGroundedRenderPrompt({
       "",
       "Generate a polished final client-facing photorealistic interior photograph.",
       "The final image must be product-grounded: main visible furniture and decor should correspond to the selected catalog products by room role, silhouette, color family, and material where possible.",
+      enhancedRitzyInteriorStylingLanguage({ mode: "final-grounded-render" }),
       "Do not introduce alternate sofas, armchairs, coffee tables, rugs, wall art, or decor that are not represented in the selected catalog references.",
       "Use realistic camera exposure, natural shadows, true material texture, believable furniture scale, and residential lighting.",
       "Avoid illustration, generic CGI showroom smoothness, warped furniture, and impossible reflections.",
@@ -359,6 +413,7 @@ export function buildFinalGroundedRenderPrompt({
     roomDesignLanguage(roomType),
     globalPhotorealismLanguage(),
     finalRenderProductFidelityLanguage(),
+    enhancedRitzyInteriorStylingLanguage({ mode: "final-grounded-render" }),
     "",
     `Selected concept: ${conceptTitle}`,
     conceptDescription ? `Concept notes: ${conceptDescription}` : null,
@@ -376,6 +431,198 @@ export function buildFinalGroundedRenderPrompt({
   ]
     .filter(Boolean)
     .join("\n");
+}
+
+async function generateImageWithConfiguredProvider({
+  client,
+  prompt,
+  references,
+  noImageErrorMessage
+}: {
+  client: OpenAI;
+  prompt: string;
+  references: ImageGenerationReference[];
+  noImageErrorMessage: string;
+}): Promise<ImageGenerationAttempt> {
+  const env = parseServerEnv(process.env);
+
+  if (env.RITZY_IMAGE_PROVIDER === "gemini") {
+    const startedAt = Date.now();
+
+    try {
+      return await generateGeminiImage({
+        prompt,
+        references,
+        model: env.GEMINI_IMAGE_MODEL,
+        projectId: env.GOOGLE_CLOUD_PROJECT,
+        location: env.GOOGLE_CLOUD_LOCATION
+      });
+    } catch (error) {
+      const fallbackError = formatImageGenerationError(error);
+      const fallbackAttempt = await generateOpenAiImage({
+        client,
+        prompt,
+        references,
+        model: env.OPENAI_IMAGE_MODEL,
+        noImageErrorMessage
+      });
+
+      return {
+        ...fallbackAttempt,
+        latencySeconds: secondsSince(startedAt),
+        fallbackUsed: true,
+        error: fallbackError
+      };
+    }
+  }
+
+  return generateOpenAiImage({
+    client,
+    prompt,
+    references,
+    model: env.OPENAI_IMAGE_MODEL,
+    noImageErrorMessage
+  });
+}
+
+async function generateOpenAiImage({
+  client,
+  prompt,
+  references,
+  model,
+  noImageErrorMessage
+}: {
+  client: OpenAI;
+  prompt: string;
+  references: ImageGenerationReference[];
+  model: string;
+  noImageErrorMessage: string;
+}): Promise<ImageGenerationAttempt> {
+  const startedAt = Date.now();
+  const files = await Promise.all(
+    references.map((reference) =>
+      toFile(reference.bytes, `${reference.name}.${extensionForMime(reference.mimeType)}`, {
+        type: reference.mimeType
+      })
+    )
+  );
+  const imageResponse = await client.images.edit({
+    model,
+    image: files.length === 1 ? files[0] : files,
+    prompt,
+    size: "1536x1024",
+    quality: "high",
+    ...imageFidelityParams(model),
+    output_format: "png"
+  });
+
+  const firstImage = imageResponse.data?.[0];
+  const imageBase64 = firstImage?.b64_json;
+
+  if (!imageBase64) {
+    throw new Error(noImageErrorMessage);
+  }
+
+  return {
+    provider: "openai",
+    model,
+    imageBase64,
+    revisedPrompt: firstImage.revised_prompt ?? null,
+    latencySeconds: secondsSince(startedAt),
+    fallbackUsed: false,
+    error: null
+  };
+}
+
+async function generateGeminiImage({
+  prompt,
+  references,
+  model,
+  projectId,
+  location
+}: {
+  prompt: string;
+  references: ImageGenerationReference[];
+  model: string;
+  projectId?: string;
+  location: string;
+}): Promise<ImageGenerationAttempt> {
+  const startedAt = Date.now();
+  const auth = await getVertexAuthContext();
+  const resolvedProjectId = projectId || auth.projectId;
+
+  if (!resolvedProjectId) {
+    throw new Error("GOOGLE_CLOUD_PROJECT is required for Gemini image generation.");
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 60_000);
+  const endpoint = `https://aiplatform.googleapis.com/v1/projects/${encodeURIComponent(
+    resolvedProjectId
+  )}/locations/${encodeURIComponent(location)}/publishers/google/models/${encodeURIComponent(model)}:generateContent`;
+
+  try {
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${auth.accessToken}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        contents: [
+          {
+            role: "user",
+            parts: [
+              { text: prompt },
+              ...references.map((reference) => ({
+                inlineData: {
+                  mimeType: reference.mimeType,
+                  data: reference.bytes.toString("base64")
+                }
+              }))
+            ]
+          }
+        ],
+        generationConfig: {
+          responseModalities: ["TEXT", "IMAGE"],
+          imageConfig: {
+            aspectRatio: "16:9"
+          }
+        }
+      }),
+      signal: controller.signal
+    });
+
+    const payload = (await response.json().catch(() => null)) as GeminiGenerateContentResponse | null;
+
+    if (!response.ok) {
+      throw new Error(geminiErrorMessage(payload) ?? `Gemini image generation failed with HTTP ${response.status}.`);
+    }
+
+    const imageBase64 = extractGeminiImageBase64(payload);
+
+    if (!imageBase64) {
+      throw new Error("Gemini image generation returned no image data.");
+    }
+
+    return {
+      provider: "gemini",
+      model,
+      imageBase64,
+      revisedPrompt: null,
+      latencySeconds: secondsSince(startedAt),
+      fallbackUsed: false,
+      error: null
+    };
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") {
+      throw new Error("Gemini image generation timed out after 60 seconds.");
+    }
+
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 export async function generateClarifyingQuestions(
@@ -668,10 +915,6 @@ export async function generateInitialConcept(
   });
 
   const direction = initialConceptResponseSchema.parse(JSON.parse(directionResponse.output_text));
-  const roomFile = await toFile(input.roomPhotoBytes, `room.${extensionForMime(input.roomPhotoMimeType)}`, {
-    type: input.roomPhotoMimeType
-  });
-
   const imagePrompt = buildInitialConceptImagePrompt({
     generationPrompt: direction.concept.generationPrompt,
     roomType: input.roomType,
@@ -680,32 +923,34 @@ export async function generateInitialConcept(
     useInteriorPromptV2
   });
 
-  const imageResponse = await client.images.edit({
-    model: env.OPENAI_IMAGE_MODEL,
-    image: roomFile,
+  const imageResult = await generateImageWithConfiguredProvider({
+    client,
     prompt: imagePrompt,
-    size: "1536x1024",
-    quality: "high",
-    ...imageFidelityParams(env.OPENAI_IMAGE_MODEL),
-    output_format: "png"
+    references: [
+      {
+        bytes: input.roomPhotoBytes,
+        mimeType: input.roomPhotoMimeType,
+        name: "room"
+      }
+    ],
+    noImageErrorMessage: "OpenAI image generation returned no image data."
   });
-
-  const firstImage = imageResponse.data?.[0];
-  const imageBase64 = firstImage?.b64_json;
-
-  if (!imageBase64) {
-    throw new Error("OpenAI image generation returned no image data.");
-  }
 
   return {
     promptKey: initialConceptPrompt.key,
-    promptVersion: useInteriorPromptV2 ? INITIAL_CONCEPT_PROMPT_V2_VERSION : initialConceptPrompt.version,
+    promptVersion: useInteriorPromptV2
+      ? INITIAL_CONCEPT_PROMPT_V2_VERSION
+      : `${initialConceptPrompt.version}+${ENHANCED_RITZY_IMAGE_STYLING_VERSION}`,
     textModel: env.OPENAI_TEXT_MODEL,
-    imageModel: env.OPENAI_IMAGE_MODEL,
+    imageProvider: imageResult.provider,
+    imageModel: imageResult.model,
+    imageLatencySeconds: imageResult.latencySeconds,
+    imageFallbackUsed: imageResult.fallbackUsed,
+    imageFallbackError: imageResult.error ?? null,
     analysis: direction.roomAnalysis,
     concept: direction.concept,
-    imageBase64,
-    revisedPrompt: firstImage.revised_prompt ?? null
+    imageBase64: imageResult.imageBase64,
+    revisedPrompt: imageResult.revisedPrompt ?? null
   };
 }
 
@@ -778,6 +1023,7 @@ export async function generateConceptRevision(
     "Keep the source-photo camera perspective and lens feel. Do not add text labels, prices, product names, or retailer claims."
   ].join("\n");
 
+  const imageStartedAt = Date.now();
   const imageResponse = await client.images.edit({
     model: env.OPENAI_IMAGE_MODEL,
     image: roomFile,
@@ -799,7 +1045,11 @@ export async function generateConceptRevision(
     promptKey: conceptRevisionPrompt.key,
     promptVersion: conceptRevisionPrompt.version,
     textModel: env.OPENAI_TEXT_MODEL,
+    imageProvider: "openai",
     imageModel: env.OPENAI_IMAGE_MODEL,
+    imageLatencySeconds: secondsSince(imageStartedAt),
+    imageFallbackUsed: false,
+    imageFallbackError: null,
     analysis: direction.roomAnalysis,
     concept: direction.concept,
     imageBase64,
@@ -999,29 +1249,15 @@ export async function generateFinalGroundedRender(
   const env = parseServerEnv(process.env);
   const client = new OpenAI({ apiKey: env.OPENAI_API_KEY });
   const useFinalRenderPromptV2 = env.RITZY_FINAL_RENDER_PROMPT_V2_ENABLED;
-  const roomFile = await toFile(input.roomPhotoBytes, `room.${extensionForMime(input.roomPhotoMimeType)}`, {
-    type: input.roomPhotoMimeType
-  });
-  const conceptFile =
-    input.conceptImageBytes && input.conceptImageMimeType
-      ? await toFile(input.conceptImageBytes, `concept.${extensionForMime(input.conceptImageMimeType)}`, {
-          type: input.conceptImageMimeType
-        })
-      : null;
-  const productFiles = await Promise.all(
-    input.products
-      .filter((product) => product.imageBytes && product.imageMimeType)
-      .slice(0, 8)
-      .map((product, index) =>
-        toFile(
-          product.imageBytes as Buffer,
-          `product-${index}.${extensionForMime(product.imageMimeType as string)}`,
-          {
-            type: product.imageMimeType as string
-          }
-        )
-      )
-  );
+  const hasConceptImage = Boolean(input.conceptImageBytes && input.conceptImageMimeType);
+  const productReferences = input.products
+    .filter((product) => product.imageBytes && product.imageMimeType)
+    .slice(0, 8)
+    .map((product, index) => ({
+      bytes: product.imageBytes as Buffer,
+      mimeType: product.imageMimeType as string,
+      name: `product-${index}`
+    }));
   const productSummary = input.products
     .map((product, index) =>
       [
@@ -1040,35 +1276,46 @@ export async function generateFinalGroundedRender(
     roomType: input.roomType,
     conceptTitle: input.conceptTitle,
     conceptDescription: input.conceptDescription,
-    hasConceptImage: Boolean(conceptFile),
+    hasConceptImage,
     productSummary,
     useFinalRenderPromptV2
   });
 
-  const imageResponse = await client.images.edit({
-    model: env.OPENAI_IMAGE_MODEL,
-    image: [roomFile, ...(conceptFile ? [conceptFile] : []), ...productFiles],
+  const imageResult = await generateImageWithConfiguredProvider({
+    client,
     prompt,
-    size: "1536x1024",
-    quality: "high",
-    ...imageFidelityParams(env.OPENAI_IMAGE_MODEL),
-    output_format: "png"
+    references: [
+      {
+        bytes: input.roomPhotoBytes,
+        mimeType: input.roomPhotoMimeType,
+        name: "room"
+      },
+      ...(input.conceptImageBytes && input.conceptImageMimeType
+        ? [
+            {
+              bytes: input.conceptImageBytes,
+              mimeType: input.conceptImageMimeType,
+              name: "concept"
+            }
+          ]
+        : []),
+      ...productReferences
+    ],
+    noImageErrorMessage: "OpenAI final render generation returned no image data."
   });
-  const firstImage = imageResponse.data?.[0];
-  const imageBase64 = firstImage?.b64_json;
-
-  if (!imageBase64) {
-    throw new Error("OpenAI final render generation returned no image data.");
-  }
 
   return {
     promptKey: finalGroundedRenderPrompt.key,
     promptVersion: useFinalRenderPromptV2
       ? FINAL_GROUNDED_RENDER_PROMPT_V2_VERSION
-      : finalGroundedRenderPrompt.version,
-    imageModel: env.OPENAI_IMAGE_MODEL,
-    imageBase64,
-    revisedPrompt: firstImage.revised_prompt ?? null
+      : `${finalGroundedRenderPrompt.version}+${ENHANCED_RITZY_IMAGE_STYLING_VERSION}`,
+    imageProvider: imageResult.provider,
+    imageModel: imageResult.model,
+    imageLatencySeconds: imageResult.latencySeconds,
+    imageFallbackUsed: imageResult.fallbackUsed,
+    imageFallbackError: imageResult.error ?? null,
+    imageBase64: imageResult.imageBase64,
+    revisedPrompt: imageResult.revisedPrompt ?? null
   };
 }
 
@@ -1143,4 +1390,178 @@ function productEnrichmentSourcePayload(input: ProductEnrichmentInput) {
 
 function imageFidelityParams(model: string) {
   return model.includes("gpt-image-2") ? {} : { input_fidelity: "high" as const };
+}
+
+type GeminiGenerateContentResponse = {
+  candidates?: Array<{
+    content?: {
+      parts?: Array<{
+        text?: string;
+        inlineData?: {
+          mimeType?: string;
+          data?: string;
+        };
+        inline_data?: {
+          mime_type?: string;
+          data?: string;
+        };
+      }>;
+    };
+    finishReason?: string;
+  }>;
+  error?: {
+    message?: string;
+    status?: string;
+  };
+};
+
+type VertexServiceAccountCredentials = {
+  type?: string;
+  project_id?: string;
+  private_key?: string;
+  client_email?: string;
+  token_uri?: string;
+};
+
+let cachedVertexToken:
+  | {
+      accessToken: string;
+      expiresAtMs: number;
+      projectId: string | null;
+      credentialsPath: string | null;
+    }
+  | null = null;
+
+async function getVertexAuthContext() {
+  const directToken = process.env.GOOGLE_OAUTH_ACCESS_TOKEN ?? process.env.VERTEX_ACCESS_TOKEN;
+
+  if (directToken) {
+    return {
+      accessToken: directToken,
+      projectId: process.env.GOOGLE_CLOUD_PROJECT ?? null
+    };
+  }
+
+  const credentialsPath = process.env.GOOGLE_APPLICATION_CREDENTIALS;
+
+  if (!credentialsPath) {
+    throw new Error("GOOGLE_APPLICATION_CREDENTIALS or VERTEX_ACCESS_TOKEN is required for Gemini image generation.");
+  }
+
+  if (
+    cachedVertexToken?.credentialsPath === credentialsPath &&
+    cachedVertexToken.expiresAtMs > Date.now() + 60_000
+  ) {
+    return {
+      accessToken: cachedVertexToken.accessToken,
+      projectId: cachedVertexToken.projectId
+    };
+  }
+
+  const credentials = JSON.parse(await readFile(credentialsPath, "utf8")) as VertexServiceAccountCredentials;
+
+  if (!credentials.client_email || !credentials.private_key) {
+    throw new Error("Google service account JSON must include client_email and private_key.");
+  }
+
+  const now = Math.floor(Date.now() / 1000);
+  const assertion = signJwt({
+    header: {
+      alg: "RS256",
+      typ: "JWT"
+    },
+    payload: {
+      iss: credentials.client_email,
+      scope: "https://www.googleapis.com/auth/cloud-platform",
+      aud: credentials.token_uri ?? "https://oauth2.googleapis.com/token",
+      exp: now + 3600,
+      iat: now
+    },
+    privateKey: credentials.private_key
+  });
+  const tokenResponse = await fetch(credentials.token_uri ?? "https://oauth2.googleapis.com/token", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded"
+    },
+    body: new URLSearchParams({
+      grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
+      assertion
+    })
+  });
+  const tokenPayload = (await tokenResponse.json().catch(() => null)) as
+    | {
+        access_token?: string;
+        expires_in?: number;
+        error_description?: string;
+        error?: string;
+      }
+    | null;
+
+  if (!tokenResponse.ok || !tokenPayload?.access_token) {
+    throw new Error(tokenPayload?.error_description ?? tokenPayload?.error ?? "Could not fetch Google access token.");
+  }
+
+  cachedVertexToken = {
+    accessToken: tokenPayload.access_token,
+    expiresAtMs: Date.now() + (tokenPayload.expires_in ?? 3600) * 1000,
+    projectId: credentials.project_id ?? null,
+    credentialsPath
+  };
+
+  return {
+    accessToken: cachedVertexToken.accessToken,
+    projectId: cachedVertexToken.projectId
+  };
+}
+
+function signJwt({
+  header,
+  payload,
+  privateKey
+}: {
+  header: Record<string, unknown>;
+  payload: Record<string, unknown>;
+  privateKey: string;
+}) {
+  const encodedHeader = base64UrlEncode(JSON.stringify(header));
+  const encodedPayload = base64UrlEncode(JSON.stringify(payload));
+  const signingInput = `${encodedHeader}.${encodedPayload}`;
+  const signature = createSign("RSA-SHA256").update(signingInput).sign(privateKey);
+
+  return `${signingInput}.${base64UrlEncode(signature)}`;
+}
+
+function base64UrlEncode(value: string | Buffer) {
+  return Buffer.from(value)
+    .toString("base64")
+    .replace(/=/g, "")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_");
+}
+
+function extractGeminiImageBase64(payload: GeminiGenerateContentResponse | null) {
+  for (const candidate of payload?.candidates ?? []) {
+    for (const part of candidate.content?.parts ?? []) {
+      const imageData = part.inlineData?.data ?? part.inline_data?.data;
+
+      if (imageData) {
+        return imageData;
+      }
+    }
+  }
+
+  return null;
+}
+
+function geminiErrorMessage(payload: GeminiGenerateContentResponse | null) {
+  return payload?.error?.message ?? payload?.error?.status ?? null;
+}
+
+function formatImageGenerationError(error: unknown) {
+  return error instanceof Error ? error.message : "Image generation failed.";
+}
+
+function secondsSince(startedAt: number) {
+  return Number(((Date.now() - startedAt) / 1000).toFixed(2));
 }

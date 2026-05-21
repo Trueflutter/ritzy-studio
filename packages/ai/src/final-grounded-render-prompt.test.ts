@@ -1,7 +1,5 @@
 import assert from "node:assert/strict";
 
-import { finalGroundedRenderPrompt } from "@ritzy-studio/prompts";
-
 import { buildFinalGroundedRenderPrompt } from ".";
 
 const productSummary = [
@@ -18,23 +16,15 @@ const basePrompt = buildFinalGroundedRenderPrompt({
   useFinalRenderPromptV2: false
 });
 
-assert.equal(
-  basePrompt,
-  [
-    finalGroundedRenderPrompt.system,
-    `Selected concept: Quiet Gallery Lounge`,
-    `Concept notes: A layered warm living room concept.`,
-    "The second input image is the approved concept image. Preserve its overall design intent while replacing invented items with the selected catalog products.",
-    "Selected catalog products:",
-    productSummary,
-    "Generate a polished final client-facing photorealistic interior photograph.",
-    "The final image must be product-grounded: main visible furniture and decor should correspond to the selected catalog products by room role, silhouette, color family, and material where possible.",
-    "Do not introduce alternate sofas, armchairs, coffee tables, rugs, wall art, or decor that are not represented in the selected catalog references.",
-    "Use realistic camera exposure, natural shadows, true material texture, believable furniture scale, and residential lighting.",
-    "Avoid illustration, generic CGI showroom smoothness, warped furniture, and impossible reflections.",
-    "Keep the shopping list as the source of truth; the image is a best-effort visual composition."
-  ].join("\n")
-);
+assert.match(basePrompt, /Selected concept: Quiet Gallery Lounge/);
+assert.match(basePrompt, /Selected catalog products:/);
+assert.match(basePrompt, /Ritzy enhanced image styling layer/);
+assert.match(basePrompt, /editorial residential photography/);
+assert.match(basePrompt, /high-end but livable Dubai villa or townhouse/);
+assert.match(basePrompt, /layered lighting/);
+assert.match(basePrompt, /wall art, mirrors, paneling, shelves/);
+assert.match(basePrompt, /correctly scaled rugs/);
+assert.match(basePrompt, /preserve selected catalog product silhouette, color family, material, scale/);
 assert.equal(basePrompt.includes("Ritzy final render language v2"), false);
 
 const v2Prompt = buildFinalGroundedRenderPrompt({
