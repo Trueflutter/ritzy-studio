@@ -29,6 +29,12 @@ assert.equal(normalizeCategory("Living Room Sofa"), "sofas");
 assert.equal(normalizeCategory("Decorative Object"), "decor");
 assert.equal(normalizeCategory("Wall Art"), "wall_art");
 assert.equal(normalizeCategory("Rugs & Carpets"), "rugs");
+assert.equal(normalizeCategory("Furniture > Living Room > TV & Media Units"), "storage");
+assert.equal(normalizeCategory("Furniture > Dining Room > Chairs & Benches"), "chairs");
+assert.equal(normalizeCategory("Furniture > Office > Office Desks"), "desks");
+assert.equal(normalizeCategory("Furniture > Office > Office Chairs"), "office_chairs");
+assert.equal(normalizeCategory("Furniture > Office > Bookcases"), "storage");
+assert.equal(normalizeCategory("Household > Lighting > Floor Lamps"), "lighting");
 
 const normalized = normalizeProductCandidate({
   canonicalUrl: "https://example.com/products/sofa",
