@@ -149,7 +149,7 @@ export default async function NewRoomPage({
 
               <div className="mt-4 flex flex-col-reverse gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <ButtonLink href="/" variant="chrome">
-                  {isFirstRoom ? "Add room later" : "Cancel"}
+                  {isFirstRoom ? "Back to studio" : "Cancel"}
                 </ButtonLink>
                 <SubmitButton pendingLabel="Saving room...">Continue</SubmitButton>
               </div>
