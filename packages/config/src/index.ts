@@ -4,6 +4,10 @@ const serverEnvSchema = z.object({
   OPENAI_API_KEY: z.string().min(1, "OPENAI_API_KEY is required"),
   OPENAI_TEXT_MODEL: z.string().min(1, "OPENAI_TEXT_MODEL is required").default("gpt-5-mini"),
   OPENAI_IMAGE_MODEL: z.string().min(1, "OPENAI_IMAGE_MODEL is required").default("gpt-image-2"),
+  RITZY_IMAGE_PROVIDER: z.enum(["gemini", "openai"]).default("openai"),
+  GEMINI_IMAGE_MODEL: z.string().min(1, "GEMINI_IMAGE_MODEL is required").default("gemini-3.1-flash-image-preview"),
+  GOOGLE_CLOUD_PROJECT: z.string().optional(),
+  GOOGLE_CLOUD_LOCATION: z.string().min(1, "GOOGLE_CLOUD_LOCATION is required").default("global"),
   OPENAI_EMBEDDING_MODEL: z
     .string()
     .min(1, "OPENAI_EMBEDDING_MODEL is required")

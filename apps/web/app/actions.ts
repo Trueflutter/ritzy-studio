@@ -1576,8 +1576,12 @@ export async function generateInitialConceptAction(formData: FormData) {
       room_id: roomId,
       job_type: "initial_concept_generation",
       status: "running",
-      provider: "openai",
-      model: `${process.env.OPENAI_TEXT_MODEL ?? "gpt-5-mini"} + ${process.env.OPENAI_IMAGE_MODEL ?? "gpt-image-2"}`,
+      provider: process.env.RITZY_IMAGE_PROVIDER ?? "openai",
+      model: `${process.env.OPENAI_TEXT_MODEL ?? "gpt-5-mini"} + ${
+        (process.env.RITZY_IMAGE_PROVIDER ?? "openai") === "gemini"
+          ? (process.env.GEMINI_IMAGE_MODEL ?? "gemini-3.1-flash-image-preview")
+          : (process.env.OPENAI_IMAGE_MODEL ?? "gpt-image-2")
+      }`,
       prompt_version: null,
       input_summary: {
         roomId,
@@ -1630,13 +1634,20 @@ export async function generateInitialConceptAction(formData: FormData) {
       .update({
         status: "succeeded",
         completed_at: new Date().toISOString(),
+        provider: result.imageProvider,
         model: `${result.textModel} + ${result.imageModel}`,
         prompt_version: result.promptVersion,
         output_summary: {
           promptKey: result.promptKey,
           title: result.concept.title,
           uncertaintyNotes: result.analysis.uncertaintyNotes,
-          revisedPrompt: result.revisedPrompt ?? null
+          revisedPrompt: result.revisedPrompt ?? null,
+          imageProvider: result.imageProvider,
+          imageModel: result.imageModel,
+          imagePromptVersion: result.promptVersion,
+          imageLatencySeconds: result.imageLatencySeconds,
+          imageFallbackUsed: result.imageFallbackUsed,
+          imageFallbackError: result.imageFallbackError ?? null
         }
       })
       .eq("id", job.id);
@@ -2835,7 +2846,13 @@ export async function generateFinalRenderAction(formData: FormData) {
             selectedShoppingItemIds,
             productCount: selectedProducts.length,
             productImageReferencesUsed: productsForRender.filter((product) => product.imageBytes).length,
-            revisedPrompt: result.revisedPrompt ?? null
+            revisedPrompt: result.revisedPrompt ?? null,
+            imageProvider: result.imageProvider,
+            imageModel: result.imageModel,
+            imagePromptVersion: result.promptVersion,
+            imageLatencySeconds: result.imageLatencySeconds,
+            imageFallbackUsed: result.imageFallbackUsed,
+            imageFallbackError: result.imageFallbackError ?? null
           }
         })
         .eq("id", renderJob.id);

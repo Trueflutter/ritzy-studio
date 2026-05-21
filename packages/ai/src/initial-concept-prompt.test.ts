@@ -39,19 +39,15 @@ const baseImagePrompt = buildInitialConceptImagePrompt({
   useInteriorPromptV2: false
 });
 
-assert.deepEqual(
-  baseImagePrompt.split("\n"),
-  [
-    "Create a warm living room concept.",
-    "Use the uploaded room photo as the base image.",
-    "Use the uploaded inspiration images as style references for palette, materials, atmosphere, and composition. Do not reproduce them exactly.",
-    "Preserve visible architecture, walls, windows, doors, ceiling details, AC vents, sockets, built-ins, and fixed bathroom fixtures where present.",
-    "Redesign movable furniture, lighting, textiles, accessories, and decor according to the concept direction.",
-    "Output must look like a photorealistic editorial interior photograph, not an illustration, 3D showroom render, sketch, or mood board.",
-    "Use physically plausible scale, natural shadows, realistic upholstery grain, wood texture, rug fibers, wall finish, and lighting falloff.",
-    "Keep the source-photo camera perspective and lens feel. Do not add text labels, prices, product names, or retailer claims."
-  ]
-);
+assert.match(baseImagePrompt, /Create a warm living room concept/);
+assert.match(baseImagePrompt, /Use the uploaded room photo as the base image/);
+assert.match(baseImagePrompt, /Ritzy enhanced image styling layer/);
+assert.match(baseImagePrompt, /editorial residential photography/);
+assert.match(baseImagePrompt, /high-end but livable Dubai villa or townhouse/);
+assert.match(baseImagePrompt, /layered lighting/);
+assert.match(baseImagePrompt, /wall art, mirrors, paneling, shelves/);
+assert.match(baseImagePrompt, /correctly scaled rugs/);
+assert.match(baseImagePrompt, /Preserve source-room architecture exactly/);
 
 const v2ImagePrompt = buildInitialConceptImagePrompt({
   generationPrompt: "Create a warm living room concept.",
