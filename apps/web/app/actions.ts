@@ -1844,7 +1844,7 @@ export async function groundProductsAction(formData: FormData) {
           conceptTitle: concept.title,
           conceptDescription: concept.description,
           conceptImageUrl: conceptSignedImage.signedUrl,
-          candidates: shortlistSourcingCandidates(ranked).slice(0, 16).map(matchToSourcingCandidate)
+          candidates: shortlistSourcingCandidates(ranked).slice(0, 24).map(matchToSourcingCandidate)
         }),
         PRODUCT_SOURCING_AI_TIMEOUT_MS,
         "Product visual sourcing timed out."
@@ -3202,7 +3202,7 @@ function shortlistSourcingCandidates(ranked: RankedProductMatch[]) {
   for (const match of ranked) {
     const category = match.categoryNormalized ?? "uncategorized";
     const categoryMatches = byCategory.get(category) ?? [];
-    if (categoryMatches.length < 4) {
+    if (categoryMatches.length < 6) {
       categoryMatches.push(match);
       byCategory.set(category, categoryMatches);
     }

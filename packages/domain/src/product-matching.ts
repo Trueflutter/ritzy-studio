@@ -78,6 +78,30 @@ export type ProductRenderReferenceCandidate = {
 export const substitutionModeSchema = z.enum(["cheaper", "closer_style", "same_retailer", "in_stock"]);
 export type SubstitutionMode = z.infer<typeof substitutionModeSchema>;
 
+const colorFamilies: Record<string, string[]> = {
+  black: ["black", "charcoal", "graphite", "onyx"],
+  blue: ["blue", "navy", "indigo", "denim"],
+  brown: ["brown", "cognac", "tan", "camel", "chocolate", "walnut", "espresso"],
+  cream: ["cream", "ivory", "beige", "linen", "oatmeal", "sand", "taupe", "ecru"],
+  green: ["green", "olive", "sage", "moss", "forest", "khaki"],
+  grey: ["grey", "gray", "charcoal", "slate"],
+  red: ["red", "burgundy", "terracotta", "rust"],
+  white: ["white", "ivory", "cream"]
+};
+
+const materialFamilies: Record<string, string[]> = {
+  boucle: ["boucle", "teddy"],
+  brass: ["brass", "gold"],
+  fabric: ["fabric", "upholstered", "textile", "chenille"],
+  glass: ["glass"],
+  leather: ["leather", "suede"],
+  linen: ["linen"],
+  marble: ["marble", "stone", "travertine"],
+  metal: ["metal", "steel", "iron"],
+  velvet: ["velvet", "velour"],
+  wood: ["wood", "walnut", "oak", "ash", "teak"]
+};
+
 const roomCategoryHints: Record<string, string[]> = {
   living: ["sofas", "armchairs", "coffee_tables", "side_tables", "rugs", "lighting", "wall_art", "decor"],
   bedroom: ["beds", "side_tables", "rugs", "lighting", "wall_art", "decor"],
@@ -540,6 +564,51 @@ function allTags(candidate: ProductMatchCandidate) {
     .flatMap((value) => Array.from(tokensFor(String(value))));
 }
 
+function familiesInText(tokens: Set<string>, families: Record<string, string[]>) {
+  return Object.entries(families)
+    .filter(([, terms]) => terms.some((term) => tokens.has(term)))
+    .map(([family]) => family);
+}
+
+function roleVisualAffinity(candidate: ProductMatchCandidate, visualBrief: string | null | undefined) {
+  if (!visualBrief) {
+    return 0;
+  }
+
+  const roleTokens = tokensFor(visualBrief);
+  const candidateTokens = new Set(allTags(candidate));
+  const tagMatches = Array.from(candidateTokens).filter((tag) => roleTokens.has(tag));
+  let score = Math.min(tagMatches.length * 6, 30);
+
+  const requestedColorFamilies = familiesInText(roleTokens, colorFamilies);
+  if (requestedColorFamilies.length > 0) {
+    const candidateColorFamilies = familiesInText(candidateTokens, colorFamilies);
+    const hasColorMatch = candidateColorFamilies.some((family) => requestedColorFamilies.includes(family));
+
+    if (hasColorMatch) {
+      score += 28;
+    } else if (candidateColorFamilies.length > 0) {
+      score -= 24;
+    }
+  }
+
+  const requestedMaterialFamilies = familiesInText(roleTokens, materialFamilies);
+  if (requestedMaterialFamilies.length > 0) {
+    const candidateMaterialFamilies = familiesInText(candidateTokens, materialFamilies);
+    const hasMaterialMatch = candidateMaterialFamilies.some((family) =>
+      requestedMaterialFamilies.includes(family)
+    );
+
+    if (hasMaterialMatch) {
+      score += 18;
+    } else if (candidateMaterialFamilies.length > 0) {
+      score -= 12;
+    }
+  }
+
+  return score;
+}
+
 function tokensFor(value: string) {
   return new Set(
     value
@@ -660,11 +729,37 @@ export function composeRoomProductOptions({
 
   for (const role of roles) {
     const options: RankedProductMatch[] = [];
-    for (const match of ranked) {
+    const categoryMatches = ranked
+      .map((match, index) => ({
+        match,
+        index,
+        affinity: roleVisualAffinity(match, role.visualBrief)
+      }))
+      .filter(({ match }) => match.categoryNormalized === role.category)
+      .sort(
+        (left, right) =>
+          right.match.score + right.affinity - (left.match.score + left.affinity) ||
+          left.index - right.index
+      );
+
+    for (const { affinity, match } of categoryMatches) {
       if (used.has(match.id) || match.categoryNormalized !== role.category) {
         continue;
       }
-      options.push(match);
+      options.push(
+        affinity === 0
+          ? match
+          : {
+              ...match,
+              score: Number((match.score + affinity).toFixed(3)),
+              selectionReason: [
+                match.selectionReason,
+                affinity > 0
+                  ? `closer to role brief: ${role.visualBrief}`
+                  : `role brief mismatch: ${role.visualBrief}`
+              ].join("; ")
+            }
+      );
       used.add(match.id);
       if (options.length >= perRole) {
         break;

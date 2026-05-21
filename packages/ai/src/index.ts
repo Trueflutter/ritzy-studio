@@ -504,9 +504,10 @@ export async function sourceProductsFromConcept(
 ): Promise<SourceProductsFromConceptResult> {
   const env = parseServerEnv(process.env);
   const client = new OpenAI({ apiKey: env.OPENAI_API_KEY });
+  const candidateLimit = 24;
   const allowedProductIds = new Set(input.candidates.map((candidate) => candidate.id));
   const candidateSummary = input.candidates
-    .slice(0, 16)
+    .slice(0, candidateLimit)
     .map((candidate, index) =>
       [
         `${index + 1}. id: ${candidate.id}`,
@@ -528,7 +529,7 @@ export async function sourceProductsFromConcept(
     )
     .join("\n");
   const candidateImageContent = input.candidates
-    .slice(0, 16)
+    .slice(0, candidateLimit)
     .filter((candidate) => candidate.primaryImageUrl)
     .flatMap((candidate) => [
       {
