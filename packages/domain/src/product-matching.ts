@@ -568,6 +568,10 @@ function enhancedRoomRoleKey(roomType: string) {
     return "bedroom";
   }
 
+  if (lower.includes("office") || lower.includes("study") || lower.includes("workspace")) {
+    return "office";
+  }
+
   if (
     lower.includes("bath") ||
     lower.includes("powder") ||

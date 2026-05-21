@@ -391,6 +391,11 @@ assert.deepEqual(
   ["mirrors", "lighting", "towels", "decor", "stools"]
 );
 
+const enhancedOfficeRoles = enhancedProductRolesForRoom("Home Office");
+assert.ok(enhancedOfficeRoles.some((role) => role.category === "desks"));
+assert.ok(enhancedOfficeRoles.some((role) => role.category === "office_chairs"));
+assert.ok(!enhancedOfficeRoles.some((role) => role.category === "sofas"));
+
 const unorderedRenderRefs = [
   { id: "decor", category: "decor", role_label: "decor accent" },
   { id: "lamp", category: "lighting", role_label: "supporting lighting" },
