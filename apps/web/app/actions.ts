@@ -14,7 +14,7 @@ import {
   createProjectSchema,
   createRoomSchema,
   designBriefSchema,
-  buildRoleScopedCandidatePools,
+  buildProductSourcingRuntimePlan,
   buildShoppingListItemRows,
   composeRoomProductOptions,
   filterSubstitutionCandidates,
@@ -30,7 +30,6 @@ import {
   type RankedProductMatch,
   type ProductMatchCandidate,
   type RoleScopedCandidatePool,
-  type RoleScopedRankedProductMatch,
   type RoomProductRoleSpec
 } from "@ritzy-studio/domain";
 import { revalidatePath } from "next/cache";
@@ -51,6 +50,10 @@ const PRODUCT_MATCHING_CATALOG_LIMIT = 1500;
 
 function productReferenceOrderingV2Enabled() {
   return process.env.RITZY_PRODUCT_REFERENCE_ORDERING_V2_ENABLED === "true";
+}
+
+function productMatchingEngineV1Enabled() {
+  return process.env.RITZY_PRODUCT_MATCHING_ENGINE_V1_ENABLED === "true";
 }
 
 function optionalString(formData: FormData, key: string) {
@@ -1888,7 +1891,9 @@ export async function groundProductsAction(formData: FormData) {
     );
   }
 
-  const sourcingPools = buildRoleScopedCandidatePools({
+  const productMatchingEngineEnabled = productMatchingEngineV1Enabled();
+  const sourcingPlan = buildProductSourcingRuntimePlan({
+    engineEnabled: productMatchingEngineEnabled,
     roomType: room.room_type,
     conceptText: baseConceptText,
     roles: blueprintRoles,
@@ -1900,9 +1905,11 @@ export async function groundProductsAction(formData: FormData) {
           roomDepthCm: measurements.room_depth_cm
         }
       : null,
-    candidatesPerRole: 6
-  }).pools;
-  const sourcingCandidates = roleScopedCandidatesForSourcing(sourcingPools);
+    candidatesPerRole: 6,
+    flatCandidateLimit: 36
+  });
+  const sourcingPools = sourcingPlan.roleScopedPools;
+  const sourcingCandidates = sourcingPlan.candidates;
   const sourcingCandidateIds = new Set(sourcingCandidates.map((candidate) => candidate.id));
   const sourcingCandidatePools = sourcingPools.map((pool) => poolToSourcingRolePool(pool, sourcingCandidateIds));
   const { data: sourcingJob, error: sourcingJobError } = await serviceSupabase
@@ -1918,9 +1925,10 @@ export async function groundProductsAction(formData: FormData) {
       input_summary: {
         roomId,
         conceptId: concept.id,
+        productMatchingEngineEnabled,
         candidateCount: sourcingCandidates.length,
         blueprintRoleCount: blueprintRoles.length,
-        roleCandidateCounts: roleCandidateCountSummary(sourcingPools)
+        roleCandidateCounts: productMatchingEngineEnabled ? roleCandidateCountSummary(sourcingPools) : undefined
       }
     })
     .select("id")
@@ -1939,7 +1947,7 @@ export async function groundProductsAction(formData: FormData) {
         conceptDescription: concept.description,
         conceptImageUrl: conceptSignedImage.signedUrl,
         candidates: sourcingCandidates.map(matchToSourcingCandidate),
-        roleCandidatePools: sourcingCandidatePools
+        roleCandidatePools: productMatchingEngineEnabled ? sourcingCandidatePools : undefined
       }),
       PRODUCT_SOURCING_AI_TIMEOUT_MS,
       "Product visual sourcing timed out."
@@ -1958,8 +1966,9 @@ export async function groundProductsAction(formData: FormData) {
           selectedProductCount: sourcingResult.selectedProducts.length,
           missingRoleCount: sourcingResult.missingRoles.length,
           missingRoles: sourcingResult.missingRoles,
-          roleCandidateCounts: roleCandidateCountSummary(sourcingPools),
-          roleStatuses: roleStatusSummary(sourcingResult.roleResults)
+          productMatchingEngineEnabled,
+          roleCandidateCounts: productMatchingEngineEnabled ? roleCandidateCountSummary(sourcingPools) : undefined,
+          roleStatuses: productMatchingEngineEnabled ? roleStatusSummary(sourcingResult.roleResults) : undefined
         }
       })
       .eq("id", sourcingJob.id);
@@ -2025,7 +2034,8 @@ export async function groundProductsAction(formData: FormData) {
 
   if (missingRequiredVisualRoles.length > 0) {
     const retryRoles = mergeRoomRoles(missingRequiredVisualRoles, staticRoles);
-    const retryPools = buildRoleScopedCandidatePools({
+    const retryPlan = buildProductSourcingRuntimePlan({
+      engineEnabled: productMatchingEngineEnabled,
       roomType: room.room_type,
       conceptText: visualConceptText,
       roles: retryRoles,
@@ -2037,9 +2047,11 @@ export async function groundProductsAction(formData: FormData) {
             roomDepthCm: measurements.room_depth_cm
           }
         : null,
-      candidatesPerRole: 8
-    }).pools;
-    const retryCandidates = roleScopedCandidatesForSourcing(retryPools);
+      candidatesPerRole: 8,
+      flatCandidateLimit: 36
+    });
+    const retryPools = retryPlan.roleScopedPools;
+    const retryCandidates = retryPlan.candidates;
     const retryCandidateIds = new Set(retryCandidates.map((candidate) => candidate.id));
     const retryResult = await withTimeout(
       sourceProductsFromConcept({
@@ -2048,7 +2060,9 @@ export async function groundProductsAction(formData: FormData) {
         conceptDescription: concept.description,
         conceptImageUrl: conceptSignedImage.signedUrl,
         candidates: retryCandidates.map(matchToSourcingCandidate),
-        roleCandidatePools: retryPools.map((pool) => poolToSourcingRolePool(pool, retryCandidateIds))
+        roleCandidatePools: productMatchingEngineEnabled
+          ? retryPools.map((pool) => poolToSourcingRolePool(pool, retryCandidateIds))
+          : undefined
       }),
       PRODUCT_SOURCING_AI_TIMEOUT_MS,
       "Product visual sourcing retry timed out."
@@ -2076,8 +2090,9 @@ export async function groundProductsAction(formData: FormData) {
             selectedProductCount: sourcingResult.selectedProducts.length,
             missingRoleCount: sourcingResult.missingRoles.length,
             missingRoles: sourcingResult.missingRoles,
-            roleCandidateCounts: roleCandidateCountSummary(retryPools),
-            roleStatuses: roleStatusSummary(sourcingResult.roleResults),
+            productMatchingEngineEnabled,
+            roleCandidateCounts: productMatchingEngineEnabled ? roleCandidateCountSummary(retryPools) : undefined,
+            roleStatuses: productMatchingEngineEnabled ? roleStatusSummary(sourcingResult.roleResults) : undefined,
             retryUsed: true,
             usable: missingRequiredVisualRoles.length === 0
           }
@@ -2100,7 +2115,8 @@ export async function groundProductsAction(formData: FormData) {
           selectedProductCount: sourcingResult.selectedProducts.length,
           missingRoleCount: sourcingResult.missingRoles.length,
           missingRoles: sourcingResult.missingRoles,
-          roleStatuses: roleStatusSummary(sourcingResult.roleResults),
+          productMatchingEngineEnabled,
+          roleStatuses: productMatchingEngineEnabled ? roleStatusSummary(sourcingResult.roleResults) : undefined,
           usable: false
         }
       })
@@ -2116,12 +2132,14 @@ export async function groundProductsAction(formData: FormData) {
   const sourceSelectionsById = new Map(
     sourcingResult.selectedProducts.map((selection) => [selection.productId, selection])
   );
-  const sourceRoleResultsByCategory = new Map(
-    sourcingResult.roleResults.map((result) => [
-      normalizeSourcingCategory(result.category, result.roleLabel),
-      result
-    ])
-  );
+  const sourceRoleResultsByCategory = productMatchingEngineEnabled
+    ? new Map(
+        sourcingResult.roleResults.map((result) => [
+          normalizeSourcingCategory(result.category, result.roleLabel),
+          result
+        ])
+      )
+    : new Map<string, (typeof sourcingResult.roleResults)[number]>();
 
   // The AI's read of the concept defines the room's roles; fall back to the
   // static room roles, and append any required static role the AI didn't name.
@@ -3486,23 +3504,6 @@ function mergeRoomRoles(primary: RoomProductRoleSpec[], secondary: RoomProductRo
   }
 
   return roles;
-}
-
-function roleScopedCandidatesForSourcing(pools: RoleScopedCandidatePool[]) {
-  const selectedIds = new Set<string>();
-  const selected: RoleScopedRankedProductMatch[] = [];
-
-  for (const pool of pools) {
-    for (const match of pool.candidates) {
-      if (selectedIds.has(match.id)) {
-        continue;
-      }
-      selected.push(match);
-      selectedIds.add(match.id);
-    }
-  }
-
-  return selected.slice(0, 36);
 }
 
 function poolToSourcingRolePool(pool: RoleScopedCandidatePool, allowedCandidateIds: Set<string>) {
