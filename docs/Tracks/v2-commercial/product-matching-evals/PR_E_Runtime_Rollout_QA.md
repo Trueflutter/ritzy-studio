@@ -55,6 +55,7 @@ Check `output_summary`:
 - missing roles are explicit
 - selected products with `invalid_selection`, `missing`, or `hasColorMismatch` are treated as QA blockers for required anchors
 - selected products with `hasWeakMaterialMatch` are reviewed as QA warnings unless Sam decides the material is contradictory
+- selected products with stale, missing, or invalid `selectedProductFreshness` are catalog timestamp warnings; they do not prove live retailer stock
 - retry paths are visible when used
 
 ## Stop Rules
@@ -68,4 +69,4 @@ Do not enable production if any of these occur:
 - required role pools are empty
 - catalog coverage is stale, unavailable, or too weak for anchor products
 - `roleConfidenceGate.passesQaStopRules` is `false` for required anchors
-- `ai_jobs` logs do not show candidate counts, missing roles, retry use, selected statuses, role confidence, and QA stop-rule status clearly
+- `ai_jobs` logs do not show candidate counts, missing roles, retry use, selected statuses, role confidence, catalog timestamp freshness, and QA stop-rule status clearly

@@ -29,6 +29,7 @@ const base: ProductMatchCandidate = {
   lastCheckedAt: "2026-05-22T00:00:00.000Z",
   dimensions: null
 };
+const nowMs = Date.parse("2026-05-22T12:00:00.000Z");
 
 const sofaRole: RoomProductRoleSpec = {
   category: "sofas",
@@ -74,13 +75,15 @@ const strongSummary = buildProductMatchConfidenceSummary({
       productId: "20000000-0000-4000-8000-000000000001",
       reason: "The product matches the beige linen sofa role."
     }
-  ]
+  ],
+  nowMs
 });
 assert.equal(strongSummary[0].confidenceTier, "strong");
 assert.equal(strongSummary[0].selectedProductId, "20000000-0000-4000-8000-000000000001");
 assert.equal(strongSummary[0].candidateCount, 1);
 assert.equal(strongSummary[0].hasColorMismatch, false);
 assert.equal(strongSummary[0].hasWeakMaterialMatch, false);
+assert.equal(strongSummary[0].selectedProductFreshness?.catalogFreshnessStatus, "fresh");
 
 const closestPools = buildRoleScopedCandidatePools({
   roomType: "living room",
@@ -108,7 +111,8 @@ const closestSummary = buildProductMatchConfidenceSummary({
       productId: "20000000-0000-4000-8000-000000000002",
       reason: "Only a weak sofa substitute was available."
     }
-  ]
+  ],
+  nowMs
 });
 assert.equal(closestSummary[0].confidenceTier, "weak");
 assert.equal(closestSummary[0].hasColorMismatch, true);
@@ -156,10 +160,12 @@ const invalidSelectionSummary = buildProductMatchConfidenceSummary({
       productId: "20000000-0000-4000-8000-000000009999",
       reason: "Wrong role pool product."
     }
-  ]
+  ],
+  nowMs
 });
 assert.equal(invalidSelectionSummary[0].confidenceTier, "invalid_selection");
 assert.equal(invalidSelectionSummary[0].selectedProductId, null);
+assert.equal(invalidSelectionSummary[0].selectedProductFreshness, null);
 assert.ok(
   invalidSelectionSummary[0].weaknessReasons.includes(
     "selected product 20000000-0000-4000-8000-000000009999 is outside this role pool"
@@ -180,7 +186,8 @@ const outputSummary = productMatchConfidenceOutputSummary({
       productId: "20000000-0000-4000-8000-000000000001",
       reason: "Good fit."
     }
-  ]
+  ],
+  nowMs
 });
 assert.deepEqual(Object.keys(outputSummary[0]).sort(), [
   "candidateCount",
@@ -194,10 +201,12 @@ assert.deepEqual(Object.keys(outputSummary[0]).sort(), [
   "roleKey",
   "roleLabel",
   "selectedProductId",
+  "selectedProductFreshness",
   "status",
   "weaknessReasons"
 ].sort());
 assert.equal(outputSummary[0].roleKey, "sofas::anchor_seating");
+assert.equal(outputSummary[0].selectedProductFreshness?.catalogFreshnessStatus, "fresh");
 
 const requiredSofa = productMatchRequiredRoleDescriptor({
   category: "sofas",
@@ -273,5 +282,115 @@ const gateOutput = productMatchQaStopRuleOutputSummary({
 });
 assert.deepEqual(Object.keys(gateOutput).sort(), ["blockers", "counts", "passesQaStopRules", "warnings"].sort());
 assert.equal(gateOutput.passesQaStopRules, true);
+
+const staleFreshnessSummary = buildProductMatchConfidenceSummary({
+  pools: buildRoleScopedCandidatePools({
+    roomType: "living room",
+    conceptText: "beige linen sofa",
+    roles: [sofaRole],
+    candidates: [
+      {
+        ...base,
+        id: "20000000-0000-4000-8000-000000000004",
+        name: "Stale Cream Sofa",
+        categoryNormalized: "sofas",
+        primaryImageUrl: "https://example.com/stale-sofa.jpg",
+        colorTags: ["cream", "beige"],
+        materialTags: ["linen"],
+        lastCheckedAt: "2026-05-15T11:59:59.000Z"
+      }
+    ]
+  }).pools,
+  roleResults: [
+    {
+      category: "sofas",
+      roleLabel: "anchor seating",
+      status: "acceptable_match",
+      productId: "20000000-0000-4000-8000-000000000004",
+      reason: "Good fit, but catalog timestamp is old."
+    }
+  ],
+  nowMs
+});
+const staleGate = buildProductMatchQaStopRuleStatus({
+  roleConfidence: staleFreshnessSummary,
+  requiredRoles: [requiredSofa]
+});
+assert.equal(staleFreshnessSummary[0].selectedProductFreshness?.catalogFreshnessStatus, "stale");
+assert.equal(staleGate.passesQaStopRules, true);
+assert.ok(staleGate.warnings.some((issue) => issue.code === "required_freshness_stale"));
+assert.equal(staleGate.counts.staleRequiredFreshnessCount, 1);
+
+const missingFreshnessSummary = buildProductMatchConfidenceSummary({
+  pools: buildRoleScopedCandidatePools({
+    roomType: "living room",
+    conceptText: "beige linen sofa",
+    roles: [sofaRole],
+    candidates: [
+      {
+        ...base,
+        id: "20000000-0000-4000-8000-000000000005",
+        name: "Missing Timestamp Sofa",
+        categoryNormalized: "sofas",
+        primaryImageUrl: "https://example.com/missing-timestamp-sofa.jpg",
+        colorTags: ["cream", "beige"],
+        materialTags: ["linen"],
+        lastCheckedAt: null
+      }
+    ]
+  }).pools,
+  roleResults: [
+    {
+      category: "sofas",
+      roleLabel: "anchor seating",
+      status: "acceptable_match",
+      productId: "20000000-0000-4000-8000-000000000005",
+      reason: "Good fit, but catalog timestamp is missing."
+    }
+  ],
+  nowMs
+});
+const missingFreshnessGate = buildProductMatchQaStopRuleStatus({
+  roleConfidence: missingFreshnessSummary,
+  requiredRoles: [requiredSofa]
+});
+assert.equal(missingFreshnessSummary[0].selectedProductFreshness?.catalogFreshnessStatus, "missing");
+assert.ok(missingFreshnessGate.warnings.some((issue) => issue.code === "required_freshness_missing"));
+
+const invalidFreshnessSummary = buildProductMatchConfidenceSummary({
+  pools: buildRoleScopedCandidatePools({
+    roomType: "living room",
+    conceptText: "beige linen sofa",
+    roles: [sofaRole],
+    candidates: [
+      {
+        ...base,
+        id: "20000000-0000-4000-8000-000000000006",
+        name: "Invalid Timestamp Sofa",
+        categoryNormalized: "sofas",
+        primaryImageUrl: "https://example.com/invalid-timestamp-sofa.jpg",
+        colorTags: ["cream", "beige"],
+        materialTags: ["linen"],
+        lastCheckedAt: "not-a-date"
+      }
+    ]
+  }).pools,
+  roleResults: [
+    {
+      category: "sofas",
+      roleLabel: "anchor seating",
+      status: "acceptable_match",
+      productId: "20000000-0000-4000-8000-000000000006",
+      reason: "Good fit, but catalog timestamp is invalid."
+    }
+  ],
+  nowMs
+});
+const invalidFreshnessGate = buildProductMatchQaStopRuleStatus({
+  roleConfidence: invalidFreshnessSummary,
+  requiredRoles: [requiredSofa]
+});
+assert.equal(invalidFreshnessSummary[0].selectedProductFreshness?.catalogFreshnessStatus, "invalid");
+assert.ok(invalidFreshnessGate.warnings.some((issue) => issue.code === "required_freshness_invalid"));
 
 console.log("product matching confidence tests passed");

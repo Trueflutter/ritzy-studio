@@ -140,5 +140,6 @@ export * from "./catalog-first-room-generation";
 export * from "./catalog-first-product-matching";
 export * from "./product-matching-confidence";
 export * from "./measurement-intelligence";
+export * from "./product-matching-freshness";
 export * from "./entitlements";
 export * from "./style-preferences";
