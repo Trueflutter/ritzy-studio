@@ -722,6 +722,21 @@ export type RoleProductOptions = RoomProductRoleSpec & {
   options: RankedProductMatch[];
 };
 
+export type RoleScopedCandidatePool = {
+  role: RoomProductRoleSpec;
+  candidates: RankedProductMatch[];
+  candidateCount: number;
+  rejectedCount: number;
+  rejectionReasons: Record<string, number>;
+  weaknessReasons: string[];
+};
+
+export type RoleScopedRetrievalResult = {
+  roomType: string;
+  pools: RoleScopedCandidatePool[];
+  totalCandidateCount: number;
+};
+
 export type ShoppingListItemStatus = "option" | "selected" | "rejected";
 
 export type ShoppingListItemDraft = {
@@ -824,6 +839,248 @@ export function composeRoomProductOptions({
   return result;
 }
 
+export function buildRoleScopedCandidatePools({
+  roomType,
+  conceptText,
+  roles,
+  candidates,
+  budgetMaxAed = null,
+  roomMeasurements = null,
+  candidatesPerRole = 8
+}: {
+  roomType: string;
+  conceptText: string;
+  roles?: RoomProductRoleSpec[];
+  candidates: ProductMatchCandidate[];
+  budgetMaxAed?: number | null;
+  roomMeasurements?: ProductMatchRequest["roomMeasurements"];
+  candidatesPerRole?: number;
+}): RoleScopedRetrievalResult {
+  const parsed = productMatchRequestSchema.parse({
+    roomType,
+    conceptText,
+    budgetMaxAed,
+    roomMeasurements,
+    candidates
+  });
+  const scopedRoles = roles ?? defaultRoleSpecsForRoom(parsed.roomType);
+  const preferredCategories = categoriesForRoom(parsed.roomType);
+  const limit = Math.max(1, candidatesPerRole);
+
+  return {
+    roomType: parsed.roomType,
+    totalCandidateCount: parsed.candidates.length,
+    pools: scopedRoles.map((role) =>
+      buildRolePool({
+        role,
+        request: parsed,
+        preferredCategories,
+        candidatesPerRole: limit
+      })
+    )
+  };
+}
+
+function buildRolePool({
+  role,
+  request,
+  preferredCategories,
+  candidatesPerRole
+}: {
+  role: RoomProductRoleSpec;
+  request: ProductMatchRequest;
+  preferredCategories: string[];
+  candidatesPerRole: number;
+}): RoleScopedCandidatePool {
+  const scored: Array<{ match: RankedProductMatch; roleScore: number; weakness: string | null }> = [];
+  const rejectionReasons: Record<string, number> = {};
+
+  for (const candidate of request.candidates) {
+    const rejectionReason = roleGateRejectionReason(candidate, role, request);
+    if (rejectionReason) {
+      rejectionReasons[rejectionReason] = (rejectionReasons[rejectionReason] ?? 0) + 1;
+      continue;
+    }
+
+    const baseMatch = scoreCandidate(candidate, tokensFor(`${request.roomType} ${request.conceptText}`), preferredCategories, request);
+    const fit = roleFitScore(candidate, role, request.conceptText);
+    scored.push({
+      match: {
+        ...baseMatch,
+        score: Number((baseMatch.score + fit.score).toFixed(3)),
+        selectionReason: [baseMatch.selectionReason, ...fit.reasons].join("; ")
+      },
+      roleScore: fit.score,
+      weakness: fit.weakness
+    });
+  }
+
+  const candidates = scored
+    .sort((left, right) => right.match.score - left.match.score || right.roleScore - left.roleScore)
+    .slice(0, candidatesPerRole)
+    .map(({ match }, index) => ({ ...match, score: Number((match.score - index * 0.001).toFixed(3)) }));
+
+  return {
+    role,
+    candidates,
+    candidateCount: candidates.length,
+    rejectedCount: Object.values(rejectionReasons).reduce((total, count) => total + count, 0),
+    rejectionReasons,
+    weaknessReasons: Array.from(new Set(scored.map(({ weakness }) => weakness).filter((value): value is string => Boolean(value))))
+  };
+}
+
+function defaultRoleSpecsForRoom(roomType: string): RoomProductRoleSpec[] {
+  return enhancedProductRolesForRoom(roomType).map((role) => ({
+    category: role.category,
+    label: role.label,
+    visualBrief: role.visualBrief ?? null,
+    quantity: role.quantity,
+    priority: role.required ? "required" : "supporting"
+  }));
+}
+
+function roleGateRejectionReason(
+  candidate: ProductMatchCandidate,
+  role: RoomProductRoleSpec,
+  request: ProductMatchRequest
+) {
+  if (!candidate.primaryImageUrl) {
+    return "missing_image";
+  }
+
+  if (!candidate.categoryNormalized || !categoriesForScopedRole(role).has(candidate.categoryNormalized)) {
+    return "category_mismatch";
+  }
+
+  const availability = candidate.availability?.toLowerCase() ?? "";
+  if (
+    availability.includes("out of stock") ||
+    availability.includes("sold out") ||
+    availability.includes("unavailable")
+  ) {
+    return "unavailable";
+  }
+
+  const effectivePrice = candidate.salePriceAed ?? candidate.priceAed;
+  if (effectivePrice !== null && request.budgetMaxAed && effectivePrice > request.budgetMaxAed) {
+    return "over_budget";
+  }
+
+  return null;
+}
+
+function roleFitScore(candidate: ProductMatchCandidate, role: RoomProductRoleSpec, conceptText: string) {
+  const roleBrief = [conceptText, role.label, role.visualBrief].filter(Boolean).join(" ");
+  const roleTokens = tokensFor(roleBrief);
+  const candidateTokens = candidateSearchTokens(candidate);
+  const reasons: string[] = [];
+  let score = 0;
+  let weakness: string | null = null;
+
+  if (candidate.categoryNormalized === role.category) {
+    score += 48;
+    reasons.push(`category matches role: ${role.label}`);
+  } else {
+    score += 12;
+    weakness = `uses compatible fallback category ${candidate.categoryNormalized} for ${role.category}`;
+  }
+
+  const requestedColorFamilies = familiesInText(roleTokens, colorFamilies);
+  if (requestedColorFamilies.length > 0) {
+    const candidateColorFamilies = familiesInText(candidateTokens, colorFamilies);
+    if (candidateColorFamilies.some((family) => requestedColorFamilies.includes(family))) {
+      score += 34;
+      reasons.push("color family matches role brief");
+    } else if (candidateColorFamilies.length > 0) {
+      score -= 30;
+      weakness = "color family conflicts with role brief";
+    }
+  }
+
+  const requestedMaterialFamilies = familiesInText(roleTokens, materialFamilies);
+  if (requestedMaterialFamilies.length > 0) {
+    const candidateMaterialFamilies = familiesInText(candidateTokens, materialFamilies);
+    if (candidateMaterialFamilies.some((family) => requestedMaterialFamilies.includes(family))) {
+      score += 20;
+      reasons.push("material family matches role brief");
+    } else if (candidateMaterialFamilies.length > 0) {
+      score -= 12;
+      weakness = weakness ?? "material family is weak for role brief";
+    }
+  }
+
+  const roleKeywordScore = roleSpecificKeywordScore(role, candidateTokens);
+  score += roleKeywordScore.score;
+  reasons.push(...roleKeywordScore.reasons);
+  weakness = roleKeywordScore.weakness ?? weakness;
+
+  return { score, reasons, weakness };
+}
+
+function roleSpecificKeywordScore(role: RoomProductRoleSpec, candidateTokens: Set<string>) {
+  const roleText = `${role.category} ${role.label} ${role.visualBrief ?? ""}`.toLowerCase();
+  const reasons: string[] = [];
+  let score = 0;
+  let weakness: string | null = null;
+
+  if (role.category === "chairs" && roleText.includes("dining")) {
+    if (hasAnyToken(candidateTokens, ["dining", "chair", "chairs"])) {
+      score += 24;
+      reasons.push("dining chair language matches role");
+    }
+    if (hasAnyToken(candidateTokens, ["armchair", "lounge", "recliner", "oversized", "bulky"])) {
+      score -= 34;
+      weakness = "bulky lounge seating is weak for dining chair role";
+    }
+  }
+
+  if (role.category === "storage" && hasAnyToken(tokensFor(roleText), ["media", "console", "credenza", "sideboard", "shelving"])) {
+    if (hasAnyToken(tokensFor(roleText), ["media", "console", "television"]) || roleText.includes("tv")) {
+      if (hasAnyToken(candidateTokens, ["media", "console", "television"]) || candidateTokens.has("tv")) {
+        score += 30;
+        reasons.push("media storage language matches role");
+      } else if (hasAnyToken(candidateTokens, ["bookcase", "bookcases", "bookshelf", "shelf", "shelving"])) {
+        score -= 26;
+        weakness = "generic shelving is weak for TV media role";
+      }
+    } else if (hasAnyToken(tokensFor(roleText), ["sideboard", "credenza"])) {
+      if (hasAnyToken(candidateTokens, ["sideboard", "credenza", "console"])) {
+        score += 24;
+        reasons.push("dining storage language matches role");
+      }
+    } else if (hasAnyToken(tokensFor(roleText), ["shelving"])) {
+      if (hasAnyToken(candidateTokens, ["shelf", "shelving", "bookcase", "storage", "credenza"])) {
+        score += 18;
+        reasons.push("office storage language matches role");
+      }
+    }
+  }
+
+  return { score, reasons, weakness };
+}
+
+function candidateSearchTokens(candidate: ProductMatchCandidate) {
+  return tokensFor(
+    [
+      candidate.name,
+      candidate.categoryNormalized,
+      candidate.color,
+      candidate.material,
+      ...candidate.styleTags,
+      ...candidate.colorTags,
+      ...candidate.materialTags,
+      ...candidate.roomTags
+    ]
+      .filter(Boolean)
+      .join(" ")
+  );
+}
+
+function hasAnyToken(tokens: Set<string>, values: string[]) {
+  return values.some((value) => tokens.has(value));
+}
+
 function diverseRoleMatches(
   matches: Array<{ match: RankedProductMatch; index: number; affinity: number }>,
   limit: number
@@ -884,6 +1141,22 @@ function categoriesForRole(category: string) {
   }
 
   if (category === "office_chairs") {
+    categories.add("chairs");
+    categories.add("armchairs");
+  }
+
+  return categories;
+}
+
+function categoriesForScopedRole(role: RoomProductRoleSpec) {
+  const categories = new Set([role.category]);
+  const roleText = `${role.category} ${role.label} ${role.visualBrief ?? ""}`.toLowerCase();
+
+  if (role.category === "chairs" && !roleText.includes("dining")) {
+    categories.add("armchairs");
+  }
+
+  if (role.category === "office_chairs") {
     categories.add("chairs");
     categories.add("armchairs");
   }

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 
 import {
+  buildRoleScopedCandidatePools,
   buildShoppingListItemRows,
   composeRoomProductOptions,
   composeRoomProductSet,
@@ -301,6 +302,291 @@ const diningChairFallbackOptions = composeRoomProductOptions({
 });
 assert.equal(diningChairFallbackOptions[0].category, "chairs");
 assert.equal(diningChairFallbackOptions[0].options[0].name, "Upholstered Chair");
+
+// pure retrieval API builds compact pools per room role without changing runtime callers
+const livingPools = buildRoleScopedCandidatePools({
+  roomType: "living room",
+  conceptText: "beige sofa, lounge chairs, generous rug, walnut TV media console, and warm lamp",
+  candidates: [
+    {
+      ...base,
+      id: "00000000-0000-4000-8000-000000000501",
+      name: "Cream Linen Sofa",
+      categoryNormalized: "sofas",
+      availability: "in stock",
+      primaryImageUrl: "https://example.com/cream-linen-sofa.jpg",
+      colorTags: ["cream", "beige"],
+      materialTags: ["linen", "fabric"]
+    },
+    {
+      ...base,
+      id: "00000000-0000-4000-8000-000000000502",
+      name: "Boucle Lounge Armchair",
+      categoryNormalized: "armchairs",
+      availability: "in stock",
+      primaryImageUrl: "https://example.com/lounge-armchair.jpg",
+      materialTags: ["boucle"]
+    },
+    {
+      ...base,
+      id: "00000000-0000-4000-8000-000000000503",
+      name: "Wool Area Rug",
+      categoryNormalized: "rugs",
+      availability: "in stock",
+      primaryImageUrl: "https://example.com/wool-rug.jpg"
+    },
+    {
+      ...base,
+      id: "00000000-0000-4000-8000-000000000504",
+      name: "Walnut TV Media Console",
+      categoryNormalized: "storage",
+      availability: "in stock",
+      primaryImageUrl: "https://example.com/media-console.jpg",
+      materialTags: ["wood", "walnut"]
+    },
+    {
+      ...base,
+      id: "00000000-0000-4000-8000-000000000505",
+      name: "Brass Floor Lamp",
+      categoryNormalized: "lighting",
+      availability: "in stock",
+      primaryImageUrl: "https://example.com/floor-lamp.jpg",
+      materialTags: ["brass"]
+    }
+  ],
+  candidatesPerRole: 4
+});
+assert.ok(livingPools.pools.find((pool) => pool.role.category === "sofas")?.candidateCount);
+assert.ok(livingPools.pools.find((pool) => pool.role.category === "armchairs")?.candidateCount);
+assert.ok(livingPools.pools.find((pool) => pool.role.category === "rugs")?.candidateCount);
+assert.ok(livingPools.pools.find((pool) => pool.role.label.includes("TV media"))?.candidateCount);
+assert.ok(livingPools.pools.find((pool) => pool.role.category === "lighting")?.candidateCount);
+
+const diningPools = buildRoleScopedCandidatePools({
+  roomType: "dining room",
+  conceptText: "walnut dining table with cream upholstered dining chairs, sideboard, and pendant lighting",
+  candidates: [
+    {
+      ...base,
+      id: "00000000-0000-4000-8000-000000000511",
+      name: "Walnut Dining Table",
+      categoryNormalized: "dining_tables",
+      availability: "in stock",
+      primaryImageUrl: "https://example.com/walnut-dining-table.jpg",
+      materialTags: ["walnut", "wood"]
+    },
+    {
+      ...base,
+      id: "00000000-0000-4000-8000-000000000512",
+      name: "Cream Upholstered Dining Chair",
+      categoryNormalized: "chairs",
+      availability: "in stock",
+      primaryImageUrl: "https://example.com/dining-chair.jpg",
+      colorTags: ["cream"],
+      materialTags: ["upholstered", "fabric"]
+    },
+    {
+      ...base,
+      id: "00000000-0000-4000-8000-000000000513",
+      name: "Walnut Sideboard Credenza",
+      categoryNormalized: "storage",
+      availability: "in stock",
+      primaryImageUrl: "https://example.com/sideboard.jpg",
+      materialTags: ["walnut", "wood"]
+    },
+    {
+      ...base,
+      id: "00000000-0000-4000-8000-000000000514",
+      name: "Slim Pendant Lighting",
+      categoryNormalized: "lighting",
+      availability: "in stock",
+      primaryImageUrl: "https://example.com/pendant.jpg"
+    }
+  ]
+});
+assert.ok(diningPools.pools.find((pool) => pool.role.category === "dining_tables")?.candidateCount);
+assert.ok(diningPools.pools.find((pool) => pool.role.category === "chairs")?.candidateCount);
+assert.ok(diningPools.pools.find((pool) => pool.role.label.includes("sideboard"))?.candidateCount);
+assert.ok(diningPools.pools.find((pool) => pool.role.category === "lighting")?.candidateCount);
+
+const bedroomPools = buildRoleScopedCandidatePools({
+  roomType: "bedroom",
+  conceptText: "ivory upholstered bed, walnut bedside tables, soft bedroom rug, and bedside lighting",
+  candidates: [
+    {
+      ...base,
+      id: "00000000-0000-4000-8000-000000000521",
+      name: "Ivory Upholstered Bed",
+      categoryNormalized: "beds",
+      availability: "in stock",
+      primaryImageUrl: "https://example.com/ivory-bed.jpg",
+      colorTags: ["ivory"],
+      materialTags: ["upholstered", "fabric"]
+    },
+    {
+      ...base,
+      id: "00000000-0000-4000-8000-000000000522",
+      name: "Walnut Bedside Table",
+      categoryNormalized: "side_tables",
+      availability: "in stock",
+      primaryImageUrl: "https://example.com/bedside-table.jpg",
+      materialTags: ["walnut", "wood"]
+    },
+    {
+      ...base,
+      id: "00000000-0000-4000-8000-000000000523",
+      name: "Neutral Bedroom Rug",
+      categoryNormalized: "rugs",
+      availability: "in stock",
+      primaryImageUrl: "https://example.com/bedroom-rug.jpg"
+    },
+    {
+      ...base,
+      id: "00000000-0000-4000-8000-000000000524",
+      name: "Bedside Table Lamp",
+      categoryNormalized: "lighting",
+      availability: "in stock",
+      primaryImageUrl: "https://example.com/table-lamp.jpg"
+    }
+  ]
+});
+assert.ok(bedroomPools.pools.find((pool) => pool.role.category === "beds")?.candidateCount);
+assert.ok(bedroomPools.pools.find((pool) => pool.role.category === "side_tables")?.candidateCount);
+assert.ok(bedroomPools.pools.find((pool) => pool.role.category === "lighting")?.candidateCount);
+assert.ok(bedroomPools.pools.find((pool) => pool.role.category === "rugs")?.candidateCount);
+
+const officePools = buildRoleScopedCandidatePools({
+  roomType: "home office",
+  conceptText: "wood desk, ergonomic office chair, bookcase storage, and task lamp",
+  candidates: [
+    {
+      ...base,
+      id: "00000000-0000-4000-8000-000000000531",
+      name: "Oak Writing Desk",
+      categoryNormalized: "desks",
+      availability: "in stock",
+      primaryImageUrl: "https://example.com/oak-desk.jpg",
+      materialTags: ["oak", "wood"]
+    },
+    {
+      ...base,
+      id: "00000000-0000-4000-8000-000000000532",
+      name: "Ergonomic Task Office Chair",
+      categoryNormalized: "office_chairs",
+      availability: "in stock",
+      primaryImageUrl: "https://example.com/task-chair.jpg"
+    },
+    {
+      ...base,
+      id: "00000000-0000-4000-8000-000000000533",
+      name: "Oak Bookcase Shelving",
+      categoryNormalized: "storage",
+      availability: "in stock",
+      primaryImageUrl: "https://example.com/bookcase.jpg",
+      materialTags: ["oak", "wood"]
+    },
+    {
+      ...base,
+      id: "00000000-0000-4000-8000-000000000534",
+      name: "Adjustable Task Lamp",
+      categoryNormalized: "lighting",
+      availability: "in stock",
+      primaryImageUrl: "https://example.com/task-lamp.jpg"
+    }
+  ]
+});
+assert.ok(officePools.pools.find((pool) => pool.role.category === "desks")?.candidateCount);
+assert.ok(officePools.pools.find((pool) => pool.role.category === "office_chairs")?.candidateCount);
+assert.ok(officePools.pools.find((pool) => pool.role.category === "storage")?.candidateCount);
+assert.ok(officePools.pools.find((pool) => pool.role.category === "lighting")?.candidateCount);
+
+const beigeSofaPool = buildRoleScopedCandidatePools({
+  roomType: "living room",
+  conceptText: "quiet contemporary living room with a beige linen sofa",
+  roles: [{ category: "sofas", label: "anchor seating", visualBrief: "beige or cream linen sofa", quantity: 1, priority: "required" }],
+  candidates: [
+    {
+      ...base,
+      id: "00000000-0000-4000-8000-000000000541",
+      name: "Olive Velvet Sofa",
+      categoryNormalized: "sofas",
+      availability: "in stock",
+      primaryImageUrl: "https://example.com/olive-velvet-sofa.jpg",
+      colorTags: ["olive", "green"],
+      materialTags: ["velvet"]
+    },
+    {
+      ...base,
+      id: "00000000-0000-4000-8000-000000000542",
+      name: "Cream Linen Sofa",
+      categoryNormalized: "sofas",
+      availability: "in stock",
+      primaryImageUrl: "https://example.com/cream-linen-sofa-2.jpg",
+      colorTags: ["cream", "beige"],
+      materialTags: ["linen"]
+    }
+  ]
+});
+assert.equal(beigeSofaPool.pools[0].candidates[0].name, "Cream Linen Sofa");
+
+const diningChairPool = buildRoleScopedCandidatePools({
+  roomType: "dining room",
+  conceptText: "six cream upholstered dining chairs around a walnut table",
+  roles: [{ category: "chairs", label: "dining chairs", visualBrief: "slim upholstered dining chairs", quantity: 6, priority: "required" }],
+  candidates: [
+    {
+      ...base,
+      id: "00000000-0000-4000-8000-000000000551",
+      name: "Bulky Lounge Armchair",
+      categoryNormalized: "armchairs",
+      availability: "in stock",
+      primaryImageUrl: "https://example.com/bulky-armchair.jpg",
+      materialTags: ["upholstered"]
+    },
+    {
+      ...base,
+      id: "00000000-0000-4000-8000-000000000552",
+      name: "Cream Upholstered Dining Chair",
+      categoryNormalized: "chairs",
+      availability: "in stock",
+      primaryImageUrl: "https://example.com/cream-dining-chair.jpg",
+      colorTags: ["cream"],
+      materialTags: ["upholstered", "fabric"]
+    }
+  ]
+});
+assert.deepEqual(
+  diningChairPool.pools[0].candidates.map((candidate) => candidate.name),
+  ["Cream Upholstered Dining Chair"]
+);
+assert.equal(diningChairPool.pools[0].rejectionReasons.category_mismatch, 1);
+
+const mediaConsolePool = buildRoleScopedCandidatePools({
+  roomType: "living room",
+  conceptText: "walnut TV media console below the wall-mounted television",
+  roles: [{ category: "storage", label: "TV media console", visualBrief: "low walnut media console", quantity: 1, priority: "supporting" }],
+  candidates: [
+    {
+      ...base,
+      id: "00000000-0000-4000-8000-000000000561",
+      name: "Tall Walnut Bookcase",
+      categoryNormalized: "storage",
+      availability: "in stock",
+      primaryImageUrl: "https://example.com/walnut-bookcase.jpg",
+      materialTags: ["walnut", "wood"]
+    },
+    {
+      ...base,
+      id: "00000000-0000-4000-8000-000000000562",
+      name: "Low Walnut Media Console",
+      categoryNormalized: "storage",
+      availability: "in stock",
+      primaryImageUrl: "https://example.com/walnut-media-console.jpg",
+      materialTags: ["walnut", "wood"]
+    }
+  ]
+});
+assert.equal(mediaConsolePool.pools[0].candidates[0].name, "Low Walnut Media Console");
 
 // selected estimate uses selected rows only
 assert.equal(
