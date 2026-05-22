@@ -154,6 +154,7 @@ export default async function PresentationPage({
     listItems.length > 0
       ? listItems.reduce((total, item) => total + currentLineTotalAed(item), 0)
       : shoppingList?.estimated_total_aed;
+  const retailerGroups = groupSelectedItemsByRetailer(listItems);
   const revealPath = `/projects/${projectId}/rooms/${roomId}/presentation`;
   const roomLabel = `${project.client_name?.trim().split(/\s+/)[0] ?? "Your"}'s ${room.room_type.toLowerCase()}`;
 
@@ -304,71 +305,7 @@ export default async function PresentationPage({
         </section>
 
         {commerceUnlocked ? (
-          <section className="mt-12 border border-line">
-            <div className="border-b border-line bg-page px-4 py-4">
-              <p className="font-body text-caption font-medium uppercase text-ink-muted">
-                Selected Products
-              </p>
-            </div>
-            <div className="divide-y divide-line">
-              {listItems.length > 0 ? (
-                listItems.map((item) => {
-                  const product = item.product;
-                  const dimensions = product?.dimensions?.[0];
-
-                  return (
-                    <article className="grid gap-4 p-4 md:grid-cols-[96px_minmax(0,1fr)_180px] print:grid-cols-[80px_minmax(0,1fr)_150px]" key={item.id}>
-                      <div className="aspect-[4/3] bg-page">
-                        {product?.primary_image_url ? (
-                          <Image
-                            alt={`${product.name} product image`}
-                            className="h-full w-full object-cover"
-                            height={180}
-                            unoptimized
-                            src={product.primary_image_url}
-                            width={240}
-                          />
-                        ) : null}
-                      </div>
-                      <div>
-                        <p className="font-display text-body-l font-light italic leading-snug text-ink">
-                          {product?.name ?? "Product unavailable"}
-                        </p>
-                        <p className="mt-2 font-body text-body-s text-ink-secondary">
-                          {product?.retailer?.name ?? "Retailer"} · {item.category} ·{" "}
-                          {product?.availability ?? "availability unavailable"}
-                        </p>
-                        <p className="mt-2 font-body text-caption text-ink-muted">
-                          Dimensions:{" "}
-                          {dimensions?.source_text ??
-                            dimensionsText(dimensions?.width_cm, dimensions?.depth_cm, dimensions?.height_cm)}
-                        </p>
-                      </div>
-                      <div className="font-body text-body-s text-ink-secondary md:text-right">
-                        <p>{formatAed(currentLineTotalAed(item))}</p>
-                        {product?.canonical_url ? (
-                          <a
-                            className="mt-2 inline-flex font-display text-button-quiet italic text-ink print:hidden"
-                            href={product.canonical_url}
-                            rel="noreferrer"
-                            target="_blank"
-                          >
-                            retailer page →
-                          </a>
-                        ) : null}
-                      </div>
-                    </article>
-                  );
-                })
-              ) : (
-                <div className="p-6">
-                  <p className="font-display text-display-xs font-light italic text-ink">
-                    Shopping list pending.
-                  </p>
-                </div>
-              )}
-            </div>
-          </section>
+          <RetailerPurchaseGroups groups={retailerGroups} />
         ) : null}
 
         <section className="mt-10 border border-line bg-page p-5">
@@ -425,6 +362,246 @@ function FinalRenderForm({
       {button}
     </form>
   );
+}
+
+type RetailerPurchaseGroup = {
+  domain: string | null;
+  itemCount: number;
+  items: Array<{
+    availability: string | null;
+    category: string;
+    dimensionsLabel: string;
+    id: string;
+    imageUrl: string | null;
+    lastCheckedAt: string | null;
+    lineTotalAed: number;
+    name: string;
+    quantity: number;
+    retailerUrl: string | null;
+    unitPriceAed: number | null;
+  }>;
+  name: string;
+  subtotalAed: number;
+};
+
+function RetailerPurchaseGroups({ groups }: { groups: RetailerPurchaseGroup[] }) {
+  if (groups.length === 0) {
+    return (
+      <section className="mt-12 border border-line bg-page p-6">
+        <p className="font-display text-display-xs font-light italic text-ink">
+          Shopping list pending.
+        </p>
+      </section>
+    );
+  }
+
+  return (
+    <section className="mt-12 print:mt-8">
+      <div className="grid gap-8 lg:grid-cols-[360px_minmax(0,1fr)] print:block">
+        <div>
+          <p className="font-body text-caption font-medium uppercase text-ink-muted">
+            Shopping List
+          </p>
+          <h2 className="mt-4 font-display text-display-s font-light italic text-ink">
+            Purchase by retailer.
+          </h2>
+        </div>
+        <p className="max-w-[620px] font-body text-body-s text-ink-secondary">
+          Your selected pieces are grouped by retailer so each store has a clear subtotal and
+          product path. Retailers do not yet support a Ritzy cart handoff, so each product opens on
+          its retailer page for checkout.
+        </p>
+      </div>
+
+      <div className="mt-8 grid gap-6">
+        {groups.map((group) => (
+          <article className="border border-line bg-page" key={group.name}>
+            <div className="grid gap-4 border-b border-line p-5 md:grid-cols-[minmax(0,1fr)_220px] md:items-start">
+              <div>
+                <p className="font-body text-caption font-medium uppercase tracking-[0.32em] text-ink-muted">
+                  {group.itemCount} item{group.itemCount === 1 ? "" : "s"}
+                </p>
+                <h3 className="mt-3 font-display text-display-xs font-light italic text-ink">
+                  {group.name}
+                </h3>
+                <p className="mt-3 font-body text-body-s text-ink-secondary">
+                  {freshnessText(group.items)}
+                </p>
+              </div>
+              <div className="md:text-right">
+                <p className="font-body text-caption font-medium uppercase tracking-[0.32em] text-ink-muted">
+                  Retailer subtotal
+                </p>
+                <p className="mt-3 font-display text-display-xs font-light italic text-ink">
+                  {formatAed(group.subtotalAed)}
+                </p>
+                {group.domain ? (
+                  <a
+                    className="mt-4 inline-flex border border-line px-4 py-3 font-body text-button uppercase tracking-[0.18em] text-ink transition-colors duration-micro ease-standard hover:bg-surface-subtle print:hidden"
+                    href={`https://${group.domain}`}
+                    rel="noreferrer"
+                    target="_blank"
+                  >
+                    Open retailer
+                  </a>
+                ) : null}
+              </div>
+            </div>
+
+            <div className="divide-y divide-line">
+              {group.items.map((item) => (
+                <article
+                  className="grid gap-4 p-4 md:grid-cols-[88px_minmax(0,1fr)_140px_150px] md:items-center print:grid-cols-[72px_minmax(0,1fr)_120px]"
+                  key={item.id}
+                >
+                  <div className="aspect-[4/3] bg-surface">
+                    {item.imageUrl ? (
+                      <Image
+                        alt={`${item.name} product image`}
+                        className="h-full w-full object-cover"
+                        height={180}
+                        unoptimized
+                        src={item.imageUrl}
+                        width={240}
+                      />
+                    ) : null}
+                  </div>
+                  <div>
+                    <p className="font-display text-body-l font-light italic leading-snug text-ink">
+                      {item.name}
+                    </p>
+                    <p className="mt-2 font-body text-body-s text-ink-secondary">
+                      {item.category} · Qty {item.quantity} ·{" "}
+                      {item.availability ?? "availability unavailable"}
+                    </p>
+                    <p className="mt-2 font-body text-caption text-ink-muted">
+                      Dimensions: {item.dimensionsLabel}
+                    </p>
+                  </div>
+                  <div className="font-body text-body-s text-ink-secondary md:text-right">
+                    <p>{formatAed(item.lineTotalAed)}</p>
+                    {item.quantity > 1 && item.unitPriceAed !== null ? (
+                      <p className="mt-1 text-ink-muted">
+                        {item.quantity} x {formatAed(item.unitPriceAed)}
+                      </p>
+                    ) : null}
+                  </div>
+                  <div className="md:text-right print:hidden">
+                    {item.retailerUrl ? (
+                      <a
+                        className="font-display text-button-quiet italic text-ink transition-colors duration-micro ease-standard hover:text-accent-deep"
+                        href={item.retailerUrl}
+                        rel="noreferrer"
+                        target="_blank"
+                      >
+                        product page →
+                      </a>
+                    ) : (
+                      <span className="font-body text-caption uppercase tracking-[0.24em] text-ink-muted">
+                        link unavailable
+                      </span>
+                    )}
+                  </div>
+                </article>
+              ))}
+            </div>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function groupSelectedItemsByRetailer(
+  items: Array<{
+    category: string;
+    id: string;
+    line_total_aed: number | null;
+    quantity: number | null;
+    product:
+      | {
+          availability: string | null;
+          canonical_url: string | null;
+          last_checked_at: string | null;
+          name: string;
+          price_aed: number | null;
+          primary_image_url: string | null;
+          retailer: { domain: string | null; name: string | null } | null;
+          sale_price_aed: number | null;
+          dimensions:
+            | Array<{
+                width_cm: number | null;
+                depth_cm: number | null;
+                height_cm: number | null;
+                source_text: string | null;
+              }>
+            | null;
+        }
+      | null;
+  }>
+): RetailerPurchaseGroup[] {
+  const groups = new Map<string, RetailerPurchaseGroup>();
+
+  for (const item of items) {
+    const product = item.product;
+    const retailerName = product?.retailer?.name ?? "Retailer";
+    const dimensions = product?.dimensions?.[0];
+    const quantity = item.quantity ?? 1;
+    const unitPriceAed = product?.sale_price_aed ?? product?.price_aed ?? null;
+    const lineTotalAed = currentLineTotalAed(item);
+    const existing = groups.get(retailerName) ?? {
+      domain: product?.retailer?.domain ?? null,
+      itemCount: 0,
+      items: [],
+      name: retailerName,
+      subtotalAed: 0
+    };
+
+    existing.itemCount += quantity;
+    existing.subtotalAed += lineTotalAed;
+    existing.items.push({
+      availability: product?.availability ?? null,
+      category: item.category,
+      dimensionsLabel:
+        dimensions?.source_text ??
+        dimensionsText(dimensions?.width_cm, dimensions?.depth_cm, dimensions?.height_cm),
+      id: item.id,
+      imageUrl: product?.primary_image_url ?? null,
+      lastCheckedAt: product?.last_checked_at ?? null,
+      lineTotalAed,
+      name: product?.name ?? "Product unavailable",
+      quantity,
+      retailerUrl: product?.canonical_url ?? null,
+      unitPriceAed
+    });
+
+    groups.set(retailerName, existing);
+  }
+
+  return [...groups.values()].sort((a, b) => b.subtotalAed - a.subtotalAed);
+}
+
+function freshnessText(items: Array<{ lastCheckedAt: string | null }>) {
+  const timestamps = items
+    .map((item) => (item.lastCheckedAt ? new Date(item.lastCheckedAt).getTime() : null))
+    .filter((value): value is number => value !== null && Number.isFinite(value));
+
+  if (timestamps.length === 0) {
+    return "Stock check unavailable.";
+  }
+
+  const latest = Math.max(...timestamps);
+  const days = Math.max(0, Math.floor((Date.now() - latest) / (1000 * 60 * 60 * 24)));
+
+  if (days === 0) {
+    return "Stock checked today.";
+  }
+
+  if (days === 1) {
+    return "Stock checked yesterday.";
+  }
+
+  return `Stock checked ${days} days ago.`;
 }
 
 function formatAed(value: number | null | undefined) {
