@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 
 import {
   assembleCatalogFirstBundle,
+  catalogFirstBlueprintForRoom,
   catalogFirstRoomBundleBlueprints,
   catalogFirstRolesForRoom,
   normalizeCatalogFirstRoomType,
@@ -78,6 +79,22 @@ assert.equal(normalizeCatalogFirstRoomType("office"), "home_office");
 assert.equal(normalizeCatalogFirstRoomType("study"), "home_office");
 assert.equal(normalizeCatalogFirstRoomType("workspace"), "home_office");
 assert.throws(() => normalizeCatalogFirstRoomType("bathroom"), /Unsupported catalog-first room type/);
+
+for (const [input, roomType] of [
+  ["Living Room", "living_room"],
+  ["dining area", "dining_room"],
+  ["primary bedroom", "bedroom"],
+  ["study", "home_office"]
+] as const) {
+  const blueprint = catalogFirstBlueprintForRoom(input);
+  assert.equal(blueprint.roomType, roomType);
+  assert.equal(blueprint.roles, catalogFirstRolesForRoom(roomType));
+  assert.deepEqual(
+    blueprint.roles.map((role) => role.id),
+    roleIds(roomType)
+  );
+}
+assert.throws(() => catalogFirstBlueprintForRoom("bathroom"), /Unsupported catalog-first room type/);
 
 for (const [roomType, roles] of Object.entries(catalogFirstRoomBundleBlueprints)) {
   const ids = roles.map((role) => role.id);
