@@ -19,6 +19,7 @@ import {
   composeRoomProductOptions,
   filterSubstitutionCandidates,
   enhancedProductRolesForRoom,
+  productMatchConfidenceOutputSummary,
   productRolesForRoom,
   rankProductMatches,
   selectedItemsTotalAed,
@@ -1912,6 +1913,7 @@ export async function groundProductsAction(formData: FormData) {
   const sourcingCandidates = sourcingPlan.candidates;
   const sourcingCandidateIds = new Set(sourcingCandidates.map((candidate) => candidate.id));
   const sourcingCandidatePools = sourcingPools.map((pool) => poolToSourcingRolePool(pool, sourcingCandidateIds));
+  let latestConfidencePools = sourcingPools;
   const { data: sourcingJob, error: sourcingJobError } = await serviceSupabase
     .from("ai_jobs")
     .insert({
@@ -1968,7 +1970,10 @@ export async function groundProductsAction(formData: FormData) {
           missingRoles: sourcingResult.missingRoles,
           productMatchingEngineEnabled,
           roleCandidateCounts: productMatchingEngineEnabled ? roleCandidateCountSummary(sourcingPools) : undefined,
-          roleStatuses: productMatchingEngineEnabled ? roleStatusSummary(sourcingResult.roleResults) : undefined
+          roleStatuses: productMatchingEngineEnabled ? roleStatusSummary(sourcingResult.roleResults) : undefined,
+          roleConfidence: productMatchingEngineEnabled
+            ? roleConfidenceSummary(sourcingPools, sourcingResult.roleResults)
+            : undefined
         }
       })
       .eq("id", sourcingJob.id);
@@ -2070,6 +2075,7 @@ export async function groundProductsAction(formData: FormData) {
 
     if (retryResult?.needs.length && retryResult.selectedProducts.length) {
       sourcingResult = retryResult;
+      latestConfidencePools = retryPools;
       visualMissingRoleCategories = new Set(
         sourcingResult.missingRoles.map((role) => normalizeSourcingCategory(role, role))
       );
@@ -2093,6 +2099,9 @@ export async function groundProductsAction(formData: FormData) {
             productMatchingEngineEnabled,
             roleCandidateCounts: productMatchingEngineEnabled ? roleCandidateCountSummary(retryPools) : undefined,
             roleStatuses: productMatchingEngineEnabled ? roleStatusSummary(sourcingResult.roleResults) : undefined,
+            roleConfidence: productMatchingEngineEnabled
+              ? roleConfidenceSummary(retryPools, sourcingResult.roleResults)
+              : undefined,
             retryUsed: true,
             usable: missingRequiredVisualRoles.length === 0
           }
@@ -2116,7 +2125,13 @@ export async function groundProductsAction(formData: FormData) {
           missingRoleCount: sourcingResult.missingRoles.length,
           missingRoles: sourcingResult.missingRoles,
           productMatchingEngineEnabled,
+          roleCandidateCounts: productMatchingEngineEnabled
+            ? roleCandidateCountSummary(latestConfidencePools)
+            : undefined,
           roleStatuses: productMatchingEngineEnabled ? roleStatusSummary(sourcingResult.roleResults) : undefined,
+          roleConfidence: productMatchingEngineEnabled
+            ? roleConfidenceSummary(latestConfidencePools, sourcingResult.roleResults)
+            : undefined,
           usable: false
         }
       })
@@ -3547,6 +3562,25 @@ function roleStatusSummary(
     productId: result.productId,
     reason: result.reason
   }));
+}
+
+function roleConfidenceSummary(
+  pools: RoleScopedCandidatePool[],
+  roleResults: Array<{
+    category: string;
+    roleLabel: string;
+    status: "strong_match" | "acceptable_match" | "closest_available" | "missing_required" | "missing_supporting";
+    productId: string | null;
+    reason: string;
+  }>
+) {
+  return productMatchConfidenceOutputSummary({
+    pools,
+    roleResults: roleResults.map((result) => ({
+      ...result,
+      category: normalizeSourcingCategory(result.category, result.roleLabel)
+    }))
+  });
 }
 
 function matchToSourcingCandidate(match: RankedProductMatch) {
