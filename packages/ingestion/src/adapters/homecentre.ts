@@ -52,6 +52,7 @@ export const homeCentreAdapter: CatalogAdapter = {
   discoverProducts: async function* ({ limit, categories } = {}) {
     const categoryUrls = categories?.length ? categories : DEFAULT_CATEGORY_URLS;
     let yielded = 0;
+    const seenUrls = new Set<string>();
     const urlsByCategory: Array<{
       categoryUrl: string;
       urls: string[];
@@ -68,9 +69,10 @@ export const homeCentreAdapter: CatalogAdapter = {
     for (let index = 0; index < maxCategoryDepth; index += 1) {
       for (const category of urlsByCategory) {
         const url = category.urls[index];
-        if (!url) {
+        if (!url || seenUrls.has(url)) {
           continue;
         }
+        seenUrls.add(url);
 
         yield {
           url,
