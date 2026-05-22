@@ -1015,10 +1015,6 @@ export async function generateConceptRevision(
   });
 
   const direction = initialConceptResponseSchema.parse(JSON.parse(directionResponse.output_text));
-  const roomFile = await toFile(input.roomPhotoBytes, `room.${extensionForMime(input.roomPhotoMimeType)}`, {
-    type: input.roomPhotoMimeType
-  });
-
   const imagePrompt = [
     direction.concept.generationPrompt,
     "",
@@ -1030,37 +1026,32 @@ export async function generateConceptRevision(
     "Keep the source-photo camera perspective and lens feel. Do not add text labels, prices, product names, or retailer claims."
   ].join("\n");
 
-  const imageStartedAt = Date.now();
-  const imageResponse = await client.images.edit({
-    model: env.OPENAI_IMAGE_MODEL,
-    image: roomFile,
+  const imageResult = await generateImageWithConfiguredProvider({
+    client,
     prompt: imagePrompt,
-    size: "1536x1024",
-    quality: "high",
-    ...imageFidelityParams(env.OPENAI_IMAGE_MODEL),
-    output_format: "png"
+    references: [
+      {
+        bytes: input.roomPhotoBytes,
+        mimeType: input.roomPhotoMimeType,
+        name: "room"
+      }
+    ],
+    noImageErrorMessage: "OpenAI image revision returned no image data."
   });
-
-  const firstImage = imageResponse.data?.[0];
-  const imageBase64 = firstImage?.b64_json;
-
-  if (!imageBase64) {
-    throw new Error("OpenAI image revision returned no image data.");
-  }
 
   return {
     promptKey: conceptRevisionPrompt.key,
     promptVersion: conceptRevisionPrompt.version,
     textModel: env.OPENAI_TEXT_MODEL,
-    imageProvider: "openai",
-    imageModel: env.OPENAI_IMAGE_MODEL,
-    imageLatencySeconds: secondsSince(imageStartedAt),
-    imageFallbackUsed: false,
-    imageFallbackError: null,
+    imageProvider: imageResult.provider,
+    imageModel: imageResult.model,
+    imageLatencySeconds: imageResult.latencySeconds,
+    imageFallbackUsed: imageResult.fallbackUsed,
+    imageFallbackError: imageResult.error ?? null,
     analysis: direction.roomAnalysis,
     concept: direction.concept,
-    imageBase64,
-    revisedPrompt: firstImage.revised_prompt ?? null
+    imageBase64: imageResult.imageBase64,
+    revisedPrompt: imageResult.revisedPrompt ?? null
   };
 }
 
