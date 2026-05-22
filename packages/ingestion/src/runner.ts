@@ -4,11 +4,18 @@ import { normalizeProductCandidate } from "./normalization";
 export async function runCatalogIngestion({
   adapter,
   supabase,
-  limit
+  limit,
+  onProgress
 }: {
   adapter: CatalogAdapter;
   supabase: CatalogSupabaseClient;
   limit?: number;
+  onProgress?: (progress: {
+    products_seen: number;
+    products_created: number;
+    products_updated: number;
+    products_failed: number;
+  }) => void;
 }) {
   const compliance = adapter.getComplianceNotes ? await adapter.getComplianceNotes() : {};
   const { data: existingRetailer, error: existingRetailerError } = await supabase
@@ -137,6 +144,8 @@ export async function runCatalogIngestion({
       } catch {
         stats.products_failed += 1;
       }
+
+      onProgress?.({ ...stats });
     }
 
     await supabase

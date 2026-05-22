@@ -28,7 +28,11 @@ main().catch((error) => {
 });
 
 async function main() {
+  if (process.env.INIT_CWD) {
+    loadEnvFile(resolve(process.env.INIT_CWD, ".env.local"));
+  }
   loadEnvFile(".env.local");
+  loadEnvFile("../../.env.local");
   loadEnvFile("apps/web/.env.local");
 
   const options = parseArgs(process.argv.slice(2));
@@ -46,7 +50,27 @@ async function main() {
 
   const supabase = createSupabaseClient();
   const before = await categoryCounts(supabase, adapter.key);
-  const result = await runCatalogIngestion({ adapter, supabase, limit: options.limit });
+  let lastProgressLogAt = 0;
+  const result = await runCatalogIngestion({
+    adapter,
+    supabase,
+    limit: options.limit,
+    onProgress: (progress) => {
+      if (progress.products_seen - lastProgressLogAt < 25 && progress.products_failed === 0) {
+        return;
+      }
+
+      lastProgressLogAt = progress.products_seen;
+      console.error(
+        [
+          `ingestion progress: ${progress.products_seen} seen`,
+          `${progress.products_created} created`,
+          `${progress.products_updated} updated`,
+          `${progress.products_failed} failed`
+        ].join(" · ")
+      );
+    }
+  });
   const after = await categoryCounts(supabase, adapter.key);
 
   console.log(
