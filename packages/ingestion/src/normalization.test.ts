@@ -26,6 +26,7 @@ assert.deepEqual(parseDimensionsCm("80 x 45 x 36 cm"), {
 });
 
 assert.equal(normalizeCategory("Living Room Sofa"), "sofas");
+assert.equal(normalizeCategory("Recliners"), "armchairs");
 assert.equal(normalizeCategory("Decorative Object"), "decor");
 assert.equal(normalizeCategory("Wall Art"), "wall_art");
 assert.equal(normalizeCategory("Rugs & Carpets"), "rugs");

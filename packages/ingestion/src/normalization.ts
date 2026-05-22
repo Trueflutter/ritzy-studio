@@ -23,6 +23,8 @@ const rawProductSchema = z.object({
 const categoryMap = new Map<string, string>([
   ["armchair", "armchairs"],
   ["armchairs", "armchairs"],
+  ["recliner", "armchairs"],
+  ["recliners", "armchairs"],
   ["sofa & seating > armchairs", "armchairs"],
   ["side & end", "side_tables"],
   ["side and end", "side_tables"],
