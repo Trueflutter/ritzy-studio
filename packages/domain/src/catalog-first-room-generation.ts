@@ -112,6 +112,56 @@ export function catalogFirstRolesForRoom(roomType: CatalogFirstRoomType): readon
   return catalogFirstRoomBundleBlueprints[roomType];
 }
 
+export function assembleCatalogFirstBundle(input: BundleAssemblyInput): BundleAssemblyOutput {
+  const selectedItems = input.roles.flatMap((role) => {
+    const candidate = input.candidateItemsByRoleId[role.id]?.[0];
+
+    return candidate ? [{ ...candidate, roleId: role.id, quantity: role.quantity }] : [];
+  });
+  const selectedRoleIds = new Set(selectedItems.map((item) => item.roleId));
+  const requiredRoles = input.roles.filter((role) => role.required);
+  const missingRequiredRoleIds = requiredRoles
+    .filter((role) => !selectedRoleIds.has(role.id))
+    .map((role) => role.id);
+
+  if (missingRequiredRoleIds.length > 0) {
+    return {
+      roomType: input.roomType,
+      tier: input.tier,
+      roles: input.roles,
+      bundle: null,
+      missingRequiredRoleIds,
+      score: null
+    };
+  }
+
+  const totalAed = selectedItems.every((item) => item.unitPriceAed !== null)
+    ? selectedItems.reduce((total, item) => total + item.unitPriceAed! * item.quantity, 0)
+    : null;
+  const score = scoreCatalogFirstBundle({
+    budgetMaxAed: input.budgetMaxAed ?? null,
+    requiredRoles,
+    selectedItems,
+    totalAed
+  });
+  const bundle: ProductBundle = {
+    roomType: input.roomType,
+    tier: input.tier,
+    items: selectedItems,
+    totalAed,
+    score
+  };
+
+  return {
+    roomType: input.roomType,
+    tier: input.tier,
+    roles: input.roles,
+    bundle,
+    missingRequiredRoleIds,
+    score
+  };
+}
+
 function role(
   roomType: CatalogFirstRoomType,
   id: string,
@@ -134,4 +184,63 @@ function role(
     importance,
     includeWhen
   };
+}
+
+function scoreCatalogFirstBundle({
+  budgetMaxAed,
+  requiredRoles,
+  selectedItems,
+  totalAed
+}: {
+  budgetMaxAed: number | null;
+  requiredRoles: readonly RoomBundleRole[];
+  selectedItems: readonly ProductBundleItem[];
+  totalAed: number | null;
+}): BundleScore {
+  const selectedRoleIds = new Set(selectedItems.map((item) => item.roleId));
+  const selectedRequiredCount = requiredRoles.filter((role) => selectedRoleIds.has(role.id)).length;
+  const roleCoverage = requiredRoles.length === 0 ? 100 : Math.round((selectedRequiredCount / requiredRoles.length) * 100);
+  const budgetFit = budgetFitScore({ budgetMaxAed, totalAed });
+  const scoredItems = selectedItems.filter((item) => item.matchScore !== null);
+  const catalogConfidence =
+    scoredItems.length === 0
+      ? 0
+      : Math.round(scoredItems.reduce((total, item) => total + item.matchScore!, 0) / scoredItems.length);
+  const visualCohesion = 50;
+  const total = Math.round(roleCoverage * 0.5 + budgetFit * 0.2 + catalogConfidence * 0.2 + visualCohesion * 0.1);
+
+  return {
+    total,
+    roleCoverage,
+    budgetFit,
+    catalogConfidence,
+    visualCohesion,
+    notes: ["visual cohesion not scored in domain assembly"]
+  };
+}
+
+function budgetFitScore({
+  budgetMaxAed,
+  totalAed
+}: {
+  budgetMaxAed: number | null;
+  totalAed: number | null;
+}) {
+  if (budgetMaxAed === null) {
+    return 100;
+  }
+
+  if (totalAed === null) {
+    return 0;
+  }
+
+  if (budgetMaxAed <= 0) {
+    return totalAed === 0 ? 100 : 0;
+  }
+
+  if (totalAed <= budgetMaxAed) {
+    return 100;
+  }
+
+  return Math.max(0, Math.round((budgetMaxAed / totalAed) * 100));
 }

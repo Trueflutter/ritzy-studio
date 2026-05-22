@@ -1,9 +1,11 @@
 import assert from "node:assert/strict";
 
 import {
+  assembleCatalogFirstBundle,
   catalogFirstRoomBundleBlueprints,
   catalogFirstRolesForRoom,
   type CatalogFirstRoomType,
+  type ProductBundleItem,
   type RoomBundleRole
 } from "./catalog-first-room-generation";
 
@@ -70,5 +72,144 @@ for (const [roomType, roles] of Object.entries(catalogFirstRoomBundleBlueprints)
     );
   }
 }
+
+function item(roleId: string, price: number | null, quantity = 99, tier: "budget" | "premium" = "premium"): ProductBundleItem {
+  return {
+    roleId,
+    productId: `${roleId}-product`,
+    category: roleId,
+    name: `${roleId} product`,
+    quantity,
+    unitPriceAed: price,
+    tier,
+    matchScore: 80
+  };
+}
+
+const diningRoles = catalogFirstRolesForRoom("dining_room");
+const completeDiningBundle = assembleCatalogFirstBundle({
+  roomType: "dining_room",
+  tier: "premium",
+  roles: diningRoles,
+  budgetMaxAed: 12000,
+  candidateItemsByRoleId: {
+    dining_table: [item("dining_table", 5000, 1, "budget")],
+    dining_chairs: [item("dining_chairs", 700, 1, "budget")],
+    lighting: [item("lighting", 1800)],
+    sideboard_console: [item("sideboard_console", 3200)]
+  }
+});
+assert.equal(completeDiningBundle.tier, "premium");
+assert.equal(completeDiningBundle.bundle?.tier, "premium");
+assert.deepEqual(completeDiningBundle.missingRequiredRoleIds, []);
+assert.equal(completeDiningBundle.bundle?.items.find((bundleItem) => bundleItem.roleId === "dining_chairs")?.quantity, 6);
+assert.equal(completeDiningBundle.bundle?.totalAed, 5000 + 700 * 6 + 1800 + 3200);
+assert.equal(completeDiningBundle.score?.roleCoverage, 100);
+assert.equal(completeDiningBundle.score?.budgetFit, 85);
+assert.deepEqual(completeDiningBundle.score?.notes, ["visual cohesion not scored in domain assembly"]);
+
+const livingBundle = assembleCatalogFirstBundle({
+  roomType: "living_room",
+  tier: "budget",
+  roles: catalogFirstRolesForRoom("living_room"),
+  budgetMaxAed: 25000,
+  candidateItemsByRoleId: {
+    sofa: [item("sofa", 8000)],
+    rug: [item("rug", 2400)],
+    coffee_table: [item("coffee_table", 1800)],
+    tv_media_console: [item("tv_media_console", 3200)],
+    lighting: [item("lighting", 900, 1)],
+    cushions: [item("cushions", 250, 1)]
+  }
+});
+assert.equal(livingBundle.bundle?.items.find((bundleItem) => bundleItem.roleId === "lighting")?.quantity, 2);
+assert.equal(livingBundle.bundle?.items.find((bundleItem) => bundleItem.roleId === "cushions")?.quantity, 4);
+assert.equal(livingBundle.bundle?.totalAed, 8000 + 2400 + 1800 + 3200 + 900 * 2 + 250 * 4);
+
+const optionalMissingBundle = assembleCatalogFirstBundle({
+  roomType: "living_room",
+  tier: "premium",
+  roles: catalogFirstRolesForRoom("living_room"),
+  candidateItemsByRoleId: {
+    sofa: [item("sofa", 8000)],
+    rug: [item("rug", 2400)],
+    coffee_table: [item("coffee_table", 1800)]
+  }
+});
+assert.deepEqual(optionalMissingBundle.missingRequiredRoleIds, []);
+assert.deepEqual(
+  optionalMissingBundle.bundle?.items.map((bundleItem) => bundleItem.roleId),
+  ["sofa", "rug", "coffee_table"]
+);
+
+const bedroomBundle = assembleCatalogFirstBundle({
+  roomType: "bedroom",
+  tier: "premium",
+  roles: catalogFirstRolesForRoom("bedroom"),
+  candidateItemsByRoleId: {
+    bed: [item("bed", 9000)],
+    bedside_tables: [item("bedside_tables", 1200)],
+    lighting: [item("lighting", 650)],
+    rug_textile_layer: [item("rug_textile_layer", 1800)]
+  }
+});
+assert.equal(bedroomBundle.bundle?.items.find((bundleItem) => bundleItem.roleId === "bedside_tables")?.quantity, 2);
+assert.equal(bedroomBundle.bundle?.items.find((bundleItem) => bundleItem.roleId === "lighting")?.quantity, 2);
+assert.equal(bedroomBundle.bundle?.totalAed, 9000 + 1200 * 2 + 650 * 2 + 1800);
+
+const missingRequiredBundle = assembleCatalogFirstBundle({
+  roomType: "home_office",
+  tier: "budget",
+  roles: catalogFirstRolesForRoom("home_office"),
+  candidateItemsByRoleId: {
+    desk: [item("desk", 2400)],
+    task_lighting: [item("task_lighting", 600)]
+  }
+});
+assert.deepEqual(missingRequiredBundle.missingRequiredRoleIds, ["office_chair"]);
+assert.equal(missingRequiredBundle.bundle, null);
+assert.equal(missingRequiredBundle.score, null);
+
+const callerOrderBundle = assembleCatalogFirstBundle({
+  roomType: "living_room",
+  tier: "premium",
+  roles: [roleById("living_room", "sofa"), roleById("living_room", "rug"), roleById("living_room", "coffee_table")],
+  candidateItemsByRoleId: {
+    sofa: [
+      { ...item("sofa", 9000), productId: "first-sofa", name: "First sofa", matchScore: 20 },
+      { ...item("sofa", 1000), productId: "second-sofa", name: "Second sofa", matchScore: 100 }
+    ],
+    rug: [item("rug", 2000)],
+    coffee_table: [item("coffee_table", 1200)]
+  }
+});
+assert.equal(callerOrderBundle.bundle?.items[0].productId, "first-sofa");
+
+const unknownTotalBundle = assembleCatalogFirstBundle({
+  roomType: "living_room",
+  tier: "budget",
+  roles: [roleById("living_room", "sofa"), roleById("living_room", "rug"), roleById("living_room", "coffee_table")],
+  budgetMaxAed: 10000,
+  candidateItemsByRoleId: {
+    sofa: [item("sofa", null)],
+    rug: [item("rug", 2000)],
+    coffee_table: [item("coffee_table", 1200)]
+  }
+});
+assert.equal(unknownTotalBundle.bundle?.totalAed, null);
+assert.equal(unknownTotalBundle.score?.budgetFit, 0);
+
+const zeroBudgetBundle = assembleCatalogFirstBundle({
+  roomType: "living_room",
+  tier: "budget",
+  roles: [roleById("living_room", "sofa"), roleById("living_room", "rug"), roleById("living_room", "coffee_table")],
+  budgetMaxAed: 0,
+  candidateItemsByRoleId: {
+    sofa: [item("sofa", 8000)],
+    rug: [item("rug", 2000)],
+    coffee_table: [item("coffee_table", 1200)]
+  }
+});
+assert.equal(zeroBudgetBundle.score?.budgetFit, 0);
 
 console.log("catalog-first room generation tests passed");
