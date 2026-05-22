@@ -49,8 +49,10 @@ Check `input_summary`:
 Check `output_summary`:
 
 - `roleStatuses` exists
+- `roleConfidence` exists
 - required anchor roles are `strong_match` or `acceptable_match`
 - missing roles are explicit
+- selected products with `invalid_selection`, `missing`, `hasColorMismatch`, or `hasWeakMaterialMatch` are treated as QA blockers for required anchors
 - retry paths are visible when used
 
 ## Stop Rules
@@ -63,4 +65,4 @@ Do not enable production if any of these occur:
 - anchor color or material contradicts the concept when matching alternatives exist
 - required role pools are empty
 - catalog coverage is stale, unavailable, or too weak for anchor products
-- `ai_jobs` logs do not show candidate counts, missing roles, retry use, and selected statuses clearly
+- `ai_jobs` logs do not show candidate counts, missing roles, retry use, selected statuses, and role confidence clearly
