@@ -233,6 +233,19 @@ export type ConceptProductSourcingCandidate = {
   searchTags?: string[];
 };
 
+const unsupportedOpenAiVisualInputImageExtensions = new Set([".avif", ".heic", ".heif"]);
+
+export function isSupportedOpenAiVisualInputImageUrl(imageUrl: string): boolean {
+  try {
+    const pathname = new URL(imageUrl).pathname.toLowerCase();
+    return !Array.from(unsupportedOpenAiVisualInputImageExtensions).some((extension) =>
+      pathname.endsWith(extension)
+    );
+  } catch {
+    return true;
+  }
+}
+
 export type SourceProductsFromConceptInput = {
   roomType: string;
   conceptTitle: string;
@@ -782,7 +795,11 @@ export async function sourceProductsFromConcept(
     .join("\n");
   const candidateImageContent = input.candidates
     .slice(0, candidateLimit)
-    .filter((candidate) => candidate.primaryImageUrl)
+    .filter(
+      (candidate) =>
+        candidate.primaryImageUrl &&
+        isSupportedOpenAiVisualInputImageUrl(candidate.primaryImageUrl)
+    )
     .flatMap((candidate) => [
       {
         type: "input_text" as const,
