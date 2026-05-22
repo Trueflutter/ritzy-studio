@@ -2,11 +2,28 @@ import type { CatalogAdapter, ProductDiscoveryResult, RawProductCandidate } from
 
 const BASE_URL = "https://www.chattelsandmore.com";
 const DEFAULT_CATEGORY_URLS = [
-  "https://www.chattelsandmore.com/en/category/living-room/sofas",
-  "https://www.chattelsandmore.com/en/category/living-room/armchairs",
+  "https://www.chattelsandmore.com/en/category/living-room/entertainment",
   "https://www.chattelsandmore.com/en/category/living-room/coffee-side-tables",
+  "https://www.chattelsandmore.com/en/category/living-room/coffee-side-tables/coffee-tables",
+  "https://www.chattelsandmore.com/en/category/living-room/coffee-side-tables/side-tables",
+  "https://www.chattelsandmore.com/en/category/living-room/coffee-side-tables/lamp-tables",
+  "https://www.chattelsandmore.com/en/category/living-room/stools-and-ottomans",
+  "https://www.chattelsandmore.com/en/category/living-room/storage-and-home-office",
+  "https://www.chattelsandmore.com/en/category/living-room/storage-and-home-office/bookcases",
+  "https://www.chattelsandmore.com/en/category/living-room/storage-and-home-office/desks",
+  "https://www.chattelsandmore.com/en/category/living-room/storage-and-home-office/office-chairs",
+  "https://www.chattelsandmore.com/en/category/living-room/storage-and-home-office/shelving-units",
   "https://www.chattelsandmore.com/en/category/bedroom/beds",
-  "https://www.chattelsandmore.com/en/category/dining-room/dining-tables"
+  "https://www.chattelsandmore.com/en/category/bedroom/nightstands",
+  "https://www.chattelsandmore.com/en/category/bedroom/dressers",
+  "https://www.chattelsandmore.com/en/category/dining-room/dining-tables",
+  "https://www.chattelsandmore.com/en/category/living-room/armchairs",
+  "https://www.chattelsandmore.com/en/category/living-room/sofas",
+  "https://www.chattelsandmore.com/en/category/living-room/sofas/2-seater-sofas",
+  "https://www.chattelsandmore.com/en/category/living-room/sofas/3-seater-sofas",
+  "https://www.chattelsandmore.com/en/category/living-room/sofas/4-seater-sofas",
+  "https://www.chattelsandmore.com/en/category/living-room/sofas/l-shaped-corner-sofas",
+  "https://www.chattelsandmore.com/en/category/living-room/sofas/modular-sofas"
 ];
 
 const cache = new Map<string, string>();
@@ -33,11 +50,17 @@ export const chattelsAdapter: CatalogAdapter = {
   }),
   discoverProducts: async function* ({ limit, categories } = {}) {
     const categoryUrls = categories?.length ? categories : DEFAULT_CATEGORY_URLS;
+    const seenUrls = new Set<string>();
     let yielded = 0;
 
     for (const categoryUrl of categoryUrls) {
       const html = await fetchText(categoryUrl);
       for (const url of parseChattelsProductUrls(html)) {
+        if (seenUrls.has(url)) {
+          continue;
+        }
+        seenUrls.add(url);
+
         yield { url, categoryHint: categoryUrl, source: "category_page" };
         yielded += 1;
         if (limit && yielded >= limit) {
