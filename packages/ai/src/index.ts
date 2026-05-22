@@ -30,7 +30,8 @@ import {
   inspirationAnalysisPrompt,
   inspirationAnalysisResponseSchema,
   productMetadataEnrichmentJsonSchema,
-  productMetadataEnrichmentPrompt
+  productMetadataEnrichmentPrompt,
+  type ConceptProductSourcingResponse
 } from "@ritzy-studio/prompts";
 import { createHash, createSign } from "node:crypto";
 import { readFile } from "node:fs/promises";
@@ -233,13 +234,30 @@ export type ConceptProductSourcingCandidate = {
   searchTags?: string[];
 };
 
+export type ConceptProductSourcingRolePool = {
+  category: string;
+  roleLabel: string;
+  visualBrief: string | null;
+  quantity: number;
+  priority: "required" | "supporting";
+  candidateIds: string[];
+};
+
 export type SourceProductsFromConceptInput = {
   roomType: string;
   conceptTitle: string;
   conceptDescription?: string | null;
   conceptImageUrl: string;
   candidates: ConceptProductSourcingCandidate[];
+  roleCandidatePools?: ConceptProductSourcingRolePool[];
 };
+
+export type ProductVisualMatchStatus =
+  | "strong_match"
+  | "acceptable_match"
+  | "closest_available"
+  | "missing_required"
+  | "missing_supporting";
 
 export type SourceProductsFromConceptResult = {
   promptKey: string;
@@ -257,11 +275,24 @@ export type SourceProductsFromConceptResult = {
     category: string;
     roleLabel: string;
     quantity: number;
+    matchStatus: Exclude<ProductVisualMatchStatus, "missing_required" | "missing_supporting">;
     visualMatchReason: string;
     mismatchNote: string | null;
   }>;
+  roleResults: Array<{
+    category: string;
+    roleLabel: string;
+    status: ProductVisualMatchStatus;
+    productId: string | null;
+    reason: string;
+  }>;
   missingRoles: string[];
 };
+
+export type ValidatedConceptProductSourcingResult = Pick<
+  SourceProductsFromConceptResult,
+  "selectedProducts" | "roleResults" | "missingRoles"
+>;
 
 const INITIAL_CONCEPT_PROMPT_V2_VERSION = "2026-05-21.2";
 const FINAL_GROUNDED_RENDER_PROMPT_V2_VERSION = "2026-05-21.2";
@@ -758,6 +789,7 @@ export async function sourceProductsFromConcept(
   const client = new OpenAI({ apiKey: env.OPENAI_API_KEY });
   const candidateLimit = 36;
   const allowedProductIds = new Set(input.candidates.map((candidate) => candidate.id));
+  const roleCandidatePools = input.roleCandidatePools ?? [];
   const candidateSummary = input.candidates
     .slice(0, candidateLimit)
     .map((candidate, index) =>
@@ -780,6 +812,23 @@ export async function sourceProductsFromConcept(
         .join("; ")
     )
     .join("\n");
+  const rolePoolSummary =
+    roleCandidatePools.length > 0
+      ? roleCandidatePools
+          .map((role, index) =>
+            [
+              `${index + 1}. role: ${role.roleLabel}`,
+              `category: ${role.category}`,
+              `priority: ${role.priority}`,
+              `quantity: ${role.quantity}`,
+              role.visualBrief ? `visual brief: ${role.visualBrief}` : null,
+              `candidate IDs: ${role.candidateIds.join(", ") || "none"}`
+            ]
+              .filter(Boolean)
+              .join("; ")
+          )
+          .join("\n")
+      : "No role-scoped pools supplied. Use the expected product roles and candidate list.";
   const candidateImageContent = input.candidates
     .slice(0, candidateLimit)
     .filter((candidate) => candidate.primaryImageUrl)
@@ -814,6 +863,9 @@ export async function sourceProductsFromConcept(
               `Approved concept title: ${input.conceptTitle}`,
               input.conceptDescription ? `Approved concept notes: ${input.conceptDescription}` : null,
               "",
+              "Role-scoped candidate pools:",
+              rolePoolSummary,
+              "",
               "Candidate catalog products:",
               candidateSummary
             ]
@@ -840,18 +892,118 @@ export async function sourceProductsFromConcept(
   });
 
   const parsed = conceptProductSourcingResponseSchema.parse(JSON.parse(response.output_text));
-  const selectedProducts = parsed.selectedProducts.filter((selection) =>
-    allowedProductIds.has(selection.productId)
-  );
+  const validated = validateProductSourcingRoleContract(parsed, roleCandidatePools, allowedProductIds);
 
   return {
     promptKey: conceptProductSourcingPrompt.key,
     promptVersion: conceptProductSourcingPrompt.version,
     model: env.OPENAI_TEXT_MODEL,
     needs: parsed.needs,
-    selectedProducts,
-    missingRoles: parsed.missingRoles
+    ...validated
   };
+}
+
+export function validateProductSourcingRoleContract(
+  parsed: ConceptProductSourcingResponse,
+  roleCandidatePools: ConceptProductSourcingRolePool[],
+  allowedProductIds = new Set(parsed.selectedProducts.map((selection) => selection.productId))
+): ValidatedConceptProductSourcingResult {
+  const rolePoolsByKey = new Map(
+    roleCandidatePools.map((role) => [sourcingRoleKey(role.category, role.roleLabel), role])
+  );
+  const rolePoolsByCategory = new Map(
+    roleCandidatePools.map((role) => [normalizeSourcingRoleCategory(role.category), role])
+  );
+
+  if (roleCandidatePools.length === 0) {
+    return {
+      selectedProducts: parsed.selectedProducts.filter((selection) => allowedProductIds.has(selection.productId)),
+      roleResults: parsed.roleResults.filter(
+        (result) => result.productId === null || allowedProductIds.has(result.productId)
+      ),
+      missingRoles: parsed.missingRoles
+    };
+  }
+
+  const validRoleResults = parsed.roleResults
+    .filter((result) => rolePoolsByKey.has(sourcingRoleKey(result.category, result.roleLabel)))
+    .map((result) => {
+      const role = rolePoolsByKey.get(sourcingRoleKey(result.category, result.roleLabel))!;
+      const productBelongsToRole =
+        result.productId !== null &&
+        allowedProductIds.has(result.productId) &&
+        role.candidateIds.includes(result.productId);
+
+      if (result.productId === null) {
+        return result;
+      }
+
+      if (!productBelongsToRole) {
+        return missingRoleResult(
+          role,
+          `The model returned product ${result.productId} outside this role pool.`
+        );
+      }
+
+      return {
+        ...result,
+        status:
+          result.status === "missing_required" || result.status === "missing_supporting"
+            ? "closest_available"
+            : result.status
+      };
+    });
+
+  for (const role of roleCandidatePools) {
+    const key = sourcingRoleKey(role.category, role.roleLabel);
+    if (validRoleResults.some((result) => sourcingRoleKey(result.category, result.roleLabel) === key)) {
+      continue;
+    }
+
+    validRoleResults.push(missingRoleResult(role, "The model did not return a valid status for this role pool."));
+  }
+
+  const selectedProducts = parsed.selectedProducts.filter((selection) => {
+    if (!allowedProductIds.has(selection.productId)) {
+      return false;
+    }
+
+    const role =
+      rolePoolsByKey.get(sourcingRoleKey(selection.category, selection.roleLabel)) ??
+      rolePoolsByCategory.get(normalizeSourcingRoleCategory(selection.category));
+    return Boolean(role?.candidateIds.includes(selection.productId));
+  });
+
+  return {
+    selectedProducts,
+    roleResults: validRoleResults,
+    missingRoles: Array.from(
+      new Set([
+        ...parsed.missingRoles,
+        ...validRoleResults
+          .filter((result) => result.status === "missing_required" || result.status === "missing_supporting")
+          .map((result) => `${result.category} ${result.roleLabel}`)
+      ])
+    )
+  };
+}
+
+function missingRoleResult(role: ConceptProductSourcingRolePool, reason: string) {
+  return {
+    category: role.category,
+    roleLabel: role.roleLabel,
+    status: role.priority === "required" ? ("missing_required" as const) : ("missing_supporting" as const),
+    productId: null,
+    reason
+  };
+}
+
+function sourcingRoleKey(category: string, roleLabel: string) {
+  return `${category}::${roleLabel}`.toLowerCase().replace(/[^a-z0-9:]+/g, "_");
+}
+
+function normalizeSourcingRoleCategory(category: string) {
+  return category.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
 }
 
 export async function generateInitialConcept(

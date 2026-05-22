@@ -14,6 +14,7 @@ import {
   createProjectSchema,
   createRoomSchema,
   designBriefSchema,
+  buildRoleScopedCandidatePools,
   buildShoppingListItemRows,
   composeRoomProductOptions,
   filterSubstitutionCandidates,
@@ -28,6 +29,8 @@ import {
   visualStyleSummary,
   type RankedProductMatch,
   type ProductMatchCandidate,
+  type RoleScopedCandidatePool,
+  type RoleScopedRankedProductMatch,
   type RoomProductRoleSpec
 } from "@ritzy-studio/domain";
 import { revalidatePath } from "next/cache";
@@ -1862,18 +1865,6 @@ export async function groundProductsAction(formData: FormData) {
   }
 
   const baseConceptText = `${concept.title}\n${concept.description ?? ""}`;
-  const ranked = rankProductMatches({
-    roomType: room.room_type,
-    conceptText: baseConceptText,
-    budgetMaxAed: project.budget_max_aed,
-    roomMeasurements: measurements
-      ? {
-          wallLengthCm: measurements.wall_length_cm,
-          roomDepthCm: measurements.room_depth_cm
-        }
-      : null,
-    candidates
-  });
   const conceptImageAsset = Array.isArray(concept.primary_image_asset)
     ? concept.primary_image_asset[0]
     : concept.primary_image_asset;
@@ -1897,7 +1888,23 @@ export async function groundProductsAction(formData: FormData) {
     );
   }
 
-  const sourcingCandidates = shortlistSourcingCandidates(ranked, blueprintRoles).map(matchToSourcingCandidate);
+  const sourcingPools = buildRoleScopedCandidatePools({
+    roomType: room.room_type,
+    conceptText: baseConceptText,
+    roles: blueprintRoles,
+    candidates,
+    budgetMaxAed: project.budget_max_aed,
+    roomMeasurements: measurements
+      ? {
+          wallLengthCm: measurements.wall_length_cm,
+          roomDepthCm: measurements.room_depth_cm
+        }
+      : null,
+    candidatesPerRole: 6
+  }).pools;
+  const sourcingCandidates = roleScopedCandidatesForSourcing(sourcingPools);
+  const sourcingCandidateIds = new Set(sourcingCandidates.map((candidate) => candidate.id));
+  const sourcingCandidatePools = sourcingPools.map((pool) => poolToSourcingRolePool(pool, sourcingCandidateIds));
   const { data: sourcingJob, error: sourcingJobError } = await serviceSupabase
     .from("ai_jobs")
     .insert({
@@ -1912,7 +1919,8 @@ export async function groundProductsAction(formData: FormData) {
         roomId,
         conceptId: concept.id,
         candidateCount: sourcingCandidates.length,
-        blueprintRoleCount: blueprintRoles.length
+        blueprintRoleCount: blueprintRoles.length,
+        roleCandidateCounts: roleCandidateCountSummary(sourcingPools)
       }
     })
     .select("id")
@@ -1930,7 +1938,8 @@ export async function groundProductsAction(formData: FormData) {
         conceptTitle: concept.title,
         conceptDescription: concept.description,
         conceptImageUrl: conceptSignedImage.signedUrl,
-        candidates: sourcingCandidates
+        candidates: sourcingCandidates.map(matchToSourcingCandidate),
+        roleCandidatePools: sourcingCandidatePools
       }),
       PRODUCT_SOURCING_AI_TIMEOUT_MS,
       "Product visual sourcing timed out."
@@ -1948,7 +1957,9 @@ export async function groundProductsAction(formData: FormData) {
           needCount: sourcingResult.needs.length,
           selectedProductCount: sourcingResult.selectedProducts.length,
           missingRoleCount: sourcingResult.missingRoles.length,
-          missingRoles: sourcingResult.missingRoles
+          missingRoles: sourcingResult.missingRoles,
+          roleCandidateCounts: roleCandidateCountSummary(sourcingPools),
+          roleStatuses: roleStatusSummary(sourcingResult.roleResults)
         }
       })
       .eq("id", sourcingJob.id);
@@ -2013,15 +2024,31 @@ export async function groundProductsAction(formData: FormData) {
   );
 
   if (missingRequiredVisualRoles.length > 0) {
+    const retryRoles = mergeRoomRoles(missingRequiredVisualRoles, staticRoles);
+    const retryPools = buildRoleScopedCandidatePools({
+      roomType: room.room_type,
+      conceptText: visualConceptText,
+      roles: retryRoles,
+      candidates,
+      budgetMaxAed: project.budget_max_aed,
+      roomMeasurements: measurements
+        ? {
+            wallLengthCm: measurements.wall_length_cm,
+            roomDepthCm: measurements.room_depth_cm
+          }
+        : null,
+      candidatesPerRole: 8
+    }).pools;
+    const retryCandidates = roleScopedCandidatesForSourcing(retryPools);
+    const retryCandidateIds = new Set(retryCandidates.map((candidate) => candidate.id));
     const retryResult = await withTimeout(
       sourceProductsFromConcept({
         roomType: room.room_type,
         conceptTitle: concept.title,
         conceptDescription: concept.description,
         conceptImageUrl: conceptSignedImage.signedUrl,
-        candidates: shortlistSourcingRetryCandidates(visualRanked, missingRequiredVisualRoles, staticRoles).map(
-          matchToSourcingCandidate
-        )
+        candidates: retryCandidates.map(matchToSourcingCandidate),
+        roleCandidatePools: retryPools.map((pool) => poolToSourcingRolePool(pool, retryCandidateIds))
       }),
       PRODUCT_SOURCING_AI_TIMEOUT_MS,
       "Product visual sourcing retry timed out."
@@ -2049,6 +2076,8 @@ export async function groundProductsAction(formData: FormData) {
             selectedProductCount: sourcingResult.selectedProducts.length,
             missingRoleCount: sourcingResult.missingRoles.length,
             missingRoles: sourcingResult.missingRoles,
+            roleCandidateCounts: roleCandidateCountSummary(retryPools),
+            roleStatuses: roleStatusSummary(sourcingResult.roleResults),
             retryUsed: true,
             usable: missingRequiredVisualRoles.length === 0
           }
@@ -2071,6 +2100,7 @@ export async function groundProductsAction(formData: FormData) {
           selectedProductCount: sourcingResult.selectedProducts.length,
           missingRoleCount: sourcingResult.missingRoles.length,
           missingRoles: sourcingResult.missingRoles,
+          roleStatuses: roleStatusSummary(sourcingResult.roleResults),
           usable: false
         }
       })
@@ -2085,6 +2115,12 @@ export async function groundProductsAction(formData: FormData) {
 
   const sourceSelectionsById = new Map(
     sourcingResult.selectedProducts.map((selection) => [selection.productId, selection])
+  );
+  const sourceRoleResultsByCategory = new Map(
+    sourcingResult.roleResults.map((result) => [
+      normalizeSourcingCategory(result.category, result.roleLabel),
+      result
+    ])
   );
 
   // The AI's read of the concept defines the room's roles; fall back to the
@@ -2161,7 +2197,13 @@ export async function groundProductsAction(formData: FormData) {
   // one, fall back to the top-ranked option so every role starts chosen.
   const selectedProductIdByRole = new Map<string, string>();
   for (const role of roleOptions) {
-    const aiPick = (sourcingResult?.selectedProducts ?? []).find(
+    const roleResult = sourceRoleResultsByCategory.get(role.category);
+    if (roleResult?.productId && role.options.some((option) => option.id === roleResult.productId)) {
+      selectedProductIdByRole.set(role.category, roleResult.productId);
+      continue;
+    }
+
+    const aiPick = sourcingResult.selectedProducts.find(
       (selection) =>
         normalizeSourcingCategory(selection.category, selection.roleLabel) === role.category &&
         role.options.some((option) => option.id === selection.productId)
@@ -3446,24 +3488,12 @@ function mergeRoomRoles(primary: RoomProductRoleSpec[], secondary: RoomProductRo
   return roles;
 }
 
-function shortlistSourcingCandidates(ranked: RankedProductMatch[], roles: RoomProductRoleSpec[] = []) {
-  const byCategory = new Map<string, RankedProductMatch[]>();
+function roleScopedCandidatesForSourcing(pools: RoleScopedCandidatePool[]) {
   const selectedIds = new Set<string>();
-  const selected: RankedProductMatch[] = [];
+  const selected: RoleScopedRankedProductMatch[] = [];
 
-  for (const match of ranked) {
-    const category = match.categoryNormalized ?? "uncategorized";
-    const categoryMatches = byCategory.get(category) ?? [];
-    if (categoryMatches.length < 6) {
-      categoryMatches.push(match);
-      byCategory.set(category, categoryMatches);
-    }
-  }
-
-  for (const role of roles) {
-    const categoryMatches = byCategory.get(role.category) ?? [];
-    const take = role.priority === "required" ? 4 : 2;
-    for (const match of categoryMatches.slice(0, take)) {
+  for (const pool of pools) {
+    for (const match of pool.candidates) {
       if (selectedIds.has(match.id)) {
         continue;
       }
@@ -3472,39 +3502,50 @@ function shortlistSourcingCandidates(ranked: RankedProductMatch[], roles: RoomPr
     }
   }
 
-  const fill = Array.from(byCategory.values())
-    .flat()
-    .sort((left, right) => right.score - left.score)
-    .filter((match) => !selectedIds.has(match.id));
-
-  return [...selected, ...fill].slice(0, 36);
+  return selected.slice(0, 36);
 }
 
-function shortlistSourcingRetryCandidates(
-  ranked: RankedProductMatch[],
-  focusRoles: RoomProductRoleSpec[],
-  remainingRoles: RoomProductRoleSpec[]
+function poolToSourcingRolePool(pool: RoleScopedCandidatePool, allowedCandidateIds: Set<string>) {
+  return {
+    category: pool.role.category,
+    roleLabel: pool.role.label,
+    visualBrief: pool.role.visualBrief,
+    quantity: pool.role.quantity,
+    priority: pool.role.priority,
+    candidateIds: pool.candidates
+      .map((candidate) => candidate.id)
+      .filter((candidateId) => allowedCandidateIds.has(candidateId))
+  };
+}
+
+function roleCandidateCountSummary(pools: RoleScopedCandidatePool[]) {
+  return pools.map((pool) => ({
+    category: pool.role.category,
+    roleLabel: pool.role.label,
+    priority: pool.role.priority,
+    candidateCount: pool.candidateCount,
+    rejectedCount: pool.rejectedCount,
+    rejectionReasons: pool.rejectionReasons,
+    weaknessReasons: pool.weaknessReasons
+  }));
+}
+
+function roleStatusSummary(
+  roleResults: Array<{
+    category: string;
+    roleLabel: string;
+    status: string;
+    productId: string | null;
+    reason: string;
+  }>
 ) {
-  const selectedIds = new Set<string>();
-  const selected: RankedProductMatch[] = [];
-
-  for (const role of focusRoles) {
-    for (const match of ranked.filter((candidate) => candidate.categoryNormalized === role.category).slice(0, 12)) {
-      if (selectedIds.has(match.id)) {
-        continue;
-      }
-
-      selected.push(match);
-      selectedIds.add(match.id);
-    }
-  }
-
-  const fill = shortlistSourcingCandidates(
-    ranked,
-    remainingRoles.filter((role) => !focusRoles.some((focusRole) => focusRole.category === role.category))
-  ).filter((match) => !selectedIds.has(match.id));
-
-  return [...selected, ...fill].slice(0, 36);
+  return roleResults.map((result) => ({
+    category: normalizeSourcingCategory(result.category, result.roleLabel),
+    roleLabel: result.roleLabel,
+    status: result.status,
+    productId: result.productId,
+    reason: result.reason
+  }));
 }
 
 function matchToSourcingCandidate(match: RankedProductMatch) {
@@ -3537,6 +3578,22 @@ function normalizeSourcingCategory(category: string, roleLabel: string) {
 
   if (text.includes("dining") && text.includes("chair")) {
     return "chairs";
+  }
+
+  if (text.includes("bed") || text.includes("headboard")) {
+    return text.includes("headboard") ? "headboards" : "beds";
+  }
+
+  if (text.includes("dining") && text.includes("table")) {
+    return "dining_tables";
+  }
+
+  if (text.includes("desk")) {
+    return "desks";
+  }
+
+  if (text.includes("office") && text.includes("chair")) {
+    return "office_chairs";
   }
 
   if (text.includes("armchair") || text.includes("chair") || text.includes("lounge")) {
