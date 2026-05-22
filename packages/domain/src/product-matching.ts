@@ -722,9 +722,29 @@ export type RoleProductOptions = RoomProductRoleSpec & {
   options: RankedProductMatch[];
 };
 
+export type ProductRoleAttributeScore = {
+  category: number;
+  color: number;
+  material: number;
+  style: number;
+  silhouette: number;
+  roleFit: number;
+  total: number;
+  reasons: string[];
+  weaknessReasons: string[];
+  requestedColorFamilies: string[];
+  candidateColorFamilies: string[];
+  requestedMaterialFamilies: string[];
+  candidateMaterialFamilies: string[];
+};
+
+export type RoleScopedRankedProductMatch = RankedProductMatch & {
+  attributeScore: ProductRoleAttributeScore;
+};
+
 export type RoleScopedCandidatePool = {
   role: RoomProductRoleSpec;
-  candidates: RankedProductMatch[];
+  candidates: RoleScopedRankedProductMatch[];
   candidateCount: number;
   rejectedCount: number;
   rejectionReasons: Record<string, number>;
@@ -892,7 +912,7 @@ function buildRolePool({
   preferredCategories: string[];
   candidatesPerRole: number;
 }): RoleScopedCandidatePool {
-  const scored: Array<{ match: RankedProductMatch; roleScore: number; weakness: string | null }> = [];
+  const scored: Array<{ match: RoleScopedRankedProductMatch; roleScore: number; weaknesses: string[] }> = [];
   const rejectionReasons: Record<string, number> = {};
 
   for (const candidate of request.candidates) {
@@ -903,15 +923,16 @@ function buildRolePool({
     }
 
     const baseMatch = scoreCandidate(candidate, tokensFor(`${request.roomType} ${request.conceptText}`), preferredCategories, request);
-    const fit = roleFitScore(candidate, role, request.conceptText);
+    const fit = scoreProductCandidateForRole({ candidate, role, conceptText: request.conceptText });
     scored.push({
       match: {
         ...baseMatch,
-        score: Number((baseMatch.score + fit.score).toFixed(3)),
-        selectionReason: [baseMatch.selectionReason, ...fit.reasons].join("; ")
+        score: Number((baseMatch.score + fit.total).toFixed(3)),
+        selectionReason: [baseMatch.selectionReason, ...fit.reasons].join("; "),
+        attributeScore: fit
       },
-      roleScore: fit.score,
-      weakness: fit.weakness
+      roleScore: fit.total,
+      weaknesses: fit.weaknessReasons
     });
   }
 
@@ -926,7 +947,7 @@ function buildRolePool({
     candidateCount: candidates.length,
     rejectedCount: Object.values(rejectionReasons).reduce((total, count) => total + count, 0),
     rejectionReasons,
-    weaknessReasons: Array.from(new Set(scored.map(({ weakness }) => weakness).filter((value): value is string => Boolean(value))))
+    weaknessReasons: Array.from(new Set(scored.flatMap(({ weaknesses }) => weaknesses)))
   };
 }
 
@@ -970,52 +991,98 @@ function roleGateRejectionReason(
   return null;
 }
 
-function roleFitScore(candidate: ProductMatchCandidate, role: RoomProductRoleSpec, conceptText: string) {
-  const roleBrief = [conceptText, role.label, role.visualBrief].filter(Boolean).join(" ");
-  const roleTokens = tokensFor(roleBrief);
+export function scoreProductCandidateForRole({
+  candidate,
+  role,
+  conceptText = ""
+}: {
+  candidate: ProductMatchCandidate;
+  role: RoomProductRoleSpec;
+  conceptText?: string;
+}): ProductRoleAttributeScore {
+  const roleTokens = tokensFor(attributeCueText(role, conceptText));
   const candidateTokens = candidateSearchTokens(candidate);
   const reasons: string[] = [];
-  let score = 0;
-  let weakness: string | null = null;
+  const weaknessReasons: string[] = [];
+  let category = 0;
+  let color = 0;
+  let material = 0;
+  let style = 0;
+  let silhouette = 0;
+  let roleFit = 0;
 
   if (candidate.categoryNormalized === role.category) {
-    score += 48;
+    category = 48;
     reasons.push(`category matches role: ${role.label}`);
+  } else if (candidate.categoryNormalized && categoriesForScopedRole(role).has(candidate.categoryNormalized)) {
+    category = 12;
+    weaknessReasons.push(`uses compatible fallback category ${candidate.categoryNormalized} for ${role.category}`);
   } else {
-    score += 12;
-    weakness = `uses compatible fallback category ${candidate.categoryNormalized} for ${role.category}`;
+    category = -48;
+    weaknessReasons.push(`category ${candidate.categoryNormalized ?? "uncategorized"} does not fit ${role.category}`);
   }
 
   const requestedColorFamilies = familiesInText(roleTokens, colorFamilies);
+  const candidateColorFamilies = familiesInText(candidateTokens, colorFamilies);
   if (requestedColorFamilies.length > 0) {
-    const candidateColorFamilies = familiesInText(candidateTokens, colorFamilies);
     if (candidateColorFamilies.some((family) => requestedColorFamilies.includes(family))) {
-      score += 34;
+      color = 34;
       reasons.push("color family matches role brief");
     } else if (candidateColorFamilies.length > 0) {
-      score -= 30;
-      weakness = "color family conflicts with role brief";
+      color = -30;
+      weaknessReasons.push("color family conflicts with role brief");
     }
   }
 
   const requestedMaterialFamilies = familiesInText(roleTokens, materialFamilies);
+  const candidateMaterialFamilies = familiesInText(candidateTokens, materialFamilies);
   if (requestedMaterialFamilies.length > 0) {
-    const candidateMaterialFamilies = familiesInText(candidateTokens, materialFamilies);
     if (candidateMaterialFamilies.some((family) => requestedMaterialFamilies.includes(family))) {
-      score += 20;
+      material = 20;
       reasons.push("material family matches role brief");
     } else if (candidateMaterialFamilies.length > 0) {
-      score -= 12;
-      weakness = weakness ?? "material family is weak for role brief";
+      material = -12;
+      weaknessReasons.push("material family is weak for role brief");
     }
   }
 
-  const roleKeywordScore = roleSpecificKeywordScore(role, candidateTokens);
-  score += roleKeywordScore.score;
-  reasons.push(...roleKeywordScore.reasons);
-  weakness = roleKeywordScore.weakness ?? weakness;
+  const styleMatches = candidate.styleTags
+    .flatMap((tag) => Array.from(tokensFor(tag)))
+    .filter((tag) => roleTokens.has(tag));
+  if (styleMatches.length > 0) {
+    style = Math.min(styleMatches.length * 8, 24);
+    reasons.push(`style matches ${styleMatches.slice(0, 3).join(", ")}`);
+  }
 
-  return { score, reasons, weakness };
+  const silhouetteScore = silhouetteAttributeScore(roleTokens, candidateTokens);
+  silhouette = silhouetteScore.score;
+  reasons.push(...silhouetteScore.reasons);
+  weaknessReasons.push(...silhouetteScore.weaknessReasons);
+
+  const roleKeywordScore = roleSpecificKeywordScore(role, candidateTokens);
+  roleFit = roleKeywordScore.score;
+  reasons.push(...roleKeywordScore.reasons);
+  if (roleKeywordScore.weakness) {
+    weaknessReasons.push(roleKeywordScore.weakness);
+  }
+
+  const total = category + color + material + style + silhouette + roleFit;
+
+  return {
+    category,
+    color,
+    material,
+    style,
+    silhouette,
+    roleFit,
+    total,
+    reasons,
+    weaknessReasons: Array.from(new Set(weaknessReasons)),
+    requestedColorFamilies,
+    candidateColorFamilies,
+    requestedMaterialFamilies,
+    candidateMaterialFamilies
+  };
 }
 
 function roleSpecificKeywordScore(role: RoomProductRoleSpec, candidateTokens: Set<string>) {
@@ -1058,6 +1125,42 @@ function roleSpecificKeywordScore(role: RoomProductRoleSpec, candidateTokens: Se
   }
 
   return { score, reasons, weakness };
+}
+
+function attributeCueText(role: RoomProductRoleSpec, conceptText: string) {
+  const roleSpecificCue = [role.label, role.visualBrief].filter(Boolean).join(" ");
+  return role.visualBrief ? roleSpecificCue : [conceptText, roleSpecificCue].filter(Boolean).join(" ");
+}
+
+function silhouetteAttributeScore(roleTokens: Set<string>, candidateTokens: Set<string>) {
+  const silhouetteFamilies: Record<string, string[]> = {
+    bulky: ["bulky", "oversized", "chunky", "deep"],
+    low: ["low", "lowline", "lowprofile"],
+    round: ["round", "curved", "oval"],
+    slim: ["slim", "slender", "thin", "narrow"],
+    tall: ["tall", "high", "bookcase", "shelving"],
+    upholstered: ["upholstered", "padded", "tufted"]
+  };
+  const requested = familiesInText(roleTokens, silhouetteFamilies);
+  const candidate = familiesInText(candidateTokens, silhouetteFamilies);
+  const reasons: string[] = [];
+  const weaknessReasons: string[] = [];
+
+  if (requested.length === 0) {
+    return { score: 0, reasons, weaknessReasons };
+  }
+
+  if (candidate.some((family) => requested.includes(family))) {
+    reasons.push("silhouette language matches role brief");
+    return { score: 14, reasons, weaknessReasons };
+  }
+
+  if (candidate.length > 0) {
+    weaknessReasons.push("silhouette language conflicts with role brief");
+    return { score: -10, reasons, weaknessReasons };
+  }
+
+  return { score: 0, reasons, weaknessReasons };
 }
 
 function candidateSearchTokens(candidate: ProductMatchCandidate) {

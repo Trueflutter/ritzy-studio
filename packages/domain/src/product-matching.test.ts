@@ -11,6 +11,7 @@ import {
   quantityForProductCategory,
   rankProductMatches,
   renderReferencePriorityForProduct,
+  scoreProductCandidateForRole,
   selectedItemsTotalAed,
   sortProductsForRenderReferences,
   type ProductMatchCandidate,
@@ -587,6 +588,87 @@ const mediaConsolePool = buildRoleScopedCandidatePools({
   ]
 });
 assert.equal(mediaConsolePool.pools[0].candidates[0].name, "Low Walnut Media Console");
+
+const beigeSofaAttributeScore = scoreProductCandidateForRole({
+  candidate: beigeSofaPool.pools[0].candidates[0],
+  role: {
+    category: "sofas",
+    label: "anchor seating",
+    visualBrief: "beige or cream linen sofa",
+    quantity: 1,
+    priority: "required"
+  },
+  conceptText: "quiet contemporary living room"
+});
+assert.ok(beigeSofaAttributeScore.category > 0);
+assert.ok(beigeSofaAttributeScore.color > 0);
+assert.ok(beigeSofaAttributeScore.material > 0);
+assert.ok(beigeSofaAttributeScore.requestedColorFamilies.includes("cream"));
+assert.ok(beigeSofaAttributeScore.candidateColorFamilies.includes("cream"));
+
+const oliveSofaAttributeScore = scoreProductCandidateForRole({
+  candidate: {
+    ...base,
+    id: "00000000-0000-4000-8000-000000000571",
+    name: "Olive Velvet Sofa",
+    categoryNormalized: "sofas",
+    availability: "in stock",
+    primaryImageUrl: "https://example.com/olive-sofa-score.jpg",
+    colorTags: ["olive", "green"],
+    materialTags: ["velvet"]
+  },
+  role: {
+    category: "sofas",
+    label: "anchor seating",
+    visualBrief: "beige or cream linen sofa",
+    quantity: 1,
+    priority: "required"
+  },
+  conceptText: "quiet contemporary living room"
+});
+assert.ok(oliveSofaAttributeScore.color < 0);
+assert.ok(oliveSofaAttributeScore.material < 0);
+assert.ok(oliveSofaAttributeScore.weaknessReasons.includes("color family conflicts with role brief"));
+
+const bulkyDiningChairAttributeScore = scoreProductCandidateForRole({
+  candidate: {
+    ...base,
+    id: "00000000-0000-4000-8000-000000000572",
+    name: "Bulky Lounge Armchair",
+    categoryNormalized: "armchairs",
+    availability: "in stock",
+    primaryImageUrl: "https://example.com/bulky-armchair-score.jpg",
+    styleTags: ["oversized"],
+    materialTags: ["upholstered"]
+  },
+  role: {
+    category: "chairs",
+    label: "dining chairs",
+    visualBrief: "slim upholstered dining chairs",
+    quantity: 6,
+    priority: "required"
+  },
+  conceptText: "cream dining room"
+});
+assert.ok(bulkyDiningChairAttributeScore.category < 0);
+assert.ok(bulkyDiningChairAttributeScore.roleFit < 0);
+assert.ok(
+  bulkyDiningChairAttributeScore.weaknessReasons.includes("bulky lounge seating is weak for dining chair role")
+);
+
+const mediaConsoleAttributeScore = scoreProductCandidateForRole({
+  candidate: mediaConsolePool.pools[0].candidates[0],
+  role: {
+    category: "storage",
+    label: "TV media console",
+    visualBrief: "low walnut media console",
+    quantity: 1,
+    priority: "supporting"
+  },
+  conceptText: "living room"
+});
+assert.ok(mediaConsoleAttributeScore.roleFit > 0);
+assert.ok(mediaConsoleAttributeScore.material > 0);
 
 // selected estimate uses selected rows only
 assert.equal(
