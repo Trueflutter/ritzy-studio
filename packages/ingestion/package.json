@@ -9,8 +9,14 @@
   "scripts": {
     "ingest:homecentre": "tsx src/cli.ts homecentre",
     "ingest:homecentre:dry-run": "tsx src/cli.ts homecentre --dry-run",
+    "ingest:danube": "tsx src/cli.ts danube",
+    "ingest:danube:dry-run": "tsx src/cli.ts danube --dry-run",
+    "ingest:2xl": "tsx src/cli.ts 2xl",
+    "ingest:2xl:dry-run": "tsx src/cli.ts 2xl --dry-run",
+    "ingest:chattels": "tsx src/cli.ts chattels",
+    "ingest:chattels:dry-run": "tsx src/cli.ts chattels --dry-run",
     "typecheck": "tsc --noEmit",
-    "test": "tsx src/normalization.test.ts && tsx src/catalog-counts.test.ts && tsx src/adapters/homecentre.test.ts && tsx src/adapters/chattels.test.ts && tsx src/adapters/twoxl.test.ts"
+    "test": "tsx src/normalization.test.ts && tsx src/catalog-counts.test.ts && tsx src/adapters/homecentre.test.ts && tsx src/adapters/danube.test.ts && tsx src/adapters/chattels.test.ts && tsx src/adapters/twoxl.test.ts"
   },
   "dependencies": {
     "@ritzy-studio/db": "workspace:*",

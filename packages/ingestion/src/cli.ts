@@ -5,7 +5,10 @@ import { createClient } from "@supabase/supabase-js";
 
 import type { Database } from "@ritzy-studio/db";
 
+import { chattelsAdapter } from "./adapters/chattels";
+import { danubeAdapter } from "./adapters/danube";
 import { homeCentreAdapter } from "./adapters/homecentre";
+import { twoXlAdapter } from "./adapters/twoxl";
 import { categoryCounts } from "./catalog-counts";
 import { normalizeProductCandidate } from "./normalization";
 import { runCatalogIngestion } from "./runner";
@@ -19,7 +22,13 @@ type CliOptions = {
 
 const adapters = new Map<string, CatalogAdapter>([
   ["homecentre", homeCentreAdapter],
-  [homeCentreAdapter.key, homeCentreAdapter]
+  [homeCentreAdapter.key, homeCentreAdapter],
+  ["danube", danubeAdapter],
+  [danubeAdapter.key, danubeAdapter],
+  ["2xl", twoXlAdapter],
+  [twoXlAdapter.key, twoXlAdapter],
+  ["chattels", chattelsAdapter],
+  [chattelsAdapter.key, chattelsAdapter]
 ]);
 
 main().catch((error) => {
