@@ -4,6 +4,7 @@ import {
   assembleCatalogFirstBundle,
   catalogFirstRoomBundleBlueprints,
   catalogFirstRolesForRoom,
+  normalizeCatalogFirstRoomType,
   type CatalogFirstRoomType,
   type ProductBundleItem,
   type RoomBundleRole
@@ -58,6 +59,25 @@ assert.equal(roleById("bedroom", "bedside_tables").quantity, 2);
 assert.equal(roleById("living_room", "lighting").quantity, 2);
 assert.equal(roleById("bedroom", "lighting").quantity, 2);
 assert.equal(roleById("living_room", "cushions").quantity, 4);
+
+assert.equal(normalizeCatalogFirstRoomType("living_room"), "living_room");
+assert.equal(normalizeCatalogFirstRoomType("Living Room"), "living_room");
+assert.equal(normalizeCatalogFirstRoomType("living room"), "living_room");
+assert.equal(normalizeCatalogFirstRoomType("  living-room  "), "living_room");
+assert.equal(normalizeCatalogFirstRoomType("lounge"), "living_room");
+assert.equal(normalizeCatalogFirstRoomType("family room"), "living_room");
+assert.equal(normalizeCatalogFirstRoomType("dining_room"), "dining_room");
+assert.equal(normalizeCatalogFirstRoomType("Dining Room"), "dining_room");
+assert.equal(normalizeCatalogFirstRoomType("dining area"), "dining_room");
+assert.equal(normalizeCatalogFirstRoomType("bedroom"), "bedroom");
+assert.equal(normalizeCatalogFirstRoomType("Bedroom"), "bedroom");
+assert.equal(normalizeCatalogFirstRoomType("primary bedroom"), "bedroom");
+assert.equal(normalizeCatalogFirstRoomType("home_office"), "home_office");
+assert.equal(normalizeCatalogFirstRoomType("Home Office"), "home_office");
+assert.equal(normalizeCatalogFirstRoomType("office"), "home_office");
+assert.equal(normalizeCatalogFirstRoomType("study"), "home_office");
+assert.equal(normalizeCatalogFirstRoomType("workspace"), "home_office");
+assert.throws(() => normalizeCatalogFirstRoomType("bathroom"), /Unsupported catalog-first room type/);
 
 for (const [roomType, roles] of Object.entries(catalogFirstRoomBundleBlueprints)) {
   const ids = roles.map((role) => role.id);

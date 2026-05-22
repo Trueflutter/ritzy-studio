@@ -112,6 +112,34 @@ export function catalogFirstRolesForRoom(roomType: CatalogFirstRoomType): readon
   return catalogFirstRoomBundleBlueprints[roomType];
 }
 
+export function normalizeCatalogFirstRoomType(roomType: string | CatalogFirstRoomType): CatalogFirstRoomType {
+  const normalized = roomType.trim().toLowerCase().replace(/[\s-]+/g, "_");
+
+  if (normalized === "living_room" || normalized === "living" || normalized === "lounge" || normalized === "family_room") {
+    return "living_room";
+  }
+
+  if (normalized === "dining_room" || normalized === "dining" || normalized === "dining_area") {
+    return "dining_room";
+  }
+
+  if (
+    normalized === "bedroom" ||
+    normalized === "bed" ||
+    normalized === "primary_bedroom" ||
+    normalized === "master_bedroom" ||
+    normalized === "guest_bedroom"
+  ) {
+    return "bedroom";
+  }
+
+  if (normalized === "home_office" || normalized === "office" || normalized === "study" || normalized === "workspace") {
+    return "home_office";
+  }
+
+  throw new Error(`Unsupported catalog-first room type: ${roomType}`);
+}
+
 export function assembleCatalogFirstBundle(input: BundleAssemblyInput): BundleAssemblyOutput {
   const selectedItems = input.roles.flatMap((role) => {
     const candidate = input.candidateItemsByRoleId[role.id]?.[0];
