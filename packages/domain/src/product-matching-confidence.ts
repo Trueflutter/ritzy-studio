@@ -33,6 +33,46 @@ export type ProductMatchRoleConfidence = {
   hasWeakMaterialMatch: boolean;
 };
 
+export type ProductMatchRequiredRoleDescriptor = {
+  roleKey: string;
+  category: string;
+  roleLabel: string;
+};
+
+export type ProductMatchQaStopRuleIssueCode =
+  | "required_role_not_reported"
+  | "required_pool_empty"
+  | "required_role_missing"
+  | "required_closest_available"
+  | "invalid_selection"
+  | "required_color_mismatch"
+  | "supporting_role_issue"
+  | "weak_material_match";
+
+export type ProductMatchQaStopRuleIssue = {
+  code: ProductMatchQaStopRuleIssueCode;
+  severity: "blocker" | "warning";
+  roleKey: string;
+  roleLabel: string;
+  message: string;
+};
+
+export type ProductMatchQaStopRuleStatus = {
+  passesQaStopRules: boolean;
+  blockers: ProductMatchQaStopRuleIssue[];
+  warnings: ProductMatchQaStopRuleIssue[];
+  counts: {
+    blockerCount: number;
+    warningCount: number;
+    missingRequiredRoleCount: number;
+    closestAvailableRequiredCount: number;
+    invalidSelectionCount: number;
+    colorMismatchRequiredCount: number;
+    weakMaterialRequiredCount: number;
+    emptyRequiredPoolCount: number;
+  };
+};
+
 export function productMatchRoleKey(category: string, roleLabel: string) {
   return `${normalizeRoleKeyPart(category)}::${normalizeRoleKeyPart(roleLabel)}`;
 }
@@ -110,12 +150,193 @@ export function productMatchConfidenceOutputSummary({
   }));
 }
 
+export function productMatchRequiredRoleDescriptor({
+  category,
+  roleLabel
+}: {
+  category: string;
+  roleLabel: string;
+}): ProductMatchRequiredRoleDescriptor {
+  return {
+    category,
+    roleLabel,
+    roleKey: productMatchRoleKey(category, roleLabel)
+  };
+}
+
+export function buildProductMatchQaStopRuleStatus({
+  roleConfidence,
+  requiredRoles
+}: {
+  roleConfidence: ProductMatchRoleConfidence[];
+  requiredRoles: ProductMatchRequiredRoleDescriptor[];
+}): ProductMatchQaStopRuleStatus {
+  const requiredByKey = new Map(requiredRoles.map((role) => [role.roleKey, role]));
+  const confidenceByKey = new Map(roleConfidence.map((role) => [role.roleKey, role]));
+  const blockers: ProductMatchQaStopRuleIssue[] = [];
+  const warnings: ProductMatchQaStopRuleIssue[] = [];
+
+  for (const requiredRole of requiredRoles) {
+    if (!confidenceByKey.has(requiredRole.roleKey)) {
+      blockers.push(
+        stopRuleIssue({
+          code: "required_role_not_reported",
+          severity: "blocker",
+          roleKey: requiredRole.roleKey,
+          roleLabel: requiredRole.roleLabel,
+          message: "Required role was not present in role confidence metadata."
+        })
+      );
+    }
+  }
+
+  for (const role of roleConfidence) {
+    const isRequired = requiredByKey.has(role.roleKey);
+
+    if (role.confidenceTier === "invalid_selection") {
+      blockers.push(
+        stopRuleIssue({
+          code: "invalid_selection",
+          severity: "blocker",
+          roleKey: role.roleKey,
+          roleLabel: role.roleLabel,
+          message: "Selected product is outside this role's candidate pool."
+        })
+      );
+      continue;
+    }
+
+    if (isRequired && role.candidateCount === 0) {
+      blockers.push(
+        stopRuleIssue({
+          code: "required_pool_empty",
+          severity: "blocker",
+          roleKey: role.roleKey,
+          roleLabel: role.roleLabel,
+          message: "Required role has an empty candidate pool."
+        })
+      );
+    }
+
+    if (isRequired && (role.confidenceTier === "missing" || role.status === "missing_required")) {
+      blockers.push(
+        stopRuleIssue({
+          code: "required_role_missing",
+          severity: "blocker",
+          roleKey: role.roleKey,
+          roleLabel: role.roleLabel,
+          message: "Required role is missing a selected product."
+        })
+      );
+    }
+
+    if (isRequired && role.status === "closest_available") {
+      blockers.push(
+        stopRuleIssue({
+          code: "required_closest_available",
+          severity: "blocker",
+          roleKey: role.roleKey,
+          roleLabel: role.roleLabel,
+          message: "Required role is only closest available."
+        })
+      );
+    }
+
+    if (isRequired && role.hasColorMismatch) {
+      blockers.push(
+        stopRuleIssue({
+          code: "required_color_mismatch",
+          severity: "blocker",
+          roleKey: role.roleKey,
+          roleLabel: role.roleLabel,
+          message: "Required role selected product has a color mismatch."
+        })
+      );
+    }
+
+    if (role.hasWeakMaterialMatch) {
+      const issue = stopRuleIssue({
+        code: "weak_material_match",
+        severity: "warning",
+        roleKey: role.roleKey,
+        roleLabel: role.roleLabel,
+        message: isRequired
+          ? "Required role selected product has a weak material match."
+          : "Supporting role selected product has a weak material match."
+      });
+      warnings.push(issue);
+    }
+
+    if (!isRequired && hasSupportingIssue(role)) {
+      warnings.push(
+        stopRuleIssue({
+          code: "supporting_role_issue",
+          severity: "warning",
+          roleKey: role.roleKey,
+          roleLabel: role.roleLabel,
+          message: "Supporting role needs manual QA review."
+        })
+      );
+    }
+  }
+
+  return {
+    passesQaStopRules: blockers.length === 0,
+    blockers,
+    warnings,
+    counts: {
+      blockerCount: blockers.length,
+      warningCount: warnings.length,
+      missingRequiredRoleCount: blockers.filter((issue) => issue.code === "required_role_missing").length,
+      closestAvailableRequiredCount: blockers.filter((issue) => issue.code === "required_closest_available").length,
+      invalidSelectionCount: blockers.filter((issue) => issue.code === "invalid_selection").length,
+      colorMismatchRequiredCount: blockers.filter((issue) => issue.code === "required_color_mismatch").length,
+      weakMaterialRequiredCount: warnings.filter((issue) => {
+        const role = confidenceByKey.get(issue.roleKey);
+        return issue.code === "weak_material_match" && Boolean(role && requiredByKey.has(role.roleKey));
+      }).length,
+      emptyRequiredPoolCount: blockers.filter((issue) => issue.code === "required_pool_empty").length
+    }
+  };
+}
+
+export function productMatchQaStopRuleOutputSummary({
+  roleConfidence,
+  requiredRoles
+}: {
+  roleConfidence: ProductMatchRoleConfidence[];
+  requiredRoles: ProductMatchRequiredRoleDescriptor[];
+}) {
+  const status = buildProductMatchQaStopRuleStatus({ roleConfidence, requiredRoles });
+
+  return {
+    passesQaStopRules: status.passesQaStopRules,
+    counts: status.counts,
+    blockers: status.blockers,
+    warnings: status.warnings
+  };
+}
+
 function normalizeRoleKeyPart(value: string) {
   return value
     .trim()
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "_")
     .replace(/^_+|_+$/g, "");
+}
+
+function stopRuleIssue(issue: ProductMatchQaStopRuleIssue): ProductMatchQaStopRuleIssue {
+  return issue;
+}
+
+function hasSupportingIssue(role: ProductMatchRoleConfidence) {
+  return (
+    role.status === "closest_available" ||
+    role.status === "missing_supporting" ||
+    role.confidenceTier === "missing" ||
+    role.hasColorMismatch ||
+    role.candidateCount === 0
+  );
 }
 
 function selectedCandidateForRole(pool: RoleScopedCandidatePool, productId: string | null) {
