@@ -2,12 +2,31 @@ import type { CatalogAdapter, ProductDiscoveryResult, RawProductCandidate } from
 
 const BASE_URL = "https://2xlhome.com";
 const DEFAULT_CATEGORY_URLS = [
-  "https://2xlhome.com/ae-en/furniture/sofa-seating/sofas",
-  "https://2xlhome.com/ae-en/furniture/sofa-seating/living-chair",
+  "https://2xlhome.com/ae-en/furniture/living/tv-media-units",
   "https://2xlhome.com/ae-en/furniture/living/tables/coffee-table",
   "https://2xlhome.com/ae-en/furniture/living/tables/side-table",
+  "https://2xlhome.com/ae-en/furniture/living/tables/console-table",
+  "https://2xlhome.com/ae-en/furniture/living/storage",
+  "https://2xlhome.com/ae-en/furniture/dining/dining-tables",
+  "https://2xlhome.com/ae-en/furniture/dining/dining-seating/dining-chair",
+  "https://2xlhome.com/ae-en/furniture/dining/dining-seating/dining-arm-chair",
+  "https://2xlhome.com/ae-en/furniture/dining/dining-serve-storage/sideboard",
   "https://2xlhome.com/ae-en/furniture/bedroom/beds",
-  "https://2xlhome.com/ae-en/furniture/dining/dining-tables"
+  "https://2xlhome.com/ae-en/furniture/bedroom/bedroom-storage/night-stands",
+  "https://2xlhome.com/ae-en/furniture/bedroom/bedroom-storage/dressers-1",
+  "https://2xlhome.com/ae-en/accessory/wall-decor/wall-art",
+  "https://2xlhome.com/ae-en/accessory/wall-decor/mirrors",
+  "https://2xlhome.com/ae-en/accessory/home-decor/decor-accessories",
+  "https://2xlhome.com/ae-en/accessory/lighting/lamps",
+  "https://2xlhome.com/ae-en/accessory/lighting/chandeliers",
+  "https://2xlhome.com/ae-en/accessory/floor-covering/rugs",
+  "https://2xlhome.com/ae-en/furniture/office-study/office-tables/workstation",
+  "https://2xlhome.com/ae-en/furniture/sofa-seating/sofas",
+  "https://2xlhome.com/ae-en/furniture/sofa-seating/corner-sofa",
+  "https://2xlhome.com/ae-en/furniture/sofa-seating/modular-sofa",
+  "https://2xlhome.com/ae-en/furniture/sofa-seating/living-chair",
+  "https://2xlhome.com/ae-en/furniture/sofa-seating/recliner",
+  "https://2xlhome.com/ae-en/furniture/sofa-seating/ottoman-pouf-stool"
 ];
 
 const cache = new Map<string, string>();
@@ -34,11 +53,17 @@ export const twoXlAdapter: CatalogAdapter = {
   }),
   discoverProducts: async function* ({ limit, categories } = {}) {
     const categoryUrls = categories?.length ? categories : DEFAULT_CATEGORY_URLS;
+    const seenUrls = new Set<string>();
     let yielded = 0;
 
     for (const categoryUrl of categoryUrls) {
       const html = await fetchText(categoryUrl);
       for (const url of parseTwoXlProductUrls(html)) {
+        if (seenUrls.has(url)) {
+          continue;
+        }
+        seenUrls.add(url);
+
         yield { url, categoryHint: categoryUrl, source: "category_page" };
         yielded += 1;
         if (limit && yielded >= limit) return;

@@ -26,13 +26,22 @@ const categoryMap = new Map<string, string>([
   ["recliner", "armchairs"],
   ["recliners", "armchairs"],
   ["sofa & seating > armchairs", "armchairs"],
+  ["living chair", "armchairs"],
+  ["coffee table", "coffee_tables"],
+  ["coffeetable", "coffee_tables"],
   ["side & end", "side_tables"],
   ["side and end", "side_tables"],
   ["side table", "side_tables"],
+  ["lamp table", "side_tables"],
+  ["end table", "side_tables"],
+  ["night stand", "side_tables"],
+  ["nightstand", "side_tables"],
   ["sideandendtable", "side_tables"],
   ["table and desk lamp", "lighting"],
   ["table & desk lamp", "lighting"],
   ["desk lamp", "lighting"],
+  ["chandelier", "lighting"],
+  ["pendant", "lighting"],
   ["lighting", "lighting"],
   ["lamp", "lighting"],
   ["lamps", "lighting"],
@@ -45,10 +54,12 @@ const categoryMap = new Map<string, string>([
   ["chair", "chairs"],
   ["chairs", "chairs"],
   ["chairs and benches", "chairs"],
-  ["coffee table", "coffee_tables"],
-  ["coffeetable", "coffee_tables"],
+  ["dining seating", "chairs"],
+  ["dining chair", "chairs"],
   ["sofa", "sofas"],
   ["sofas", "sofas"],
+  ["ottoman", "decor"],
+  ["pouf", "decor"],
   ["bed", "beds"],
   ["rug", "rugs"],
   ["rugs", "rugs"],
@@ -59,6 +70,8 @@ const categoryMap = new Map<string, string>([
   ["media unit", "storage"],
   ["bookcase", "storage"],
   ["bookcases", "storage"],
+  ["shelving unit", "storage"],
+  ["dresser", "storage"],
   ["storage", "storage"],
   ["cabinet", "storage"],
   ["sideboard", "storage"],
@@ -154,7 +167,7 @@ export function normalizeCategory(value: string | null | undefined): string | nu
     return null;
   }
 
-  const lower = value.toLowerCase().replace(/&/g, "and").replace(/\s+/g, " ");
+  const lower = value.toLowerCase().replace(/&/g, "and").replace(/[-_]/g, " ").replace(/\s+/g, " ");
   for (const [needle, normalized] of categoryMap) {
     if (lower.includes(needle)) {
       return normalized;

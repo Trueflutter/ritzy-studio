@@ -27,6 +27,12 @@ assert.deepEqual(parseDimensionsCm("80 x 45 x 36 cm"), {
 
 assert.equal(normalizeCategory("Living Room Sofa"), "sofas");
 assert.equal(normalizeCategory("Recliners"), "armchairs");
+assert.equal(normalizeCategory("https://2xlhome.com/ae-en/furniture/living/tv-media-units"), "storage");
+assert.equal(normalizeCategory("https://2xlhome.com/ae-en/furniture/dining/dining-seating/dining-chair"), "chairs");
+assert.equal(normalizeCategory("https://2xlhome.com/ae-en/accessory/lighting/chandeliers"), "lighting");
+assert.equal(normalizeCategory("Living > Coffee & Side Tables > Coffee Tables"), "coffee_tables");
+assert.equal(normalizeCategory("https://www.chattelsandmore.com/en/category/living-room/storage-and-home-office/desks"), "desks");
+assert.equal(normalizeCategory("https://www.chattelsandmore.com/en/category/bedroom/nightstands"), "side_tables");
 assert.equal(normalizeCategory("Decorative Object"), "decor");
 assert.equal(normalizeCategory("Wall Art"), "wall_art");
 assert.equal(normalizeCategory("Rugs & Carpets"), "rugs");
