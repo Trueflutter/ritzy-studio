@@ -43,7 +43,7 @@ import {
   HOMEOWNER_ROOM_UNLOCK_AMOUNT_AED
 } from "@/lib/billing/stripe";
 
-const PRODUCT_SOURCING_AI_TIMEOUT_MS = 20_000;
+const PRODUCT_SOURCING_AI_TIMEOUT_MS = 45_000;
 const PRODUCT_MATCHING_CATALOG_LIMIT = 1500;
 
 function productReferenceOrderingV2Enabled() {
@@ -1889,19 +1889,93 @@ export async function groundProductsAction(formData: FormData) {
     quantity: role.quantity,
     priority: role.required ? "required" : "supporting"
   }));
-  const sourcingResult = conceptSignedImage?.signedUrl
-    ? await withTimeout(
-        sourceProductsFromConcept({
-          roomType: room.room_type,
-          conceptTitle: concept.title,
-          conceptDescription: concept.description,
-          conceptImageUrl: conceptSignedImage.signedUrl,
-          candidates: shortlistSourcingCandidates(ranked, blueprintRoles).map(matchToSourcingCandidate)
-        }),
-        PRODUCT_SOURCING_AI_TIMEOUT_MS,
-        "Product visual sourcing timed out."
-      ).catch(() => null)
-    : null;
+  if (!conceptSignedImage?.signedUrl) {
+    redirect(
+      `${redirectPath}?message=${encodeURIComponent(
+        "Product sourcing needs the concept image before it can match catalog pieces."
+      )}`
+    );
+  }
+
+  const sourcingCandidates = shortlistSourcingCandidates(ranked, blueprintRoles).map(matchToSourcingCandidate);
+  const { data: sourcingJob, error: sourcingJobError } = await serviceSupabase
+    .from("ai_jobs")
+    .insert({
+      user_id: user.id,
+      room_id: roomId,
+      job_type: "product_visual_sourcing",
+      status: "running",
+      provider: "openai",
+      model: process.env.OPENAI_TEXT_MODEL ?? "gpt-5-mini",
+      prompt_version: null,
+      input_summary: {
+        roomId,
+        conceptId: concept.id,
+        candidateCount: sourcingCandidates.length,
+        blueprintRoleCount: blueprintRoles.length
+      }
+    })
+    .select("id")
+    .single();
+
+  if (sourcingJobError) {
+    throw new Error(sourcingJobError.message);
+  }
+
+  let sourcingResult: Awaited<ReturnType<typeof sourceProductsFromConcept>>;
+  try {
+    sourcingResult = await withTimeout(
+      sourceProductsFromConcept({
+        roomType: room.room_type,
+        conceptTitle: concept.title,
+        conceptDescription: concept.description,
+        conceptImageUrl: conceptSignedImage.signedUrl,
+        candidates: sourcingCandidates
+      }),
+      PRODUCT_SOURCING_AI_TIMEOUT_MS,
+      "Product visual sourcing timed out."
+    );
+
+    await serviceSupabase
+      .from("ai_jobs")
+      .update({
+        status: "succeeded",
+        completed_at: new Date().toISOString(),
+        model: sourcingResult.model,
+        prompt_version: sourcingResult.promptVersion,
+        output_summary: {
+          promptKey: sourcingResult.promptKey,
+          needCount: sourcingResult.needs.length,
+          selectedProductCount: sourcingResult.selectedProducts.length,
+          missingRoleCount: sourcingResult.missingRoles.length,
+          missingRoles: sourcingResult.missingRoles
+        }
+      })
+      .eq("id", sourcingJob.id);
+  } catch (error) {
+    await serviceSupabase
+      .from("ai_jobs")
+      .update({
+        status: "failed",
+        completed_at: new Date().toISOString(),
+        error_message: error instanceof Error ? error.message : "Product visual sourcing failed."
+      })
+      .eq("id", sourcingJob.id);
+
+    redirect(
+      `${redirectPath}?message=${encodeURIComponent(
+        "Product sourcing could not read the concept image clearly enough. Please try sourcing again."
+      )}`
+    );
+  }
+
+  if (sourcingResult.needs.length === 0 || sourcingResult.selectedProducts.length === 0) {
+    redirect(
+      `${redirectPath}?message=${encodeURIComponent(
+        "Product sourcing could not find enough visually relevant catalog pieces. Please try sourcing again."
+      )}`
+    );
+  }
   const visualConceptText = [
     baseConceptText,
     ...(sourcingResult?.needs.map(
@@ -1920,19 +1994,6 @@ export async function groundProductsAction(formData: FormData) {
       : null,
     candidates
   });
-  const sourceSelectionsById = new Map(
-    (sourcingResult?.selectedProducts ?? []).map((selection) => [selection.productId, selection])
-  );
-
-  // The AI's read of the concept defines the room's roles; fall back to the
-  // static room roles, and append any required static role the AI didn't name.
-  const aiRoles: RoomProductRoleSpec[] = (sourcingResult?.needs ?? []).map((need) => ({
-    category: normalizeSourcingCategory(need.category, need.roleLabel),
-    label: need.roleLabel,
-    visualBrief: need.visualBrief,
-    quantity: Math.max(1, need.quantity),
-    priority: need.priority === "required" ? "required" : "supporting"
-  }));
   const legacyRequiredRoles: RoomProductRoleSpec[] = productRolesForRoom(room.room_type)
     .filter((role) => role.required)
     .map((role) => ({
@@ -1943,11 +2004,110 @@ export async function groundProductsAction(formData: FormData) {
       priority: "required"
     }));
   const staticRoles = mergeRoomRoles(blueprintRoles, legacyRequiredRoles);
-  const aiRoleCategories = new Set(aiRoles.map((role) => role.category));
+
+  let visualMissingRoleCategories = new Set(
+    sourcingResult.missingRoles.map((role) => normalizeSourcingCategory(role, role))
+  );
+  let missingRequiredVisualRoles = staticRoles.filter(
+    (role) => role.priority === "required" && visualMissingRoleCategories.has(role.category)
+  );
+
+  if (missingRequiredVisualRoles.length > 0) {
+    const retryResult = await withTimeout(
+      sourceProductsFromConcept({
+        roomType: room.room_type,
+        conceptTitle: concept.title,
+        conceptDescription: concept.description,
+        conceptImageUrl: conceptSignedImage.signedUrl,
+        candidates: shortlistSourcingRetryCandidates(visualRanked, missingRequiredVisualRoles, staticRoles).map(
+          matchToSourcingCandidate
+        )
+      }),
+      PRODUCT_SOURCING_AI_TIMEOUT_MS,
+      "Product visual sourcing retry timed out."
+    ).catch(() => null);
+
+    if (retryResult?.needs.length && retryResult.selectedProducts.length) {
+      sourcingResult = retryResult;
+      visualMissingRoleCategories = new Set(
+        sourcingResult.missingRoles.map((role) => normalizeSourcingCategory(role, role))
+      );
+      missingRequiredVisualRoles = staticRoles.filter(
+        (role) => role.priority === "required" && visualMissingRoleCategories.has(role.category)
+      );
+
+      await serviceSupabase
+        .from("ai_jobs")
+        .update({
+          status: "succeeded",
+          completed_at: new Date().toISOString(),
+          model: sourcingResult.model,
+          prompt_version: sourcingResult.promptVersion,
+          output_summary: {
+            promptKey: sourcingResult.promptKey,
+            needCount: sourcingResult.needs.length,
+            selectedProductCount: sourcingResult.selectedProducts.length,
+            missingRoleCount: sourcingResult.missingRoles.length,
+            missingRoles: sourcingResult.missingRoles,
+            retryUsed: true,
+            usable: missingRequiredVisualRoles.length === 0
+          }
+        })
+        .eq("id", sourcingJob.id);
+    }
+  }
+
+  if (missingRequiredVisualRoles.length > 0) {
+    const missingLabels = missingRequiredVisualRoles.map((role) => role.label);
+    await serviceSupabase
+      .from("ai_jobs")
+      .update({
+        status: "failed",
+        completed_at: new Date().toISOString(),
+        error_message: `Visual sourcing reported missing required roles: ${missingLabels.join(", ")}.`,
+        output_summary: {
+          promptKey: sourcingResult.promptKey,
+          needCount: sourcingResult.needs.length,
+          selectedProductCount: sourcingResult.selectedProducts.length,
+          missingRoleCount: sourcingResult.missingRoles.length,
+          missingRoles: sourcingResult.missingRoles,
+          usable: false
+        }
+      })
+      .eq("id", sourcingJob.id);
+
+    redirect(
+      `${redirectPath}?message=${encodeURIComponent(
+        `Product grounding needs better catalog matches before it is usable. Missing: ${missingLabels.join(", ")}.`
+      )}`
+    );
+  }
+
+  const sourceSelectionsById = new Map(
+    sourcingResult.selectedProducts.map((selection) => [selection.productId, selection])
+  );
+
+  // The AI's read of the concept defines the room's roles; fall back to the
+  // static room roles, and append any required static role the AI didn't name.
+  const aiRoles: RoomProductRoleSpec[] = sourcingResult.needs.map((need) => ({
+    category: normalizeSourcingCategory(need.category, need.roleLabel),
+    label: need.roleLabel,
+    visualBrief: need.visualBrief,
+    quantity: Math.max(1, need.quantity),
+    priority: need.priority === "required" ? "required" : "supporting"
+  }));
+
+  const usableAiRoles = aiRoles.filter((role) => !visualMissingRoleCategories.has(role.category));
+  const aiRoleCategories = new Set(usableAiRoles.map((role) => role.category));
   const roles =
-    aiRoles.length > 0
-      ? [...aiRoles, ...staticRoles.filter((role) => !aiRoleCategories.has(role.category))]
-      : staticRoles;
+    usableAiRoles.length > 0
+      ? [
+          ...usableAiRoles,
+          ...staticRoles.filter(
+            (role) => !aiRoleCategories.has(role.category) && !visualMissingRoleCategories.has(role.category)
+          )
+        ]
+      : staticRoles.filter((role) => !visualMissingRoleCategories.has(role.category));
 
   const roleOptions = composeRoomProductOptions({
     ranked: visualRanked,
@@ -3316,6 +3476,33 @@ function shortlistSourcingCandidates(ranked: RankedProductMatch[], roles: RoomPr
     .flat()
     .sort((left, right) => right.score - left.score)
     .filter((match) => !selectedIds.has(match.id));
+
+  return [...selected, ...fill].slice(0, 36);
+}
+
+function shortlistSourcingRetryCandidates(
+  ranked: RankedProductMatch[],
+  focusRoles: RoomProductRoleSpec[],
+  remainingRoles: RoomProductRoleSpec[]
+) {
+  const selectedIds = new Set<string>();
+  const selected: RankedProductMatch[] = [];
+
+  for (const role of focusRoles) {
+    for (const match of ranked.filter((candidate) => candidate.categoryNormalized === role.category).slice(0, 12)) {
+      if (selectedIds.has(match.id)) {
+        continue;
+      }
+
+      selected.push(match);
+      selectedIds.add(match.id);
+    }
+  }
+
+  const fill = shortlistSourcingCandidates(
+    ranked,
+    remainingRoles.filter((role) => !focusRoles.some((focusRole) => focusRole.category === role.category))
+  ).filter((match) => !selectedIds.has(match.id));
 
   return [...selected, ...fill].slice(0, 36);
 }

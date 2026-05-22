@@ -102,6 +102,19 @@ const materialFamilies: Record<string, string[]> = {
   wood: ["wood", "walnut", "oak", "ash", "teak"]
 };
 
+const ignoredMatchTokens = new Set([
+  "and",
+  "are",
+  "for",
+  "from",
+  "has",
+  "that",
+  "the",
+  "this",
+  "use",
+  "with"
+]);
+
 const roomCategoryHints: Record<string, string[]> = {
   living: [
     "sofas",
@@ -650,7 +663,7 @@ function tokensFor(value: string) {
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, " ")
       .split(/\s+/)
-      .filter((token) => token.length >= 3)
+      .filter((token) => token.length >= 3 && !ignoredMatchTokens.has(token))
   );
 }
 
