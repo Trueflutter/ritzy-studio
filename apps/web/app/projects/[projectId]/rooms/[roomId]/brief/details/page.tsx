@@ -78,7 +78,7 @@ export default async function BriefDetailsPage({
       projectName={project.name}
       roomName={room.name}
       roomType={room.room_type}
-      subtitle="A few of these are already filled from your earlier steps — review them, then answer whatever still applies. Nothing here is required."
+      subtitle="Review the design notes, then add the room measurements we need to size the furniture honestly."
       title="Complete the design brief."
     >
       {message ? (
@@ -171,36 +171,49 @@ export default async function BriefDetailsPage({
         />
 
         <div className="mt-10 border-t border-line pt-8">
-          <p className="font-body text-caption font-medium uppercase text-ink-muted">Measurements</p>
+          <div className="flex flex-wrap items-baseline justify-between gap-3">
+            <p className="font-body text-caption font-medium uppercase text-ink-muted">Measurements</p>
+            <p className="font-body text-caption font-medium uppercase text-accent-deep">Required</p>
+          </div>
           <p className="mt-2 font-display text-body-s italic text-ink-helper">
-            Optional — measurements sharpen product sizing and fit. Skip if you don&apos;t have them.
+            Add the main wall, room depth, and ceiling height before moving ahead. These dimensions keep
+            sofa, table, chair, lighting, and rug recommendations from becoming misleading.
           </p>
           <div className="mt-6 grid gap-x-6 md:grid-cols-3">
             <TextInput
+              aria-required="true"
               defaultValue={measurements?.wall_length_cm ?? ""}
+              helper="Measure the longest usable wall in the room."
               id="wallLengthCm"
               label="Main wall cm"
               min="1"
               name="wallLengthCm"
               placeholder="520"
+              required
               type="number"
             />
             <TextInput
+              aria-required="true"
               defaultValue={measurements?.room_depth_cm ?? ""}
+              helper="Measure from that wall to the opposite side."
               id="roomDepthCm"
               label="Room depth cm"
               min="1"
               name="roomDepthCm"
               placeholder="410"
+              required
               type="number"
             />
             <TextInput
+              aria-required="true"
               defaultValue={measurements?.ceiling_height_cm ?? ""}
+              helper="Use your best measured ceiling height."
               id="ceilingHeightCm"
               label="Ceiling cm"
               min="1"
               name="ceilingHeightCm"
               placeholder="290"
+              required
               type="number"
             />
           </div>
@@ -209,7 +222,8 @@ export default async function BriefDetailsPage({
         <div className="mt-10 border-t border-line pt-8">
           <p className="font-body text-caption font-medium uppercase text-ink-muted">Floor plan</p>
           <p className="mt-2 font-display text-body-s italic text-ink-helper">
-            Optional — a plan helps us place built-ins and get proportions right.
+            Optional for now — if you have a plan, upload it here as a reference. Project-level floor-plan
+            extraction and room labels are the next measurement upgrade.
           </p>
           <div className="mt-5">
             <FloorPlanUploader existingStoragePath={floorPlan?.storage_path} roomId={roomId} userId={user.id} />
