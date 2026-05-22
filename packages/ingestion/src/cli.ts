@@ -6,6 +6,7 @@ import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@ritzy-studio/db";
 
 import { homeCentreAdapter } from "./adapters/homecentre";
+import { categoryCounts } from "./catalog-counts";
 import { normalizeProductCandidate } from "./normalization";
 import { runCatalogIngestion } from "./runner";
 import type { CatalogAdapter, CatalogSupabaseClient } from "./types";
@@ -144,41 +145,6 @@ function createSupabaseClient(): CatalogSupabaseClient {
       autoRefreshToken: false
     }
   });
-}
-
-async function categoryCounts(supabase: CatalogSupabaseClient, adapterKey: string) {
-  const { data: retailer, error: retailerError } = await supabase
-    .from("retailers")
-    .select("id")
-    .eq("adapter_key", adapterKey)
-    .maybeSingle();
-
-  if (retailerError) {
-    throw new Error(retailerError.message);
-  }
-
-  if (!retailer) {
-    return {};
-  }
-
-  const { data, error } = await supabase
-    .from("products")
-    .select("category_normalized")
-    .eq("retailer_id", retailer.id)
-    .not("price_aed", "is", null)
-    .not("primary_image_url", "is", null);
-
-  if (error) {
-    throw new Error(error.message);
-  }
-
-  const counts = new Map<string, number>();
-  for (const product of data ?? []) {
-    const category = product.category_normalized ?? "uncategorized";
-    counts.set(category, (counts.get(category) ?? 0) + 1);
-  }
-
-  return Object.fromEntries([...counts.entries()].sort());
 }
 
 function loadEnvFile(path: string) {

@@ -10,7 +10,7 @@
     "ingest:homecentre": "tsx src/cli.ts homecentre",
     "ingest:homecentre:dry-run": "tsx src/cli.ts homecentre --dry-run",
     "typecheck": "tsc --noEmit",
-    "test": "tsx src/normalization.test.ts && tsx src/adapters/homecentre.test.ts && tsx src/adapters/chattels.test.ts && tsx src/adapters/twoxl.test.ts"
+    "test": "tsx src/normalization.test.ts && tsx src/catalog-counts.test.ts && tsx src/adapters/homecentre.test.ts && tsx src/adapters/chattels.test.ts && tsx src/adapters/twoxl.test.ts"
   },
   "dependencies": {
     "@ritzy-studio/db": "workspace:*",
