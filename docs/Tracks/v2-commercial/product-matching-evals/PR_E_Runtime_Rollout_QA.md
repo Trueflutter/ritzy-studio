@@ -31,6 +31,8 @@ The domain test includes fixed rollout scenarios for:
 - ivory upholstered bedroom bed
 - oak home office desk
 
+See `README.md` in this directory for the expanded deterministic eval harness and scorecard semantics.
+
 The AI test includes the wrong-role product ID gate: a globally valid product ID returned for the wrong role is treated as missing for that role.
 
 ## Manual QA Checks
