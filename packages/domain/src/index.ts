@@ -136,5 +136,6 @@ export type CreateHomeownerRoomInput = z.infer<typeof createHomeownerRoomSchema>
 
 export * from "./product-enrichment";
 export * from "./product-matching";
+export * from "./catalog-first-room-generation";
 export * from "./entitlements";
 export * from "./style-preferences";
