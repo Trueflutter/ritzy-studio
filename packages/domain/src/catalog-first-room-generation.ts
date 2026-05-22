@@ -63,6 +63,11 @@ export type BundleAssemblyOutput = {
   score: BundleScore | null;
 };
 
+export type CatalogFirstRoomBlueprint = {
+  readonly roomType: CatalogFirstRoomType;
+  readonly roles: readonly RoomBundleRole[];
+};
+
 export const catalogFirstRoomBundleBlueprints = {
   living_room: [
     role("living_room", "sofa", "sofa", "sofas", 1, true, "anchor", "always"),
@@ -138,6 +143,15 @@ export function normalizeCatalogFirstRoomType(roomType: string | CatalogFirstRoo
   }
 
   throw new Error(`Unsupported catalog-first room type: ${roomType}`);
+}
+
+export function catalogFirstBlueprintForRoom(roomType: string | CatalogFirstRoomType): CatalogFirstRoomBlueprint {
+  const normalizedRoomType = normalizeCatalogFirstRoomType(roomType);
+
+  return {
+    roomType: normalizedRoomType,
+    roles: catalogFirstRolesForRoom(normalizedRoomType)
+  };
 }
 
 export function assembleCatalogFirstBundle(input: BundleAssemblyInput): BundleAssemblyOutput {
