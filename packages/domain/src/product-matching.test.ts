@@ -18,6 +18,7 @@ import {
   type ProductMatchCandidate,
   type RoomProductRoleSpec
 } from "./product-matching";
+import { productMatchingEvalScenarios, runProductMatchingEvalScenario } from "./product-matching-evals";
 
 const now = new Date().toISOString();
 const base: ProductMatchCandidate = {
@@ -671,174 +672,12 @@ const mediaConsoleAttributeScore = scoreProductCandidateForRole({
 assert.ok(mediaConsoleAttributeScore.roleFit > 0);
 assert.ok(mediaConsoleAttributeScore.material > 0);
 
-const rolloutEvalScenarios = [
-  {
-    name: "living room beige sofa",
-    roomType: "living room",
-    conceptText: "quiet living room with a beige linen sofa",
-    role: {
-      category: "sofas",
-      label: "anchor seating",
-      visualBrief: "beige or cream linen sofa",
-      quantity: 1,
-      priority: "required" as const
-    },
-    candidates: [
-      {
-        ...base,
-        id: "00000000-0000-4000-8000-000000000591",
-        name: "Olive Velvet Sofa",
-        categoryNormalized: "sofas",
-        availability: "in stock",
-        primaryImageUrl: "https://example.com/eval-olive-sofa.jpg",
-        colorTags: ["olive", "green"],
-        materialTags: ["velvet"]
-      },
-      {
-        ...base,
-        id: "00000000-0000-4000-8000-000000000592",
-        name: "Cream Linen Sofa",
-        categoryNormalized: "sofas",
-        availability: "in stock",
-        primaryImageUrl: "https://example.com/eval-cream-sofa.jpg",
-        colorTags: ["cream", "beige"],
-        materialTags: ["linen"]
-      }
-    ],
-    expectedTop: "Cream Linen Sofa"
-  },
-  {
-    name: "dining room chairs",
-    roomType: "dining room",
-    conceptText: "walnut dining room with six slim upholstered dining chairs",
-    role: {
-      category: "chairs",
-      label: "dining chairs",
-      visualBrief: "slim upholstered dining chairs",
-      quantity: 6,
-      priority: "required" as const
-    },
-    candidates: [
-      {
-        ...base,
-        id: "00000000-0000-4000-8000-000000000593",
-        name: "Bulky Lounge Armchair",
-        categoryNormalized: "armchairs",
-        availability: "in stock",
-        primaryImageUrl: "https://example.com/eval-armchair.jpg",
-        styleTags: ["oversized"],
-        materialTags: ["upholstered"]
-      },
-      {
-        ...base,
-        id: "00000000-0000-4000-8000-000000000594",
-        name: "Cream Upholstered Dining Chair",
-        categoryNormalized: "chairs",
-        availability: "in stock",
-        primaryImageUrl: "https://example.com/eval-dining-chair.jpg",
-        colorTags: ["cream"],
-        materialTags: ["upholstered", "fabric"]
-      }
-    ],
-    expectedTop: "Cream Upholstered Dining Chair"
-  },
-  {
-    name: "living room media console",
-    roomType: "living room",
-    conceptText: "low walnut TV media console below a wall mounted television",
-    role: {
-      category: "storage",
-      label: "TV media console",
-      visualBrief: "low walnut media console",
-      quantity: 1,
-      priority: "supporting" as const
-    },
-    candidates: [
-      {
-        ...base,
-        id: "00000000-0000-4000-8000-000000000595",
-        name: "Tall Walnut Bookcase",
-        categoryNormalized: "storage",
-        availability: "in stock",
-        primaryImageUrl: "https://example.com/eval-bookcase.jpg",
-        materialTags: ["walnut", "wood"]
-      },
-      {
-        ...base,
-        id: "00000000-0000-4000-8000-000000000596",
-        name: "Low Walnut Media Console",
-        categoryNormalized: "storage",
-        availability: "in stock",
-        primaryImageUrl: "https://example.com/eval-media-console.jpg",
-        materialTags: ["walnut", "wood"]
-      }
-    ],
-    expectedTop: "Low Walnut Media Console"
-  },
-  {
-    name: "bedroom bed",
-    roomType: "bedroom",
-    conceptText: "ivory upholstered bed with walnut bedside tables",
-    role: {
-      category: "beds",
-      label: "bed or bed frame",
-      visualBrief: "ivory upholstered bed",
-      quantity: 1,
-      priority: "required" as const
-    },
-    candidates: [
-      {
-        ...base,
-        id: "00000000-0000-4000-8000-000000000597",
-        name: "Ivory Upholstered Bed",
-        categoryNormalized: "beds",
-        availability: "in stock",
-        primaryImageUrl: "https://example.com/eval-bed.jpg",
-        colorTags: ["ivory"],
-        materialTags: ["upholstered", "fabric"]
-      }
-    ],
-    expectedTop: "Ivory Upholstered Bed"
-  },
-  {
-    name: "home office desk",
-    roomType: "home office",
-    conceptText: "oak desk, ergonomic task chair, storage shelving, and task lamp",
-    role: {
-      category: "desks",
-      label: "desk",
-      visualBrief: "oak writing desk",
-      quantity: 1,
-      priority: "required" as const
-    },
-    candidates: [
-      {
-        ...base,
-        id: "00000000-0000-4000-8000-000000000598",
-        name: "Oak Writing Desk",
-        categoryNormalized: "desks",
-        availability: "in stock",
-        primaryImageUrl: "https://example.com/eval-desk.jpg",
-        materialTags: ["oak", "wood"]
-      }
-    ],
-    expectedTop: "Oak Writing Desk"
-  }
-];
-
-for (const scenario of rolloutEvalScenarios) {
-  const plan = buildProductSourcingRuntimePlan({
-    engineEnabled: true,
-    roomType: scenario.roomType,
-    conceptText: scenario.conceptText,
-    roles: [scenario.role],
-    candidates: scenario.candidates,
-    candidatesPerRole: 3
-  });
-  assert.equal(plan.roleScopedPools.length, 1, scenario.name);
-  assert.equal(plan.roleScopedPools[0].candidates[0].name, scenario.expectedTop, scenario.name);
-  assert.ok(plan.roleScopedPools[0].candidates[0].attributeScore.category > 0, scenario.name);
-  assert.equal(plan.roleScopedPools[0].rejectedCount, scenario.name === "dining room chairs" ? 1 : 0, scenario.name);
+for (const scenario of productMatchingEvalScenarios) {
+  const result = runProductMatchingEvalScenario(scenario);
+  assert.deepEqual(result.failures, [], scenario.name);
+  assert.equal(result.passed, true, scenario.name);
+  assert.equal(result.scorecard.roleCoverage >= 1 && result.scorecard.roleCoverage <= 5, true, scenario.name);
+  assert.equal(result.scorecard.overallTrust >= 1 && result.scorecard.overallTrust <= 5, true, scenario.name);
 }
 
 const runtimePlanRoles: RoomProductRoleSpec[] = [
