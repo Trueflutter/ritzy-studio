@@ -1,8 +1,11 @@
 import assert from "node:assert/strict";
 
 import {
+  buildProductMatchQaStopRuleStatus,
   buildProductMatchConfidenceSummary,
   productMatchConfidenceOutputSummary,
+  productMatchQaStopRuleOutputSummary,
+  productMatchRequiredRoleDescriptor,
   productMatchRoleKey
 } from "./product-matching-confidence";
 import { buildRoleScopedCandidatePools, type ProductMatchCandidate, type RoomProductRoleSpec } from "./product-matching";
@@ -195,5 +198,80 @@ assert.deepEqual(Object.keys(outputSummary[0]).sort(), [
   "weaknessReasons"
 ].sort());
 assert.equal(outputSummary[0].roleKey, "sofas::anchor_seating");
+
+const requiredSofa = productMatchRequiredRoleDescriptor({
+  category: "sofas",
+  roleLabel: "anchor seating"
+});
+const requiredChair = productMatchRequiredRoleDescriptor({
+  category: "chairs",
+  roleLabel: "dining chairs"
+});
+assert.deepEqual(requiredSofa, {
+  category: "sofas",
+  roleLabel: "anchor seating",
+  roleKey: "sofas::anchor_seating"
+});
+
+const passingGate = buildProductMatchQaStopRuleStatus({
+  roleConfidence: strongSummary,
+  requiredRoles: [requiredSofa]
+});
+assert.equal(passingGate.passesQaStopRules, true);
+assert.equal(passingGate.blockers.length, 0);
+assert.equal(passingGate.counts.blockerCount, 0);
+
+const closestRequiredGate = buildProductMatchQaStopRuleStatus({
+  roleConfidence: closestSummary,
+  requiredRoles: [requiredSofa]
+});
+assert.equal(closestRequiredGate.passesQaStopRules, false);
+assert.ok(closestRequiredGate.blockers.some((issue) => issue.code === "required_closest_available"));
+assert.ok(closestRequiredGate.blockers.some((issue) => issue.code === "required_color_mismatch"));
+assert.ok(closestRequiredGate.warnings.some((issue) => issue.code === "weak_material_match"));
+assert.equal(closestRequiredGate.counts.weakMaterialRequiredCount, 1);
+
+const missingRequiredGate = buildProductMatchQaStopRuleStatus({
+  roleConfidence: missingSummary,
+  requiredRoles: [requiredChair]
+});
+assert.equal(missingRequiredGate.passesQaStopRules, false);
+assert.ok(missingRequiredGate.blockers.some((issue) => issue.code === "required_pool_empty"));
+assert.ok(missingRequiredGate.blockers.some((issue) => issue.code === "required_role_missing"));
+
+const invalidSelectionGate = buildProductMatchQaStopRuleStatus({
+  roleConfidence: invalidSelectionSummary,
+  requiredRoles: [requiredSofa]
+});
+assert.equal(invalidSelectionGate.passesQaStopRules, false);
+assert.ok(invalidSelectionGate.blockers.some((issue) => issue.code === "invalid_selection"));
+assert.equal(invalidSelectionGate.counts.invalidSelectionCount, 1);
+
+const missingMetadataGate = buildProductMatchQaStopRuleStatus({
+  roleConfidence: [],
+  requiredRoles: [requiredSofa]
+});
+assert.equal(missingMetadataGate.passesQaStopRules, false);
+assert.ok(missingMetadataGate.blockers.some((issue) => issue.code === "required_role_not_reported"));
+
+const supportingGate = buildProductMatchQaStopRuleStatus({
+  roleConfidence: closestSummary.map((summary) => ({
+    ...summary,
+    roleKey: productMatchRoleKey("sofas", "supporting sofa"),
+    roleLabel: "supporting sofa"
+  })),
+  requiredRoles: []
+});
+assert.equal(supportingGate.passesQaStopRules, true);
+assert.equal(supportingGate.blockers.length, 0);
+assert.ok(supportingGate.warnings.some((issue) => issue.code === "supporting_role_issue"));
+assert.ok(supportingGate.warnings.some((issue) => issue.code === "weak_material_match"));
+
+const gateOutput = productMatchQaStopRuleOutputSummary({
+  roleConfidence: strongSummary,
+  requiredRoles: [requiredSofa]
+});
+assert.deepEqual(Object.keys(gateOutput).sort(), ["blockers", "counts", "passesQaStopRules", "warnings"].sort());
+assert.equal(gateOutput.passesQaStopRules, true);
 
 console.log("product matching confidence tests passed");

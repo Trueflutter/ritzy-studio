@@ -50,9 +50,11 @@ Check `output_summary`:
 
 - `roleStatuses` exists
 - `roleConfidence` exists
+- `roleConfidenceGate` exists and `passesQaStopRules` is `true`
 - required anchor roles are `strong_match` or `acceptable_match`
 - missing roles are explicit
-- selected products with `invalid_selection`, `missing`, `hasColorMismatch`, or `hasWeakMaterialMatch` are treated as QA blockers for required anchors
+- selected products with `invalid_selection`, `missing`, or `hasColorMismatch` are treated as QA blockers for required anchors
+- selected products with `hasWeakMaterialMatch` are reviewed as QA warnings unless Sam decides the material is contradictory
 - retry paths are visible when used
 
 ## Stop Rules
@@ -65,4 +67,5 @@ Do not enable production if any of these occur:
 - anchor color or material contradicts the concept when matching alternatives exist
 - required role pools are empty
 - catalog coverage is stale, unavailable, or too weak for anchor products
-- `ai_jobs` logs do not show candidate counts, missing roles, retry use, selected statuses, and role confidence clearly
+- `roleConfidenceGate.passesQaStopRules` is `false` for required anchors
+- `ai_jobs` logs do not show candidate counts, missing roles, retry use, selected statuses, role confidence, and QA stop-rule status clearly

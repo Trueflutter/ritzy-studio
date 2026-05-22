@@ -20,6 +20,8 @@ import {
   filterSubstitutionCandidates,
   enhancedProductRolesForRoom,
   productMatchConfidenceOutputSummary,
+  productMatchQaStopRuleOutputSummary,
+  productMatchRequiredRoleDescriptor,
   productRolesForRoom,
   rankProductMatches,
   selectedItemsTotalAed,
@@ -1971,9 +1973,9 @@ export async function groundProductsAction(formData: FormData) {
           productMatchingEngineEnabled,
           roleCandidateCounts: productMatchingEngineEnabled ? roleCandidateCountSummary(sourcingPools) : undefined,
           roleStatuses: productMatchingEngineEnabled ? roleStatusSummary(sourcingResult.roleResults) : undefined,
-          roleConfidence: productMatchingEngineEnabled
-            ? roleConfidenceSummary(sourcingPools, sourcingResult.roleResults)
-            : undefined
+          ...(productMatchingEngineEnabled
+            ? roleConfidenceOutputFields(sourcingPools, sourcingResult.roleResults)
+            : {})
         }
       })
       .eq("id", sourcingJob.id);
@@ -2099,9 +2101,9 @@ export async function groundProductsAction(formData: FormData) {
             productMatchingEngineEnabled,
             roleCandidateCounts: productMatchingEngineEnabled ? roleCandidateCountSummary(retryPools) : undefined,
             roleStatuses: productMatchingEngineEnabled ? roleStatusSummary(sourcingResult.roleResults) : undefined,
-            roleConfidence: productMatchingEngineEnabled
-              ? roleConfidenceSummary(retryPools, sourcingResult.roleResults)
-              : undefined,
+            ...(productMatchingEngineEnabled
+              ? roleConfidenceOutputFields(retryPools, sourcingResult.roleResults)
+              : {}),
             retryUsed: true,
             usable: missingRequiredVisualRoles.length === 0
           }
@@ -2129,9 +2131,9 @@ export async function groundProductsAction(formData: FormData) {
             ? roleCandidateCountSummary(latestConfidencePools)
             : undefined,
           roleStatuses: productMatchingEngineEnabled ? roleStatusSummary(sourcingResult.roleResults) : undefined,
-          roleConfidence: productMatchingEngineEnabled
-            ? roleConfidenceSummary(latestConfidencePools, sourcingResult.roleResults)
-            : undefined,
+          ...(productMatchingEngineEnabled
+            ? roleConfidenceOutputFields(latestConfidencePools, sourcingResult.roleResults)
+            : {}),
           usable: false
         }
       })
@@ -3564,7 +3566,7 @@ function roleStatusSummary(
   }));
 }
 
-function roleConfidenceSummary(
+function roleConfidenceOutputFields(
   pools: RoleScopedCandidatePool[],
   roleResults: Array<{
     category: string;
@@ -3574,13 +3576,26 @@ function roleConfidenceSummary(
     reason: string;
   }>
 ) {
-  return productMatchConfidenceOutputSummary({
+  const roleConfidence = productMatchConfidenceOutputSummary({
     pools,
     roleResults: roleResults.map((result) => ({
       ...result,
       category: normalizeSourcingCategory(result.category, result.roleLabel)
     }))
   });
+  const requiredRoles = pools
+    .filter((pool) => pool.role.priority === "required")
+    .map((pool) =>
+      productMatchRequiredRoleDescriptor({
+        category: pool.role.category,
+        roleLabel: pool.role.label
+      })
+    );
+
+  return {
+    roleConfidence,
+    roleConfidenceGate: productMatchQaStopRuleOutputSummary({ roleConfidence, requiredRoles })
+  };
 }
 
 function matchToSourcingCandidate(match: RankedProductMatch) {
