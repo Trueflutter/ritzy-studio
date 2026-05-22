@@ -29,6 +29,7 @@ const DEFAULT_CATEGORY_URLS = [
 
 const cache = new Map<string, string>();
 let lastFetchAt = 0;
+const FETCH_TIMEOUT_MS = 20_000;
 
 export const homeCentreAdapter: CatalogAdapter = {
   key: "homecentre-ae",
@@ -178,13 +179,28 @@ async function fetchText(url: string) {
     await new Promise((resolve) => setTimeout(resolve, 500 - elapsed));
   }
 
-  const response = await fetch(url, {
-    headers: {
-      "user-agent": "RitzyStudioBot/0.1 (+https://ritzy-studio.local; light catalog ingestion)",
-      accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  let response: Response;
+
+  try {
+    response = await fetch(url, {
+      headers: {
+        "user-agent": "RitzyStudioBot/0.1 (+https://ritzy-studio.local; light catalog ingestion)",
+        accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
+      },
+      signal: controller.signal
+    });
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") {
+      throw new Error(`Home Centre fetch timed out for ${url}`);
     }
-  });
-  lastFetchAt = Date.now();
+
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+    lastFetchAt = Date.now();
+  }
 
   if (!response.ok) {
     throw new Error(`Home Centre fetch failed ${response.status} for ${url}`);
