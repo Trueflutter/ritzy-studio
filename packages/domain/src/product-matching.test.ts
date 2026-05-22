@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 
 import {
   buildRoleScopedCandidatePools,
+  buildProductSourcingRuntimePlan,
   buildShoppingListItemRows,
   composeRoomProductOptions,
   composeRoomProductSet,
@@ -669,6 +670,234 @@ const mediaConsoleAttributeScore = scoreProductCandidateForRole({
 });
 assert.ok(mediaConsoleAttributeScore.roleFit > 0);
 assert.ok(mediaConsoleAttributeScore.material > 0);
+
+const rolloutEvalScenarios = [
+  {
+    name: "living room beige sofa",
+    roomType: "living room",
+    conceptText: "quiet living room with a beige linen sofa",
+    role: {
+      category: "sofas",
+      label: "anchor seating",
+      visualBrief: "beige or cream linen sofa",
+      quantity: 1,
+      priority: "required" as const
+    },
+    candidates: [
+      {
+        ...base,
+        id: "00000000-0000-4000-8000-000000000591",
+        name: "Olive Velvet Sofa",
+        categoryNormalized: "sofas",
+        availability: "in stock",
+        primaryImageUrl: "https://example.com/eval-olive-sofa.jpg",
+        colorTags: ["olive", "green"],
+        materialTags: ["velvet"]
+      },
+      {
+        ...base,
+        id: "00000000-0000-4000-8000-000000000592",
+        name: "Cream Linen Sofa",
+        categoryNormalized: "sofas",
+        availability: "in stock",
+        primaryImageUrl: "https://example.com/eval-cream-sofa.jpg",
+        colorTags: ["cream", "beige"],
+        materialTags: ["linen"]
+      }
+    ],
+    expectedTop: "Cream Linen Sofa"
+  },
+  {
+    name: "dining room chairs",
+    roomType: "dining room",
+    conceptText: "walnut dining room with six slim upholstered dining chairs",
+    role: {
+      category: "chairs",
+      label: "dining chairs",
+      visualBrief: "slim upholstered dining chairs",
+      quantity: 6,
+      priority: "required" as const
+    },
+    candidates: [
+      {
+        ...base,
+        id: "00000000-0000-4000-8000-000000000593",
+        name: "Bulky Lounge Armchair",
+        categoryNormalized: "armchairs",
+        availability: "in stock",
+        primaryImageUrl: "https://example.com/eval-armchair.jpg",
+        styleTags: ["oversized"],
+        materialTags: ["upholstered"]
+      },
+      {
+        ...base,
+        id: "00000000-0000-4000-8000-000000000594",
+        name: "Cream Upholstered Dining Chair",
+        categoryNormalized: "chairs",
+        availability: "in stock",
+        primaryImageUrl: "https://example.com/eval-dining-chair.jpg",
+        colorTags: ["cream"],
+        materialTags: ["upholstered", "fabric"]
+      }
+    ],
+    expectedTop: "Cream Upholstered Dining Chair"
+  },
+  {
+    name: "living room media console",
+    roomType: "living room",
+    conceptText: "low walnut TV media console below a wall mounted television",
+    role: {
+      category: "storage",
+      label: "TV media console",
+      visualBrief: "low walnut media console",
+      quantity: 1,
+      priority: "supporting" as const
+    },
+    candidates: [
+      {
+        ...base,
+        id: "00000000-0000-4000-8000-000000000595",
+        name: "Tall Walnut Bookcase",
+        categoryNormalized: "storage",
+        availability: "in stock",
+        primaryImageUrl: "https://example.com/eval-bookcase.jpg",
+        materialTags: ["walnut", "wood"]
+      },
+      {
+        ...base,
+        id: "00000000-0000-4000-8000-000000000596",
+        name: "Low Walnut Media Console",
+        categoryNormalized: "storage",
+        availability: "in stock",
+        primaryImageUrl: "https://example.com/eval-media-console.jpg",
+        materialTags: ["walnut", "wood"]
+      }
+    ],
+    expectedTop: "Low Walnut Media Console"
+  },
+  {
+    name: "bedroom bed",
+    roomType: "bedroom",
+    conceptText: "ivory upholstered bed with walnut bedside tables",
+    role: {
+      category: "beds",
+      label: "bed or bed frame",
+      visualBrief: "ivory upholstered bed",
+      quantity: 1,
+      priority: "required" as const
+    },
+    candidates: [
+      {
+        ...base,
+        id: "00000000-0000-4000-8000-000000000597",
+        name: "Ivory Upholstered Bed",
+        categoryNormalized: "beds",
+        availability: "in stock",
+        primaryImageUrl: "https://example.com/eval-bed.jpg",
+        colorTags: ["ivory"],
+        materialTags: ["upholstered", "fabric"]
+      }
+    ],
+    expectedTop: "Ivory Upholstered Bed"
+  },
+  {
+    name: "home office desk",
+    roomType: "home office",
+    conceptText: "oak desk, ergonomic task chair, storage shelving, and task lamp",
+    role: {
+      category: "desks",
+      label: "desk",
+      visualBrief: "oak writing desk",
+      quantity: 1,
+      priority: "required" as const
+    },
+    candidates: [
+      {
+        ...base,
+        id: "00000000-0000-4000-8000-000000000598",
+        name: "Oak Writing Desk",
+        categoryNormalized: "desks",
+        availability: "in stock",
+        primaryImageUrl: "https://example.com/eval-desk.jpg",
+        materialTags: ["oak", "wood"]
+      }
+    ],
+    expectedTop: "Oak Writing Desk"
+  }
+];
+
+for (const scenario of rolloutEvalScenarios) {
+  const plan = buildProductSourcingRuntimePlan({
+    engineEnabled: true,
+    roomType: scenario.roomType,
+    conceptText: scenario.conceptText,
+    roles: [scenario.role],
+    candidates: scenario.candidates,
+    candidatesPerRole: 3
+  });
+  assert.equal(plan.roleScopedPools.length, 1, scenario.name);
+  assert.equal(plan.roleScopedPools[0].candidates[0].name, scenario.expectedTop, scenario.name);
+  assert.ok(plan.roleScopedPools[0].candidates[0].attributeScore.category > 0, scenario.name);
+  assert.equal(plan.roleScopedPools[0].rejectedCount, scenario.name === "dining room chairs" ? 1 : 0, scenario.name);
+}
+
+const runtimePlanRoles: RoomProductRoleSpec[] = [
+  { category: "sofas", label: "anchor seating", visualBrief: "cream linen sofa", quantity: 1, priority: "required" },
+  { category: "storage", label: "TV media console", visualBrief: "low walnut media console", quantity: 1, priority: "supporting" }
+];
+const runtimePlanCandidates: ProductMatchCandidate[] = [
+  {
+    ...base,
+    id: "00000000-0000-4000-8000-000000000581",
+    name: "Cream Linen Sofa",
+    categoryNormalized: "sofas",
+    availability: "in stock",
+    primaryImageUrl: "https://example.com/runtime-sofa.jpg",
+    colorTags: ["cream"],
+    materialTags: ["linen"]
+  },
+  {
+    ...base,
+    id: "00000000-0000-4000-8000-000000000582",
+    name: "Low Walnut Media Console",
+    categoryNormalized: "storage",
+    availability: "in stock",
+    primaryImageUrl: "https://example.com/runtime-media-console.jpg",
+    materialTags: ["walnut", "wood"]
+  },
+  {
+    ...base,
+    id: "00000000-0000-4000-8000-000000000583",
+    name: "Tall Walnut Bookcase",
+    categoryNormalized: "storage",
+    availability: "in stock",
+    primaryImageUrl: "https://example.com/runtime-bookcase.jpg",
+    materialTags: ["walnut", "wood"]
+  }
+];
+const runtimePlanOff = buildProductSourcingRuntimePlan({
+  engineEnabled: false,
+  roomType: "living room",
+  conceptText: "cream linen sofa and low walnut TV media console",
+  roles: runtimePlanRoles,
+  candidates: runtimePlanCandidates
+});
+assert.equal(runtimePlanOff.engineEnabled, false);
+assert.equal(runtimePlanOff.roleScopedPools.length, 0);
+assert.equal("attributeScore" in runtimePlanOff.candidates[0], false);
+
+const runtimePlanOn = buildProductSourcingRuntimePlan({
+  engineEnabled: true,
+  roomType: "living room",
+  conceptText: "cream linen sofa and low walnut TV media console",
+  roles: runtimePlanRoles,
+  candidates: runtimePlanCandidates,
+  candidatesPerRole: 2
+});
+assert.equal(runtimePlanOn.engineEnabled, true);
+assert.equal(runtimePlanOn.roleScopedPools.length, 2);
+assert.ok(runtimePlanOn.roleScopedPools.every((pool) => pool.candidateCount > 0));
+assert.equal("attributeScore" in runtimePlanOn.candidates[0], true);
 
 // selected estimate uses selected rows only
 assert.equal(

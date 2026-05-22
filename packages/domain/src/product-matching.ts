@@ -757,6 +757,12 @@ export type RoleScopedRetrievalResult = {
   totalCandidateCount: number;
 };
 
+export type ProductSourcingRuntimePlan = {
+  engineEnabled: boolean;
+  candidates: RankedProductMatch[] | RoleScopedRankedProductMatch[];
+  roleScopedPools: RoleScopedCandidatePool[];
+};
+
 export type ShoppingListItemStatus = "option" | "selected" | "rejected";
 
 export type ShoppingListItemDraft = {
@@ -899,6 +905,111 @@ export function buildRoleScopedCandidatePools({
       })
     )
   };
+}
+
+export function buildProductSourcingRuntimePlan({
+  engineEnabled,
+  roomType,
+  conceptText,
+  roles,
+  candidates,
+  budgetMaxAed = null,
+  roomMeasurements = null,
+  candidatesPerRole = 6,
+  flatCandidateLimit = 36
+}: {
+  engineEnabled: boolean;
+  roomType: string;
+  conceptText: string;
+  roles: RoomProductRoleSpec[];
+  candidates: ProductMatchCandidate[];
+  budgetMaxAed?: number | null;
+  roomMeasurements?: ProductMatchRequest["roomMeasurements"];
+  candidatesPerRole?: number;
+  flatCandidateLimit?: number;
+}): ProductSourcingRuntimePlan {
+  if (engineEnabled) {
+    const roleScopedPools = buildRoleScopedCandidatePools({
+      roomType,
+      conceptText,
+      roles,
+      candidates,
+      budgetMaxAed,
+      roomMeasurements,
+      candidatesPerRole
+    }).pools;
+
+    return {
+      engineEnabled: true,
+      candidates: roleScopedCandidatesForPlan(roleScopedPools, flatCandidateLimit),
+      roleScopedPools
+    };
+  }
+
+  const ranked = rankProductMatches({
+    roomType,
+    conceptText,
+    budgetMaxAed,
+    roomMeasurements,
+    candidates
+  });
+
+  return {
+    engineEnabled: false,
+    candidates: flatSourcingCandidates(ranked, roles, flatCandidateLimit),
+    roleScopedPools: []
+  };
+}
+
+function roleScopedCandidatesForPlan(pools: RoleScopedCandidatePool[], limit: number) {
+  const selectedIds = new Set<string>();
+  const selected: RoleScopedRankedProductMatch[] = [];
+
+  for (const pool of pools) {
+    for (const match of pool.candidates) {
+      if (selectedIds.has(match.id)) {
+        continue;
+      }
+      selected.push(match);
+      selectedIds.add(match.id);
+    }
+  }
+
+  return selected.slice(0, limit);
+}
+
+function flatSourcingCandidates(ranked: RankedProductMatch[], roles: RoomProductRoleSpec[], limit: number) {
+  const byCategory = new Map<string, RankedProductMatch[]>();
+  const selectedIds = new Set<string>();
+  const selected: RankedProductMatch[] = [];
+
+  for (const match of ranked) {
+    const category = match.categoryNormalized ?? "uncategorized";
+    const categoryMatches = byCategory.get(category) ?? [];
+    if (categoryMatches.length < 6) {
+      categoryMatches.push(match);
+      byCategory.set(category, categoryMatches);
+    }
+  }
+
+  for (const role of roles) {
+    const categoryMatches = byCategory.get(role.category) ?? [];
+    const take = role.priority === "required" ? 4 : 2;
+    for (const match of categoryMatches.slice(0, take)) {
+      if (selectedIds.has(match.id)) {
+        continue;
+      }
+      selected.push(match);
+      selectedIds.add(match.id);
+    }
+  }
+
+  const fill = Array.from(byCategory.values())
+    .flat()
+    .sort((left, right) => right.score - left.score)
+    .filter((match) => !selectedIds.has(match.id));
+
+  return [...selected, ...fill].slice(0, limit);
 }
 
 function buildRolePool({
