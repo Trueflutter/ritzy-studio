@@ -84,6 +84,16 @@ function optionalNumber(formData: FormData, key: string) {
   return Number.isFinite(number) ? number : undefined;
 }
 
+function hasRequiredRoomSize(measurements: {
+  wall_length_cm?: number | null;
+  room_depth_cm?: number | null;
+  ceiling_height_cm?: number | null;
+}) {
+  return Boolean(
+    measurements.wall_length_cm && measurements.room_depth_cm && measurements.ceiling_height_cm
+  );
+}
+
 type StructuredBriefJson = Record<string, unknown> & {
   visualPreferences?: unknown;
   measurements?: unknown;
@@ -934,6 +944,19 @@ export async function saveDesignBriefAction(formData: FormData) {
   const redirectPath = nextPath.startsWith(briefRootPath)
     ? nextPath
     : `${briefRootPath}/details`;
+  const submittedDetailsStep = briefStep === "details";
+
+  if (
+    submittedDetailsStep &&
+    (!parsed.wallLengthCm || !parsed.roomDepthCm || !parsed.ceilingHeightCm)
+  ) {
+    redirect(
+      `${briefRootPath}/details?message=${encodeURIComponent(
+        "Room measurements are required before we can design and size furniture for this room."
+      )}`
+    );
+  }
+
   const supabase = await createClient();
   const {
     data: { user },
@@ -1562,6 +1585,14 @@ export async function generateInitialConceptAction(formData: FormData) {
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();
+
+  if (!measurements || !hasRequiredRoomSize(measurements)) {
+    redirect(
+      `/projects/${projectId}/rooms/${roomId}/brief/details?message=${encodeURIComponent(
+        "Add the room measurements before generating a design. This keeps furniture sizing honest."
+      )}`
+    );
+  }
 
   const { data: answeredQuestions = [] } = await supabase
     .from("clarifying_questions")
