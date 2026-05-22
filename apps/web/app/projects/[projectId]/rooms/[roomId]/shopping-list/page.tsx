@@ -76,6 +76,7 @@ export default async function ShoppingListPage({
     room_id: roomId
   });
   const commerceUnlocked = Boolean(canAccessCommerce);
+  const retailerGroups = groupSelectedItemsByRetailer(listItems);
   const cardItems: ProductCardItem[] = listItems.map((item) => {
     const product = item.product;
     const dimensions = product?.dimensions?.[0];
@@ -185,16 +186,19 @@ export default async function ShoppingListPage({
 
         <section className="mt-12">
           {shoppingList && roleGroups.length > 0 ? (
-            <ShoppingListGrid
-              canAccessCommerce={commerceUnlocked}
-              conceptId={shoppingList.concept_id ?? null}
-              clientName={project.client_name}
-              groups={roleGroups}
-              projectId={projectId}
-              roomType={room.room_type}
-              roomId={roomId}
-              shoppingListId={shoppingList.id}
-            />
+            <>
+              <ShoppingListGrid
+                canAccessCommerce={commerceUnlocked}
+                conceptId={shoppingList.concept_id ?? null}
+                clientName={project.client_name}
+                groups={roleGroups}
+                projectId={projectId}
+                roomType={room.room_type}
+                roomId={roomId}
+                shoppingListId={shoppingList.id}
+              />
+              {commerceUnlocked ? <RetailerGroups groups={retailerGroups} /> : null}
+            </>
           ) : (
             <div className="border border-line bg-surface p-10">
               <p className="font-display text-display-xs font-light italic text-ink">
@@ -209,6 +213,209 @@ export default async function ShoppingListPage({
       </section>
     </main>
   );
+}
+
+type RetailerGroup = {
+  domain: string | null;
+  itemCount: number;
+  items: Array<{
+    category: string;
+    id: string;
+    lastCheckedAt: string | null;
+    lineTotalAed: number;
+    name: string;
+    quantity: number;
+    retailerUrl: string | null;
+    unitPriceAed: number | null;
+  }>;
+  name: string;
+  subtotalAed: number;
+};
+
+function RetailerGroups({ groups }: { groups: RetailerGroup[] }) {
+  if (groups.length === 0) {
+    return null;
+  }
+
+  return (
+    <section className="mt-14 border-t border-line pt-10">
+      <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+        <div>
+          <p className="font-body text-caption font-medium uppercase tracking-[0.32em] text-ink-muted">
+            Retailer groups
+          </p>
+          <h2 className="mt-4 font-display text-display-s font-light italic text-ink">
+            Purchase paths, grouped by retailer.
+          </h2>
+        </div>
+        <p className="max-w-[420px] font-body text-body-s text-ink-secondary md:text-right">
+          Each retailer group has its own subtotal and product links. Prices and stock should be
+          rechecked on the retailer page before checkout.
+        </p>
+      </div>
+
+      <div className="mt-8 grid gap-5">
+        {groups.map((group) => (
+          <article className="border border-line bg-surface" key={group.name}>
+            <div className="grid gap-4 border-b border-line p-5 md:grid-cols-[minmax(0,1fr)_220px] md:items-start">
+              <div>
+                <p className="font-body text-caption font-medium uppercase tracking-[0.32em] text-ink-muted">
+                  {group.itemCount} item{group.itemCount === 1 ? "" : "s"}
+                </p>
+                <h3 className="mt-3 font-display text-display-xs font-light italic text-ink">
+                  {group.name}
+                </h3>
+                <p className="mt-3 font-body text-body-s text-ink-secondary">
+                  {freshnessText(group.items)}
+                </p>
+              </div>
+              <div className="md:text-right">
+                <p className="font-body text-caption font-medium uppercase tracking-[0.32em] text-ink-muted">
+                  Retailer subtotal
+                </p>
+                <p className="mt-3 font-display text-display-xs font-light italic text-ink">
+                  {formatAed(group.subtotalAed)}
+                </p>
+                {group.domain ? (
+                  <a
+                    className="mt-4 inline-flex border border-line px-4 py-3 font-body text-button uppercase tracking-[0.18em] text-ink transition-colors duration-micro ease-standard hover:bg-surface-subtle"
+                    href={`https://${group.domain}`}
+                    rel="noreferrer"
+                    target="_blank"
+                  >
+                    Open retailer
+                  </a>
+                ) : null}
+              </div>
+            </div>
+
+            <div className="divide-y divide-line">
+              {group.items.map((item) => (
+                <div
+                  className="grid gap-4 p-5 md:grid-cols-[minmax(0,1fr)_140px_160px] md:items-center"
+                  key={item.id}
+                >
+                  <div>
+                    <p className="font-display text-body-l font-light italic leading-snug text-ink">
+                      {item.name}
+                    </p>
+                    <p className="mt-2 font-body text-caption uppercase tracking-[0.24em] text-ink-muted">
+                      {item.category} · Qty {item.quantity}
+                    </p>
+                  </div>
+                  <div className="font-body text-body-s text-ink-secondary md:text-right">
+                    <p>{formatAed(item.lineTotalAed)}</p>
+                    {item.quantity > 1 && item.unitPriceAed !== null ? (
+                      <p className="mt-1 text-ink-muted">
+                        {item.quantity} × {formatAed(item.unitPriceAed)}
+                      </p>
+                    ) : null}
+                  </div>
+                  <div className="md:text-right">
+                    {item.retailerUrl ? (
+                      <a
+                        className="font-display text-button-quiet italic text-ink transition-colors duration-micro ease-standard hover:text-accent-deep"
+                        href={item.retailerUrl}
+                        rel="noreferrer"
+                        target="_blank"
+                      >
+                        product page →
+                      </a>
+                    ) : (
+                      <span className="font-body text-caption uppercase tracking-[0.24em] text-ink-muted">
+                        link unavailable
+                      </span>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function groupSelectedItemsByRetailer(
+  items: Array<{
+    category: string;
+    id: string;
+    quantity: number | null;
+    status: string | null;
+    product:
+      | {
+          canonical_url: string | null;
+          last_checked_at: string | null;
+          name: string;
+          price_aed: number | null;
+          retailer: { domain: string | null; name: string | null } | null;
+          sale_price_aed: number | null;
+        }
+      | null;
+    line_total_aed: number | null;
+  }>
+): RetailerGroup[] {
+  const groups = new Map<string, RetailerGroup>();
+
+  for (const item of items) {
+    if (item.status !== "selected") {
+      continue;
+    }
+
+    const product = item.product;
+    const retailerName = product?.retailer?.name ?? "Retailer";
+    const quantity = item.quantity ?? 1;
+    const unitPriceAed = product?.sale_price_aed ?? product?.price_aed ?? null;
+    const lineTotalAed = currentLineTotalAed(item);
+    const existing = groups.get(retailerName) ?? {
+      domain: product?.retailer?.domain ?? null,
+      itemCount: 0,
+      items: [],
+      name: retailerName,
+      subtotalAed: 0
+    };
+
+    existing.itemCount += quantity;
+    existing.subtotalAed += lineTotalAed;
+    existing.items.push({
+      category: item.category,
+      id: item.id,
+      lastCheckedAt: product?.last_checked_at ?? null,
+      lineTotalAed,
+      name: product?.name ?? "Product unavailable",
+      quantity,
+      retailerUrl: product?.canonical_url ?? null,
+      unitPriceAed
+    });
+
+    groups.set(retailerName, existing);
+  }
+
+  return [...groups.values()].sort((a, b) => b.subtotalAed - a.subtotalAed);
+}
+
+function freshnessText(items: Array<{ lastCheckedAt: string | null }>) {
+  const timestamps = items
+    .map((item) => (item.lastCheckedAt ? new Date(item.lastCheckedAt).getTime() : null))
+    .filter((value): value is number => value !== null && Number.isFinite(value));
+
+  if (timestamps.length === 0) {
+    return "Stock check unavailable.";
+  }
+
+  const latest = Math.max(...timestamps);
+  const days = Math.max(0, Math.floor((Date.now() - latest) / (1000 * 60 * 60 * 24)));
+
+  if (days === 0) {
+    return "Stock checked today.";
+  }
+
+  if (days === 1) {
+    return "Stock checked yesterday.";
+  }
+
+  return `Stock checked ${days} days ago.`;
 }
 
 function formatAed(value: number | null | undefined) {
