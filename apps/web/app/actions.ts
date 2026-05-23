@@ -19,6 +19,7 @@ import {
   composeRoomProductOptions,
   filterSubstitutionCandidates,
   enhancedProductRolesForRoom,
+  normalizeProductMatchRoleResultCategory,
   productMatchConfidenceOutputSummary,
   productMatchQaStopRuleOutputSummary,
   productMatchRequiredRoleDescriptor,
@@ -3667,69 +3668,7 @@ function matchToSourcingCandidate(match: RankedProductMatch) {
 }
 
 function normalizeSourcingCategory(category: string, roleLabel: string) {
-  const text = `${category} ${roleLabel}`.toLowerCase();
-
-  if (text.includes("dining") && text.includes("chair")) {
-    return "chairs";
-  }
-
-  if (text.includes("bed") || text.includes("headboard")) {
-    return text.includes("headboard") ? "headboards" : "beds";
-  }
-
-  if (text.includes("dining") && text.includes("table")) {
-    return "dining_tables";
-  }
-
-  if (text.includes("desk")) {
-    return "desks";
-  }
-
-  if (text.includes("office") && text.includes("chair")) {
-    return "office_chairs";
-  }
-
-  if (text.includes("armchair") || text.includes("chair") || text.includes("lounge")) {
-    return "armchairs";
-  }
-
-  if (text.includes("sofa") || text.includes("sectional") || text.includes("seating")) {
-    return "sofas";
-  }
-
-  if (text.includes("coffee")) {
-    return "coffee_tables";
-  }
-
-  if (text.includes("side") || text.includes("occasional")) {
-    return "side_tables";
-  }
-
-  if (text.includes("rug") || text.includes("flatweave")) {
-    return "rugs";
-  }
-
-  if (text.includes("wall") || text.includes("art") || text.includes("canvas")) {
-    return "wall_art";
-  }
-
-  if (text.includes("lamp") || text.includes("light") || text.includes("pendant")) {
-    return "lighting";
-  }
-
-  if (text.includes("mirror")) {
-    return "mirrors";
-  }
-
-  if (text.includes("decor") || text.includes("vase") || text.includes("cushion")) {
-    return "decor";
-  }
-
-  if (text.includes("console") || text.includes("storage") || text.includes("media")) {
-    return "storage";
-  }
-
-  return category.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
+  return normalizeProductMatchRoleResultCategory(category, roleLabel);
 }
 
 function roleLabelFromSelectionReason(selectionReason: string | null) {
