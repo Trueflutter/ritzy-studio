@@ -1,11 +1,11 @@
 # Catalog-First Room Generation Agent Comms
 
 ## Current PR
-- PR #98: https://github.com/Trueflutter/ritzy-studio/pull/98
-- Branch: `codex/catalog-first-fixture-report`
+- PR #99: https://github.com/Trueflutter/ritzy-studio/pull/99
+- Branch: `codex/catalog-first-edge-case-fixtures`
 
 ## Current stage
-- Dormant pure-domain catalog-first dry-run fixture report helper.
+- Dormant pure-domain catalog-first edge-case dry-run fixtures.
 
 ## Blockers
 - None currently.
@@ -49,6 +49,12 @@
 - Implemented the fixture report helper and completed adversarial implementation review with no blockers.
 - Verified the fixture report helper with focused report test, domain test, domain typecheck, workspace typecheck, and diff whitespace checks.
 - Opened PR #98 for chief architect/coordinator review.
+- Merged PR #98 after explicit coordinator approval.
+- Started the next approved domain/docs-only stage from latest main.
+- Ran adversarial plan review for dormant edge-case dry-run fixtures.
+- Implemented the edge-case fixtures and completed adversarial implementation review with no blockers.
+- Verified the edge-case fixtures with focused fixture test, domain test, domain typecheck, workspace typecheck, and diff whitespace checks.
+- Opened PR #99 for chief architect/coordinator review.
 
 ## Next intended action
 - Wait for chief architect/coordinator review.

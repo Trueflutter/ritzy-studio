@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 
 import { dryRunCatalogFirstRoomBundle } from "./catalog-first-dry-run";
+import { catalogFirstDryRunFixtureReport } from "./catalog-first-dry-run-fixture-report";
 import {
+  catalogFirstDryRunEdgeCaseFixtureScenarios,
   catalogFirstDryRunFixtureByRoom,
   catalogFirstDryRunFixtureScenarios
 } from "./catalog-first-dry-run-fixtures";
@@ -56,5 +58,16 @@ assert.equal(catalogFirstDryRunFixtureByRoom("living room")?.input.roomType, "li
 }
 
 assert.throws(() => catalogFirstDryRunFixtureByRoom("bathroom"), /Unsupported catalog-first room type/);
+
+{
+  const edgeCaseReport = catalogFirstDryRunFixtureReport(catalogFirstDryRunEdgeCaseFixtureScenarios());
+
+  assert.equal(edgeCaseReport.scenarioCount, 3);
+  assert.equal(edgeCaseReport.readyCount, 1);
+  assert.equal(edgeCaseReport.blockedCount, 2);
+  assert.deepEqual(edgeCaseReport.rows[0]?.missingRequiredRoleIds, ["sofa"]);
+  assert.deepEqual(edgeCaseReport.rows[1]?.missingRequiredRoleIds, ["dining_chairs"]);
+  assert.deepEqual(edgeCaseReport.rows[2]?.weakSupportingRoleIds, ["task_lighting", "storage_shelving"]);
+}
 
 console.log("catalog-first dry-run fixture tests passed");
