@@ -28,6 +28,7 @@ import {
   setUserModeSchema,
   sortProductsForRenderReferences,
   substitutionModeSchema,
+  summarizeRolePoolDiversity,
   summarizeRolePoolQuality,
   visualStyleOptions,
   visualStyleSummary,
@@ -1941,6 +1942,7 @@ export async function groundProductsAction(formData: FormData) {
         candidateCount: sourcingCandidates.length,
         blueprintRoleCount: blueprintRoles.length,
         roleCandidateCounts: productMatchingEngineEnabled ? roleCandidateCountSummary(sourcingPools) : undefined,
+        rolePoolDiversity: productMatchingEngineEnabled ? summarizeRolePoolDiversity(sourcingPools) : undefined,
         rolePoolQuality: productMatchingEngineEnabled ? summarizeRolePoolQuality(sourcingPools) : undefined
       }
     })
