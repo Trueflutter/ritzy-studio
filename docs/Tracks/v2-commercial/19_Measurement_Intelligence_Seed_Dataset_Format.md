@@ -260,7 +260,45 @@ The domain tests prove:
 
 ## Future Importer Expectations
 
-A later importer PR should be dry-run first and should:
+PR E adds a dry-run importer foundation before any write-capable importer exists.
+
+The dry-run path is intentionally repo-local and deterministic. It validates a proposed seed JSON file with the domain schema, applies extra review checks for duplicate aliases and rooms, and renders a stable text report that reviewers can compare in PR comments or CI logs.
+
+Local usage:
+
+```text
+pnpm --filter @ritzy-studio/domain measurement:seed:dry-run -- --proposed ../../docs/Tracks/v2-commercial/measurement-layout-seed.example.json
+```
+
+With a current reviewed seed file:
+
+```text
+pnpm --filter @ritzy-studio/domain measurement:seed:dry-run -- --current path/to/current.json --proposed path/to/proposed.json
+```
+
+The report includes:
+
+- validation status for current and proposed files
+- layout additions, removals, changes, and unchanged counts
+- normalized alias additions and removals
+- room additions, removals, and changed records
+- source additions, removals, and changed records
+- validation failures with deterministic path/code/message formatting
+
+The dry-run validator rejects:
+
+- schema-invalid seed files
+- duplicate normalized aliases within a layout's explicit aliases
+- duplicate room ids
+- duplicate room labels on the same floor/type
+- missing measurement confidence fields
+- room source ids that do not reference a source in the same layout
+- unknown layout or source rights status
+- non-positive room dimensions where dimensions are provided
+
+This foundation is not allowed to connect to Supabase or mutate any app state. It exists so future curated seed files can be inspected safely before Sam or the Chief Architect approve migrations, generated DB types, or any write path.
+
+A later write-capable importer should still:
 
 - read this JSON shape
 - validate with `measurementLayoutSeedDatasetSchema`
@@ -269,7 +307,7 @@ A later importer PR should be dry-run first and should:
 - report inserts, updates, and deletes without writing by default
 - refuse production writes unless explicitly approved
 
-That importer is not part of this PR.
+That write-capable importer is not part of this PR.
 
 ## Open Questions Before Real Data
 
