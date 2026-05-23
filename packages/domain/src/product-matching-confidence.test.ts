@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   buildProductMatchQaStopRuleStatus,
   buildProductMatchConfidenceSummary,
+  normalizeProductMatchRoleResultCategory,
   productMatchConfidenceOutputSummary,
   productMatchQaStopRuleOutputSummary,
   productMatchRequiredRoleDescriptor,
@@ -48,6 +49,20 @@ const chairRole: RoomProductRoleSpec = {
 };
 
 assert.equal(productMatchRoleKey("TV Media Console", "Low Console"), "tv_media_console::low_console");
+assert.equal(
+  normalizeProductMatchRoleResultCategory("side_tables", "bedside tables"),
+  "side_tables"
+);
+assert.equal(
+  normalizeProductMatchRoleResultCategory("bedside table", "bedside table"),
+  "side_tables"
+);
+assert.equal(normalizeProductMatchRoleResultCategory("nightstand", "nightstand"), "side_tables");
+assert.equal(normalizeProductMatchRoleResultCategory("bed", "bed"), "beds");
+assert.equal(normalizeProductMatchRoleResultCategory("headboard", "headboard"), "headboards");
+assert.equal(normalizeProductMatchRoleResultCategory("dining chairs", "dining chairs"), "chairs");
+assert.equal(normalizeProductMatchRoleResultCategory("lighting", "bedside lighting"), "lighting");
+assert.equal(normalizeProductMatchRoleResultCategory("rugs", "bedroom rug"), "rugs");
 
 const strongPools = buildRoleScopedCandidatePools({
   roomType: "living room",
