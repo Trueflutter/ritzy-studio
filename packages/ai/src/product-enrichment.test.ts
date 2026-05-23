@@ -164,6 +164,94 @@ assert.equal(repairedBedroomSourcing.selectedProducts[0]?.roleLabel, "bedside ta
 assert.equal(repairedBedroomSourcing.selectedProducts[0]?.quantity, 2);
 assert.equal(repairedBedroomSourcing.missingRoles.includes("side_tables bedside tables"), false);
 
+const repairedMissingBedsideRoleResult = validateProductSourcingRoleContract(
+  {
+    needs: [],
+    selectedProducts: [
+      {
+        productId: "10000000-0000-4000-8000-000000000020",
+        category: "side_tables",
+        roleLabel: "bedside tables",
+        quantity: 2,
+        matchStatus: "strong_match",
+        visualMatchReason: "Walnut side table selected for the bedside table role.",
+        mismatchNote: null
+      }
+    ],
+    roleResults: [
+      {
+        category: "beds",
+        roleLabel: "bedside tables",
+        status: "missing_required",
+        productId: null,
+        reason: "The model marked the required bedside table role missing."
+      }
+    ],
+    missingRoles: ["side_tables bedside tables"]
+  },
+  [
+    {
+      category: "beds",
+      roleLabel: "bed or bed frame",
+      visualBrief: "ivory upholstered bed",
+      quantity: 1,
+      priority: "required",
+      candidateIds: ["10000000-0000-4000-8000-000000000010"]
+    },
+    {
+      category: "side_tables",
+      roleLabel: "bedside tables",
+      visualBrief: "pair of walnut bedside tables",
+      quantity: 2,
+      priority: "required",
+      candidateIds: ["10000000-0000-4000-8000-000000000020"]
+    }
+  ],
+  new Set(["10000000-0000-4000-8000-000000000010", "10000000-0000-4000-8000-000000000020"])
+);
+const repairedMissingBedsideResult = repairedMissingBedsideRoleResult.roleResults.find(
+  (result) => result.category === "side_tables" && result.roleLabel === "bedside tables"
+);
+assert.ok(repairedMissingBedsideResult);
+assert.equal(repairedMissingBedsideResult.status, "strong_match");
+assert.equal(repairedMissingBedsideResult.productId, "10000000-0000-4000-8000-000000000020");
+assert.equal(repairedMissingBedsideRoleResult.missingRoles.includes("side_tables bedside tables"), false);
+
+const trueMissingBedsideRole = validateProductSourcingRoleContract(
+  {
+    needs: [],
+    selectedProducts: [],
+    roleResults: [
+      {
+        category: "side_tables",
+        roleLabel: "bedside tables",
+        status: "missing_required",
+        productId: null,
+        reason: "No bedside table was suitable."
+      }
+    ],
+    missingRoles: ["side_tables bedside tables"]
+  },
+  [
+    {
+      category: "side_tables",
+      roleLabel: "bedside tables",
+      visualBrief: "pair of walnut bedside tables",
+      quantity: 2,
+      priority: "required",
+      candidateIds: ["10000000-0000-4000-8000-000000000020"]
+    }
+  ],
+  new Set(["10000000-0000-4000-8000-000000000020"])
+);
+const trueMissingBedsideResult = trueMissingBedsideRole.roleResults.find(
+  (result) => result.category === "side_tables" && result.roleLabel === "bedside tables"
+);
+assert.ok(trueMissingBedsideResult);
+assert.equal(trueMissingBedsideResult.status, "missing_required");
+assert.equal(trueMissingBedsideResult.productId, null);
+assert.ok(trueMissingBedsideRole.missingRoles.includes("side_tables bedside tables"));
+
 const ambiguousRoleProduct = validateProductSourcingRoleContract(
   {
     needs: [],
