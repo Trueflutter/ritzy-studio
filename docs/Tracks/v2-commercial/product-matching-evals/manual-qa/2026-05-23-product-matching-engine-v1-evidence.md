@@ -137,3 +137,9 @@ The remaining weakness is role-result contract fidelity, not broad category drif
 See `2026-05-23-post-103-validation-evidence.md` for the follow-up blocker-focused validation after PR #103.
 
 Summary: PR #103 fixes the category normalization identity issue for `side_tables`, `bedside lighting`, and `bedroom rug`, but this retained bedroom QA evidence still does not clear the required bedside-table blocker. The role result remains `missing_required` with no product id, even though `selectedProducts` contains a plausible side table. The next fix should address role-result contract adherence explicitly; do not treat PR #103 alone as controlled preview readiness.
+
+## Post-PR105 Validation Addendum
+
+See `2026-05-23-post-105-validation-evidence.md` for deterministic replay after PR #105.
+
+Summary: PR #105 clears the retained bedroom bedside-table blocker when the previous selected-product/role-result shape is replayed through the current validator: the valid side-table selection repairs the matching `side_tables / bedside tables` role result and removes `side_tables bedside tables` from `missingRoles`. This is not a fresh visual sourcing run and does not approve preview or production rollout.

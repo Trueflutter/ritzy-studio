@@ -8,6 +8,8 @@ This pass validates the accumulated Product Matching Engine V1 evidence after PR
 
 No new runtime behavior is changed by this document.
 
+Superseded follow-up: `2026-05-23-post-105-validation-evidence.md` records that PR #105 clears the retained bedroom bedside-table role-result blocker under deterministic replay. This post-PR103 note remains useful as the historical stop-rule finding that led to PR #105, but it is no longer the latest blocker status.
+
 Hard boundaries honored:
 
 - No default-on activation.
