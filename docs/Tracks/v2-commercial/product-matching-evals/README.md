@@ -15,6 +15,8 @@ pnpm --filter @ritzy-studio/domain typecheck
 
 The domain test runs every scenario through `runProductMatchingEvalScenario`, which calls `buildProductSourcingRuntimePlan` with the Product Matching Engine enabled.
 
+For one local or preview manual QA run, use `MANUAL_QA_REPORT_TEMPLATE.md` to record observed `ai_jobs` metadata, selected-product findings, and follow-up decisions. The template is reporting-only and does not authorize production rollout.
+
 ## Scenario Coverage
 
 The current harness covers:
