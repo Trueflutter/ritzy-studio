@@ -44,6 +44,8 @@ Each eval result includes a deterministic 1-5 scorecard for:
 
 These scores summarize the existing domain matcher output. They do not create another ranking algorithm.
 
+`summarizeProductMatchingEvalResults` aggregates already-computed scenario results into suite-level pass/fail counts and average scorecard values. It is reporting-only and does not change scenario pass criteria or score calculations.
+
 ## Deferred Dimensions
 
 The harness intentionally does not score:

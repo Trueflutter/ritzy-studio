@@ -18,7 +18,11 @@ import {
   type ProductMatchCandidate,
   type RoomProductRoleSpec
 } from "./product-matching";
-import { productMatchingEvalScenarios, runProductMatchingEvalScenario } from "./product-matching-evals";
+import {
+  productMatchingEvalScenarios,
+  runProductMatchingEvalScenario,
+  summarizeProductMatchingEvalResults
+} from "./product-matching-evals";
 
 const now = new Date().toISOString();
 const base: ProductMatchCandidate = {
@@ -672,13 +676,38 @@ const mediaConsoleAttributeScore = scoreProductCandidateForRole({
 assert.ok(mediaConsoleAttributeScore.roleFit > 0);
 assert.ok(mediaConsoleAttributeScore.material > 0);
 
-for (const scenario of productMatchingEvalScenarios) {
-  const result = runProductMatchingEvalScenario(scenario);
-  assert.deepEqual(result.failures, [], scenario.name);
-  assert.equal(result.passed, true, scenario.name);
-  assert.equal(result.scorecard.roleCoverage >= 1 && result.scorecard.roleCoverage <= 5, true, scenario.name);
-  assert.equal(result.scorecard.overallTrust >= 1 && result.scorecard.overallTrust <= 5, true, scenario.name);
+const evalResults = productMatchingEvalScenarios.map((scenario) => runProductMatchingEvalScenario(scenario));
+for (const result of evalResults) {
+  assert.deepEqual(result.failures, [], result.scenarioName);
+  assert.equal(result.passed, true, result.scenarioName);
+  assert.equal(result.scorecard.roleCoverage >= 1 && result.scorecard.roleCoverage <= 5, true, result.scenarioName);
+  assert.equal(result.scorecard.overallTrust >= 1 && result.scorecard.overallTrust <= 5, true, result.scenarioName);
 }
+const evalSummary = summarizeProductMatchingEvalResults(evalResults);
+assert.equal(evalSummary.scenarioCount, productMatchingEvalScenarios.length);
+assert.equal(evalSummary.passedScenarioCount, productMatchingEvalScenarios.length);
+assert.equal(evalSummary.failedScenarioCount, 0);
+assert.deepEqual(evalSummary.failedScenarioNames, []);
+assert.equal(evalSummary.minimumOverallTrust !== null && evalSummary.minimumOverallTrust >= 1, true);
+
+const failedEvalSummary = summarizeProductMatchingEvalResults([
+  {
+    ...evalResults[0],
+    scenarioName: "synthetic failed eval",
+    passed: false,
+    failures: ["synthetic failure"],
+    scorecard: {
+      ...evalResults[0].scorecard,
+      overallTrust: 2
+    }
+  },
+  evalResults[1]
+]);
+assert.equal(failedEvalSummary.scenarioCount, 2);
+assert.equal(failedEvalSummary.passedScenarioCount, 1);
+assert.equal(failedEvalSummary.failedScenarioCount, 1);
+assert.deepEqual(failedEvalSummary.failedScenarioNames, ["synthetic failed eval"]);
+assert.equal(failedEvalSummary.minimumOverallTrust, 2);
 
 const runtimePlanRoles: RoomProductRoleSpec[] = [
   { category: "sofas", label: "anchor seating", visualBrief: "cream linen sofa", quantity: 1, priority: "required" },
