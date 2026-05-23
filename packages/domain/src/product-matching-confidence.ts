@@ -4,6 +4,10 @@ import {
   classifyProductMatchDimensionFit,
   type ProductMatchDimensionFit
 } from "./product-matching-dimensions";
+import {
+  classifyProductMatchEvidenceCompleteness,
+  type ProductMatchEvidenceCompleteness
+} from "./product-matching-evidence";
 import { classifyCatalogTimestampFreshness, type CatalogTimestampFreshness } from "./product-matching-freshness";
 
 export type ProductMatchVisualStatus =
@@ -38,6 +42,7 @@ export type ProductMatchRoleConfidence = {
   hasColorMismatch: boolean;
   hasWeakMaterialMatch: boolean;
   selectedProductDimensionFit: ProductMatchDimensionFit | null;
+  selectedProductEvidenceCompleteness: ProductMatchEvidenceCompleteness | null;
   selectedProductFreshness: CatalogTimestampFreshness | null;
 };
 
@@ -59,6 +64,8 @@ export type ProductMatchQaStopRuleIssueCode =
   | "required_freshness_invalid"
   | "required_dimension_oversized"
   | "required_dimension_missing"
+  | "required_evidence_partial"
+  | "required_evidence_weak"
   | "supporting_role_issue"
   | "weak_material_match";
 
@@ -87,6 +94,8 @@ export type ProductMatchQaStopRuleStatus = {
     invalidRequiredFreshnessCount: number;
     oversizedRequiredDimensionCount: number;
     missingRequiredDimensionCount: number;
+    partialRequiredEvidenceCount: number;
+    weakRequiredEvidenceCount: number;
     emptyRequiredPoolCount: number;
   };
 };
@@ -147,6 +156,9 @@ export function buildProductMatchConfidenceSummary({
       selectedProductDimensionFit: selectedCandidate
         ? classifyProductMatchDimensionFit({ candidate: selectedCandidate, roomMeasurements })
         : null,
+      selectedProductEvidenceCompleteness: selectedCandidate
+        ? classifyProductMatchEvidenceCompleteness(selectedCandidate)
+        : null,
       selectedProductFreshness:
         selectedCandidate && nowMs !== undefined
           ? classifyCatalogTimestampFreshness({
@@ -184,6 +196,7 @@ export function productMatchConfidenceOutputSummary({
     hasColorMismatch: summary.hasColorMismatch,
     hasWeakMaterialMatch: summary.hasWeakMaterialMatch,
     selectedProductDimensionFit: summary.selectedProductDimensionFit,
+    selectedProductEvidenceCompleteness: summary.selectedProductEvidenceCompleteness,
     selectedProductFreshness: summary.selectedProductFreshness
   }));
 }
@@ -365,6 +378,30 @@ export function buildProductMatchQaStopRuleStatus({
       );
     }
 
+    if (isRequired && role.selectedProductEvidenceCompleteness?.status === "partial") {
+      warnings.push(
+        stopRuleIssue({
+          code: "required_evidence_partial",
+          severity: "warning",
+          roleKey: role.roleKey,
+          roleLabel: role.roleLabel,
+          message: "Required role selected product has partial catalog evidence."
+        })
+      );
+    }
+
+    if (isRequired && role.selectedProductEvidenceCompleteness?.status === "weak") {
+      warnings.push(
+        stopRuleIssue({
+          code: "required_evidence_weak",
+          severity: "warning",
+          roleKey: role.roleKey,
+          roleLabel: role.roleLabel,
+          message: "Required role selected product has weak catalog evidence."
+        })
+      );
+    }
+
     if (!isRequired && hasSupportingIssue(role)) {
       warnings.push(
         stopRuleIssue({
@@ -398,6 +435,8 @@ export function buildProductMatchQaStopRuleStatus({
       invalidRequiredFreshnessCount: warnings.filter((issue) => issue.code === "required_freshness_invalid").length,
       oversizedRequiredDimensionCount: warnings.filter((issue) => issue.code === "required_dimension_oversized").length,
       missingRequiredDimensionCount: warnings.filter((issue) => issue.code === "required_dimension_missing").length,
+      partialRequiredEvidenceCount: warnings.filter((issue) => issue.code === "required_evidence_partial").length,
+      weakRequiredEvidenceCount: warnings.filter((issue) => issue.code === "required_evidence_weak").length,
       emptyRequiredPoolCount: blockers.filter((issue) => issue.code === "required_pool_empty").length
     }
   };

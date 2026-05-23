@@ -56,6 +56,7 @@ Check `output_summary`:
 - selected products with `invalid_selection`, `missing`, or `hasColorMismatch` are treated as QA blockers for required anchors
 - selected products with `hasWeakMaterialMatch` are reviewed as QA warnings unless Sam decides the material is contradictory
 - selected products with oversized or missing `selectedProductDimensionFit` metadata are reviewed as QA warnings; they do not automatically block Product Matching Engine V1 while the gate remains in local/manual QA
+- selected products with partial or weak `selectedProductEvidenceCompleteness` metadata are reviewed as QA warnings; the field is a catalog-evidence completeness check, not a freshness or dimension-fit replacement
 - selected products with stale, missing, or invalid `selectedProductFreshness` are catalog timestamp warnings; they do not prove live retailer stock
 - retry paths are visible when used
 
@@ -70,5 +71,6 @@ Do not enable production if any of these occur:
 - required role pools are empty
 - catalog coverage is stale, unavailable, or too weak for anchor products
 - selected anchor product dimensions are missing or appear oversized for the entered room measurements
+- selected anchor products lack enough catalog evidence for price, availability, image, color, material, style, room, or dimensions
 - `roleConfidenceGate.passesQaStopRules` is `false` for required anchors
-- `ai_jobs` logs do not show candidate counts, missing roles, retry use, selected statuses, role confidence, dimension fit, catalog timestamp freshness, and QA stop-rule status clearly
+- `ai_jobs` logs do not show candidate counts, missing roles, retry use, selected statuses, role confidence, evidence completeness, dimension fit, catalog timestamp freshness, and QA stop-rule status clearly
