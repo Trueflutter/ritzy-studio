@@ -138,6 +138,7 @@ export * from "./product-enrichment";
 export * from "./product-matching";
 export * from "./catalog-first-room-generation";
 export * from "./catalog-first-product-matching";
+export * from "./catalog-first-orchestration-planner";
 export * from "./product-matching-confidence";
 export * from "./measurement-intelligence";
 export * from "./product-matching-dimensions";
