@@ -90,6 +90,15 @@ export type ProductMatchingEvalResult = {
   failures: string[];
 };
 
+export type ProductMatchingEvalSuiteSummary = {
+  scenarioCount: number;
+  passedScenarioCount: number;
+  failedScenarioCount: number;
+  failedScenarioNames: string[];
+  averageScorecard: Omit<ProductMatchingEvalScorecard, "deferredDimensions">;
+  minimumOverallTrust: number | null;
+};
+
 export function evalCandidate(
   id: string,
   name: string,
@@ -128,6 +137,31 @@ export function runProductMatchingEvalScenario(scenario: ProductMatchingEvalScen
     roleResults,
     scorecard,
     failures
+  };
+}
+
+export function summarizeProductMatchingEvalResults(
+  results: ProductMatchingEvalResult[]
+): ProductMatchingEvalSuiteSummary {
+  const failedScenarioNames = results.filter((result) => !result.passed).map((result) => result.scenarioName);
+  const scorecards = results.map((result) => result.scorecard);
+
+  return {
+    scenarioCount: results.length,
+    passedScenarioCount: results.length - failedScenarioNames.length,
+    failedScenarioCount: failedScenarioNames.length,
+    failedScenarioNames,
+    averageScorecard: {
+      categoryCorrectness: averageScore(scorecards.map((scorecard) => scorecard.categoryCorrectness)),
+      colorFidelity: averageScore(scorecards.map((scorecard) => scorecard.colorFidelity)),
+      materialFidelity: averageScore(scorecards.map((scorecard) => scorecard.materialFidelity)),
+      quantityCorrectness: averageScore(scorecards.map((scorecard) => scorecard.quantityCorrectness)),
+      priceStockTrust: averageScore(scorecards.map((scorecard) => scorecard.priceStockTrust)),
+      roleCoverage: averageScore(scorecards.map((scorecard) => scorecard.roleCoverage)),
+      overallTrust: averageScore(scorecards.map((scorecard) => scorecard.overallTrust))
+    },
+    minimumOverallTrust:
+      scorecards.length > 0 ? Math.min(...scorecards.map((scorecard) => scorecard.overallTrust)) : null
   };
 }
 
