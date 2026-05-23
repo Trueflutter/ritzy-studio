@@ -142,5 +142,6 @@ export * from "./product-matching-confidence";
 export * from "./measurement-intelligence";
 export * from "./product-matching-dimensions";
 export * from "./product-matching-freshness";
+export * from "./measurement-layout-seed";
 export * from "./entitlements";
 export * from "./style-preferences";
