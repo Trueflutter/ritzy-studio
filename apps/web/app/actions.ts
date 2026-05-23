@@ -1916,6 +1916,7 @@ export async function groundProductsAction(formData: FormData) {
   const sourcingCandidateIds = new Set(sourcingCandidates.map((candidate) => candidate.id));
   const sourcingCandidatePools = sourcingPools.map((pool) => poolToSourcingRolePool(pool, sourcingCandidateIds));
   let latestConfidencePools = sourcingPools;
+  const productMatchingLoggedAtMs = Date.now();
   const { data: sourcingJob, error: sourcingJobError } = await serviceSupabase
     .from("ai_jobs")
     .insert({
@@ -1974,7 +1975,7 @@ export async function groundProductsAction(formData: FormData) {
           roleCandidateCounts: productMatchingEngineEnabled ? roleCandidateCountSummary(sourcingPools) : undefined,
           roleStatuses: productMatchingEngineEnabled ? roleStatusSummary(sourcingResult.roleResults) : undefined,
           ...(productMatchingEngineEnabled
-            ? roleConfidenceOutputFields(sourcingPools, sourcingResult.roleResults)
+            ? roleConfidenceOutputFields(sourcingPools, sourcingResult.roleResults, productMatchingLoggedAtMs)
             : {})
         }
       })
@@ -2102,7 +2103,7 @@ export async function groundProductsAction(formData: FormData) {
             roleCandidateCounts: productMatchingEngineEnabled ? roleCandidateCountSummary(retryPools) : undefined,
             roleStatuses: productMatchingEngineEnabled ? roleStatusSummary(sourcingResult.roleResults) : undefined,
             ...(productMatchingEngineEnabled
-              ? roleConfidenceOutputFields(retryPools, sourcingResult.roleResults)
+              ? roleConfidenceOutputFields(retryPools, sourcingResult.roleResults, productMatchingLoggedAtMs)
               : {}),
             retryUsed: true,
             usable: missingRequiredVisualRoles.length === 0
@@ -2132,7 +2133,7 @@ export async function groundProductsAction(formData: FormData) {
             : undefined,
           roleStatuses: productMatchingEngineEnabled ? roleStatusSummary(sourcingResult.roleResults) : undefined,
           ...(productMatchingEngineEnabled
-            ? roleConfidenceOutputFields(latestConfidencePools, sourcingResult.roleResults)
+            ? roleConfidenceOutputFields(latestConfidencePools, sourcingResult.roleResults, productMatchingLoggedAtMs)
             : {}),
           usable: false
         }
@@ -3574,14 +3575,16 @@ function roleConfidenceOutputFields(
     status: "strong_match" | "acceptable_match" | "closest_available" | "missing_required" | "missing_supporting";
     productId: string | null;
     reason: string;
-  }>
+  }>,
+  nowMs: number
 ) {
   const roleConfidence = productMatchConfidenceOutputSummary({
     pools,
     roleResults: roleResults.map((result) => ({
       ...result,
       category: normalizeSourcingCategory(result.category, result.roleLabel)
-    }))
+    })),
+    nowMs
   });
   const requiredRoles = pools
     .filter((pool) => pool.role.priority === "required")

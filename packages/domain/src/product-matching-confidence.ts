@@ -1,4 +1,5 @@
 import type { RoleScopedCandidatePool, RoleScopedRankedProductMatch } from "./product-matching";
+import { classifyCatalogTimestampFreshness, type CatalogTimestampFreshness } from "./product-matching-freshness";
 
 export type ProductMatchVisualStatus =
   | "strong_match"
@@ -31,6 +32,7 @@ export type ProductMatchRoleConfidence = {
   weaknessReasons: string[];
   hasColorMismatch: boolean;
   hasWeakMaterialMatch: boolean;
+  selectedProductFreshness: CatalogTimestampFreshness | null;
 };
 
 export type ProductMatchRequiredRoleDescriptor = {
@@ -46,6 +48,9 @@ export type ProductMatchQaStopRuleIssueCode =
   | "required_closest_available"
   | "invalid_selection"
   | "required_color_mismatch"
+  | "required_freshness_stale"
+  | "required_freshness_missing"
+  | "required_freshness_invalid"
   | "supporting_role_issue"
   | "weak_material_match";
 
@@ -69,6 +74,9 @@ export type ProductMatchQaStopRuleStatus = {
     invalidSelectionCount: number;
     colorMismatchRequiredCount: number;
     weakMaterialRequiredCount: number;
+    staleRequiredFreshnessCount: number;
+    missingRequiredFreshnessCount: number;
+    invalidRequiredFreshnessCount: number;
     emptyRequiredPoolCount: number;
   };
 };
@@ -79,10 +87,12 @@ export function productMatchRoleKey(category: string, roleLabel: string) {
 
 export function buildProductMatchConfidenceSummary({
   pools,
-  roleResults = []
+  roleResults = [],
+  nowMs
 }: {
   pools: RoleScopedCandidatePool[];
   roleResults?: ProductMatchRoleResultEvidence[];
+  nowMs?: number;
 }): ProductMatchRoleConfidence[] {
   const roleResultsByKey = new Map(
     roleResults.map((result) => [productMatchRoleKey(result.category, result.roleLabel), result])
@@ -121,19 +131,28 @@ export function buildProductMatchConfidenceSummary({
       reasons,
       weaknessReasons,
       hasColorMismatch: Boolean(attributeScore && attributeScore.color < 0),
-      hasWeakMaterialMatch: Boolean(attributeScore && attributeScore.material < 0)
+      hasWeakMaterialMatch: Boolean(attributeScore && attributeScore.material < 0),
+      selectedProductFreshness:
+        selectedCandidate && nowMs !== undefined
+          ? classifyCatalogTimestampFreshness({
+              lastCheckedAt: selectedCandidate.lastCheckedAt,
+              nowMs
+            })
+          : null
     };
   });
 }
 
 export function productMatchConfidenceOutputSummary({
   pools,
-  roleResults = []
+  roleResults = [],
+  nowMs
 }: {
   pools: RoleScopedCandidatePool[];
   roleResults?: ProductMatchRoleResultEvidence[];
+  nowMs?: number;
 }) {
-  return buildProductMatchConfidenceSummary({ pools, roleResults }).map((summary) => ({
+  return buildProductMatchConfidenceSummary({ pools, roleResults, nowMs }).map((summary) => ({
     category: summary.category,
     roleLabel: summary.roleLabel,
     roleKey: summary.roleKey,
@@ -146,7 +165,8 @@ export function productMatchConfidenceOutputSummary({
     reasons: summary.reasons,
     weaknessReasons: summary.weaknessReasons,
     hasColorMismatch: summary.hasColorMismatch,
-    hasWeakMaterialMatch: summary.hasWeakMaterialMatch
+    hasWeakMaterialMatch: summary.hasWeakMaterialMatch,
+    selectedProductFreshness: summary.selectedProductFreshness
   }));
 }
 
@@ -267,6 +287,42 @@ export function buildProductMatchQaStopRuleStatus({
       warnings.push(issue);
     }
 
+    if (isRequired && role.selectedProductFreshness?.catalogFreshnessStatus === "stale") {
+      warnings.push(
+        stopRuleIssue({
+          code: "required_freshness_stale",
+          severity: "warning",
+          roleKey: role.roleKey,
+          roleLabel: role.roleLabel,
+          message: "Required role selected product catalog timestamp is stale."
+        })
+      );
+    }
+
+    if (isRequired && role.selectedProductFreshness?.catalogFreshnessStatus === "missing") {
+      warnings.push(
+        stopRuleIssue({
+          code: "required_freshness_missing",
+          severity: "warning",
+          roleKey: role.roleKey,
+          roleLabel: role.roleLabel,
+          message: "Required role selected product catalog timestamp is missing."
+        })
+      );
+    }
+
+    if (isRequired && role.selectedProductFreshness?.catalogFreshnessStatus === "invalid") {
+      warnings.push(
+        stopRuleIssue({
+          code: "required_freshness_invalid",
+          severity: "warning",
+          roleKey: role.roleKey,
+          roleLabel: role.roleLabel,
+          message: "Required role selected product catalog timestamp is invalid."
+        })
+      );
+    }
+
     if (!isRequired && hasSupportingIssue(role)) {
       warnings.push(
         stopRuleIssue({
@@ -295,6 +351,9 @@ export function buildProductMatchQaStopRuleStatus({
         const role = confidenceByKey.get(issue.roleKey);
         return issue.code === "weak_material_match" && Boolean(role && requiredByKey.has(role.roleKey));
       }).length,
+      staleRequiredFreshnessCount: warnings.filter((issue) => issue.code === "required_freshness_stale").length,
+      missingRequiredFreshnessCount: warnings.filter((issue) => issue.code === "required_freshness_missing").length,
+      invalidRequiredFreshnessCount: warnings.filter((issue) => issue.code === "required_freshness_invalid").length,
       emptyRequiredPoolCount: blockers.filter((issue) => issue.code === "required_pool_empty").length
     }
   };
