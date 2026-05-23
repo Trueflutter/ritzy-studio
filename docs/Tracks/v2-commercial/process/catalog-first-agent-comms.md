@@ -1,11 +1,11 @@
 # Catalog-First Room Generation Agent Comms
 
 ## Current PR
-- PR #94: https://github.com/Trueflutter/ritzy-studio/pull/94
-- Branch: `codex/catalog-first-dry-run-summary`
+- PR #96: https://github.com/Trueflutter/ritzy-studio/pull/96
+- Branch: `codex/catalog-first-dry-run-fixtures`
 
 ## Current stage
-- Dormant pure-domain catalog-first dry-run summary helper.
+- Dormant pure-domain catalog-first dry-run fixture scenarios.
 
 ## Blockers
 - None currently.
@@ -37,6 +37,12 @@
 - Implemented the dry-run helper and completed adversarial implementation review with no blockers.
 - Verified the dry-run helper with domain test, domain typecheck, workspace typecheck, and diff whitespace checks.
 - Opened PR #94 for chief architect/coordinator review.
+- Merged PR #94 after explicit coordinator approval.
+- Started the next approved domain/docs-only stage from latest main.
+- Ran adversarial plan review for dormant synthetic catalog-first dry-run fixtures.
+- Implemented fixture scenarios and completed adversarial implementation review with no blockers.
+- Verified the fixture scenarios with focused fixture test, domain test, domain typecheck, workspace typecheck, and diff whitespace checks.
+- Opened PR #96 for chief architect/coordinator review.
 
 ## Next intended action
 - Wait for chief architect/coordinator review.

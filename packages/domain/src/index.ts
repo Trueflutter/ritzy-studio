@@ -141,6 +141,7 @@ export * from "./catalog-first-product-matching";
 export * from "./catalog-first-orchestration-planner";
 export * from "./catalog-first-plan-assembly";
 export * from "./catalog-first-dry-run";
+export * from "./catalog-first-dry-run-fixtures";
 export * from "./product-matching-confidence";
 export * from "./measurement-intelligence";
 export * from "./product-matching-dimensions";
