@@ -1,10 +1,10 @@
 # Product Matching Engine Agent Comms
 
 ## Current PR
-PR #83: https://github.com/Trueflutter/ritzy-studio/pull/83
+PR #84: https://github.com/Trueflutter/ritzy-studio/pull/84
 
 ## Current stage
-Implementing selected-product catalog evidence completeness metadata for Product Matching Engine V1 QA logs.
+Implementing pre-AI role pool quality metadata for Product Matching Engine V1 QA logs.
 
 ## Blockers
 None.
@@ -13,7 +13,7 @@ None.
 None yet. I will proceed with the next small, domain-first/default-off Product Matching Engine slice unless the chief architect redirects.
 
 ## Last action taken
-Opened PR #83 from `codex/product-match-evidence-completeness` after plan review, implementation review, and passing local checks.
+Opened PR #84 from `codex/product-match-image-evidence` after plan review, implementation review, and passing local checks.
 
 ## Next intended action
-Wait for coordinator review. If rejected, fix only listed blockers. If approved and explicitly approved to merge, merge because this PR is domain metadata-only and default-off.
+Wait for coordinator review. If rejected, fix only listed blockers. If approved and explicitly approved to merge, merge because this PR is metadata-only and default-off.

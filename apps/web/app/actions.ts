@@ -28,6 +28,7 @@ import {
   setUserModeSchema,
   sortProductsForRenderReferences,
   substitutionModeSchema,
+  summarizeRolePoolQuality,
   visualStyleOptions,
   visualStyleSummary,
   type RankedProductMatch,
@@ -1939,7 +1940,8 @@ export async function groundProductsAction(formData: FormData) {
         productMatchingEngineEnabled,
         candidateCount: sourcingCandidates.length,
         blueprintRoleCount: blueprintRoles.length,
-        roleCandidateCounts: productMatchingEngineEnabled ? roleCandidateCountSummary(sourcingPools) : undefined
+        roleCandidateCounts: productMatchingEngineEnabled ? roleCandidateCountSummary(sourcingPools) : undefined,
+        rolePoolQuality: productMatchingEngineEnabled ? summarizeRolePoolQuality(sourcingPools) : undefined
       }
     })
     .select("id")
