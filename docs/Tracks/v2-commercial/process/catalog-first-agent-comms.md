@@ -1,11 +1,11 @@
 # Catalog-First Room Generation Agent Comms
 
 ## Current PR
-- PR #90: https://github.com/Trueflutter/ritzy-studio/pull/90
-- Branch: `codex/catalog-first-plan-assembly-bridge`
+- PR #94: https://github.com/Trueflutter/ritzy-studio/pull/94
+- Branch: `codex/catalog-first-dry-run-summary`
 
 ## Current stage
-- Dormant pure-domain plan-to-bundle assembly bridge.
+- Dormant pure-domain catalog-first dry-run summary helper.
 
 ## Blockers
 - None currently.
@@ -31,6 +31,12 @@
 - Started next domain-only plan assembly bridge PR from latest main.
 - Opened draft PR #90.
 - Rebased PR #90 after PR #89 landed and preserved catalog-first plus measurement seed dry-run tests and scripts.
+- Merged PR #90 after explicit coordinator approval.
+- Started the next approved domain/docs-only stage from latest main.
+- Ran adversarial plan review for a dormant catalog-first dry-run helper.
+- Implemented the dry-run helper and completed adversarial implementation review with no blockers.
+- Verified the dry-run helper with domain test, domain typecheck, workspace typecheck, and diff whitespace checks.
+- Opened PR #94 for chief architect/coordinator review.
 
 ## Next intended action
 - Wait for chief architect/coordinator review.
