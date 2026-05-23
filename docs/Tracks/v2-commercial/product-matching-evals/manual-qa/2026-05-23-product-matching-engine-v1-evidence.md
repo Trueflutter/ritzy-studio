@@ -131,3 +131,9 @@ The remaining weakness is role-result contract fidelity, not broad category drif
 - Production rollout allowed by this report: No.
 - Follow-up PR or catalog action needed: yes, for role-result contract adherence and a seeded home-office QA scenario.
 - Chief architect / Sam decision needed: approve the next docs-only rollout readiness decision record, then decide whether the following implementation PR should address role-result contract prompting or seed missing QA scenarios.
+
+## Post-PR103 Validation Addendum
+
+See `2026-05-23-post-103-validation-evidence.md` for the follow-up blocker-focused validation after PR #103.
+
+Summary: PR #103 fixes the category normalization identity issue for `side_tables`, `bedside lighting`, and `bedroom rug`, but this retained bedroom QA evidence still does not clear the required bedside-table blocker. The role result remains `missing_required` with no product id, even though `selectedProducts` contains a plausible side table. The next fix should address role-result contract adherence explicitly; do not treat PR #103 alone as controlled preview readiness.
