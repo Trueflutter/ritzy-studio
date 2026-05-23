@@ -1,28 +1,59 @@
 # Product Matching Engine Agent Comms
 
 ## Current PR
-None. PR #100 was approved and merged.
+Drafting docs/artifacts-only validation evidence PR after PR #103 and PR #100.
 
 ## Current stage
-Implementing the approved targeted Product Matching confidence normalization fix.
+Post-PR103 default-off validation evidence found a remaining role-result contract blocker.
 
 ## Blockers
-None for the approved scope.
+No active implementation blocker. Product Matching Engine V1 is still not approved for default-on activation, production rollout, live catalog writes, DB/schema changes, UI changes, prompt changes, or Catalog-First runtime coupling.
 
 ## Chief architect question
 ARCHITECT_NOTE:
 Lane: Product Matching Engine
-Current PR: None. PR #100 merged at 103b2ed.
-Current stage: Next targeted Product Matching fix after readiness refresh.
-What is complete: PR #97 filled the approved write-free home-office static-image QA evidence gap. PR #100 refreshed the rollout-readiness decision and kept V1 blocked from controlled default-off preview until targeted fixes land.
-Decision needed: Should the next PR include a tiny runtime-adjacent web confidence normalization fix, plus tests, so exact supplied role-pool categories like `side_tables` for `bedside tables` remain matchable? Or should the next PR be narrowed to prompt hardening only and explicitly not claim the bedroom bedside contract issue is fixed end to end?
-Options: 1. Approve a small runtime-adjacent fix in the default-off Product Matching confidence/QA metadata path: preserve exact role-pool categories for role confidence instead of re-normalizing exact AI role results into broader categories, with focused tests for `side_tables`/bedside tables and supporting storage. 2. Approve prompt-only hardening: tell the model to copy role-pool category/roleLabel exactly and bump the prompt version, but document that it is guidance only and does not close the downstream bedside normalization issue. 3. Pause implementation and ask Sam/chief architect for a broader design on role identity propagation before changing runtime behavior.
-Recommendation: Choose option 1. It is the smallest fix that addresses the actual trust hole found by the reviewer, remains behind/default-off QA metadata, and can be tested without DB/schema/UI/prompt rollout or production flag changes. Do not merge it without explicit approval because it is runtime-adjacent, even though the path is default-off metadata.
+Current PR: In progress on `codex/product-match-post-103-validation`.
+Current branch/main commit: `main` at `f61b4e2027762c023a14663649936cefbec42db5` after `git fetch origin main` and `git pull --ff-only`.
+Current stage: Stop-rule finding from the approved docs/artifacts-only validation evidence pass.
+What is complete: PR #100 recorded that Product Matching Engine V1 still needed targeted fixes before controlled default-off preview testing. PR #103 fixed the category normalization issue where `side_tables`, `bedside table`, and `nightstand` role metadata could collapse into `beds`; it also preserves non-bed bedroom-adjacent roles such as `bedside lighting` and `bedroom rug`. The post-PR103 validation evidence now documents that the previous bedroom bedside-table blocker is not fully cleared: retained QA evidence normalizes the bedside category correctly to `side_tables`, but the role result still reports `missing_required` with `productId=null` even though `selectedProducts` contains a plausible side table. Product Matching Engine V1 remains default-off and blocked for controlled preview.
+Recommended next PR scope: A narrowly approved prompt-only role-contract hardening PR, unless the Chief Architect prefers a separate default-off runtime validation contract fix. Prompt-only scope would tell visual sourcing to copy each supplied role pool's `category` and `roleLabel` exactly into `roleResults`, and require any selected product to have a matching role result with the same product id. Runtime fix scope, if chosen instead, should be separately approved and test-backed.
+Non-goals: No default-on activation, production flags, deploys, live writes, catalog writes, DB/schema changes, UI changes, prompt changes, app-action flow changes, Catalog-First runtime coupling, or production rollout decision in the validation PR.
+Checks I will run for this evidence PR: `git diff --check`; docs secret/signed-URL scan for committed evidence; `pnpm --filter @ritzy-studio/domain test`; `pnpm --filter @ritzy-studio/domain typecheck`; and no web typecheck unless web/app code changes unexpectedly.
+Exact decision needed from Chief Architect: After this evidence PR is reviewed, approve the next small implementation scope: option 1 prompt-only role-contract hardening, option 2 default-off runtime validation contract fix with tests, or option 3 pause.
 
-CHIEF_ARCHITECT_REPLY received: Approved option 1. Proceed with one small runtime-adjacent, default-off confidence normalization fix with tests. Preserve canonical role identity once already known, especially `side_tables`; add regressions for `side_tables`, `bedside table`, `nightstand`, and true `bed`; do not change prompts, default-on flags, DB/schema, UI, catalog-first coupling, live writes, or deploys.
+CHIEF_ARCHITECT_REPLY:
+Approved. Proceed with the recommended docs/artifacts-only default-off validation evidence PR.
+
+Scope:
+- Run a local/preview QA validation pass with Product Matching Engine V1 enabled only for the QA process.
+- Cover representative living room, dining room, bedroom, and home office/study scenarios.
+- Capture selected products, screenshots/contact sheets where safe, missing/weak roles, role confidence, QA gate status, evidence completeness, dimension/catalog freshness notes, and whether the previous bedroom bedside-table blocker is cleared.
+- Update the manual QA evidence/readiness docs with explicit comparison against the prior blockers.
+- Keep the output as docs/artifacts only.
+
+Hard non-goals:
+- No default-on activation.
+- No production flags.
+- No deploys.
+- No live writes, catalog writes, or shopping-list writes.
+- No DB/schema changes.
+- No UI changes.
+- No prompt changes.
+- No app-action flow changes.
+- No Catalog-First runtime coupling.
+- No production rollout decision in this PR.
+
+Stop rule:
+If validation exposes a deterministic code issue, role/category normalization bug, prompt issue, or runtime behavior problem, do not quietly fix it inside the evidence PR. Stop, document the finding, and ask for the next scoped PR.
+
+Expected checks:
+- `git diff --check`
+- secret/signed-URL scan for committed evidence
+- domain tests/typecheck
+- web typecheck only if any web/app imports or code unexpectedly change.
 
 ## Last action taken
-Received Chief Architect approval, ran adversarial plan review, revised the plan to avoid broad canonical-category preservation, implemented a narrow `side_tables`/bedside table/nightstand precedence fix, and ran domain tests plus web TypeScript.
+Ran adversarial plan review, created `codex/product-match-post-103-validation`, reviewed retained manual QA artifacts through current post-PR103 normalization behavior, and documented the stop-rule finding in the Product Matching evidence/readiness docs.
 
 ## Next intended action
-Run final diff checks, request implementation review, then stage by file name, commit, push, open PR, and recreate `product-matching-pr-check`.
+Run checks, request implementation review, open the docs/artifacts-only evidence PR if review passes, then recreate `product-matching-pr-check`.

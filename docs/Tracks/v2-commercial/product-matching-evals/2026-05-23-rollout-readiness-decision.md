@@ -15,9 +15,12 @@ This decision is based on:
 - `PR_E_Runtime_Rollout_QA.md`
 - `manual-qa/2026-05-23-product-matching-engine-v1-evidence.md`
 - `manual-qa/2026-05-23-home-office-external-image-qa.md`
+- `manual-qa/2026-05-23-post-103-validation-evidence.md`
 - `12_Product_Matching_Engine_PRD.md`
 
 The manual QA pass was useful and directionally positive, but it did not satisfy the rollout stop rules.
+
+Post-PR103 update: the bedside/side-table normalization fix correctly preserves bedroom-adjacent role categories such as `side_tables`, `bedside lighting`, and `bedroom rug`. The bedroom bedside-table blocker is still not cleared in retained QA evidence because the role result remains `missing_required` with `productId=null`. Product Matching Engine V1 therefore still needs a targeted role-result contract fix before controlled default-off preview testing.
 
 ## Evidence Summary
 
@@ -36,6 +39,7 @@ The May 23 evidence triggers rollout stop rules:
 
 - Required anchor/support role failure: bedroom bedside tables were required but marked missing by role confidence metadata.
 - `roleConfidenceGate.passesQaStopRules=false` for the bedroom scenario.
+- PR #103 fixes the category identity portion of the bedroom issue, but not the role satisfaction issue: the retained role result still reports bedside tables as missing with no selected product id.
 - Home office now has visual arbitration coverage only through a public/static external image, not a real selected Ritzy-generated concept.
 - Required-role catalog evidence and dimension metadata produced warnings that should remain visible before wider preview.
 - Supporting-role adherence remains weak in the home-office probe: task lighting was closest-available rather than a strong match, and desk decor was marked missing despite candidate coverage.
@@ -57,7 +61,7 @@ The bedroom result is not just a catalog miss. The selected product list contain
 
 ## Recommended Next Steps
 
-1. Fix role-result contract adherence so model output mirrors supplied role pools exactly, especially category/role labels for bedroom bedside tables and supporting storage roles.
+1. Fix role-result contract adherence so model output mirrors supplied role pools exactly and required selected products have matching role results with the same product ids, especially bedroom bedside tables and supporting storage roles.
 2. Improve supporting-role adherence for lighting, storage/shelving, and decor so models do not overuse closest-available lighting or mark populated supporting pools missing.
 3. Continue catalog evidence and measurement enrichment so required anchor warnings become less frequent, especially office dimensions/material/color metadata.
 4. Add or approve a real Ritzy-generated home-office QA scenario when writes are explicitly approved, then rerun visual arbitration against a selected concept image.
