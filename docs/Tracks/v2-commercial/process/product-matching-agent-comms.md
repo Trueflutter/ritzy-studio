@@ -1,19 +1,19 @@
 # Product Matching Engine Agent Comms
 
 ## Current PR
-None. PR #92 was approved and merged.
+None. Preparing home-office external/static image QA PR.
 
 ## Current stage
-Role-result contract repair for Product Matching Engine V1.
+Home-office visual QA follow-up using the Chief Architect approved write-free/public image path.
 
 ## Blockers
-None for the contract-repair PR. Real home-office visual QA remains outstanding until a representative scenario can be run without unsafe writes or with explicit approval for seeded data.
+None currently.
 
 ## Chief architect question
-CHIEF_ARCHITECT_REPLY received: choose option 1 first, with option 2 as the immediate follow-up. Run/fill manual QA reports against local or preview using real representative scenarios. Cover living room, dining room, bedroom, and home office, including lamps/lighting, sideboard/storage, TV/media unit, and quantity-sensitive products. Keep this evidence/reporting only unless a clear P0/P1 defect is found. Hard non-goals: no prompt/runtime behavior changes, default-on activation, app-action wiring changes, catalog-first coupling changes, or DB/schema changes.
+CHIEF_ARCHITECT_REPLY received: choose option 1. Use one approved public or repo-local static home-office/study concept image as the visual QA input. Run read-only visual QA with no DB writes, no seeded project/room records, no app-action writes, and no production/live changes. Do not choose option 2 unless Sam explicitly approves a scoped seed write.
 
 ## Last action taken
-Merged PR #92 after explicit approval-to-merge, synced `origin/main`, created `codex/product-match-role-contract-fix`, revised the plan after adversarial rejection, and received plan approval for a narrow AI validator fix plus pure home-office contract fixture.
+Ran the write-free home-office external/static image QA probe using the Pexels image at https://www.pexels.com/photo/office-with-shelves-near-table-and-chair-6899394/. The local harness read catalog products only, made one AI visual arbitration call, performed no DB/app-action writes, and generated a docs/artifacts-only report plus contact sheet.
 
 ## Next intended action
-Run AI tests, request implementation review, then stage files by name, commit, push, open a small PR, and recreate `product-matching-pr-check`.
+Run verification, request adversarial implementation review, open the docs/artifacts-only PR if review passes, then recreate the `product-matching-pr-check` heartbeat.
