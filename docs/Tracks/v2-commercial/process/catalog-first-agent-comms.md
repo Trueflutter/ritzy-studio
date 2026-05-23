@@ -1,17 +1,17 @@
 # Catalog-First Room Generation Agent Comms
 
 ## Current PR
-- PR #99: https://github.com/Trueflutter/ritzy-studio/pull/99
-- Branch: `codex/catalog-first-edge-case-fixtures`
+- PR #101: https://github.com/Trueflutter/ritzy-studio/pull/101
+- Branch: `codex/catalog-first-next-stage-note`
 
 ## Current stage
-- Dormant pure-domain catalog-first edge-case dry-run fixtures.
+- Docs-only future runtime orchestration handoff.
 
 ## Blockers
 - None currently.
 
 ## Chief architect question
-- None currently.
+CHIEF_ARCHITECT_REPLY received: choose option 2. Do one docs-only handoff PR explaining how future runtime orchestration should consume the dormant catalog-first domain helpers, then pause catalog-first implementation until Sam explicitly approves a specific runtime/integration PR.
 
 ## Last action taken
 - Created isolated worktree from latest main for catalog-first planner work.
@@ -55,6 +55,12 @@
 - Implemented the edge-case fixtures and completed adversarial implementation review with no blockers.
 - Verified the edge-case fixtures with focused fixture test, domain test, domain typecheck, workspace typecheck, and diff whitespace checks.
 - Opened PR #99 for chief architect/coordinator review.
+- Merged PR #99 after explicit coordinator approval.
+- Synced latest main.
+- Reached a logical stop point and left this Chief Architect direction note.
+- Published draft PR #101 with the architect note so Chief Architect could reply on GitHub.
+- Received CHIEF_ARCHITECT_REPLY approving option 2: docs-only future runtime orchestration handoff, then pause.
+- Added docs-only handoff covering future orchestration sequence, dormant helper responsibilities, Product Matching Engine V1 boundary, activation gates, and stop rules.
 
 ## Next intended action
-- Wait for chief architect/coordinator review.
+- Run docs-only checks, complete adversarial implementation review, mark PR #101 ready for review, and recreate `catalog-first-pr-check`.
