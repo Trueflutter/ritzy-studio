@@ -153,5 +153,6 @@ export * from "./product-matching-pool-quality";
 export * from "./product-matching-pool-qa-rollup";
 export * from "./measurement-layout-seed";
 export * from "./measurement-layout-seed-dry-run";
+export * from "./measurement-layout-seed-row-adapter";
 export * from "./entitlements";
 export * from "./style-preferences";
