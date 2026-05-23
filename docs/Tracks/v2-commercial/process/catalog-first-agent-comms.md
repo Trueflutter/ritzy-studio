@@ -1,11 +1,11 @@
 # Catalog-First Room Generation Agent Comms
 
 ## Current PR
-- PR #81: https://github.com/Trueflutter/ritzy-studio/pull/81
-- Branch: `codex/catalog-first-orchestration-planner`
+- PR #90: https://github.com/Trueflutter/ritzy-studio/pull/90
+- Branch: `codex/catalog-first-plan-assembly-bridge`
 
 ## Current stage
-- Dormant pure-domain catalog-first orchestration planner.
+- Dormant pure-domain plan-to-bundle assembly bridge.
 
 ## Blockers
 - None currently.
@@ -27,6 +27,10 @@
 - Rebased PR #81 after PR #84 landed and preserved catalog-first planner plus product-matching pool quality tests.
 - Rebased PR #81 after PR #85 landed and preserved catalog-first planner plus product-matching pool diversity tests.
 - Rebased PR #81 after PR #86 landed and preserved catalog-first planner plus product-matching pool QA rollup tests.
+- Merged PR #81 after chief architect and coordinator approval.
+- Started next domain-only plan assembly bridge PR from latest main.
+- Opened draft PR #90.
+- Rebased PR #90 after PR #89 landed and preserved catalog-first plus measurement seed dry-run tests and scripts.
 
 ## Next intended action
-- Wait for chief architect review.
+- Wait for chief architect/coordinator review.
