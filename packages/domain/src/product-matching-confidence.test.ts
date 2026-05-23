@@ -61,7 +61,13 @@ const strongPools = buildRoleScopedCandidatePools({
       categoryNormalized: "sofas",
       primaryImageUrl: "https://example.com/cream-sofa.jpg",
       colorTags: ["cream", "beige"],
-      materialTags: ["linen"]
+      materialTags: ["linen"],
+      dimensions: {
+        widthCm: 220,
+        depthCm: 95,
+        heightCm: 80,
+        sourceText: "220 x 95 x 80 cm"
+      }
     }
   ]
 });
@@ -76,13 +82,18 @@ const strongSummary = buildProductMatchConfidenceSummary({
       reason: "The product matches the beige linen sofa role."
     }
   ],
-  nowMs
+  nowMs,
+  roomMeasurements: {
+    wallLengthCm: 320,
+    roomDepthCm: 420
+  }
 });
 assert.equal(strongSummary[0].confidenceTier, "strong");
 assert.equal(strongSummary[0].selectedProductId, "20000000-0000-4000-8000-000000000001");
 assert.equal(strongSummary[0].candidateCount, 1);
 assert.equal(strongSummary[0].hasColorMismatch, false);
 assert.equal(strongSummary[0].hasWeakMaterialMatch, false);
+assert.equal(strongSummary[0].selectedProductDimensionFit?.status, "fits_room");
 assert.equal(strongSummary[0].selectedProductFreshness?.catalogFreshnessStatus, "fresh");
 
 const closestPools = buildRoleScopedCandidatePools({
@@ -165,6 +176,7 @@ const invalidSelectionSummary = buildProductMatchConfidenceSummary({
 });
 assert.equal(invalidSelectionSummary[0].confidenceTier, "invalid_selection");
 assert.equal(invalidSelectionSummary[0].selectedProductId, null);
+assert.equal(invalidSelectionSummary[0].selectedProductDimensionFit, null);
 assert.equal(invalidSelectionSummary[0].selectedProductFreshness, null);
 assert.ok(
   invalidSelectionSummary[0].weaknessReasons.includes(
@@ -187,7 +199,11 @@ const outputSummary = productMatchConfidenceOutputSummary({
       reason: "Good fit."
     }
   ],
-  nowMs
+  nowMs,
+  roomMeasurements: {
+    wallLengthCm: 320,
+    roomDepthCm: 420
+  }
 });
 assert.deepEqual(Object.keys(outputSummary[0]).sort(), [
   "candidateCount",
@@ -200,12 +216,14 @@ assert.deepEqual(Object.keys(outputSummary[0]).sort(), [
   "rejectionReasons",
   "roleKey",
   "roleLabel",
+  "selectedProductDimensionFit",
   "selectedProductId",
   "selectedProductFreshness",
   "status",
   "weaknessReasons"
 ].sort());
 assert.equal(outputSummary[0].roleKey, "sofas::anchor_seating");
+assert.equal(outputSummary[0].selectedProductDimensionFit?.status, "fits_room");
 assert.equal(outputSummary[0].selectedProductFreshness?.catalogFreshnessStatus, "fresh");
 
 const requiredSofa = productMatchRequiredRoleDescriptor({
@@ -392,5 +410,97 @@ const invalidFreshnessGate = buildProductMatchQaStopRuleStatus({
 });
 assert.equal(invalidFreshnessSummary[0].selectedProductFreshness?.catalogFreshnessStatus, "invalid");
 assert.ok(invalidFreshnessGate.warnings.some((issue) => issue.code === "required_freshness_invalid"));
+
+const oversizedDimensionSummary = buildProductMatchConfidenceSummary({
+  pools: buildRoleScopedCandidatePools({
+    roomType: "living room",
+    conceptText: "beige linen sofa",
+    roles: [sofaRole],
+    roomMeasurements: {
+      wallLengthCm: 320,
+      roomDepthCm: 420
+    },
+    candidates: [
+      {
+        ...base,
+        id: "20000000-0000-4000-8000-000000000007",
+        name: "Oversized Cream Sofa",
+        categoryNormalized: "sofas",
+        primaryImageUrl: "https://example.com/oversized-sofa.jpg",
+        colorTags: ["cream", "beige"],
+        materialTags: ["linen"],
+        dimensions: {
+          widthCm: 360,
+          depthCm: 95,
+          heightCm: 80,
+          sourceText: "360 x 95 x 80 cm"
+        }
+      }
+    ]
+  }).pools,
+  roleResults: [
+    {
+      category: "sofas",
+      roleLabel: "anchor seating",
+      status: "acceptable_match",
+      productId: "20000000-0000-4000-8000-000000000007",
+      reason: "Good visual match, but dimensions need review."
+    }
+  ],
+  roomMeasurements: {
+    wallLengthCm: 320,
+    roomDepthCm: 420
+  },
+  nowMs
+});
+const oversizedDimensionGate = buildProductMatchQaStopRuleStatus({
+  roleConfidence: oversizedDimensionSummary,
+  requiredRoles: [requiredSofa]
+});
+assert.equal(oversizedDimensionSummary[0].selectedProductDimensionFit?.status, "oversized_width");
+assert.equal(oversizedDimensionGate.passesQaStopRules, true);
+assert.ok(oversizedDimensionGate.warnings.some((issue) => issue.code === "required_dimension_oversized"));
+assert.equal(oversizedDimensionGate.counts.oversizedRequiredDimensionCount, 1);
+
+const missingDimensionSummary = buildProductMatchConfidenceSummary({
+  pools: buildRoleScopedCandidatePools({
+    roomType: "living room",
+    conceptText: "beige linen sofa",
+    roles: [sofaRole],
+    candidates: [
+      {
+        ...base,
+        id: "20000000-0000-4000-8000-000000000008",
+        name: "Dimensionless Cream Sofa",
+        categoryNormalized: "sofas",
+        primaryImageUrl: "https://example.com/dimensionless-sofa.jpg",
+        colorTags: ["cream", "beige"],
+        materialTags: ["linen"]
+      }
+    ]
+  }).pools,
+  roleResults: [
+    {
+      category: "sofas",
+      roleLabel: "anchor seating",
+      status: "acceptable_match",
+      productId: "20000000-0000-4000-8000-000000000008",
+      reason: "Good visual match, but dimensions are missing."
+    }
+  ],
+  roomMeasurements: {
+    wallLengthCm: 320,
+    roomDepthCm: 420
+  },
+  nowMs
+});
+const missingDimensionGate = buildProductMatchQaStopRuleStatus({
+  roleConfidence: missingDimensionSummary,
+  requiredRoles: [requiredSofa]
+});
+assert.equal(missingDimensionSummary[0].selectedProductDimensionFit?.status, "missing_product_dimensions");
+assert.equal(missingDimensionGate.passesQaStopRules, true);
+assert.ok(missingDimensionGate.warnings.some((issue) => issue.code === "required_dimension_missing"));
+assert.equal(missingDimensionGate.counts.missingRequiredDimensionCount, 1);
 
 console.log("product matching confidence tests passed");

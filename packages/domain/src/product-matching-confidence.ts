@@ -1,4 +1,9 @@
 import type { RoleScopedCandidatePool, RoleScopedRankedProductMatch } from "./product-matching";
+import type { ProductMatchRequest } from "./product-matching";
+import {
+  classifyProductMatchDimensionFit,
+  type ProductMatchDimensionFit
+} from "./product-matching-dimensions";
 import { classifyCatalogTimestampFreshness, type CatalogTimestampFreshness } from "./product-matching-freshness";
 
 export type ProductMatchVisualStatus =
@@ -32,6 +37,7 @@ export type ProductMatchRoleConfidence = {
   weaknessReasons: string[];
   hasColorMismatch: boolean;
   hasWeakMaterialMatch: boolean;
+  selectedProductDimensionFit: ProductMatchDimensionFit | null;
   selectedProductFreshness: CatalogTimestampFreshness | null;
 };
 
@@ -51,6 +57,8 @@ export type ProductMatchQaStopRuleIssueCode =
   | "required_freshness_stale"
   | "required_freshness_missing"
   | "required_freshness_invalid"
+  | "required_dimension_oversized"
+  | "required_dimension_missing"
   | "supporting_role_issue"
   | "weak_material_match";
 
@@ -77,6 +85,8 @@ export type ProductMatchQaStopRuleStatus = {
     staleRequiredFreshnessCount: number;
     missingRequiredFreshnessCount: number;
     invalidRequiredFreshnessCount: number;
+    oversizedRequiredDimensionCount: number;
+    missingRequiredDimensionCount: number;
     emptyRequiredPoolCount: number;
   };
 };
@@ -88,11 +98,13 @@ export function productMatchRoleKey(category: string, roleLabel: string) {
 export function buildProductMatchConfidenceSummary({
   pools,
   roleResults = [],
-  nowMs
+  nowMs,
+  roomMeasurements = null
 }: {
   pools: RoleScopedCandidatePool[];
   roleResults?: ProductMatchRoleResultEvidence[];
   nowMs?: number;
+  roomMeasurements?: ProductMatchRequest["roomMeasurements"];
 }): ProductMatchRoleConfidence[] {
   const roleResultsByKey = new Map(
     roleResults.map((result) => [productMatchRoleKey(result.category, result.roleLabel), result])
@@ -132,6 +144,9 @@ export function buildProductMatchConfidenceSummary({
       weaknessReasons,
       hasColorMismatch: Boolean(attributeScore && attributeScore.color < 0),
       hasWeakMaterialMatch: Boolean(attributeScore && attributeScore.material < 0),
+      selectedProductDimensionFit: selectedCandidate
+        ? classifyProductMatchDimensionFit({ candidate: selectedCandidate, roomMeasurements })
+        : null,
       selectedProductFreshness:
         selectedCandidate && nowMs !== undefined
           ? classifyCatalogTimestampFreshness({
@@ -146,13 +161,15 @@ export function buildProductMatchConfidenceSummary({
 export function productMatchConfidenceOutputSummary({
   pools,
   roleResults = [],
-  nowMs
+  nowMs,
+  roomMeasurements = null
 }: {
   pools: RoleScopedCandidatePool[];
   roleResults?: ProductMatchRoleResultEvidence[];
   nowMs?: number;
+  roomMeasurements?: ProductMatchRequest["roomMeasurements"];
 }) {
-  return buildProductMatchConfidenceSummary({ pools, roleResults, nowMs }).map((summary) => ({
+  return buildProductMatchConfidenceSummary({ pools, roleResults, nowMs, roomMeasurements }).map((summary) => ({
     category: summary.category,
     roleLabel: summary.roleLabel,
     roleKey: summary.roleKey,
@@ -166,6 +183,7 @@ export function productMatchConfidenceOutputSummary({
     weaknessReasons: summary.weaknessReasons,
     hasColorMismatch: summary.hasColorMismatch,
     hasWeakMaterialMatch: summary.hasWeakMaterialMatch,
+    selectedProductDimensionFit: summary.selectedProductDimensionFit,
     selectedProductFreshness: summary.selectedProductFreshness
   }));
 }
@@ -323,6 +341,30 @@ export function buildProductMatchQaStopRuleStatus({
       );
     }
 
+    if (isRequired && isOversizedDimensionFit(role.selectedProductDimensionFit)) {
+      warnings.push(
+        stopRuleIssue({
+          code: "required_dimension_oversized",
+          severity: "warning",
+          roleKey: role.roleKey,
+          roleLabel: role.roleLabel,
+          message: "Required role selected product may not fit entered room measurements."
+        })
+      );
+    }
+
+    if (isRequired && isMissingDimensionFit(role.selectedProductDimensionFit)) {
+      warnings.push(
+        stopRuleIssue({
+          code: "required_dimension_missing",
+          severity: "warning",
+          roleKey: role.roleKey,
+          roleLabel: role.roleLabel,
+          message: "Required role selected product fit could not be fully checked from dimensions."
+        })
+      );
+    }
+
     if (!isRequired && hasSupportingIssue(role)) {
       warnings.push(
         stopRuleIssue({
@@ -354,6 +396,8 @@ export function buildProductMatchQaStopRuleStatus({
       staleRequiredFreshnessCount: warnings.filter((issue) => issue.code === "required_freshness_stale").length,
       missingRequiredFreshnessCount: warnings.filter((issue) => issue.code === "required_freshness_missing").length,
       invalidRequiredFreshnessCount: warnings.filter((issue) => issue.code === "required_freshness_invalid").length,
+      oversizedRequiredDimensionCount: warnings.filter((issue) => issue.code === "required_dimension_oversized").length,
+      missingRequiredDimensionCount: warnings.filter((issue) => issue.code === "required_dimension_missing").length,
       emptyRequiredPoolCount: blockers.filter((issue) => issue.code === "required_pool_empty").length
     }
   };
@@ -396,6 +440,18 @@ function hasSupportingIssue(role: ProductMatchRoleConfidence) {
     role.hasColorMismatch ||
     role.candidateCount === 0
   );
+}
+
+function isOversizedDimensionFit(fit: ProductMatchDimensionFit | null) {
+  return (
+    fit?.status === "oversized_width" ||
+    fit?.status === "oversized_depth" ||
+    fit?.status === "oversized_width_and_depth"
+  );
+}
+
+function isMissingDimensionFit(fit: ProductMatchDimensionFit | null) {
+  return fit?.status === "missing_product_dimensions" || fit?.status === "missing_room_measurements";
 }
 
 function selectedCandidateForRole(pool: RoleScopedCandidatePool, productId: string | null) {
