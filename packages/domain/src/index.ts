@@ -143,6 +143,7 @@ export * from "./measurement-intelligence";
 export * from "./product-matching-dimensions";
 export * from "./product-matching-evidence";
 export * from "./product-matching-freshness";
+export * from "./product-matching-pool-diversity";
 export * from "./product-matching-pool-quality";
 export * from "./measurement-layout-seed";
 export * from "./entitlements";
