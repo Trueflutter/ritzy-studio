@@ -911,9 +911,7 @@ export function validateProductSourcingRoleContract(
   const rolePoolsByKey = new Map(
     roleCandidatePools.map((role) => [sourcingRoleKey(role.category, role.roleLabel), role])
   );
-  const rolePoolsByCategory = new Map(
-    roleCandidatePools.map((role) => [normalizeSourcingRoleCategory(role.category), role])
-  );
+  const rolePoolsByProductId = rolePoolsForProductIds(roleCandidatePools);
 
   if (roleCandidatePools.length === 0) {
     return {
@@ -926,31 +924,49 @@ export function validateProductSourcingRoleContract(
   }
 
   const validRoleResults = parsed.roleResults
-    .filter((result) => rolePoolsByKey.has(sourcingRoleKey(result.category, result.roleLabel)))
     .map((result) => {
-      const role = rolePoolsByKey.get(sourcingRoleKey(result.category, result.roleLabel))!;
+      const role = canonicalRoleForResult({
+        result,
+        rolePoolsByKey,
+        rolePoolsByProductId,
+        allowedProductIds
+      });
+      return role ? { result, role } : null;
+    })
+    .filter((entry): entry is { result: (typeof parsed.roleResults)[number]; role: ConceptProductSourcingRolePool } =>
+      Boolean(entry)
+    )
+    .map((result) => {
+      const { role } = result;
+      const roleResult = result.result;
       const productBelongsToRole =
-        result.productId !== null &&
-        allowedProductIds.has(result.productId) &&
-        role.candidateIds.includes(result.productId);
+        roleResult.productId !== null &&
+        allowedProductIds.has(roleResult.productId) &&
+        role.candidateIds.includes(roleResult.productId);
 
-      if (result.productId === null) {
-        return result;
+      if (roleResult.productId === null) {
+        return {
+          ...roleResult,
+          category: role.category,
+          roleLabel: role.roleLabel
+        };
       }
 
       if (!productBelongsToRole) {
         return missingRoleResult(
           role,
-          `The model returned product ${result.productId} outside this role pool.`
+          `The model returned product ${roleResult.productId} outside this role pool.`
         );
       }
 
       return {
-        ...result,
+        ...roleResult,
+        category: role.category,
+        roleLabel: role.roleLabel,
         status:
-          result.status === "missing_required" || result.status === "missing_supporting"
+          roleResult.status === "missing_required" || roleResult.status === "missing_supporting"
             ? "closest_available"
-            : result.status
+            : roleResult.status
       };
     });
 
@@ -968,24 +984,143 @@ export function validateProductSourcingRoleContract(
       return false;
     }
 
-    const role =
-      rolePoolsByKey.get(sourcingRoleKey(selection.category, selection.roleLabel)) ??
-      rolePoolsByCategory.get(normalizeSourcingRoleCategory(selection.category));
+    const role = canonicalRoleForSelection({
+      selection,
+      rolePoolsByKey,
+      rolePoolsByProductId,
+      allowedProductIds
+    });
     return Boolean(role?.candidateIds.includes(selection.productId));
+  }).map((selection) => {
+    const role = canonicalRoleForSelection({
+      selection,
+      rolePoolsByKey,
+      rolePoolsByProductId,
+      allowedProductIds
+    });
+
+    return role
+      ? {
+          ...selection,
+          category: role.category,
+          roleLabel: role.roleLabel,
+          quantity: role.quantity
+        }
+      : selection;
   });
+  const satisfiedRoleKeys = new Set(
+    validRoleResults
+      .filter((result) => result.status !== "missing_required" && result.status !== "missing_supporting")
+      .map((result) => sourcingRoleKey(result.category, result.roleLabel))
+  );
 
   return {
     selectedProducts,
     roleResults: validRoleResults,
     missingRoles: Array.from(
       new Set([
-        ...parsed.missingRoles,
+        ...parsed.missingRoles.filter(
+          (missingRole) =>
+            !roleCandidatePools.some(
+              (role) =>
+                satisfiedRoleKeys.has(sourcingRoleKey(role.category, role.roleLabel)) &&
+                missingRoleMatchesRole(missingRole, role)
+            )
+        ),
         ...validRoleResults
           .filter((result) => result.status === "missing_required" || result.status === "missing_supporting")
           .map((result) => `${result.category} ${result.roleLabel}`)
       ])
     )
   };
+}
+
+function canonicalRoleForResult({
+  result,
+  rolePoolsByKey,
+  rolePoolsByProductId,
+  allowedProductIds
+}: {
+  result: ConceptProductSourcingResponse["roleResults"][number];
+  rolePoolsByKey: Map<string, ConceptProductSourcingRolePool>;
+  rolePoolsByProductId: Map<string, ConceptProductSourcingRolePool[]>;
+  allowedProductIds: Set<string>;
+}) {
+  const keyedRole = rolePoolsByKey.get(sourcingRoleKey(result.category, result.roleLabel)) ?? null;
+
+  if (result.productId === null) {
+    return keyedRole;
+  }
+
+  if (!allowedProductIds.has(result.productId)) {
+    return null;
+  }
+
+  const uniqueProductRole = uniqueRoleForProductId(result.productId, rolePoolsByProductId);
+
+  if (!uniqueProductRole) {
+    return null;
+  }
+
+  return keyedRole ?? uniqueProductRole;
+}
+
+function canonicalRoleForSelection({
+  selection,
+  rolePoolsByKey,
+  rolePoolsByProductId,
+  allowedProductIds
+}: {
+  selection: ConceptProductSourcingResponse["selectedProducts"][number];
+  rolePoolsByKey: Map<string, ConceptProductSourcingRolePool>;
+  rolePoolsByProductId: Map<string, ConceptProductSourcingRolePool[]>;
+  allowedProductIds: Set<string>;
+}) {
+  const keyedRole = rolePoolsByKey.get(sourcingRoleKey(selection.category, selection.roleLabel)) ?? null;
+
+  if (!allowedProductIds.has(selection.productId)) {
+    return null;
+  }
+
+  const uniqueProductRole = uniqueRoleForProductId(selection.productId, rolePoolsByProductId);
+
+  if (!uniqueProductRole) {
+    return null;
+  }
+
+  return keyedRole ?? uniqueProductRole;
+}
+
+function rolePoolsForProductIds(roleCandidatePools: ConceptProductSourcingRolePool[]) {
+  const rolePoolsByProductId = new Map<string, ConceptProductSourcingRolePool[]>();
+
+  for (const role of roleCandidatePools) {
+    for (const productId of role.candidateIds) {
+      rolePoolsByProductId.set(productId, [...(rolePoolsByProductId.get(productId) ?? []), role]);
+    }
+  }
+
+  return rolePoolsByProductId;
+}
+
+function uniqueRoleForProductId(
+  productId: string,
+  rolePoolsByProductId: Map<string, ConceptProductSourcingRolePool[]>
+) {
+  const roles = rolePoolsByProductId.get(productId) ?? [];
+  return roles.length === 1 ? roles[0] : null;
+}
+
+function missingRoleMatchesRole(missingRole: string, role: ConceptProductSourcingRolePool) {
+  const normalizedMissingRole = normalizeMissingRoleText(missingRole);
+  const normalizedRole = normalizeMissingRoleText(`${role.category} ${role.roleLabel}`);
+  const normalizedRoleLabel = normalizeMissingRoleText(role.roleLabel);
+
+  return normalizedMissingRole === normalizedRole || normalizedMissingRole === normalizedRoleLabel;
+}
+
+function normalizeMissingRoleText(value: string) {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 }
 
 function missingRoleResult(role: ConceptProductSourcingRolePool, reason: string) {
@@ -1000,10 +1135,6 @@ function missingRoleResult(role: ConceptProductSourcingRolePool, reason: string)
 
 function sourcingRoleKey(category: string, roleLabel: string) {
   return `${category}::${roleLabel}`.toLowerCase().replace(/[^a-z0-9:]+/g, "_");
-}
-
-function normalizeSourcingRoleCategory(category: string) {
-  return category.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
 }
 
 export async function generateInitialConcept(
