@@ -145,6 +145,7 @@ export * from "./product-matching-evidence";
 export * from "./product-matching-freshness";
 export * from "./product-matching-pool-diversity";
 export * from "./product-matching-pool-quality";
+export * from "./product-matching-pool-qa-rollup";
 export * from "./measurement-layout-seed";
 export * from "./entitlements";
 export * from "./style-preferences";

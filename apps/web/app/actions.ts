@@ -30,6 +30,7 @@ import {
   substitutionModeSchema,
   summarizeRolePoolDiversity,
   summarizeRolePoolQuality,
+  summarizePoolQaRollup,
   visualStyleOptions,
   visualStyleSummary,
   type RankedProductMatch,
@@ -1917,6 +1918,8 @@ export async function groundProductsAction(formData: FormData) {
   const sourcingCandidates = sourcingPlan.candidates;
   const sourcingCandidateIds = new Set(sourcingCandidates.map((candidate) => candidate.id));
   const sourcingCandidatePools = sourcingPools.map((pool) => poolToSourcingRolePool(pool, sourcingCandidateIds));
+  const rolePoolDiversity = productMatchingEngineEnabled ? summarizeRolePoolDiversity(sourcingPools) : undefined;
+  const rolePoolQuality = productMatchingEngineEnabled ? summarizeRolePoolQuality(sourcingPools) : undefined;
   const productMatchingRoomMeasurements = measurements
     ? {
         wallLengthCm: measurements.wall_length_cm,
@@ -1942,8 +1945,15 @@ export async function groundProductsAction(formData: FormData) {
         candidateCount: sourcingCandidates.length,
         blueprintRoleCount: blueprintRoles.length,
         roleCandidateCounts: productMatchingEngineEnabled ? roleCandidateCountSummary(sourcingPools) : undefined,
-        rolePoolDiversity: productMatchingEngineEnabled ? summarizeRolePoolDiversity(sourcingPools) : undefined,
-        rolePoolQuality: productMatchingEngineEnabled ? summarizeRolePoolQuality(sourcingPools) : undefined
+        rolePoolDiversity,
+        rolePoolQuality,
+        rolePoolQaRollup:
+          rolePoolQuality && rolePoolDiversity
+            ? summarizePoolQaRollup({
+                rolePoolQuality,
+                rolePoolDiversity
+              })
+            : undefined
       }
     })
     .select("id")
