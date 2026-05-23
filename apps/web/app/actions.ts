@@ -1915,6 +1915,12 @@ export async function groundProductsAction(formData: FormData) {
   const sourcingCandidates = sourcingPlan.candidates;
   const sourcingCandidateIds = new Set(sourcingCandidates.map((candidate) => candidate.id));
   const sourcingCandidatePools = sourcingPools.map((pool) => poolToSourcingRolePool(pool, sourcingCandidateIds));
+  const productMatchingRoomMeasurements = measurements
+    ? {
+        wallLengthCm: measurements.wall_length_cm,
+        roomDepthCm: measurements.room_depth_cm
+      }
+    : null;
   let latestConfidencePools = sourcingPools;
   const productMatchingLoggedAtMs = Date.now();
   const { data: sourcingJob, error: sourcingJobError } = await serviceSupabase
@@ -1975,7 +1981,12 @@ export async function groundProductsAction(formData: FormData) {
           roleCandidateCounts: productMatchingEngineEnabled ? roleCandidateCountSummary(sourcingPools) : undefined,
           roleStatuses: productMatchingEngineEnabled ? roleStatusSummary(sourcingResult.roleResults) : undefined,
           ...(productMatchingEngineEnabled
-            ? roleConfidenceOutputFields(sourcingPools, sourcingResult.roleResults, productMatchingLoggedAtMs)
+            ? roleConfidenceOutputFields(
+                sourcingPools,
+                sourcingResult.roleResults,
+                productMatchingLoggedAtMs,
+                productMatchingRoomMeasurements
+              )
             : {})
         }
       })
@@ -2103,7 +2114,12 @@ export async function groundProductsAction(formData: FormData) {
             roleCandidateCounts: productMatchingEngineEnabled ? roleCandidateCountSummary(retryPools) : undefined,
             roleStatuses: productMatchingEngineEnabled ? roleStatusSummary(sourcingResult.roleResults) : undefined,
             ...(productMatchingEngineEnabled
-              ? roleConfidenceOutputFields(retryPools, sourcingResult.roleResults, productMatchingLoggedAtMs)
+              ? roleConfidenceOutputFields(
+                  retryPools,
+                  sourcingResult.roleResults,
+                  productMatchingLoggedAtMs,
+                  productMatchingRoomMeasurements
+                )
               : {}),
             retryUsed: true,
             usable: missingRequiredVisualRoles.length === 0
@@ -2133,7 +2149,12 @@ export async function groundProductsAction(formData: FormData) {
             : undefined,
           roleStatuses: productMatchingEngineEnabled ? roleStatusSummary(sourcingResult.roleResults) : undefined,
           ...(productMatchingEngineEnabled
-            ? roleConfidenceOutputFields(latestConfidencePools, sourcingResult.roleResults, productMatchingLoggedAtMs)
+            ? roleConfidenceOutputFields(
+                latestConfidencePools,
+                sourcingResult.roleResults,
+                productMatchingLoggedAtMs,
+                productMatchingRoomMeasurements
+              )
             : {}),
           usable: false
         }
@@ -3576,7 +3597,11 @@ function roleConfidenceOutputFields(
     productId: string | null;
     reason: string;
   }>,
-  nowMs: number
+  nowMs: number,
+  roomMeasurements: {
+    wallLengthCm: number | null;
+    roomDepthCm: number | null;
+  } | null = null
 ) {
   const roleConfidence = productMatchConfidenceOutputSummary({
     pools,
@@ -3584,7 +3609,8 @@ function roleConfidenceOutputFields(
       ...result,
       category: normalizeSourcingCategory(result.category, result.roleLabel)
     })),
-    nowMs
+    nowMs,
+    roomMeasurements
   });
   const requiredRoles = pools
     .filter((pool) => pool.role.priority === "required")
