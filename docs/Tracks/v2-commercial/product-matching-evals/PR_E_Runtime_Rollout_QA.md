@@ -43,6 +43,7 @@ Check `input_summary`:
 
 - `productMatchingEngineEnabled` is `true`
 - `roleCandidateCounts` exists
+- `rolePoolQuality` exists and required pools are not `empty` or unexpectedly `weak`
 - required role pools have candidate counts above zero
 - rejection and weakness reasons look plausible
 
@@ -73,4 +74,4 @@ Do not enable production if any of these occur:
 - selected anchor product dimensions are missing or appear oversized for the entered room measurements
 - selected anchor products lack enough catalog evidence for price, availability, image, color, material, style, room, or dimensions
 - `roleConfidenceGate.passesQaStopRules` is `false` for required anchors
-- `ai_jobs` logs do not show candidate counts, missing roles, retry use, selected statuses, role confidence, evidence completeness, dimension fit, catalog timestamp freshness, and QA stop-rule status clearly
+- `ai_jobs` logs do not show candidate counts, role pool quality, missing roles, retry use, selected statuses, role confidence, evidence completeness, dimension fit, catalog timestamp freshness, and QA stop-rule status clearly
