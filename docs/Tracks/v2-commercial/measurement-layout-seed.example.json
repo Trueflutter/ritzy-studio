@@ -1,0 +1,85 @@
+{
+  "version": 1,
+  "generatedAt": "2026-05-23T00:00:00.000+04:00",
+  "description": "Synthetic Measurement Intelligence seed example. Not sourced from a real floor plan.",
+  "layouts": [
+    {
+      "id": "synthetic-dubai-garden-townhouse-4br-end",
+      "community": {
+        "slug": "synthetic-dubai-garden-district",
+        "name": "Synthetic Dubai Garden District",
+        "city": "Dubai",
+        "country": "AE",
+        "aliases": [
+          {
+            "value": "Example Garden District",
+            "kind": "community"
+          }
+        ]
+      },
+      "development": {
+        "slug": "synthetic-garden-townhouses",
+        "name": "Synthetic Garden Townhouses",
+        "phaseName": "Phase 1",
+        "developer": "Internal Synthetic Developer",
+        "aliases": [
+          {
+            "value": "Garden Townhouses Phase 1",
+            "kind": "development"
+          }
+        ]
+      },
+      "propertyType": "townhouse",
+      "bedroomCount": 4,
+      "unitTypeCode": "SYN-TH-4E",
+      "aliases": [
+        {
+          "value": "SYN TH 4E",
+          "kind": "layout_code"
+        },
+        {
+          "value": "4 bedroom synthetic end unit",
+          "kind": "user_phrase"
+        }
+      ],
+      "layoutConfidence": "prefill",
+      "sourceRightsStatus": "rights_cleared_internal",
+      "sources": [
+        {
+          "id": "internal-synthetic-example",
+          "kind": "synthetic_example",
+          "rightsStatus": "rights_cleared_internal",
+          "label": "Internal synthetic seed shape example",
+          "disclaimer": "Synthetic data for schema validation only. Not a real property or floor plan."
+        }
+      ],
+      "rooms": [
+        {
+          "id": "ground-living-dining",
+          "name": "Living / Dining",
+          "normalizedRoomType": "living_room",
+          "floorLevel": "ground",
+          "sourceId": "internal-synthetic-example",
+          "measurementConfidence": "prefill",
+          "lengthCm": 620,
+          "widthCm": 430,
+          "ceilingHeightCm": 300,
+          "disclaimer": "Synthetic dimensions for seed-format validation only."
+        },
+        {
+          "id": "first-primary-bedroom",
+          "name": "Primary Bedroom",
+          "normalizedRoomType": "bedroom",
+          "floorLevel": "first",
+          "sourceId": "internal-synthetic-example",
+          "measurementConfidence": "prefill",
+          "lengthCm": 420,
+          "widthCm": 390,
+          "disclaimer": "Synthetic dimensions for seed-format validation only."
+        }
+      ],
+      "notes": "Safe synthetic townhouse-style layout for proving repo-managed seed shape.",
+      "disclaimer": "This layout is synthetic and should never be presented as a real Dubai developer plan."
+    }
+  ]
+}
