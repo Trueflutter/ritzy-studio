@@ -699,6 +699,13 @@ Recommended next step after this plan is reviewed:
 
 - PR G: pure adapter prep from validated seed/domain records to the documented row shapes, with no app wiring and no Supabase writes.
 
+PR G adapter boundary:
+
+- emit deterministic row-shape drafts with stable slug/reference keys
+- do not generate UUIDs or require real database ids
+- do not insert, update, delete, or connect to Supabase
+- keep publication status as `draft` or `reviewed`, never automatic `published`
+
 Actual migration implementation should remain a separate later PR with:
 
 - `supabase/migrations/*`
