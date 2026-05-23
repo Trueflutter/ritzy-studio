@@ -43,8 +43,50 @@ export const catalogFirstDryRunFixtureScenarioList = [
   ])
 ] as const satisfies readonly CatalogFirstDryRunFixtureScenario[];
 
+const livingRoomCompleteFixture = catalogFirstDryRunFixtureScenarioList[0];
+const diningRoomCompleteFixture = catalogFirstDryRunFixtureScenarioList[1];
+const homeOfficeCompleteFixture = catalogFirstDryRunFixtureScenarioList[3];
+
+export const catalogFirstDryRunEdgeCaseFixtureScenarioList = [
+  {
+    ...livingRoomCompleteFixture,
+    id: "living-room-missing-required-sofa",
+    label: "Living room missing required sofa",
+    input: {
+      ...livingRoomCompleteFixture.input,
+      candidates: livingRoomCompleteFixture.input.candidates.filter((candidate) => candidate.category !== "sofas")
+    }
+  },
+  {
+    ...diningRoomCompleteFixture,
+    id: "dining-room-excluded-required-chairs",
+    label: "Dining room excluded required chairs",
+    input: {
+      ...diningRoomCompleteFixture.input,
+      exclusions: {
+        roleIds: ["dining_chairs"]
+      }
+    }
+  },
+  {
+    ...homeOfficeCompleteFixture,
+    id: "home-office-missing-supporting-roles",
+    label: "Home office missing supporting roles",
+    input: {
+      ...homeOfficeCompleteFixture.input,
+      candidates: homeOfficeCompleteFixture.input.candidates.filter(
+        (candidate) => candidate.category !== "lighting" && candidate.category !== "shelving"
+      )
+    }
+  }
+] as const satisfies readonly CatalogFirstDryRunFixtureScenario[];
+
 export function catalogFirstDryRunFixtureScenarios(): readonly CatalogFirstDryRunFixtureScenario[] {
   return catalogFirstDryRunFixtureScenarioList;
+}
+
+export function catalogFirstDryRunEdgeCaseFixtureScenarios(): readonly CatalogFirstDryRunFixtureScenario[] {
+  return catalogFirstDryRunEdgeCaseFixtureScenarioList;
 }
 
 export function catalogFirstDryRunFixtureByRoom(
