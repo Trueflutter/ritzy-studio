@@ -18,6 +18,7 @@ This decision is based on:
 - `manual-qa/2026-05-23-post-103-validation-evidence.md`
 - `manual-qa/2026-05-23-post-105-validation-evidence.md`
 - `manual-qa/2026-05-23-post-105-fresh-qa.md`
+- `manual-qa/2026-05-24-timeout-payload-investigation.md`
 - `12_Product_Matching_Engine_PRD.md`
 
 The manual QA pass was useful and directionally positive, but it did not satisfy the rollout stop rules.
@@ -28,6 +29,8 @@ Post-PR105 update: the selected-product to role-result contract repair clears th
 
 Fresh post-PR105 QA update: living room and bedroom completed and passed the QA gate with warnings. The bedroom bedside-table blocker did not recur. Dining room and home-office/study timed out in the bounded local harness, so controlled default-off preview testing is still not approved.
 
+Post-PR107 timeout investigation update: dining room and home-office/study both completed in a clean targeted local run with a QA-only 210-second timeout cap. Dining passed with warnings. Home office/study completed but still failed the QA stop rules because the required desk role was only `closest_available`. Controlled default-off preview testing is still not approved.
+
 ## Evidence Summary
 
 | Area | Result | Readiness impact |
@@ -36,8 +39,9 @@ Fresh post-PR105 QA update: living room and bedroom completed and passed the QA 
 | Dining chair role fidelity | Passed with review note | Dining chairs stayed inside the chair-compatible pool and did not select bulky armchairs. |
 | Dining sideboard/storage | Partially passed | A low walnut TV-unit/console-like product was selected, but storage role metadata still needs review. |
 | Bedroom required roles | Passed with warnings | Fresh post-PR105 QA selected both the bed and bedside tables with no QA blockers; dimension and catalog-evidence warnings remain. |
-| Home office | Representative static-image probe passed with warnings | External/public image QA passed the gate with no blockers, but it was not a full end-to-end Ritzy-generated project and exposed supporting-role issues for lighting/decor. |
-| Fresh post-PR105 timeout coverage | Blocked | Dining room and home-office/study did not complete within the local QA harness timeout. |
+| Home office | Representative static-image probe blocked | The latest external/public image QA completed, but failed the gate because the required desk role was only `closest_available`; it is also not a full end-to-end Ritzy-generated project. |
+| Fresh post-PR105 timeout coverage | Investigated | Dining and home-office/study completed in a clean targeted rerun; the prior timeout looks like QA harness evidence quality rather than a stable runtime defect. |
+| Home-office required role quality | Blocked | The external/static home-office probe still failed because the required desk role was only `closest_available`. |
 | Catalog/measurement metadata | Warning-heavy | Required roles frequently had missing room measurements or partial/weak catalog evidence. |
 
 ## Stop Rules Triggered
@@ -47,7 +51,7 @@ The May 23 evidence triggers rollout stop rules:
 - The original bedroom evidence triggered a required anchor/support role failure because bedside tables were required but marked missing by role confidence metadata.
 - PR #103 fixed the category identity portion of the bedroom issue; PR #105 clears the retained role-result satisfaction issue under deterministic replay.
 - The fresh post-PR105 bedroom run passed with warnings and selected the bedside tables successfully.
-- The fresh post-PR105 dining and home-office/study runs timed out, so the overall QA pass remains blocked.
+- The fresh post-PR105 dining and home-office/study runs timed out in the original bounded harness. A targeted follow-up rerun completed both scenarios, but home-office/study still failed because a required role was only `closest_available`.
 - Home office now has visual arbitration coverage only through a public/static external image, not a real selected Ritzy-generated concept.
 - Required-role catalog evidence and dimension metadata produced warnings that should remain visible before wider preview.
 - Supporting-role adherence remains weak in the home-office probe: task lighting was closest-available rather than a strong match, and desk decor was marked missing despite candidate coverage.
@@ -63,17 +67,18 @@ The bedroom result is not just a catalog miss. The selected product list contain
 | Living room representative QA completed | Pass | Beige/cream sofa and lighting were covered. |
 | Dining room representative QA completed | Pass | Quantity-sensitive dining chairs and sideboard/storage were covered. |
 | Bedroom representative QA completed | Pass with warnings | Fresh post-PR105 run selected bed and bedside tables with no QA blockers; dimension/evidence warnings remain. |
-| Home office representative QA completed | Partial | Static external-image QA passed with warnings, but no real selected Ritzy-generated home-office concept has been tested. |
-| Required roles pass QA stop rules | Blocked | Living and bedroom passed; dining and home-office/study timed out before gate status could be evaluated. |
+| Home office representative QA completed | Partial/blocked | Static external-image QA completed, but the latest run failed on required desk role quality and no real selected Ritzy-generated home-office concept has been tested. |
+| Required roles pass QA stop rules | Blocked | Living, dining, and bedroom have passed with warnings in the latest relevant evidence; home-office/study still fails because the required desk role is only `closest_available`. |
 | Evidence contains no prompt/runtime/UI/DB change | Pass | Evidence and this decision are docs/artifacts only. |
 
 ## Recommended Next Steps
 
-1. Investigate the fresh QA timeout behavior for dining and home-office/study before controlled preview testing.
-2. Improve supporting-role adherence for lighting, storage/shelving, and decor if the fresh pass still shows closest-available or missing supporting roles despite candidate coverage.
-3. Continue catalog evidence and measurement enrichment so required anchor warnings become less frequent, especially office dimensions/material/color metadata.
-4. Add or approve a real Ritzy-generated home-office QA scenario when writes are explicitly approved, then rerun visual arbitration against a selected concept image.
-5. Require all four room types to complete and pass the QA gate before controlled default-off preview testing.
+1. Decide whether the next PR should address home-office required role quality, especially desk role `closest_available` behavior, before controlled preview testing.
+2. Decide whether to add a QA-harness-only executable script improvement so future manual runs avoid non-canceling timeout evidence.
+3. Improve supporting-role adherence for lighting, storage/shelving, and decor if the fresh pass still shows closest-available or missing supporting roles despite candidate coverage.
+4. Continue catalog evidence and measurement enrichment so required anchor warnings become less frequent, especially office dimensions/material/color metadata.
+5. Add or approve a real Ritzy-generated home-office QA scenario when writes are explicitly approved, then rerun visual arbitration against a selected concept image.
+6. Require all four room types to complete and pass the QA gate before controlled default-off preview testing.
 
 ## NOT Approved
 
