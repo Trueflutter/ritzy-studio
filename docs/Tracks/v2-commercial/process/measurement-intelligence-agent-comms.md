@@ -1,7 +1,11 @@
 # Measurement Intelligence Agent Comms
 
 ## Current PR
-None. PR #102 (https://github.com/Trueflutter/ritzy-studio/pull/102) merged into `main` at `f61b4e2027762c023a14663649936cefbec42db5`.
+PR #144: <https://github.com/Trueflutter/ritzy-studio/pull/144>
+
+Branch: `codex/measurement-layout-source-feasibility`
+
+Previous completed PR: PR #102 (<https://github.com/Trueflutter/ritzy-studio/pull/102>) merged into `main` at `f61b4e2027762c023a14663649936cefbec42db5`.
 
 ## Current stage
 DUAL_TRACK:
@@ -28,10 +32,10 @@ Do not sit idle while DB/schema/runtime work is blocked. Start one docs-only Mea
 Hard stop: this docs-only PR must not add migrations, generated DB types, runtime/UI/app actions, Supabase connections or writes, seed importer writes, production data, external parser/vendor integration, private/user floor-plan assets, raw copyrighted plan images, Product Matching runtime coupling, Catalog-First runtime coupling, deploys, production flags, payment/checkout changes, or live customer-facing behavior.
 
 ## Last action taken
-PR #102 added Measurement Intelligence seed row adapters and tests. Existing tracked docs include the data model proposal, seed dataset format, and migration plan not applied. No current Measurement Intelligence mailbox existed on `main` before this route.
+PR #144 opened a docs-only source-feasibility pack for Measurement Intelligence layout-prefill candidates. It evaluates Murooj Al Furjan, Maple at Dubai Hills Estate, Elan at Tilal Al Ghaf, DAMAC Hills 2 Violet/Natura, and Arabian Ranches III Joy/Ruba for reviewed structured-facts seed feasibility.
 
 ## Next intended action
-Implementation agent: open the docs-only source-feasibility PR described above, update this mailbox with PR URL after creation, then leave an `ARCHITECT_NOTE:` with PR URL, branch, head commit, files touched, verification run, recommendation, and confirmation that no stop rule was crossed.
+Implementation agent: monitor PR #144 for review feedback, `CHIEF_ARCHITECT_REPLY:` comments, checks, and mergeability. Do not merge unless the review explicitly says approved to merge. If the PR is rejected, fix only listed blockers within the docs-only feasibility-pack scope.
 
 Create or keep a Measurement Intelligence heartbeat after opening the PR. The heartbeat should run every 10 minutes and monitor:
 
