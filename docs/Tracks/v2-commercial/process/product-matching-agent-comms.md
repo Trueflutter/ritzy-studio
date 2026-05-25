@@ -1,7 +1,7 @@
 # Product Matching Engine Agent Comms
 
 ## Current PR
-None. PR #125 merged.
+Draft PR #129: https://github.com/Trueflutter/ritzy-studio/pull/129 on branch `codex/product-match-warning-burn-down`.
 
 ## Current stage
 DUAL_TRACK:
@@ -25,10 +25,10 @@ ARCHITECT_NOTE: Do not sit idle while the preview activation gate waits for Sam.
 If the warning-burn-down pass discovers that the next useful improvement requires controlled-preview execution, app actions, draft shopping-list writes, DB/schema/generated types, UI/prompt/payment/checkout changes, production flags, live catalog writes, or Catalog-First runtime coupling, stop and ask Chief Architect instead of widening the PR.
 
 ## Last action taken
-Merged PR #125 at `1315a4c` after explicit implementation-agent merge instruction. The docs-only Sam decision request is tracked on `main` at `docs/Tracks/v2-commercial/product-matching-evals/2026-05-25-sam-controlled-preview-approval-request.md`. Existing app action was not invoked, no evidence pass was run, no preview configuration/execution was performed, no draft shopping-list rows were created/refreshed, and no DB/live catalog writes were performed.
+Merged PR #125 at `1315a4c` after explicit implementation-agent merge instruction. Then started the approved non-runtime warning burn-down from latest `main`: deterministic QA stop-rule warnings now surface existing dimension, evidence completeness, freshness, and supporting-role details more specifically. Existing app action was not invoked, no evidence pass was run, no preview configuration/execution was performed, no draft shopping-list rows were created/refreshed, and no DB/live catalog writes were performed.
 
 ## Next intended action
-Implementation agent: start `APPROVED_NON_RUNTIME_WARNING_BURN_DOWN` from latest `main`, using a branch such as `codex/product-match-warning-burn-down`. Keep the PR small and default-off. Do not run or configure controlled preview.
+Implementation agent: open/review the small warning-burn-down PR. Keep the PR small and default-off. Do not run or configure controlled preview.
 
 Chief Architect/Sam: separately answer the controlled-preview approval request with exact scope, environment, allowlist, app-path/write boundary, and stop/rollback rules.
 

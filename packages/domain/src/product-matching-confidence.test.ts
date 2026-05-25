@@ -381,6 +381,13 @@ assert.equal(supportingGate.passesQaStopRules, true);
 assert.equal(supportingGate.blockers.length, 0);
 assert.ok(supportingGate.warnings.some((issue) => issue.code === "supporting_role_issue"));
 assert.ok(supportingGate.warnings.some((issue) => issue.code === "weak_material_match"));
+assert.ok(
+  supportingGate.warnings.some(
+    (issue) =>
+      issue.code === "supporting_role_issue" &&
+      issue.message === "Supporting role needs manual QA review: selected product is only closest available."
+  )
+);
 
 const gateOutput = productMatchQaStopRuleOutputSummary({
   roleConfidence: strongSummary,
@@ -425,6 +432,13 @@ const staleGate = buildProductMatchQaStopRuleStatus({
 assert.equal(staleFreshnessSummary[0].selectedProductFreshness?.catalogFreshnessStatus, "stale");
 assert.equal(staleGate.passesQaStopRules, true);
 assert.ok(staleGate.warnings.some((issue) => issue.code === "required_freshness_stale"));
+assert.ok(
+  staleGate.warnings.some(
+    (issue) =>
+      issue.code === "required_freshness_stale" &&
+      issue.message.includes("7 days old, threshold 7 days")
+  )
+);
 assert.equal(staleGate.counts.staleRequiredFreshnessCount, 1);
 
 const missingFreshnessSummary = buildProductMatchConfidenceSummary({
@@ -462,6 +476,13 @@ const missingFreshnessGate = buildProductMatchQaStopRuleStatus({
 });
 assert.equal(missingFreshnessSummary[0].selectedProductFreshness?.catalogFreshnessStatus, "missing");
 assert.ok(missingFreshnessGate.warnings.some((issue) => issue.code === "required_freshness_missing"));
+assert.ok(
+  missingFreshnessGate.warnings.some(
+    (issue) =>
+      issue.code === "required_freshness_missing" &&
+      issue.message === "Required role selected product catalog timestamp is missing."
+  )
+);
 
 const invalidFreshnessSummary = buildProductMatchConfidenceSummary({
   pools: buildRoleScopedCandidatePools({
@@ -498,6 +519,13 @@ const invalidFreshnessGate = buildProductMatchQaStopRuleStatus({
 });
 assert.equal(invalidFreshnessSummary[0].selectedProductFreshness?.catalogFreshnessStatus, "invalid");
 assert.ok(invalidFreshnessGate.warnings.some((issue) => issue.code === "required_freshness_invalid"));
+assert.ok(
+  invalidFreshnessGate.warnings.some(
+    (issue) =>
+      issue.code === "required_freshness_invalid" &&
+      issue.message === "Required role selected product catalog timestamp is invalid: not-a-date."
+  )
+);
 
 const oversizedDimensionSummary = buildProductMatchConfidenceSummary({
   pools: buildRoleScopedCandidatePools({
@@ -548,6 +576,13 @@ const oversizedDimensionGate = buildProductMatchQaStopRuleStatus({
 assert.equal(oversizedDimensionSummary[0].selectedProductDimensionFit?.status, "oversized_width");
 assert.equal(oversizedDimensionGate.passesQaStopRules, true);
 assert.ok(oversizedDimensionGate.warnings.some((issue) => issue.code === "required_dimension_oversized"));
+assert.ok(
+  oversizedDimensionGate.warnings.some(
+    (issue) =>
+      issue.code === "required_dimension_oversized" &&
+      issue.message.endsWith("Product width exceeds entered room wall length.")
+  )
+);
 assert.equal(oversizedDimensionGate.counts.oversizedRequiredDimensionCount, 1);
 
 const missingDimensionSummary = buildProductMatchConfidenceSummary({
@@ -589,6 +624,13 @@ const missingDimensionGate = buildProductMatchQaStopRuleStatus({
 assert.equal(missingDimensionSummary[0].selectedProductDimensionFit?.status, "missing_product_dimensions");
 assert.equal(missingDimensionGate.passesQaStopRules, true);
 assert.ok(missingDimensionGate.warnings.some((issue) => issue.code === "required_dimension_missing"));
+assert.ok(
+  missingDimensionGate.warnings.some(
+    (issue) =>
+      issue.code === "required_dimension_missing" &&
+      issue.message.endsWith("Product dimensions are missing; fit requires designer review.")
+  )
+);
 assert.equal(missingDimensionGate.counts.missingRequiredDimensionCount, 1);
 
 const partialEvidenceSummary = buildProductMatchConfidenceSummary({
@@ -631,6 +673,13 @@ const partialEvidenceGate = buildProductMatchQaStopRuleStatus({
 assert.equal(partialEvidenceSummary[0].selectedProductEvidenceCompleteness?.status, "partial");
 assert.equal(partialEvidenceGate.passesQaStopRules, true);
 assert.ok(partialEvidenceGate.warnings.some((issue) => issue.code === "required_evidence_partial"));
+assert.ok(
+  partialEvidenceGate.warnings.some(
+    (issue) =>
+      issue.code === "required_evidence_partial" &&
+      issue.message.includes("Material evidence is missing.")
+  )
+);
 assert.equal(partialEvidenceGate.counts.partialRequiredEvidenceCount, 1);
 
 const weakEvidenceSummary = buildProductMatchConfidenceSummary({
@@ -669,6 +718,15 @@ const weakEvidenceGate = buildProductMatchQaStopRuleStatus({
 assert.equal(weakEvidenceSummary[0].selectedProductEvidenceCompleteness?.status, "weak");
 assert.equal(weakEvidenceGate.passesQaStopRules, true);
 assert.ok(weakEvidenceGate.warnings.some((issue) => issue.code === "required_evidence_weak"));
+assert.ok(
+  weakEvidenceGate.warnings.some(
+    (issue) =>
+      issue.code === "required_evidence_weak" &&
+      issue.message.includes("Price is missing.") &&
+      issue.message.includes("Availability text is missing.") &&
+      issue.message.includes("Dimension evidence is missing.")
+  )
+);
 assert.equal(weakEvidenceGate.counts.weakRequiredEvidenceCount, 1);
 
 console.log("product matching confidence tests passed");
