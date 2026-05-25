@@ -1,19 +1,19 @@
 # Product Matching Engine Agent Comms
 
 ## Current PR
-Draft PR #109: home-office desk role-quality fix.
+Drafting post-PR109 home-office read-only QA evidence PR.
 
 ## Current stage
-Narrow home-office required-role quality investigation/fix.
+Docs/artifacts-only fresh read-only home-office/study visual QA after PR #109.
 
 ## Blockers
 No active implementation blocker. Product Matching Engine V1 is still not approved for default-on activation, controlled preview, production rollout, live catalog writes, DB/schema changes, UI changes, prompt changes, app-action flow changes, or Catalog-First runtime coupling.
 
 ## Chief architect question
-Resolved. Chief Architect chose option 1: proceed with a narrow home-office required-role quality investigation/fix focused on why the required desk role resolves only as `closest_available`.
+No open question for this PR. Chief Architect directed an environment handoff only, then approved fresh read-only home-office/study visual QA using the previously used safe local QA env source without secrets in docs/logs/PR comments.
 
 ## Last action taken
-Adopted the Chief Architect reply, deleted `product-matching-architect-reply-check`, created `codex/product-match-home-office-desk-quality`, implemented a narrow default-off domain scoring fix for wood/oak/writing desk role quality, and opened draft PR #109.
+Merged PR #109 after approval, synced `main` to `58a9b0d`, checked the sibling safe local QA env source without printing values, ran fresh read-only home-office/study visual QA, and confirmed the required desk role now resolves as `strong_match` with QA stop rules passing with warnings.
 
 ## Next intended action
-Recreate `product-matching-pr-check`, monitor draft PR #109 checks/review, and do not merge or enable preview without explicit approval.
+Open a docs/artifacts-only evidence PR, recreate `product-matching-pr-check`, and do not merge, enable preview, run app actions, write live data, or change prompts/runtime flags without explicit approval.

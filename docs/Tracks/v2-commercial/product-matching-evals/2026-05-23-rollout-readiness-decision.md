@@ -33,6 +33,8 @@ Post-PR107 timeout investigation update: dining room and home-office/study both 
 
 Post-option-1 desk role-quality update: the deterministic role-scoped desk scorer now rewards wood/oak/writing desk cues and penalizes metal/glass-only desks when those cues are requested. This clears a local scoring gap where a black metal office desk could outrank an oak writing desk for a wood home-office concept. Controlled default-off preview testing is still not approved until fresh read-only visual QA confirms the required desk role is no longer `closest_available` and the QA stop rules pass.
 
+Post-PR109 home-office read-only QA update: fresh representative home-office/study visual QA against the external/static image probe passed the QA stop rules with warnings. The required desk role resolved as `strong_match`, required closest-available count was 0, missing required role count was 0, and blockers were 0. This clears the retained required-desk blocker for the representative read-only probe, but controlled default-off preview testing is still not approved because the run is not a full end-to-end Ritzy-generated selected concept and supporting decor plus required dimension/evidence warnings remain.
+
 ## Evidence Summary
 
 | Area | Result | Readiness impact |
@@ -41,9 +43,9 @@ Post-option-1 desk role-quality update: the deterministic role-scoped desk score
 | Dining chair role fidelity | Passed with review note | Dining chairs stayed inside the chair-compatible pool and did not select bulky armchairs. |
 | Dining sideboard/storage | Partially passed | A low walnut TV-unit/console-like product was selected, but storage role metadata still needs review. |
 | Bedroom required roles | Passed with warnings | Fresh post-PR105 QA selected both the bed and bedside tables with no QA blockers; dimension and catalog-evidence warnings remain. |
-| Home office | Representative static-image probe blocked | The latest external/public image QA completed, but failed the gate because the required desk role was only `closest_available`; it is also not a full end-to-end Ritzy-generated project. |
+| Home office | Representative static-image probe passed with warnings | Post-PR109 external/static image QA passed the gate with the required desk as `strong_match`, but it is still not a full end-to-end Ritzy-generated project. |
 | Fresh post-PR105 timeout coverage | Investigated | Dining and home-office/study completed in a clean targeted rerun; the prior timeout looks like QA harness evidence quality rather than a stable runtime defect. |
-| Home-office required role quality | Partially fixed, visual QA still blocked | A deterministic desk scoring gap was fixed, but the external/static home-office probe has not been rerun and still stands as blocked until the required desk role is confirmed as `strong_match` or `acceptable_match`. |
+| Home-office required role quality | Representative probe cleared | Post-PR109 read-only QA confirmed the required desk role as `strong_match` with no required closest-available roles. Full E2E home-office coverage remains pending. |
 | Catalog/measurement metadata | Warning-heavy | Required roles frequently had missing room measurements or partial/weak catalog evidence. |
 
 ## Stop Rules Triggered
@@ -53,7 +55,7 @@ The May 23 evidence triggers rollout stop rules:
 - The original bedroom evidence triggered a required anchor/support role failure because bedside tables were required but marked missing by role confidence metadata.
 - PR #103 fixed the category identity portion of the bedroom issue; PR #105 clears the retained role-result satisfaction issue under deterministic replay.
 - The fresh post-PR105 bedroom run passed with warnings and selected the bedside tables successfully.
-- The fresh post-PR105 dining and home-office/study runs timed out in the original bounded harness. A targeted follow-up rerun completed both scenarios, but home-office/study still failed because a required role was only `closest_available`.
+- The fresh post-PR105 dining and home-office/study runs timed out in the original bounded harness. A targeted follow-up rerun completed both scenarios, but home-office/study still failed because a required role was only `closest_available`. Post-PR109 read-only QA cleared that required-desk blocker for the representative external/static image probe.
 - Home office now has visual arbitration coverage only through a public/static external image, not a real selected Ritzy-generated concept.
 - Required-role catalog evidence and dimension metadata produced warnings that should remain visible before wider preview.
 - Supporting-role adherence remains weak in the home-office probe: task lighting was closest-available rather than a strong match, and desk decor was marked missing despite candidate coverage.
@@ -69,18 +71,17 @@ The bedroom result is not just a catalog miss. The selected product list contain
 | Living room representative QA completed | Pass | Beige/cream sofa and lighting were covered. |
 | Dining room representative QA completed | Pass | Quantity-sensitive dining chairs and sideboard/storage were covered. |
 | Bedroom representative QA completed | Pass with warnings | Fresh post-PR105 run selected bed and bedside tables with no QA blockers; dimension/evidence warnings remain. |
-| Home office representative QA completed | Partial/blocked | Static external-image QA completed, but the latest retained run failed on required desk role quality and no real selected Ritzy-generated home-office concept has been tested. The deterministic desk scoring gap has been fixed but not yet visually rerun. |
-| Required roles pass QA stop rules | Blocked | Living, dining, and bedroom have passed with warnings in the latest relevant evidence; home-office/study still needs fresh visual QA proving the required desk role is no longer `closest_available`. |
+| Home office representative QA completed | Pass with warnings | Static external-image QA now passes after PR #109, with required desk `strong_match`; no real selected Ritzy-generated home-office concept has been tested. |
+| Required roles pass QA stop rules | Partial/pass with warnings | Living, dining, bedroom, and representative home-office evidence now pass required-role stop rules with warnings. Full E2E home-office selected-concept coverage remains pending. |
 | Evidence contains no prompt/runtime/UI/DB change | Pass with narrow scorer exception | The option-1 follow-up changes default-off domain role-scoped scoring only; no prompt, app-action, UI, DB/schema, production flag, deployment, live write, or Catalog-First coupling changes are approved. |
 
 ## Recommended Next Steps
 
-1. Run a fresh read-only home-office/study visual QA pass to confirm whether the desk scoring fix moves the required desk role from `closest_available` to `strong_match` or `acceptable_match`.
-2. Decide whether to add a QA-harness-only executable script improvement so future manual runs avoid non-canceling timeout evidence.
-3. Improve supporting-role adherence for lighting, storage/shelving, and decor if the fresh pass still shows closest-available or missing supporting roles despite candidate coverage.
-4. Continue catalog evidence and measurement enrichment so required anchor warnings become less frequent, especially office dimensions/material/color metadata.
-5. Add or approve a real Ritzy-generated home-office QA scenario when writes are explicitly approved, then rerun visual arbitration against a selected concept image.
-6. Require all four room types to complete and pass the QA gate before controlled default-off preview testing.
+1. Decide whether to add a QA-harness-only executable script improvement so future manual runs avoid non-canceling timeout evidence and can be reproduced without ad hoc `/tmp` runners.
+2. Improve supporting-role adherence for lighting, storage/shelving, and decor if those remain closest-available or missing despite candidate coverage.
+3. Continue catalog evidence and measurement enrichment so required anchor warnings become less frequent, especially office dimensions/material/color metadata.
+4. Add or approve a real Ritzy-generated home-office QA scenario when writes are explicitly approved, then rerun visual arbitration against a selected concept image.
+5. Require all four room types to complete and pass the QA gate before controlled default-off preview testing.
 
 ## NOT Approved
 
