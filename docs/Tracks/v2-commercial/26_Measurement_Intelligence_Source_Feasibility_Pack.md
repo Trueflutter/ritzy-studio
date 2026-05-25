@@ -146,7 +146,7 @@ Public source signals:
 
 - Emaar's official Maple page confirms Maple at Dubai Hills Estate and describes 3-, 4-, and 5-bedroom townhouses, four home types, maid's room, covered parking, gardens, and 204-251 sq m ranges: <https://www.emaar.com/en/properties/maple/>
 - Public floor-plan pages expose Maple 3 4-bedroom townhouse Type/unit `2/2E`: <https://www.bayut.com/floorplans/details-1408.html>
-- Maple floor-plan pages and mirrors list type aliases such as `2M`, `2E`, `3M`, `3E`, Type 2, Type 3, and sizes such as 2,462 sq ft for 4-bedroom Type 2E: <https://www.maple-townhouses.ae/floor-plan.php>
+- PSI's project floor-plan summary lists Maple sizes and model names by bedroom count, including Type 2 and Type 3 variants: <https://psinv.net/en/projects/dubai/dubai-hills-estate/dubai-hills-estate3/maple/floor-plan>
 - PSI's project floor-plan summary also lists Maple sizes and model names by bedroom count: <https://psinv.net/en/projects/dubai/dubai-hills-estate/dubai-hills-estate3/maple/floor-plan>
 - Public PDF mirrors include Maple brochures/floor-plan sheets with Type 2/Unit 2E and cluster diagrams: <https://think-properties.ae/dubai-hills-emaar/maple/type2-cluster4.pdf>
 
@@ -394,7 +394,7 @@ Public source signals:
 
 - Emaar's official Joy page confirms Joy at Arabian Ranches III, 3- and 4-bedroom townhouses, and design types `Type 1`, `Type 2`, and `Type 3`: <https://properties.emaar.com/en/properties/joy/>
 - Emaar's 2019 Joy launch release confirms 3- and 4-bedroom townhouses in three design types: <https://properties.emaar.com/en/press-release-listing/following-strong-response-to-sun-at-arabian-ranches-iii-emaar-launches-joy-townhouse-community/>
-- Public Joy floor-plan pages identify 4-bedroom townhouse unit type 3: <https://joy.arabianranches-3.ae/floor-plan.php>
+- Public floor-plan mirrors for Joy exist, but this pack does not rely on them because reviewed HTTPS reachability was not reliable. Keep Joy evidence anchored to Emaar official pages unless a future source review finds a stable rights-reviewed source.
 - Public Emaar brochure PDFs for Arabian Ranches III communities expose floor-plan marketing pages, for example Joy and Caya brochures: <https://properties.emaar.com/wp-content/uploads/2020/03/brochure-joy-en.pdf> and <https://properties.emaar.com/wp-content/uploads/2021/08/BROCHURE_CAYA_ARIII_EN.pdf>
 - Public Ruba floor-plan PDF mirrors are indexed but source rights should be reviewed: <https://drehomes.com/admin_xcs6iwyiueuu8wd/assets/media/project/pdf/proj_floorplan_3712_RUBA_ARABIAN_RANCHES_III_floor-plan_portal_compressed_removed.pdf>
 
@@ -507,7 +507,6 @@ Stop before seed creation if any of the following is true:
 
 - Emaar Maple official page: <https://www.emaar.com/en/properties/maple/>
 - Bayut Maple 3 Type/unit 2/2E floorplan page: <https://www.bayut.com/floorplans/details-1408.html>
-- Maple floor-plan mirror: <https://www.maple-townhouses.ae/floor-plan.php>
 - PSI Maple floor-plan summary: <https://psinv.net/en/projects/dubai/dubai-hills-estate/dubai-hills-estate3/maple/floor-plan>
 - Nakheel Murooj Al Furjan blog/context page: <https://www.nakheel.com/en/media-centre/blogs/detail/the-strategic-location-of-murooj-al-furjan>
 - Nakheel Murooj launch press release: <https://www.nakheel.com/en/media-centre/press-releases/news-detail/2021/05/19/nakheel-launches-418-new-homes-at-al-furjan>
@@ -524,7 +523,6 @@ Stop before seed creation if any of the following is true:
 - DAMAC Hills 2 Violet public brochure mirror: <https://investindxb.com/wp-content/uploads/2024/06/DAMAC-HILLS-2-VIOLET-BROCHURE-investindxb.pdf>
 - Emaar Joy official page: <https://properties.emaar.com/en/properties/joy/>
 - Emaar Joy launch release: <https://properties.emaar.com/en/press-release-listing/following-strong-response-to-sun-at-arabian-ranches-iii-emaar-launches-joy-townhouse-community/>
-- Joy floor-plan public page: <https://joy.arabianranches-3.ae/floor-plan.php>
 - Emaar Joy public brochure PDF: <https://properties.emaar.com/wp-content/uploads/2020/03/brochure-joy-en.pdf>
 - Emaar Caya public brochure PDF: <https://properties.emaar.com/wp-content/uploads/2021/08/BROCHURE_CAYA_ARIII_EN.pdf>
 - Ruba public floor-plan PDF mirror: <https://drehomes.com/admin_xcs6iwyiueuu8wd/assets/media/project/pdf/proj_floorplan_3712_RUBA_ARABIAN_RANCHES_III_floor-plan_portal_compressed_removed.pdf>
