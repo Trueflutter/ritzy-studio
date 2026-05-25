@@ -84,24 +84,39 @@ export function HowItWorks() {
           </div>
         </Reveal>
 
-        {/* Integrated step grid: number + title + body + visual in one column. */}
-        <ol className="mt-14 grid gap-8 md:grid-cols-2 lg:grid-cols-5 lg:gap-5">
-          {steps.map((step) => (
-            <Reveal key={step.n} delay={step.delay}>
-              <li className="flex h-full flex-col">
-                <span className="font-body text-caption font-semibold uppercase tracking-[0.18em] text-[var(--rs-accent-deep)]">
-                  {step.n.toString().padStart(2, "0")}
-                </span>
-                <h3 className="mt-3 font-body text-body-m font-semibold uppercase tracking-[0.06em] text-ink">
-                  {step.title}
-                </h3>
-                <p className="mt-3 min-h-[3.5rem] font-body text-body-s text-ink-muted">{step.body}</p>
-                <div className="mt-5 h-[300px] overflow-hidden border border-line bg-surface">
-                  {step.visual}
-                </div>
-              </li>
-            </Reveal>
-          ))}
+        {/* Integrated step grid: number + title + body + visual in one column.
+            Faint vertical hairlines between adjacent columns on lg+ help the eye
+            parse the five-step rhythm; on smaller widths the dividers collapse
+            since the layout reflows to 2 columns / 1 column. */}
+        <ol className="mt-14 grid gap-y-12 md:grid-cols-2 md:gap-x-8 lg:grid-cols-5 lg:gap-x-0">
+          {steps.map((step, index) => {
+            const isFirst = index === 0;
+            const isLast = index === steps.length - 1;
+            return (
+              <Reveal key={step.n} delay={step.delay}>
+                <li
+                  className={[
+                    "flex h-full flex-col",
+                    isFirst ? "lg:pr-6" : "lg:border-l lg:border-line lg:pl-6 lg:pr-6",
+                    isLast ? "lg:pr-0" : ""
+                  ]
+                    .filter(Boolean)
+                    .join(" ")}
+                >
+                  <span className="font-body text-caption font-semibold uppercase tracking-[0.18em] text-[var(--rs-accent-deep)]">
+                    {step.n.toString().padStart(2, "0")}
+                  </span>
+                  <h3 className="mt-3 font-body text-body-m font-semibold uppercase tracking-[0.06em] text-ink">
+                    {step.title}
+                  </h3>
+                  <p className="mt-3 min-h-[3.5rem] font-body text-body-s text-ink-muted">{step.body}</p>
+                  <div className="mt-5 h-[300px] overflow-hidden border border-line bg-surface">
+                    {step.visual}
+                  </div>
+                </li>
+              </Reveal>
+            );
+          })}
         </ol>
 
         {/* Privacy banner */}
