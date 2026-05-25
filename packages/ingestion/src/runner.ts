@@ -17,6 +17,10 @@ export async function runCatalogIngestion({
     products_failed: number;
   }) => void;
 }) {
+  if (adapter.dryRunOnly) {
+    throw new Error(`${adapter.key} is dry-run-only. Live catalog writes require a separate approved PR.`);
+  }
+
   const compliance = adapter.getComplianceNotes ? await adapter.getComplianceNotes() : {};
   const { data: existingRetailer, error: existingRetailerError } = await supabase
     .from("retailers")

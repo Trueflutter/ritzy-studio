@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 
 import { createClient } from "@supabase/supabase-js";
 
@@ -8,6 +9,7 @@ import type { Database } from "@ritzy-studio/db";
 import { chattelsAdapter } from "./adapters/chattels";
 import { danubeAdapter } from "./adapters/danube";
 import { homeCentreAdapter } from "./adapters/homecentre";
+import { panHomeAdapter } from "./adapters/panhome";
 import { twoXlAdapter } from "./adapters/twoxl";
 import { categoryCounts } from "./catalog-counts";
 import { normalizeProductCandidate } from "./normalization";
@@ -28,13 +30,18 @@ const adapters = new Map<string, CatalogAdapter>([
   ["2xl", twoXlAdapter],
   [twoXlAdapter.key, twoXlAdapter],
   ["chattels", chattelsAdapter],
-  [chattelsAdapter.key, chattelsAdapter]
+  [chattelsAdapter.key, chattelsAdapter],
+  ["panhome", panHomeAdapter],
+  ["pan-home", panHomeAdapter],
+  [panHomeAdapter.key, panHomeAdapter]
 ]);
 
-main().catch((error) => {
-  console.error(error instanceof Error ? error.message : error);
-  process.exitCode = 1;
-});
+if (isCliEntrypoint()) {
+  main().catch((error) => {
+    console.error(error instanceof Error ? error.message : error);
+    process.exitCode = 1;
+  });
+}
 
 async function main() {
   if (process.env.INIT_CWD) {
@@ -56,6 +63,8 @@ async function main() {
     console.log(JSON.stringify(summary, null, 2));
     return;
   }
+
+  assertLiveIngestionAllowed(adapter);
 
   const supabase = createSupabaseClient();
   const before = await categoryCounts(supabase, adapter.key);
@@ -99,7 +108,7 @@ async function main() {
   );
 }
 
-function parseArgs(args: string[]): CliOptions {
+export function parseArgs(args: string[]): CliOptions {
   const adapterKey = args.find((arg) => !arg.startsWith("--")) ?? "homecentre";
   const limitArg = args.find((arg) => arg.startsWith("--limit="));
   const limit = limitArg ? Number(limitArg.split("=")[1]) : undefined;
@@ -113,6 +122,18 @@ function parseArgs(args: string[]): CliOptions {
     dryRun: args.includes("--dry-run"),
     limit
   };
+}
+
+export function resolveAdapterForCli(adapterKey: string) {
+  return adapters.get(adapterKey) ?? null;
+}
+
+export function assertLiveIngestionAllowed(adapter: CatalogAdapter) {
+  if (adapter.dryRunOnly) {
+    throw new Error(
+      `${adapter.key} is dry-run-only. Run with --dry-run; live catalog writes require a separate approved PR.`
+    );
+  }
 }
 
 async function dryRunCatalog(adapter: CatalogAdapter, limit: number) {
@@ -206,4 +227,8 @@ function loadEnvFile(path: string) {
 
     process.env[key] = rawValue.replace(/^["']|["']$/g, "");
   }
+}
+
+function isCliEntrypoint() {
+  return process.argv[1] ? import.meta.url === pathToFileURL(process.argv[1]).href : false;
 }

@@ -5,3 +5,4 @@ export * from "./adapters/homecentre";
 export * from "./adapters/chattels";
 export * from "./adapters/danube";
 export * from "./adapters/twoxl";
+export * from "./adapters/panhome";

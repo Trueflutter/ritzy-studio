@@ -20,6 +20,7 @@ export type ProductDiscoveryResult = {
   url: string;
   categoryHint?: string;
   source: "sitemap" | "category_page" | "search_page" | "structured_data" | "manual_seed";
+  sourcePayload?: unknown;
 };
 
 export type RawProductCandidate = {
@@ -79,6 +80,7 @@ export type NormalizedProductRecord = {
 export type CatalogAdapter = {
   key: string;
   retailer: RetailerRegistration;
+  dryRunOnly?: boolean;
   getComplianceNotes?: () => Promise<RetailerComplianceNotes> | RetailerComplianceNotes;
   discoverProducts: (options?: {
     limit?: number;
