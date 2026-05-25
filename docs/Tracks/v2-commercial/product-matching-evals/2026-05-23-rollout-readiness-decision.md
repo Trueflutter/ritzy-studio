@@ -16,12 +16,15 @@ Controlled default-off preview is still not approved inside this PR. The current
 
 For the consolidated room-by-room map, proposed preview plan, remaining warnings, exact gates, and stop/rollback rules, see `2026-05-25-release-readiness-map.md`.
 
+For the controlled-preview go/no-go package prepared after PR #111, see `2026-05-25-controlled-preview-decision-package.md`.
+
 ## Basis
 
 This decision is based on:
 
 - `PR_E_Runtime_Rollout_QA.md`
 - `2026-05-25-release-readiness-map.md`
+- `2026-05-25-controlled-preview-decision-package.md`
 - `manual-qa/2026-05-23-product-matching-engine-v1-evidence.md`
 - `manual-qa/2026-05-23-home-office-external-image-qa.md`
 - `manual-qa/2026-05-23-post-103-validation-evidence.md`
