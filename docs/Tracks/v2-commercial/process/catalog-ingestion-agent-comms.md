@@ -1,7 +1,13 @@
 # Catalog Ingestion Agent Comms
 
 ## Current PR
-None. PR #143 (https://github.com/Trueflutter/ritzy-studio/pull/143) merged into `main`.
+PR #147: https://github.com/Trueflutter/ritzy-studio/pull/147
+
+Branch: `codex/catalog-ingestion-marina-home-feasibility`
+
+Touched files:
+- `docs/Tracks/v2-commercial/27_Marina_Home_Ingestion_Feasibility.md`
+- `docs/Tracks/v2-commercial/process/catalog-ingestion-agent-comms.md`
 
 ## Current stage
 DUAL_TRACK:
@@ -26,10 +32,10 @@ Do not sit idle while live ingestion is blocked. PR #143 completed the dry-run-o
 Hard stop: this docs-only PR must not execute crawlers, implement an adapter, add fixtures/tests/scripts, remove `dryRunOnly`, perform live catalog writes, change DB/schema/generated types, alter UI/runtime/app actions/prompts/payment/checkout, change production flags, deploy, widen request volume, use private APIs, bypass access controls, couple to Product Matching runtime, or couple to Catalog-First runtime.
 
 ## Last action taken
-Merged PR #143 for the dry-run-only IKEA UAE adapter. IKEA remains dry-run-only and live writes remain blocked by adapter and CLI/runner guards.
+Opened PR #147 for the docs-only Marina Home UAE feasibility spike from latest `main`. The feasibility note records canonical host/path, robots constraints, accepted/rejected URL surfaces, source metadata, static parser feasibility, known gaps, and a recommendation for any future dry-run-only adapter.
 
 ## Next intended action
-Implementation agent: open the docs-only Marina Home feasibility PR described above, update this mailbox with PR URL after creation, then leave an `ARCHITECT_NOTE:` with PR URL, branch, head commit, files touched, verification run, recommendation, and confirmation that no stop rule was crossed.
+Implementation agent: monitor PR #147 for reviewer feedback. If rejected, fix only listed docs blockers, rerun relevant verification, push the update, and report the new head. If approved and explicitly approved to merge, merge PR #147 only because runtime impact is none/docs-only, sync latest `main`, then stop at `AWAIT_CHIEF_ARCHITECT_RETAILER_ROUTING`.
 
 Create or keep a Catalog Ingestion heartbeat after opening the PR. The heartbeat should run every 10 minutes and monitor:
 
@@ -43,7 +49,7 @@ Do not delete the Catalog Ingestion heartbeat just because a PR merged. Delete a
 ## Durable next-state handoff after merge
 Pan Home and Homes r Us live ingestion remain blocked by adapter `dryRunOnly` plus CLI/runner guards. Keep request volume low for any future dry runs, preserve Homes r Us `Crawl-delay: 10`, and avoid query URLs, `/catalog/` paths, private APIs, auth-only paths, search/filter URLs, and broad crawl behavior.
 
-Recommended next safe stage after this routing PR merges: `APPROVED_DOCS_ONLY_MARINA_HOME_FEASIBILITY_SPIKE`. Do not start live ingestion, controlled preview, broader IKEA discovery, or another retailer without explicit Chief Architect/Sam routing.
+Recommended next safe stage after the Marina Home feasibility PR merges: `AWAIT_CHIEF_ARCHITECT_RETAILER_ROUTING`. Do not start a Marina Home adapter, live ingestion, controlled preview, broader IKEA discovery, or another retailer without explicit Chief Architect/Sam routing.
 
 After any PR merges, the agent must not delete its last monitor and go idle unless this mailbox already points to the next safe action or explicitly records that no docs/domain/dry-run work is approved. If there is no next action, leave an `ARCHITECT_NOTE:` in the mailbox or PR requesting Chief Architect routing.
 
