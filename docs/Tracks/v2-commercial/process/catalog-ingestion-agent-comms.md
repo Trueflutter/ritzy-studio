@@ -1,9 +1,21 @@
 # Catalog Ingestion Agent Comms
 
 ## Current PR
-Pending branch: `codex/ikea-uae-ingestion-dry-run`
+PR #143: https://github.com/Trueflutter/ritzy-studio/pull/143
 
-PR URL: to be filled after the dry-run-only IKEA UAE adapter PR is opened.
+Branch: `codex/ikea-uae-ingestion-dry-run`
+
+Touched files:
+- `packages/ingestion/src/adapters/ikea.ts`
+- `packages/ingestion/src/adapters/ikea.test.ts`
+- `packages/ingestion/src/adapters/__fixtures__/ikea-category.html`
+- `packages/ingestion/src/adapters/__fixtures__/ikea-product.html`
+- `packages/ingestion/src/cli.ts`
+- `packages/ingestion/src/cli.test.ts`
+- `packages/ingestion/src/index.ts`
+- `packages/ingestion/package.json`
+- `docs/Tracks/v2-commercial/25_IKEA_UAE_Ingestion_Feasibility.md`
+- `docs/Tracks/v2-commercial/process/catalog-ingestion-agent-comms.md`
 
 ## Current stage
 DUAL_TRACK:
@@ -33,7 +45,7 @@ Chief Architect routing: start one small dry-run-only IKEA UAE adapter PR:
 Hard stop: this PR must not remove `dryRunOnly`, perform live catalog writes, change DB/schema/generated types, alter UI/runtime/app actions/prompts/payment/checkout, change production flags, deploy, widen request volume beyond the tiny dry-run scope, use private APIs, bypass access controls, use auth-only/search/filter/query/cart/checkout/account URLs, use `/catalog/` or other internal storefront paths, follow pagination/sitemap breadth, couple to Product Matching runtime, or couple to Catalog-First runtime.
 
 ## Last action taken
-Started the dry-run-only IKEA UAE adapter PR from latest `origin/main`. This update keeps the adapter `dryRunOnly`, fixture-backed, tiny/hand-seeded, and blocked from live writes by existing CLI/runner guards.
+Opened PR #143 for the dry-run-only IKEA UAE adapter from latest `origin/main`. This update keeps the adapter `dryRunOnly`, fixture-backed, tiny/hand-seeded, and blocked from live writes by existing CLI/runner guards.
 
 ## Next intended action
 Implementation agent: open the dry-run-only IKEA UAE adapter PR described above, update this mailbox with the PR URL after creation, then leave an `ARCHITECT_NOTE:` with PR URL, branch, head commit, files touched, verification run, dry-run command, and confirmation that no stop rule was crossed.
