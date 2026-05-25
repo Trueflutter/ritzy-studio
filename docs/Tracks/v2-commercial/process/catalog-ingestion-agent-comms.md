@@ -48,7 +48,9 @@ Hard stop: this PR must not remove `dryRunOnly`, perform live catalog writes, ch
 Opened PR #143 for the dry-run-only IKEA UAE adapter from latest `origin/main`. This update keeps the adapter `dryRunOnly`, fixture-backed, tiny/hand-seeded, and blocked from live writes by existing CLI/runner guards.
 
 ## Next intended action
-Implementation agent: open the dry-run-only IKEA UAE adapter PR described above, update this mailbox with the PR URL after creation, then leave an `ARCHITECT_NOTE:` with PR URL, branch, head commit, files touched, verification run, dry-run command, and confirmation that no stop rule was crossed.
+Implementation agent: monitor PR #143 for reviewer feedback. If rejected, fix only listed blockers, rerun relevant verification, push the update, and report the new head. If approved and explicitly approved to merge, merge PR #143, sync latest `main`, then stop at `AWAIT_CHIEF_ARCHITECT_RETAILER_ROUTING`.
+
+Do not start live ingestion, controlled preview, broader IKEA discovery, another retailer, DB/schema/generated type changes, runtime/UI/app-action work, Product Matching or Catalog-First runtime coupling, production flags, deploys, or live catalog writes without explicit Chief Architect/Sam routing.
 
 Create or keep a Catalog Ingestion heartbeat after opening the PR. The heartbeat should run every 10 minutes and monitor:
 
