@@ -39,6 +39,7 @@ import {
   type RoleScopedCandidatePool,
   type RoomProductRoleSpec
 } from "@ritzy-studio/domain";
+import { productMatchingControlledPreviewGate } from "@ritzy-studio/config";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { after } from "next/server";
@@ -61,6 +62,32 @@ function productReferenceOrderingV2Enabled() {
 
 function productMatchingEngineV1Enabled() {
   return process.env.RITZY_PRODUCT_MATCHING_ENGINE_V1_ENABLED === "true";
+}
+
+function productMatchingEngineV1EnabledForRequest({
+  projectId,
+  roomId,
+  userId,
+  userEmail
+}: {
+  projectId: string;
+  roomId: string;
+  userId: string;
+  userEmail?: string | null;
+}) {
+  const engineFlagEnabled = productMatchingEngineV1Enabled();
+  const previewGate = productMatchingControlledPreviewGate({
+    env: process.env,
+    projectId,
+    roomId,
+    userId,
+    userEmail
+  });
+
+  return {
+    enabled: engineFlagEnabled && (!previewGate.configured || previewGate.allowed),
+    gate: previewGate
+  };
 }
 
 function optionalString(formData: FormData, key: string) {
@@ -1898,7 +1925,13 @@ export async function groundProductsAction(formData: FormData) {
     );
   }
 
-  const productMatchingEngineEnabled = productMatchingEngineV1Enabled();
+  const productMatchingPreview = productMatchingEngineV1EnabledForRequest({
+    projectId,
+    roomId,
+    userId: user.id,
+    userEmail: user.email
+  });
+  const productMatchingEngineEnabled = productMatchingPreview.enabled;
   const sourcingPlan = buildProductSourcingRuntimePlan({
     engineEnabled: productMatchingEngineEnabled,
     roomType: room.room_type,
@@ -1943,6 +1976,12 @@ export async function groundProductsAction(formData: FormData) {
         roomId,
         conceptId: concept.id,
         productMatchingEngineEnabled,
+        productMatchingPreviewGate: {
+          configured: productMatchingPreview.gate.configured,
+          enabled: productMatchingPreview.gate.enabled,
+          allowed: productMatchingPreview.gate.allowed,
+          matchedScopes: productMatchingPreview.gate.matchedScopes
+        },
         candidateCount: sourcingCandidates.length,
         blueprintRoleCount: blueprintRoles.length,
         roleCandidateCounts: productMatchingEngineEnabled ? roleCandidateCountSummary(sourcingPools) : undefined,

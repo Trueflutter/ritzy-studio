@@ -14,6 +14,18 @@ RITZY_PRODUCT_MATCHING_ENGINE_V1_ENABLED=true
 
 Production must remain unset or explicitly `false` until Sam approves visual QA.
 
+For controlled preview after PR #112, also require the request-scoped allowlist gate:
+
+```bash
+RITZY_PRODUCT_MATCHING_ENGINE_V1_CONTROLLED_PREVIEW_ENABLED=true
+RITZY_PRODUCT_MATCHING_ENGINE_V1_PREVIEW_PROJECT_IDS=approved-project-id
+RITZY_PRODUCT_MATCHING_ENGINE_V1_PREVIEW_ROOM_IDS=approved-room-id
+RITZY_PRODUCT_MATCHING_ENGINE_V1_PREVIEW_USER_IDS=approved-user-id
+RITZY_PRODUCT_MATCHING_ENGINE_V1_PREVIEW_USER_EMAILS=approved-user@example.com
+```
+
+At least one allowlist value must match the request project, room, user id, or user email. Do not execute any app path that writes draft shopping-list data unless Sam/Chief Architect separately approves that execution. For no-write evidence, use only the approved read-only QA path.
+
 ## Executable Gates
 
 Run:
