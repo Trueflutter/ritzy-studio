@@ -100,6 +100,63 @@ export type ProductMatchQaStopRuleStatus = {
   };
 };
 
+export type ProductMatchQaWarningRolePriority = "required" | "supporting";
+
+export type ProductMatchQaWarningDimensionGroup =
+  | "missing_structured_dimensions"
+  | "title_derived_dimensions_present"
+  | "missing_room_measurements"
+  | "fit_checked"
+  | "oversized_dimensions"
+  | "not_applicable";
+
+export type ProductMatchQaWarningEvidenceField =
+  | "canonical_url"
+  | "image"
+  | "price"
+  | "availability"
+  | "color"
+  | "material"
+  | "style_room"
+  | "dimension";
+
+export type ProductMatchQaWarningReportItem = ProductMatchQaStopRuleIssue & {
+  rolePriority: ProductMatchQaWarningRolePriority;
+  selectedProductId: string | null;
+  dimensionGroup: ProductMatchQaWarningDimensionGroup;
+  missingEvidenceFields: ProductMatchQaWarningEvidenceField[];
+  freshnessStatus: CatalogTimestampFreshness["catalogFreshnessStatus"] | "not_checked";
+};
+
+export type ProductMatchQaWarningRoleReport = {
+  roleKey: string;
+  roleLabel: string;
+  rolePriority: ProductMatchQaWarningRolePriority;
+  selectedProductId: string | null;
+  status: ProductMatchRoleConfidence["status"];
+  confidenceTier: ProductMatchConfidenceTier;
+  candidateCount: number;
+  severityCounts: Record<ProductMatchQaStopRuleIssue["severity"], number>;
+  issueCodes: ProductMatchQaStopRuleIssueCode[];
+  dimensionGroup: ProductMatchQaWarningDimensionGroup;
+  missingEvidenceFields: ProductMatchQaWarningEvidenceField[];
+  freshnessStatus: CatalogTimestampFreshness["catalogFreshnessStatus"] | "not_checked";
+};
+
+export type ProductMatchQaWarningReport = {
+  passesQaStopRules: boolean;
+  totalIssueCount: number;
+  severityCounts: Record<ProductMatchQaStopRuleIssue["severity"], number>;
+  issueCodeCounts: Partial<Record<ProductMatchQaStopRuleIssueCode, number>>;
+  roleIssueCounts: Record<string, number>;
+  productIssueCounts: Record<string, number>;
+  dimensionGroupCounts: Record<ProductMatchQaWarningDimensionGroup, number>;
+  missingEvidenceFieldCounts: Record<ProductMatchQaWarningEvidenceField, number>;
+  freshnessStatusCounts: Record<CatalogTimestampFreshness["catalogFreshnessStatus"] | "not_checked", number>;
+  roles: ProductMatchQaWarningRoleReport[];
+  issues: ProductMatchQaWarningReportItem[];
+};
+
 export function productMatchRoleKey(category: string, roleLabel: string) {
   return `${normalizeRoleKeyPart(category)}::${normalizeRoleKeyPart(roleLabel)}`;
 }
@@ -544,6 +601,87 @@ export function productMatchQaStopRuleOutputSummary({
   };
 }
 
+export function buildProductMatchQaWarningReport({
+  roleConfidence,
+  requiredRoles
+}: {
+  roleConfidence: ProductMatchRoleConfidence[];
+  requiredRoles: ProductMatchRequiredRoleDescriptor[];
+}): ProductMatchQaWarningReport {
+  const status = buildProductMatchQaStopRuleStatus({ roleConfidence, requiredRoles });
+  const requiredRoleKeys = new Set(requiredRoles.map((role) => role.roleKey));
+  const confidenceByKey = new Map(roleConfidence.map((role) => [role.roleKey, role]));
+  const severityCounts = emptySeverityCounts();
+  const issueCodeCounts: Partial<Record<ProductMatchQaStopRuleIssueCode, number>> = {};
+  const roleIssueCounts: Record<string, number> = {};
+  const productIssueCounts: Record<string, number> = {};
+  const dimensionGroupCounts = emptyDimensionGroupCounts();
+  const missingEvidenceFieldCounts = emptyEvidenceFieldCounts();
+  const freshnessStatusCounts = emptyFreshnessStatusCounts();
+  const allIssues = [...status.blockers, ...status.warnings];
+  const issues = allIssues.map((issue) => {
+    const role = confidenceByKey.get(issue.roleKey) ?? null;
+    const item = warningReportItem(issue, role, requiredRoleKeys);
+
+    increment(severityCounts, item.severity);
+    increment(issueCodeCounts, item.code);
+    increment(roleIssueCounts, item.roleKey);
+    increment(productIssueCounts, item.selectedProductId ?? "none");
+
+    return item;
+  });
+  const issuesByRole = new Map<string, ProductMatchQaWarningReportItem[]>();
+  for (const issue of issues) {
+    const roleIssues = issuesByRole.get(issue.roleKey) ?? [];
+    roleIssues.push(issue);
+    issuesByRole.set(issue.roleKey, roleIssues);
+  }
+  const roles = roleConfidence.map((role) => {
+    const roleIssues = issuesByRole.get(role.roleKey) ?? [];
+
+    return {
+      roleKey: role.roleKey,
+      roleLabel: role.roleLabel,
+      rolePriority: requiredRoleKeys.has(role.roleKey)
+        ? ("required" as const)
+        : ("supporting" as const),
+      selectedProductId: role.selectedProductId,
+      status: role.status,
+      confidenceTier: role.confidenceTier,
+      candidateCount: role.candidateCount,
+      severityCounts: {
+        blocker: roleIssues.filter((issue) => issue.severity === "blocker").length,
+        warning: roleIssues.filter((issue) => issue.severity === "warning").length
+      },
+      issueCodes: Array.from(new Set(roleIssues.map((issue) => issue.code))),
+      dimensionGroup: dimensionGroupForRole(role),
+      missingEvidenceFields: missingEvidenceFieldsForRole(role),
+      freshnessStatus: freshnessStatusForRole(role)
+    };
+  });
+  for (const role of roles) {
+    increment(dimensionGroupCounts, role.dimensionGroup);
+    increment(freshnessStatusCounts, role.freshnessStatus);
+    for (const field of role.missingEvidenceFields) {
+      increment(missingEvidenceFieldCounts, field);
+    }
+  }
+
+  return {
+    passesQaStopRules: status.passesQaStopRules,
+    totalIssueCount: issues.length,
+    severityCounts,
+    issueCodeCounts,
+    roleIssueCounts,
+    productIssueCounts,
+    dimensionGroupCounts,
+    missingEvidenceFieldCounts,
+    freshnessStatusCounts,
+    roles,
+    issues
+  };
+}
+
 function normalizeRoleKeyPart(value: string) {
   return value
     .trim()
@@ -639,6 +777,116 @@ function isOversizedDimensionFit(fit: ProductMatchDimensionFit | null) {
 
 function isMissingDimensionFit(fit: ProductMatchDimensionFit | null) {
   return fit?.status === "missing_product_dimensions" || fit?.status === "missing_room_measurements";
+}
+
+function warningReportItem(
+  issue: ProductMatchQaStopRuleIssue,
+  role: ProductMatchRoleConfidence | null,
+  requiredRoleKeys: Set<string>
+): ProductMatchQaWarningReportItem {
+  return {
+    ...issue,
+    rolePriority: requiredRoleKeys.has(issue.roleKey) ? "required" : "supporting",
+    selectedProductId: role?.selectedProductId ?? null,
+    dimensionGroup: role ? dimensionGroupForRole(role) : "not_applicable",
+    missingEvidenceFields: role ? missingEvidenceFieldsForRole(role) : [],
+    freshnessStatus: role ? freshnessStatusForRole(role) : "not_checked"
+  };
+}
+
+function dimensionGroupForRole(role: ProductMatchRoleConfidence): ProductMatchQaWarningDimensionGroup {
+  const fit = role.selectedProductDimensionFit;
+
+  if (!fit) {
+    return "not_applicable";
+  }
+
+  if (fit.status === "missing_product_dimensions") {
+    return fit.sourceText ? "title_derived_dimensions_present" : "missing_structured_dimensions";
+  }
+
+  if (fit.status === "missing_room_measurements") {
+    return "missing_room_measurements";
+  }
+
+  if (isOversizedDimensionFit(fit)) {
+    return "oversized_dimensions";
+  }
+
+  return "fit_checked";
+}
+
+function missingEvidenceFieldsForRole(role: ProductMatchRoleConfidence): ProductMatchQaWarningEvidenceField[] {
+  const checks = role.selectedProductEvidenceCompleteness?.checks;
+
+  if (!checks) {
+    return [];
+  }
+
+  return [
+    checks.hasCanonicalUrl ? null : "canonical_url",
+    checks.hasPrimaryImage ? null : "image",
+    checks.hasPrice ? null : "price",
+    checks.hasAvailability ? null : "availability",
+    checks.hasColorSignal ? null : "color",
+    checks.hasMaterialSignal ? null : "material",
+    checks.hasStyleOrRoomSignal ? null : "style_room",
+    checks.hasDimensions ? null : "dimension"
+  ].filter((field): field is ProductMatchQaWarningEvidenceField => Boolean(field));
+}
+
+function freshnessStatusForRole(
+  role: ProductMatchRoleConfidence
+): CatalogTimestampFreshness["catalogFreshnessStatus"] | "not_checked" {
+  return role.selectedProductFreshness?.catalogFreshnessStatus ?? "not_checked";
+}
+
+function emptySeverityCounts(): Record<ProductMatchQaStopRuleIssue["severity"], number> {
+  return {
+    blocker: 0,
+    warning: 0
+  };
+}
+
+function emptyDimensionGroupCounts(): Record<ProductMatchQaWarningDimensionGroup, number> {
+  return {
+    missing_structured_dimensions: 0,
+    title_derived_dimensions_present: 0,
+    missing_room_measurements: 0,
+    fit_checked: 0,
+    oversized_dimensions: 0,
+    not_applicable: 0
+  };
+}
+
+function emptyEvidenceFieldCounts(): Record<ProductMatchQaWarningEvidenceField, number> {
+  return {
+    canonical_url: 0,
+    image: 0,
+    price: 0,
+    availability: 0,
+    color: 0,
+    material: 0,
+    style_room: 0,
+    dimension: 0
+  };
+}
+
+function emptyFreshnessStatusCounts(): Record<
+  CatalogTimestampFreshness["catalogFreshnessStatus"] | "not_checked",
+  number
+> {
+  return {
+    fresh: 0,
+    stale: 0,
+    missing: 0,
+    invalid: 0,
+    not_checked: 0
+  };
+}
+
+function increment<TKey extends string>(counts: Partial<Record<TKey, number>>, key: TKey) {
+  counts[key] = (counts[key] ?? 0) + 1;
 }
 
 function selectedCandidateForRole(pool: RoleScopedCandidatePool, productId: string | null) {

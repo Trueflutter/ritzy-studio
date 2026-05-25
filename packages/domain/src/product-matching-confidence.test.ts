@@ -2,12 +2,14 @@ import assert from "node:assert/strict";
 
 import {
   buildProductMatchQaStopRuleStatus,
+  buildProductMatchQaWarningReport,
   buildProductMatchConfidenceSummary,
   normalizeProductMatchRoleResultCategory,
   productMatchConfidenceOutputSummary,
   productMatchQaStopRuleOutputSummary,
   productMatchRequiredRoleDescriptor,
-  productMatchRoleKey
+  productMatchRoleKey,
+  type ProductMatchRoleConfidence
 } from "./product-matching-confidence";
 import { buildRoleScopedCandidatePools, type ProductMatchCandidate, type RoomProductRoleSpec } from "./product-matching";
 
@@ -728,5 +730,209 @@ assert.ok(
   )
 );
 assert.equal(weakEvidenceGate.counts.weakRequiredEvidenceCount, 1);
+
+const pr142ShapedWarningFixture: ProductMatchRoleConfidence[] = [
+  {
+    category: "sofas",
+    roleLabel: "anchor seating",
+    roleKey: productMatchRoleKey("sofas", "anchor seating"),
+    status: "strong_match",
+    selectedProductId: "living-sofa",
+    candidateCount: 6,
+    rejectedCount: 0,
+    rejectionReasons: {},
+    confidenceTier: "strong",
+    reasons: ["visual status: beige modular sofa matches the anchor role"],
+    weaknessReasons: [],
+    hasColorMismatch: false,
+    hasWeakMaterialMatch: false,
+    selectedProductDimensionFit: {
+      status: "missing_product_dimensions",
+      productWidthCm: null,
+      productDepthCm: null,
+      roomWallLengthCm: 420,
+      roomDepthCm: 520,
+      sourceText: null,
+      warnings: ["Product dimensions are missing; fit requires designer review."]
+    },
+    selectedProductEvidenceCompleteness: {
+      status: "partial",
+      presentCount: 6,
+      missingCount: 2,
+      checks: {
+        hasCanonicalUrl: true,
+        hasPrimaryImage: true,
+        hasPrice: true,
+        hasAvailability: true,
+        hasColorSignal: true,
+        hasMaterialSignal: false,
+        hasStyleOrRoomSignal: true,
+        hasDimensions: false
+      },
+      warnings: ["Material evidence is missing.", "Dimension evidence is missing."]
+    },
+    selectedProductFreshness: {
+      catalogFreshnessStatus: "fresh",
+      checkedAt: "2026-05-25T00:00:00.000Z",
+      ageDays: 0.5,
+      thresholdDays: 7
+    }
+  },
+  {
+    category: "rugs",
+    roleLabel: "generous rug",
+    roleKey: productMatchRoleKey("rugs", "generous rug"),
+    status: "strong_match",
+    selectedProductId: "living-rug",
+    candidateCount: 5,
+    rejectedCount: 0,
+    rejectionReasons: {},
+    confidenceTier: "strong",
+    reasons: ["visual status: large greige rug fits the plan"],
+    weaknessReasons: [],
+    hasColorMismatch: false,
+    hasWeakMaterialMatch: false,
+    selectedProductDimensionFit: {
+      status: "missing_product_dimensions",
+      productWidthCm: null,
+      productDepthCm: null,
+      roomWallLengthCm: 420,
+      roomDepthCm: 520,
+      sourceText: "300X400 cm",
+      warnings: ["Product dimensions are missing; fit requires designer review."]
+    },
+    selectedProductEvidenceCompleteness: {
+      status: "weak",
+      presentCount: 5,
+      missingCount: 3,
+      checks: {
+        hasCanonicalUrl: true,
+        hasPrimaryImage: true,
+        hasPrice: true,
+        hasAvailability: true,
+        hasColorSignal: false,
+        hasMaterialSignal: false,
+        hasStyleOrRoomSignal: false,
+        hasDimensions: true
+      },
+      warnings: [
+        "Color evidence is missing.",
+        "Material evidence is missing.",
+        "Style or room evidence is missing."
+      ]
+    },
+    selectedProductFreshness: {
+      catalogFreshnessStatus: "fresh",
+      checkedAt: "2026-05-25T00:00:00.000Z",
+      ageDays: 0.5,
+      thresholdDays: 7
+    }
+  },
+  {
+    category: "chairs",
+    roleLabel: "dining chairs",
+    roleKey: productMatchRoleKey("chairs", "dining chairs"),
+    status: "acceptable_match",
+    selectedProductId: "dining-chair",
+    candidateCount: 4,
+    rejectedCount: 0,
+    rejectionReasons: {},
+    confidenceTier: "acceptable",
+    reasons: ["visual status: cream upholstered arm chair fits broadly"],
+    weaknessReasons: [],
+    hasColorMismatch: false,
+    hasWeakMaterialMatch: false,
+    selectedProductDimensionFit: {
+      status: "missing_room_measurements",
+      productWidthCm: 55,
+      productDepthCm: 60,
+      roomWallLengthCm: null,
+      roomDepthCm: null,
+      sourceText: "55 x 60 x 80 cm",
+      warnings: ["Room measurements are missing; product fit cannot be checked."]
+    },
+    selectedProductEvidenceCompleteness: {
+      status: "weak",
+      presentCount: 5,
+      missingCount: 3,
+      checks: {
+        hasCanonicalUrl: true,
+        hasPrimaryImage: true,
+        hasPrice: true,
+        hasAvailability: true,
+        hasColorSignal: false,
+        hasMaterialSignal: false,
+        hasStyleOrRoomSignal: false,
+        hasDimensions: true
+      },
+      warnings: [
+        "Color evidence is missing.",
+        "Material evidence is missing.",
+        "Style or room evidence is missing."
+      ]
+    },
+    selectedProductFreshness: {
+      catalogFreshnessStatus: "fresh",
+      checkedAt: "2026-05-25T00:00:00.000Z",
+      ageDays: 0.5,
+      thresholdDays: 7
+    }
+  },
+  {
+    category: "decor",
+    roleLabel: "restrained table decor",
+    roleKey: productMatchRoleKey("decor", "restrained table decor"),
+    status: "missing_supporting",
+    selectedProductId: null,
+    candidateCount: 3,
+    rejectedCount: 0,
+    rejectionReasons: {},
+    confidenceTier: "missing",
+    reasons: ["visual status: no supporting product selected"],
+    weaknessReasons: [],
+    hasColorMismatch: false,
+    hasWeakMaterialMatch: false,
+    selectedProductDimensionFit: null,
+    selectedProductEvidenceCompleteness: null,
+    selectedProductFreshness: null
+  }
+];
+const pr142WarningReport = buildProductMatchQaWarningReport({
+  roleConfidence: pr142ShapedWarningFixture,
+  requiredRoles: [
+    productMatchRequiredRoleDescriptor({ category: "sofas", roleLabel: "anchor seating" }),
+    productMatchRequiredRoleDescriptor({ category: "rugs", roleLabel: "generous rug" }),
+    productMatchRequiredRoleDescriptor({ category: "chairs", roleLabel: "dining chairs" })
+  ]
+});
+assert.equal(pr142WarningReport.passesQaStopRules, true);
+assert.equal(pr142WarningReport.severityCounts.blocker, 0);
+assert.equal(pr142WarningReport.severityCounts.warning, 7);
+assert.equal(pr142WarningReport.issueCodeCounts.required_dimension_missing, 3);
+assert.equal(pr142WarningReport.issueCodeCounts.required_evidence_partial, 1);
+assert.equal(pr142WarningReport.issueCodeCounts.required_evidence_weak, 2);
+assert.equal(pr142WarningReport.issueCodeCounts.supporting_role_issue, 1);
+assert.equal(pr142WarningReport.dimensionGroupCounts.missing_structured_dimensions, 1);
+assert.equal(pr142WarningReport.dimensionGroupCounts.title_derived_dimensions_present, 1);
+assert.equal(pr142WarningReport.dimensionGroupCounts.missing_room_measurements, 1);
+assert.equal(pr142WarningReport.dimensionGroupCounts.not_applicable, 1);
+assert.equal(pr142WarningReport.missingEvidenceFieldCounts.color, 2);
+assert.equal(pr142WarningReport.missingEvidenceFieldCounts.material, 3);
+assert.equal(pr142WarningReport.missingEvidenceFieldCounts.style_room, 2);
+assert.equal(pr142WarningReport.missingEvidenceFieldCounts.dimension, 1);
+assert.equal(pr142WarningReport.freshnessStatusCounts.fresh, 3);
+assert.equal(pr142WarningReport.freshnessStatusCounts.not_checked, 1);
+assert.equal(pr142WarningReport.productIssueCounts["living-sofa"], 2);
+assert.equal(pr142WarningReport.productIssueCounts["living-rug"], 2);
+assert.equal(pr142WarningReport.productIssueCounts["dining-chair"], 2);
+assert.equal(pr142WarningReport.productIssueCounts.none, 1);
+assert.deepEqual(
+  pr142WarningReport.roles.find((role) => role.roleLabel === "generous rug")?.missingEvidenceFields,
+  ["color", "material", "style_room"]
+);
+assert.equal(
+  pr142WarningReport.issues.find((issue) => issue.roleLabel === "restrained table decor")?.rolePriority,
+  "supporting"
+);
 
 console.log("product matching confidence tests passed");
