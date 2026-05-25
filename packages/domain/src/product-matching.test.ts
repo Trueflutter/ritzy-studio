@@ -601,6 +601,86 @@ assert.deepEqual(
 );
 assert.equal(diningChairPool.pools[0].rejectionReasons.category_mismatch, 1);
 
+const diningChairStoolPool = buildRoleScopedCandidatePools({
+  roomType: "dining room",
+  conceptText: "six cream upholstered dining chairs around a walnut table",
+  roles: [
+    {
+      category: "chairs",
+      label: "dining chairs",
+      visualBrief: "cream upholstered dining chairs with proper dining-chair backs",
+      quantity: 6,
+      priority: "required"
+    }
+  ],
+  candidates: [
+    {
+      ...base,
+      id: "00000000-0000-4000-8000-000000000553",
+      name: "Salamanca Stool in Cream Pine",
+      categoryNormalized: "chairs",
+      availability: "in stock",
+      primaryImageUrl: "https://example.com/cream-stool.jpg",
+      colorTags: ["cream"],
+      materialTags: ["upholstered", "wood"]
+    },
+    {
+      ...base,
+      id: "00000000-0000-4000-8000-000000000554",
+      name: "Cream Upholstered Dining Chair",
+      categoryNormalized: "chairs",
+      availability: "in stock",
+      primaryImageUrl: "https://example.com/cream-upholstered-dining-chair.jpg",
+      colorTags: ["cream"],
+      materialTags: ["upholstered", "fabric"]
+    }
+  ]
+});
+assert.equal(diningChairStoolPool.pools[0].candidates[0].name, "Cream Upholstered Dining Chair");
+assert.ok(
+  diningChairStoolPool.pools[0].weaknessReasons.includes("stool or bench seating is weak for dining chair role")
+);
+
+const diningOverTableLightingPool = buildRoleScopedCandidatePools({
+  roomType: "dining room",
+  conceptText: "aged brass chandelier over the dining table",
+  roles: [
+    {
+      category: "lighting",
+      label: "over-table lighting",
+      visualBrief: "aged brass pendant chandelier over the dining table",
+      quantity: 1,
+      priority: "supporting"
+    }
+  ],
+  candidates: [
+    {
+      ...base,
+      id: "00000000-0000-4000-8000-000000000555",
+      name: "Natural Floor Lamp",
+      categoryNormalized: "lighting",
+      availability: "in stock",
+      primaryImageUrl: "https://example.com/floor-lamp.jpg",
+      materialTags: ["wood"]
+    },
+    {
+      ...base,
+      id: "00000000-0000-4000-8000-000000000556",
+      name: "Slim Brass Pendant Chandelier",
+      categoryNormalized: "lighting",
+      availability: "in stock",
+      primaryImageUrl: "https://example.com/brass-pendant-chandelier.jpg",
+      materialTags: ["brass", "metal"]
+    }
+  ]
+});
+assert.equal(diningOverTableLightingPool.pools[0].candidates[0].name, "Slim Brass Pendant Chandelier");
+assert.ok(
+  diningOverTableLightingPool.pools[0].weaknessReasons.includes(
+    "floor or table lamp is weak for over-table lighting role"
+  )
+);
+
 const mediaConsolePool = buildRoleScopedCandidatePools({
   roomType: "living room",
   conceptText: "walnut TV media console below the wall-mounted television",
@@ -693,6 +773,40 @@ assert.ok(bulkyDiningChairAttributeScore.category < 0);
 assert.ok(bulkyDiningChairAttributeScore.roleFit < 0);
 assert.ok(
   bulkyDiningChairAttributeScore.weaknessReasons.includes("bulky lounge seating is weak for dining chair role")
+);
+
+const stoolDiningChairAttributeScore = scoreProductCandidateForRole({
+  candidate: diningChairStoolPool.pools[0].candidates.find((candidate) => candidate.name.includes("Stool"))!,
+  role: {
+    category: "chairs",
+    label: "dining chairs",
+    visualBrief: "cream upholstered dining chairs with proper dining-chair backs",
+    quantity: 6,
+    priority: "required"
+  },
+  conceptText: "cream dining room"
+});
+assert.ok(stoolDiningChairAttributeScore.roleFit < 0);
+assert.ok(
+  stoolDiningChairAttributeScore.weaknessReasons.includes("stool or bench seating is weak for dining chair role")
+);
+
+const overTableFloorLampAttributeScore = scoreProductCandidateForRole({
+  candidate: diningOverTableLightingPool.pools[0].candidates.find((candidate) => candidate.name.includes("Floor"))!,
+  role: {
+    category: "lighting",
+    label: "over-table lighting",
+    visualBrief: "aged brass pendant chandelier over the dining table",
+    quantity: 1,
+    priority: "supporting"
+  },
+  conceptText: "traditional dining room"
+});
+assert.ok(overTableFloorLampAttributeScore.roleFit < 0);
+assert.ok(
+  overTableFloorLampAttributeScore.weaknessReasons.includes(
+    "floor or table lamp is weak for over-table lighting role"
+  )
 );
 
 const mediaConsoleAttributeScore = scoreProductCandidateForRole({

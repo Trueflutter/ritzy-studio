@@ -1215,6 +1215,25 @@ function roleSpecificKeywordScore(
       score -= 34;
       weaknessReasons.push("bulky lounge seating is weak for dining chair role");
     }
+    if (hasAnyToken(candidateTokens, ["stool", "stools", "bench", "benches", "barstool", "barstools"])) {
+      score -= 36;
+      weaknessReasons.push("stool or bench seating is weak for dining chair role");
+    }
+  }
+
+  if (
+    role.category === "lighting" &&
+    (roleText.includes("over-table") ||
+      roleText.includes("over table") ||
+      hasAnyToken(roleTokens, ["pendant", "chandelier", "ceiling"]))
+  ) {
+    if (hasAnyToken(candidateTokens, ["pendant", "chandelier", "ceiling", "suspension", "hanging"])) {
+      score += 30;
+      reasons.push("over-table lighting language matches role");
+    } else if (hasAnyToken(candidateTokens, ["floor", "table", "desk", "lamp"])) {
+      score -= 34;
+      weaknessReasons.push("floor or table lamp is weak for over-table lighting role");
+    }
   }
 
   if (role.category === "desks") {
