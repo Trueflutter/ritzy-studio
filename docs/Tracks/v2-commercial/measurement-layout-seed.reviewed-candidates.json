@@ -1,0 +1,190 @@
+{
+  "version": 1,
+  "generatedAt": "2026-05-25T20:15:00.000+04:00",
+  "description": "Reviewed structured-facts Measurement Intelligence seed candidates. Default-off candidate data only; not imported, not written to Supabase, and not an as-built measurement source.",
+  "layouts": [
+    {
+      "id": "murooj-al-furjan-townhouse-4br-corner-layout-a",
+      "community": {
+        "slug": "al-furjan",
+        "name": "Al Furjan",
+        "city": "Dubai",
+        "country": "AE",
+        "aliases": [
+          {
+            "value": "Al Furjan Murooj",
+            "kind": "community"
+          },
+          {
+            "value": "Murooj Al Furjan",
+            "kind": "marketing_name"
+          },
+          {
+            "value": "Murooj Al Furjan West",
+            "kind": "marketing_name"
+          }
+        ]
+      },
+      "development": {
+        "slug": "murooj-al-furjan",
+        "name": "Murooj Al Furjan",
+        "developer": "Nakheel",
+        "aliases": [
+          {
+            "value": "Murooj",
+            "kind": "marketing_name"
+          },
+          {
+            "value": "Murooj Al Furjan townhouses",
+            "kind": "development"
+          }
+        ]
+      },
+      "propertyType": "townhouse",
+      "bedroomCount": 4,
+      "unitTypeCode": null,
+      "aliases": [
+        {
+          "value": "Murooj Al Furjan 4-bed corner",
+          "kind": "user_phrase"
+        },
+        {
+          "value": "Murooj Al Furjan 4 bedroom corner unit",
+          "kind": "user_phrase"
+        },
+        {
+          "value": "4 bedroom townhouse corner unit",
+          "kind": "user_phrase"
+        },
+        {
+          "value": "4BR corner townhouse",
+          "kind": "user_phrase"
+        },
+        {
+          "value": "Layout A",
+          "kind": "layout_code"
+        }
+      ],
+      "layoutConfidence": "prefill",
+      "sourceRightsStatus": "structured_facts_only",
+      "sources": [
+        {
+          "id": "nakheel-murooj-launch-2021",
+          "kind": "developer_brochure",
+          "rightsStatus": "structured_facts_only",
+          "label": "Nakheel Murooj Al Furjan launch note",
+          "url": "https://www.nakheel.com/en/media-centre/press-releases/news-detail/2021/05/19/nakheel-launches-418-new-homes-at-al-furjan",
+          "publisherName": "Nakheel",
+          "retrievedAt": "2026-05-25T20:15:00.000+04:00",
+          "disclaimer": "Public developer source used for structured facts only. Do not store or display raw floor-plan images from this or related sources.",
+          "notes": "Confirms Murooj Al Furjan villa/townhouse context, bedroom counts, high-level room features, and approximate area language. Does not provide as-built room measurements."
+        },
+        {
+          "id": "ritzy-source-feasibility-pack-2026-05-25",
+          "kind": "internal_research",
+          "rightsStatus": "structured_facts_only",
+          "label": "Ritzy Measurement Intelligence source feasibility pack",
+          "url": "https://github.com/Trueflutter/ritzy-studio/blob/main/docs/Tracks/v2-commercial/26_Measurement_Intelligence_Source_Feasibility_Pack.md",
+          "publisherName": "Ritzy Studio",
+          "retrievedAt": "2026-05-25T20:15:00.000+04:00",
+          "disclaimer": "Internal structured-facts review only. This is not a permission grant for raw developer floor-plan assets.",
+          "notes": "Documents why Murooj Al Furjan is a reviewed structured-facts seed candidate and keeps confidence conservative."
+        }
+      ],
+      "rooms": [
+        {
+          "id": "ground-living-dining",
+          "name": "Living / Dining",
+          "normalizedRoomType": "living_room",
+          "floorLevel": "ground",
+          "sourceId": "ritzy-source-feasibility-pack-2026-05-25",
+          "measurementConfidence": "prefill",
+          "notes": "Room label candidate only. Exact length, width, and ceiling height are intentionally unknown.",
+          "disclaimer": "Prefill room label only; not an as-built measurement and not suitable for tight-clearance decisions."
+        },
+        {
+          "id": "ground-kitchen",
+          "name": "Kitchen",
+          "normalizedRoomType": "kitchen",
+          "floorLevel": "ground",
+          "sourceId": "nakheel-murooj-launch-2021",
+          "measurementConfidence": "prefill",
+          "notes": "Source mentions open/closed kitchen options in Murooj Al Furjan homes; variant-specific kitchen configuration requires confirmation.",
+          "disclaimer": "Prefill room label only; user or designer confirmation required."
+        },
+        {
+          "id": "ground-maids-room",
+          "name": "Maid's Room",
+          "normalizedRoomType": "other",
+          "floorLevel": "ground",
+          "sourceId": "nakheel-murooj-launch-2021",
+          "measurementConfidence": "prefill",
+          "notes": "Normalized as other because the current seed schema has no dedicated maid's room enum.",
+          "disclaimer": "Prefill room label only; user or designer confirmation required."
+        },
+        {
+          "id": "ground-storage",
+          "name": "Storage",
+          "normalizedRoomType": "other",
+          "floorLevel": "ground",
+          "sourceId": "nakheel-murooj-launch-2021",
+          "measurementConfidence": "prefill",
+          "notes": "Source-backed high-level room feature; exact location and size are unknown.",
+          "disclaimer": "Prefill room label only; user or designer confirmation required."
+        },
+        {
+          "id": "first-primary-bedroom",
+          "name": "Primary Bedroom",
+          "normalizedRoomType": "bedroom",
+          "floorLevel": "first",
+          "sourceId": "ritzy-source-feasibility-pack-2026-05-25",
+          "measurementConfidence": "prefill",
+          "notes": "Bedroom row candidate for a 4-bedroom townhouse; primary/master semantics are notes only.",
+          "disclaimer": "Prefill room label only; not suitable for product-fit decisions without confirmation."
+        },
+        {
+          "id": "first-bedroom-2",
+          "name": "Bedroom 2",
+          "normalizedRoomType": "bedroom",
+          "floorLevel": "first",
+          "sourceId": "ritzy-source-feasibility-pack-2026-05-25",
+          "measurementConfidence": "prefill",
+          "notes": "Bedroom row candidate; exact location and dimensions are unknown.",
+          "disclaimer": "Prefill room label only; not suitable for product-fit decisions without confirmation."
+        },
+        {
+          "id": "first-bedroom-3",
+          "name": "Bedroom 3",
+          "normalizedRoomType": "bedroom",
+          "floorLevel": "first",
+          "sourceId": "ritzy-source-feasibility-pack-2026-05-25",
+          "measurementConfidence": "prefill",
+          "notes": "Bedroom row candidate; exact location and dimensions are unknown.",
+          "disclaimer": "Prefill room label only; not suitable for product-fit decisions without confirmation."
+        },
+        {
+          "id": "first-bedroom-4",
+          "name": "Bedroom 4",
+          "normalizedRoomType": "bedroom",
+          "floorLevel": "first",
+          "sourceId": "ritzy-source-feasibility-pack-2026-05-25",
+          "measurementConfidence": "prefill",
+          "notes": "Bedroom row candidate; exact location and dimensions are unknown.",
+          "disclaimer": "Prefill room label only; not suitable for product-fit decisions without confirmation."
+        },
+        {
+          "id": "exterior-garden",
+          "name": "Garden / Terrace",
+          "normalizedRoomType": "other",
+          "floorLevel": "other",
+          "sourceId": "nakheel-murooj-launch-2021",
+          "measurementConfidence": "prefill",
+          "notes": "Exterior context only. Do not use for interior furnishing fit.",
+          "disclaimer": "Prefill outdoor label only; not an interior room measurement."
+        }
+      ],
+      "notes": "First reviewed structured-facts candidate from the Measurement Intelligence shortlist. Dimensions are intentionally omitted because reviewed sources do not provide as-built room length, width, or ceiling height. This candidate is for future default-off seed review only.",
+      "disclaimer": "Known developer-layout prefill only. Not an as-built measurement, not a tight-clearance source, and not suitable for product-fit decisions until user or designer confirmation is captured. Raw floor-plan images were not stored or republished."
+    }
+  ]
+}
