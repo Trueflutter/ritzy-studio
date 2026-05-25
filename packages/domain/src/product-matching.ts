@@ -1170,12 +1170,10 @@ export function scoreProductCandidateForRole({
   reasons.push(...silhouetteScore.reasons);
   weaknessReasons.push(...silhouetteScore.weaknessReasons);
 
-  const roleKeywordScore = roleSpecificKeywordScore(role, candidateTokens);
+  const roleKeywordScore = roleSpecificKeywordScore(role, candidateTokens, roleTokens);
   roleFit = roleKeywordScore.score;
   reasons.push(...roleKeywordScore.reasons);
-  if (roleKeywordScore.weakness) {
-    weaknessReasons.push(roleKeywordScore.weakness);
-  }
+  weaknessReasons.push(...roleKeywordScore.weaknessReasons);
 
   const total = category + color + material + style + silhouette + roleFit;
 
@@ -1196,11 +1194,17 @@ export function scoreProductCandidateForRole({
   };
 }
 
-function roleSpecificKeywordScore(role: RoomProductRoleSpec, candidateTokens: Set<string>) {
+function roleSpecificKeywordScore(
+  role: RoomProductRoleSpec,
+  candidateTokens: Set<string>,
+  roleCueTokens: Set<string>
+) {
   const roleText = `${role.category} ${role.label} ${role.visualBrief ?? ""}`.toLowerCase();
+  const roleTokens = tokensFor(roleText);
+  const deskCueTokens = new Set([...roleTokens, ...roleCueTokens]);
   const reasons: string[] = [];
   let score = 0;
-  let weakness: string | null = null;
+  const weaknessReasons: string[] = [];
 
   if (role.category === "chairs" && roleText.includes("dining")) {
     if (hasAnyToken(candidateTokens, ["dining", "chair", "chairs"])) {
@@ -1209,25 +1213,42 @@ function roleSpecificKeywordScore(role: RoomProductRoleSpec, candidateTokens: Se
     }
     if (hasAnyToken(candidateTokens, ["armchair", "lounge", "recliner", "oversized", "bulky"])) {
       score -= 34;
-      weakness = "bulky lounge seating is weak for dining chair role";
+      weaknessReasons.push("bulky lounge seating is weak for dining chair role");
     }
   }
 
-  if (role.category === "storage" && hasAnyToken(tokensFor(roleText), ["media", "console", "credenza", "sideboard", "shelving"])) {
-    if (hasAnyToken(tokensFor(roleText), ["media", "console", "television"]) || roleText.includes("tv")) {
+  if (role.category === "desks") {
+    if (hasAnyToken(candidateTokens, ["desk", "desks", "writing", "workstation"])) {
+      score += 18;
+      reasons.push("desk language matches role");
+    }
+
+    if (hasAnyToken(deskCueTokens, ["wood", "oak", "walnut", "writing"])) {
+      if (hasAnyToken(candidateTokens, ["wood", "oak", "walnut", "writing"])) {
+        score += 28;
+        reasons.push("wood desk language matches role");
+      } else if (hasAnyToken(candidateTokens, ["metal", "steel", "glass"])) {
+        score -= 30;
+        weaknessReasons.push("metal or glass desk is weak for requested wood desk role");
+      }
+    }
+  }
+
+  if (role.category === "storage" && hasAnyToken(roleTokens, ["media", "console", "credenza", "sideboard", "shelving"])) {
+    if (hasAnyToken(roleTokens, ["media", "console", "television"]) || roleText.includes("tv")) {
       if (hasAnyToken(candidateTokens, ["media", "console", "television"]) || candidateTokens.has("tv")) {
         score += 30;
         reasons.push("media storage language matches role");
       } else if (hasAnyToken(candidateTokens, ["bookcase", "bookcases", "bookshelf", "shelf", "shelving"])) {
         score -= 26;
-        weakness = "generic shelving is weak for TV media role";
+        weaknessReasons.push("generic shelving is weak for TV media role");
       }
-    } else if (hasAnyToken(tokensFor(roleText), ["sideboard", "credenza"])) {
+    } else if (hasAnyToken(roleTokens, ["sideboard", "credenza"])) {
       if (hasAnyToken(candidateTokens, ["sideboard", "credenza", "console"])) {
         score += 24;
         reasons.push("dining storage language matches role");
       }
-    } else if (hasAnyToken(tokensFor(roleText), ["shelving"])) {
+    } else if (hasAnyToken(roleTokens, ["shelving"])) {
       if (hasAnyToken(candidateTokens, ["shelf", "shelving", "bookcase", "storage", "credenza"])) {
         score += 18;
         reasons.push("office storage language matches role");
@@ -1235,7 +1256,7 @@ function roleSpecificKeywordScore(role: RoomProductRoleSpec, candidateTokens: Se
     }
   }
 
-  return { score, reasons, weakness };
+  return { score, reasons, weaknessReasons };
 }
 
 function attributeCueText(role: RoomProductRoleSpec, conceptText: string) {
