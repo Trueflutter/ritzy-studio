@@ -507,6 +507,39 @@ assert.ok(officePools.pools.find((pool) => pool.role.category === "office_chairs
 assert.ok(officePools.pools.find((pool) => pool.role.category === "storage")?.candidateCount);
 assert.ok(officePools.pools.find((pool) => pool.role.category === "lighting")?.candidateCount);
 
+const woodDeskPools = buildRoleScopedCandidatePools({
+  roomType: "home office",
+  conceptText: "warm oak writing desk with slim black legs",
+  roles: [{ category: "desks", label: "desk", visualBrief: null, quantity: 1, priority: "required" }],
+  candidates: [
+    {
+      ...base,
+      id: "00000000-0000-4000-8000-000000000535",
+      name: "Smart Black Metal Office Desk",
+      categoryNormalized: "desks",
+      availability: "in stock",
+      primaryImageUrl: "https://example.com/black-metal-desk.jpg",
+      colorTags: ["black"],
+      materialTags: ["metal"]
+    },
+    {
+      ...base,
+      id: "00000000-0000-4000-8000-000000000536",
+      name: "Oak Writing Desk",
+      categoryNormalized: "desks",
+      availability: "in stock",
+      primaryImageUrl: "https://example.com/oak-writing-desk.jpg",
+      materialTags: ["oak", "wood"]
+    }
+  ]
+});
+assert.equal(woodDeskPools.pools[0].candidates[0].name, "Oak Writing Desk");
+assert.ok(
+  woodDeskPools.pools[0].candidates[1].attributeScore.weaknessReasons.includes(
+    "metal or glass desk is weak for requested wood desk role"
+  )
+);
+
 const beigeSofaPool = buildRoleScopedCandidatePools({
   roomType: "living room",
   conceptText: "quiet contemporary living room with a beige linen sofa",
