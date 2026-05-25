@@ -1,35 +1,24 @@
 # Catalog Ingestion Agent Comms
 
 ## Current PR
-None. PR #124 merged Pan Home dry-run ingestion adapter.
+None. PR #130 merged Homes r Us dry-run ingestion adapter.
 
 ## Current stage
-APPROVED_DRY_RUN_RETAILER_ADAPTER_NEXT_STAGE.
+DRY_RUN_RETAILER_ADAPTERS_READY_BLOCKED_FOR_LIVE_INGESTION.
 
 ## Blockers
 Live ingestion remains blocked. Do not perform live catalog writes, DB/schema changes, generated DB type changes, production flags, deploys, payment/checkout changes, UI changes, Product Matching runtime coupling, Catalog-First runtime coupling, or broad crawler execution without explicit approval.
 
 ## Chief architect routing
-ARCHITECT_NOTE: Start the next retailer ingestion stage with Homes r Us as a dry-run-only adapter/planning PR.
+ARCHITECT_NOTE: Pan Home and Homes r Us now have dry-run-only adapter coverage. Keep both live ingestion paths blocked until a separate explicit approval removes the dry-run-only guards.
 
-Scope:
-- Branch from latest `main`; suggested branch `codex/homesrus-ingestion-dry-run`.
-- Add a dry-run-only Homes r Us adapter or, if discovery proves too uncertain, a docs+fixture spike that captures the blocking evidence.
-- Keep discovery to public, clean category/product URLs. Respect the known Homes r Us robots constraints: `Crawl-delay: 10`, no query/parameter URLs, and no `/catalog/` paths.
-- Prefer a tiny category seed set and a low dry-run limit.
-- Reuse the existing ingestion adapter/CLI/test patterns from Home Centre, Danube, 2XL, Chattels, and Pan Home.
-- Include parser/unit tests with saved fixture HTML or deterministic sample parsing.
-- Include one dry-run verification command that proves the adapter can see a small number of products without writes.
-
-Stop rules:
-- If the site blocks clean public discovery, requires query URLs, requires `/catalog/` paths, requires authenticated/private APIs, requires high crawl volume, or would need live writes, stop and report findings instead of forcing an adapter.
-- If adding Homes r Us requires changing shared ingestion schema, Supabase migrations, generated DB types, Product Matching runtime, UI, app actions, production config, or deploy behavior, stop and ask Chief Architect.
+Next safe work should be docs/planning/eval-only unless Sam/coordinator explicitly approves another dry-run retailer adapter or an approval package for controlled ingestion. Do not remove `dryRunOnly` from Pan Home or Homes r Us in this mailbox state.
 
 ## Last action taken
-PR #124 added Pan Home dry-run ingestion adapter and was merged at `7438d0a`.
+PR #130 added Homes r Us dry-run ingestion adapter and was merged at `2710e84`.
 
 ## Next intended action
-Catalog ingestion agent: start Homes r Us dry-run-only work from latest `main`, open a small PR, and report PR URL/head/checks back to Chief Architect.
+Pause retailer ingestion implementation until Chief Architect/Sam assigns the next specific docs-only, dry-run-only, or controlled-ingestion stage.
 
 ## Durable next-state handoff after merge
-After Homes r Us dry-run-only PR is opened, keep live ingestion blocked until a separate explicit approval removes the dry-run-only guardrails.
+Pan Home and Homes r Us live ingestion remain blocked by adapter `dryRunOnly` plus CLI/runner guards. Keep request volume low for any future dry runs, preserve Homes r Us `Crawl-delay: 10`, and avoid query URLs, `/catalog/` paths, private APIs, auth-only paths, search/filter URLs, and broad crawl behavior.
