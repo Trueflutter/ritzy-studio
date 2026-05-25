@@ -59,6 +59,11 @@ The harness intentionally does not score:
 
 Those remain part of local/manual QA with `RITZY_PRODUCT_MATCHING_ENGINE_V1_ENABLED=true` and inspection of `ai_jobs` rows as described in `PR_E_Runtime_Rollout_QA.md`.
 
+Controlled preview additionally requires the default-off allowlist gate documented in
+`2026-05-25-controlled-preview-activation.md`; the gate is preparation only and does
+not approve app execution, shopping-list writes, catalog writes, deploys, or production
+rollout.
+
 ## Pass Criteria
 
 An eval passes when:

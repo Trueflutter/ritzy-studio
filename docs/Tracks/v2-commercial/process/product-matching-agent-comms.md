@@ -1,19 +1,22 @@
 # Product Matching Engine Agent Comms
 
 ## Current PR
-Drafting Product Matching V1 controlled-preview decision package PR after PR #111.
+Drafting Product Matching V1 controlled-preview activation wiring PR after PR #112.
 
 ## Current stage
-Docs/artifacts-only controlled default-off preview go/no-go decision package.
+Controlled default-off Product Matching V1 preview activation/wiring, with no rollout or execution approval.
 
 ## Blockers
-No active implementation blocker. Product Matching Engine V1 is still not approved for default-on activation, controlled preview, production rollout, live catalog writes, DB/schema changes, UI changes, prompt changes, app-action flow changes, or Catalog-First runtime coupling.
+No active implementation blocker. Product Matching Engine V1 is still not approved for default-on activation, production rollout, deploys, live catalog writes, shopping-list writes, DB/schema changes, generated DB types, UI redesign, prompt changes, payment/checkout/app-action flow changes, or Catalog-First runtime coupling.
 
 ## Chief architect question
-No open question for this PR. Chief Architect replied on PR #111 that the next stage is a controlled-preview decision package, not another ad hoc fix.
+No open question for this PR. Chief Architect replied after PR #112 that Sam/chief architect approves preparing the smallest possible controlled default-off Product Matching V1 preview activation/wiring PR using PR #112 as the source of truth.
 
 ## Last action taken
-Merged PR #111 after approval and synced `main` to `765d4c7`. The release-readiness map now prepares the controlled default-off preview decision but does not approve or enable preview.
+Merged PR #112 and synced `main` to `6f88ab0`. The controlled-preview decision package recommends a tightly scoped default-off preview, and the current branch prepares the env allowlist gate plus operator docs without executing preview or approving writes.
 
 ## Next intended action
-Open a docs/artifacts-only controlled-preview decision package PR, keep `product-matching-pr-check` active, request formal review, and do not enable preview, deploy, change production flags, run app actions, write live data, change prompts/runtime/UI/DB, or couple Catalog-First without explicit approval.
+Open the controlled-preview activation/wiring PR, keep `product-matching-pr-check` active, request formal review, and do not enable default-on, deploy, run app actions, write live catalog/shopping-list data, change prompts/UI/DB/generated types/payment/checkout flow, or couple Catalog-First without explicit approval.
+
+## Durable next-state handoff after merge
+WAITING_FOR_SAM_APPROVAL: after this PR merges, Sam/Chief Architect must explicitly approve whether to configure the controlled-preview env and whether any execution may use an app path that writes draft shopping-list data. If not approved, keep Product Matching V1 in read-only/local QA only.

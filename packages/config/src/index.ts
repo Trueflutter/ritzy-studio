@@ -33,6 +33,14 @@ const serverEnvSchema = z.object({
     .enum(["true", "false"])
     .default("false")
     .transform((value) => value === "true"),
+  RITZY_PRODUCT_MATCHING_ENGINE_V1_CONTROLLED_PREVIEW_ENABLED: z
+    .enum(["true", "false"])
+    .default("false")
+    .transform((value) => value === "true"),
+  RITZY_PRODUCT_MATCHING_ENGINE_V1_PREVIEW_PROJECT_IDS: z.string().optional(),
+  RITZY_PRODUCT_MATCHING_ENGINE_V1_PREVIEW_ROOM_IDS: z.string().optional(),
+  RITZY_PRODUCT_MATCHING_ENGINE_V1_PREVIEW_USER_IDS: z.string().optional(),
+  RITZY_PRODUCT_MATCHING_ENGINE_V1_PREVIEW_USER_EMAILS: z.string().optional(),
   STRIPE_SECRET_KEY: z.string().optional(),
   STRIPE_WEBHOOK_SECRET: z.string().optional()
 });
@@ -60,4 +68,71 @@ export function formatEnvError(error: unknown): string {
   }
 
   return error.issues.map((issue) => `${issue.path.join(".")}: ${issue.message}`).join("\n");
+}
+
+export type ProductMatchingControlledPreviewGateInput = {
+  env: Record<string, string | undefined>;
+  projectId?: string | null;
+  roomId?: string | null;
+  userId?: string | null;
+  userEmail?: string | null;
+};
+
+export type ProductMatchingControlledPreviewGate = {
+  configured: boolean;
+  enabled: boolean;
+  allowed: boolean;
+  matchedScopes: Array<"project" | "room" | "user" | "email">;
+};
+
+function commaSeparatedValues(value: string | undefined) {
+  return new Set(
+    (value ?? "")
+      .split(",")
+      .map((entry) => entry.trim())
+      .filter(Boolean)
+  );
+}
+
+function commaSeparatedLowercaseValues(value: string | undefined) {
+  return new Set(Array.from(commaSeparatedValues(value)).map((entry) => entry.toLowerCase()));
+}
+
+export function productMatchingControlledPreviewGate({
+  env,
+  projectId,
+  roomId,
+  userId,
+  userEmail
+}: ProductMatchingControlledPreviewGateInput): ProductMatchingControlledPreviewGate {
+  const projectIds = commaSeparatedValues(env.RITZY_PRODUCT_MATCHING_ENGINE_V1_PREVIEW_PROJECT_IDS);
+  const roomIds = commaSeparatedValues(env.RITZY_PRODUCT_MATCHING_ENGINE_V1_PREVIEW_ROOM_IDS);
+  const userIds = commaSeparatedValues(env.RITZY_PRODUCT_MATCHING_ENGINE_V1_PREVIEW_USER_IDS);
+  const userEmails = commaSeparatedLowercaseValues(
+    env.RITZY_PRODUCT_MATCHING_ENGINE_V1_PREVIEW_USER_EMAILS
+  );
+  const enabled = env.RITZY_PRODUCT_MATCHING_ENGINE_V1_CONTROLLED_PREVIEW_ENABLED === "true";
+  const configured =
+    enabled || projectIds.size > 0 || roomIds.size > 0 || userIds.size > 0 || userEmails.size > 0;
+
+  const matchedScopes: ProductMatchingControlledPreviewGate["matchedScopes"] = [];
+  if (projectId && projectIds.has(projectId)) {
+    matchedScopes.push("project");
+  }
+  if (roomId && roomIds.has(roomId)) {
+    matchedScopes.push("room");
+  }
+  if (userId && userIds.has(userId)) {
+    matchedScopes.push("user");
+  }
+  if (userEmail && userEmails.has(userEmail.toLowerCase())) {
+    matchedScopes.push("email");
+  }
+
+  return {
+    configured,
+    enabled,
+    allowed: enabled && matchedScopes.length > 0,
+    matchedScopes
+  };
 }
