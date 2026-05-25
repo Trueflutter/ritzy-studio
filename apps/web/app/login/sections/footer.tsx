@@ -40,13 +40,9 @@ export function Footer() {
               New style drops, retailer partnerships, and Ritzy product notes. No spam.
             </p>
 
-            {/* NOTE: Newsletter backend not wired in this PR — visual only. */}
-            <form
-              className="mt-5 flex border border-line-strong bg-surface"
-              action="#"
-              method="post"
-              onSubmit={(event) => event.preventDefault()}
-            >
+            {/* NOTE: Newsletter backend not wired in this PR — visual placeholder.
+                Submit is a no-op button (type="button") until the API route lands. */}
+            <div className="mt-5 flex border border-line-strong bg-surface">
               <label htmlFor="footer-newsletter-email" className="sr-only">
                 Email address
               </label>
@@ -59,13 +55,16 @@ export function Footer() {
                 className="min-w-0 flex-1 bg-transparent px-4 font-body text-body-s text-ink placeholder:text-[var(--rs-text-placeholder)] focus:outline-none"
               />
               <button
-                type="submit"
-                className="inline-flex h-[44px] shrink-0 items-center gap-2 border-l border-line-strong bg-ink px-4 font-body text-caption font-semibold uppercase tracking-[0.14em] text-ink-on-dark transition-colors duration-micro ease-standard hover:bg-[var(--rs-primary-hover)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--rs-focus-ring)]"
+                type="button"
+                disabled
+                aria-label="Join newsletter (coming soon)"
+                title="Newsletter sign-up coming soon"
+                className="inline-flex h-[44px] shrink-0 items-center gap-2 border-l border-line-strong bg-ink px-4 font-body text-caption font-semibold uppercase tracking-[0.14em] text-ink-on-dark transition-colors duration-micro ease-standard hover:bg-[var(--rs-primary-hover)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--rs-focus-ring)] disabled:cursor-not-allowed disabled:opacity-70"
               >
                 Join
                 <ArrowRightIcon className="h-3.5 w-3.5" />
               </button>
-            </form>
+            </div>
           </div>
         </div>
 
