@@ -1,9 +1,13 @@
 # Catalog Ingestion Agent Comms
 
 ## Current PR
-Pending branch: `codex/catalog-ingestion-coverage-readiness`
+PR #136: https://github.com/Trueflutter/ritzy-studio/pull/136
 
-PR URL: to be filled after the docs-only coverage/readiness PR is opened.
+Branch: `codex/catalog-ingestion-coverage-readiness`
+
+Touched files:
+- `docs/Tracks/v2-commercial/24_Catalog_Ingestion_Coverage_Readiness_Map.md`
+- `docs/Tracks/v2-commercial/process/catalog-ingestion-agent-comms.md`
 
 ## Current stage
 DUAL_TRACK:
@@ -28,7 +32,7 @@ Do not sit idle while live ingestion is blocked. Start one docs-only Catalog Ing
 Hard stop: this docs-only PR must not execute crawlers, remove `dryRunOnly`, perform live catalog writes, change DB/schema/generated types, alter UI/runtime/app actions/prompts/payment/checkout, change production flags, deploy, widen request volume, use private APIs, couple to Product Matching runtime, or couple to Catalog-First runtime.
 
 ## Last action taken
-Started the docs-only coverage/readiness map PR from latest `origin/main`. This update is documentation-only and does not execute crawlers, run dry-run commands, perform live writes, remove `dryRunOnly`, widen request volume, or touch runtime coupling.
+Opened PR #136 for the docs-only coverage/readiness map from latest `origin/main`. This update is documentation-only and does not execute crawlers, run dry-run commands, perform live writes, remove `dryRunOnly`, widen request volume, or touch runtime coupling.
 
 ## Next intended action
 Implementation agent: open the docs-only coverage/readiness PR described above, update this mailbox with the PR URL after creation, then leave an `ARCHITECT_NOTE:` with PR URL, branch, head commit, files touched, verification run, and confirmation that no stop rule was crossed.
