@@ -404,7 +404,7 @@ export function buildProductMatchQaStopRuleStatus({
           severity: "warning",
           roleKey: role.roleKey,
           roleLabel: role.roleLabel,
-          message: "Required role selected product catalog timestamp is stale."
+          message: requiredFreshnessWarningMessage(role, "stale")
         })
       );
     }
@@ -416,7 +416,7 @@ export function buildProductMatchQaStopRuleStatus({
           severity: "warning",
           roleKey: role.roleKey,
           roleLabel: role.roleLabel,
-          message: "Required role selected product catalog timestamp is missing."
+          message: requiredFreshnessWarningMessage(role, "missing")
         })
       );
     }
@@ -428,7 +428,7 @@ export function buildProductMatchQaStopRuleStatus({
           severity: "warning",
           roleKey: role.roleKey,
           roleLabel: role.roleLabel,
-          message: "Required role selected product catalog timestamp is invalid."
+          message: requiredFreshnessWarningMessage(role, "invalid")
         })
       );
     }
@@ -440,7 +440,10 @@ export function buildProductMatchQaStopRuleStatus({
           severity: "warning",
           roleKey: role.roleKey,
           roleLabel: role.roleLabel,
-          message: "Required role selected product may not fit entered room measurements."
+          message: requiredDimensionWarningMessage(
+            role,
+            "Required role selected product may not fit entered room measurements."
+          )
         })
       );
     }
@@ -452,7 +455,10 @@ export function buildProductMatchQaStopRuleStatus({
           severity: "warning",
           roleKey: role.roleKey,
           roleLabel: role.roleLabel,
-          message: "Required role selected product fit could not be fully checked from dimensions."
+          message: requiredDimensionWarningMessage(
+            role,
+            "Required role selected product fit could not be fully checked from dimensions."
+          )
         })
       );
     }
@@ -464,7 +470,7 @@ export function buildProductMatchQaStopRuleStatus({
           severity: "warning",
           roleKey: role.roleKey,
           roleLabel: role.roleLabel,
-          message: "Required role selected product has partial catalog evidence."
+          message: requiredEvidenceWarningMessage(role, "partial")
         })
       );
     }
@@ -476,7 +482,7 @@ export function buildProductMatchQaStopRuleStatus({
           severity: "warning",
           roleKey: role.roleKey,
           roleLabel: role.roleLabel,
-          message: "Required role selected product has weak catalog evidence."
+          message: requiredEvidenceWarningMessage(role, "weak")
         })
       );
     }
@@ -488,7 +494,7 @@ export function buildProductMatchQaStopRuleStatus({
           severity: "warning",
           roleKey: role.roleKey,
           roleLabel: role.roleLabel,
-          message: "Supporting role needs manual QA review."
+          message: supportingRoleWarningMessage(role)
         })
       );
     }
@@ -556,6 +562,61 @@ function isBedRoleText(text: string, normalizedCategory: string) {
 
 function stopRuleIssue(issue: ProductMatchQaStopRuleIssue): ProductMatchQaStopRuleIssue {
   return issue;
+}
+
+function requiredFreshnessWarningMessage(
+  role: ProductMatchRoleConfidence,
+  status: "stale" | "missing" | "invalid"
+) {
+  const freshness = role.selectedProductFreshness;
+
+  if (status === "stale" && freshness?.ageDays !== null && freshness?.ageDays !== undefined) {
+    return `Required role selected product catalog timestamp is stale: ${freshness.ageDays} days old, threshold ${freshness.thresholdDays} days.`;
+  }
+
+  if (status === "invalid" && freshness?.checkedAt) {
+    return `Required role selected product catalog timestamp is invalid: ${freshness.checkedAt}.`;
+  }
+
+  return `Required role selected product catalog timestamp is ${status}.`;
+}
+
+function requiredDimensionWarningMessage(role: ProductMatchRoleConfidence, fallback: string) {
+  const detail = role.selectedProductDimensionFit?.warnings.join(" ");
+
+  return detail ? `${fallback}: ${detail}` : fallback;
+}
+
+function requiredEvidenceWarningMessage(
+  role: ProductMatchRoleConfidence,
+  status: "partial" | "weak"
+) {
+  const evidence = role.selectedProductEvidenceCompleteness;
+  const detail = evidence?.warnings.join(" ");
+
+  return detail
+    ? `Required role selected product has ${status} catalog evidence: ${detail}`
+    : `Required role selected product has ${status} catalog evidence.`;
+}
+
+function supportingRoleWarningMessage(role: ProductMatchRoleConfidence) {
+  if (role.status === "missing_supporting" || role.confidenceTier === "missing") {
+    return "Supporting role needs manual QA review: no supporting product was selected.";
+  }
+
+  if (role.status === "closest_available") {
+    return "Supporting role needs manual QA review: selected product is only closest available.";
+  }
+
+  if (role.candidateCount === 0) {
+    return "Supporting role needs manual QA review: role candidate pool is empty.";
+  }
+
+  if (role.hasColorMismatch) {
+    return "Supporting role needs manual QA review: selected product has a color mismatch.";
+  }
+
+  return "Supporting role needs manual QA review.";
 }
 
 function hasSupportingIssue(role: ProductMatchRoleConfidence) {
