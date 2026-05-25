@@ -1,7 +1,22 @@
 # Catalog Ingestion Agent Comms
 
 ## Current PR
-None. PR #147 (https://github.com/Trueflutter/ritzy-studio/pull/147) merged into `main`.
+PR #154: https://github.com/Trueflutter/ritzy-studio/pull/154
+
+Branch: `codex/catalog-ingestion-marina-home-dry-run-adapter`
+
+Touched files:
+- `packages/ingestion/src/adapters/marinahome.ts`
+- `packages/ingestion/src/adapters/marinahome.test.ts`
+- `packages/ingestion/src/adapters/__fixtures__/marinahome-sitemap.xml`
+- `packages/ingestion/src/adapters/__fixtures__/marinahome-product-shell.html`
+- `packages/ingestion/src/adapters/__fixtures__/marinahome-category-shell.html`
+- `packages/ingestion/src/cli.ts`
+- `packages/ingestion/src/cli.test.ts`
+- `packages/ingestion/src/index.ts`
+- `packages/ingestion/package.json`
+- `docs/Tracks/v2-commercial/27_Marina_Home_Ingestion_Feasibility.md`
+- `docs/Tracks/v2-commercial/process/catalog-ingestion-agent-comms.md`
 
 ## Current stage
 DUAL_TRACK:
@@ -27,10 +42,10 @@ Do not sit idle while live ingestion is blocked. PR #147 completed the Marina Ho
 Hard stop: this adapter PR must not perform live catalog writes, remove `dryRunOnly`, broaden request volume beyond the tiny allowlist, call private APIs, use auth-only paths, execute headless browser ingestion at scale, use search/filter/query URLs, use cart/account/checkout/review/tag/Magento `/catalog/...` paths, change DB/schema/generated types, alter UI/runtime/app actions/prompts/payment/checkout, change production flags, deploy, couple to Product Matching runtime, or couple to Catalog-First runtime.
 
 ## Last action taken
-PR #147 merged the docs-only Marina Home UAE feasibility spike into `main`. The feasibility note records canonical host/path, robots constraints, accepted/rejected URL surfaces, source metadata, static parser feasibility, known gaps, and a recommendation for a future dry-run-only adapter.
+Opened PR #154 for the dry-run-only Marina Home adapter/parser spike from latest `main`. The adapter stays sitemap-first, metadata-first, tiny-allowlist, and dry-run-only; price, sale price, availability, dimensions, and rich attributes remain null unless public clean fixtures prove them.
 
 ## Next intended action
-Implementation agent: start the Marina Home dry-run-only adapter/parser spike described above, open a small PR, and leave an `ARCHITECT_NOTE:` with PR URL, branch, head commit, files touched, verification run, parsed fixture coverage, null-field policy, and confirmation that no stop rule was crossed.
+Implementation agent: monitor PR #154 for `CHIEF_ARCHITECT_REPLY:` or reviewer feedback, fix only listed blockers if rejected, and merge only if explicitly approved to merge and still dry-run-only with runtime impact none.
 
 Create or keep a Catalog Ingestion heartbeat after starting the PR. The heartbeat should run every 10 minutes and monitor:
 
@@ -44,7 +59,7 @@ Do not delete the Catalog Ingestion heartbeat just because a PR merged. Delete a
 ## Durable next-state handoff after merge
 Pan Home and Homes r Us live ingestion remain blocked by adapter `dryRunOnly` plus CLI/runner guards. Keep request volume low for any future dry runs, preserve Homes r Us `Crawl-delay: 10`, and avoid query URLs, `/catalog/` paths, private APIs, auth-only paths, search/filter URLs, and broad crawl behavior.
 
-Recommended next safe stage after this routing PR merges: `APPROVED_DRY_RUN_ONLY_MARINA_HOME_ADAPTER_SPIKE`. Do not start live ingestion, controlled preview, broader retailer discovery, production flags, deploys, or runtime coupling from this approval.
+Recommended next safe stage after the Marina Home dry-run adapter PR merges: `AWAIT_CHIEF_ARCHITECT_RETAILER_ROUTING`. Do not start live ingestion, controlled preview, broader retailer discovery, production flags, deploys, or runtime coupling from this approval.
 
 After any PR merges, the agent must not delete its last monitor and go idle unless this mailbox already points to the next safe action or explicitly records that no docs/domain/dry-run work is approved. If there is no next action, leave an `ARCHITECT_NOTE:` in the mailbox or PR requesting Chief Architect routing.
 

@@ -182,3 +182,35 @@ Stop and defer to partner/feed access if a future implementation requires:
 Proceed to a separate, explicitly approved, dry-run-only adapter PR only as a controlled parser spike.
 
 The safest first adapter shape is sitemap-first and metadata-first: accept a tiny allowlist of Ritzy-relevant sitemap category/product URLs, extract canonical URL, name, SKU/code, image gallery, category, color/material hints, and freshness where available, then leave price, sale price, availability, dimensions, and rich attributes null unless a public clean page fixture proves them without private APIs or broad execution.
+
+## Dry-Run Adapter Scope
+
+PR status: routed after PR #147 for dry-run-only implementation.
+
+Implemented scope:
+
+- Adapter key: `marinahome-ae`
+- CLI aliases: `marinahome`, `marina-home`, `marinahome-ae`
+- Dry-run command: `pnpm --filter @ritzy-studio/ingestion ingest:marinahome:dry-run -- --limit=2`
+- Live-write status: blocked by adapter `dryRunOnly` plus existing CLI/runner guards
+- Fixture coverage: one saved sitemap metadata fixture, one saved clean product shell fixture, and one saved clean category shell fixture
+- Discovery posture: UAE sitemap-first and metadata-first; tiny hand-curated Ritzy-relevant category allowlist; clean `/en-uae/...html` URLs only; no query/hash/search/filter/cart/account/checkout/review/tag/Magento `/catalog/...`, private API, auth-only, broad sitemap traversal, pagination, or headless browser execution
+- Parser coverage: canonical URL, product name, external SKU/code, image URLs/titles/captions, source category route, conservative color/material hints from slug metadata, and source freshness from sitemap `lastmod`
+
+Null-field policy:
+
+- `priceText`, `salePriceText`, `availability`, and `dimensionsText` remain `null`.
+- Rich description/spec/material/finish attributes remain null unless future public clean fixtures prove them without private APIs or broad execution.
+
+Known adapter gaps:
+
+- No broad sitemap traversal.
+- No static price, sale price, stock, or dimension extraction.
+- No private Magento/PWA GraphQL/API usage.
+- No headless browser execution.
+- Category inference is conservative and based on clean URL route/slug metadata.
+
+Controlled dry-run verification:
+
+- Command: `pnpm --filter @ritzy-studio/ingestion ingest:marinahome:dry-run -- --limit=2`
+- Expected behavior: dry-run summary only, using sitemap metadata plus clean product shell fetches; no Supabase client or live write path.

@@ -11,6 +11,9 @@ const homesRusByAdapterKey = resolveAdapterForCli("homesrus-ae");
 const ikeaByShortKey = resolveAdapterForCli("ikea");
 const ikeaByDashedKey = resolveAdapterForCli("ikea-uae");
 const ikeaByAdapterKey = resolveAdapterForCli("ikea-uae");
+const marinaHomeByShortKey = resolveAdapterForCli("marinahome");
+const marinaHomeByDashedKey = resolveAdapterForCli("marina-home");
+const marinaHomeByAdapterKey = resolveAdapterForCli("marinahome-ae");
 
 assert.equal(panHomeByShortKey?.key, "panhome-ae");
 assert.equal(panHomeByDashedKey?.key, "panhome-ae");
@@ -21,6 +24,9 @@ assert.equal(homesRusByAdapterKey?.key, "homesrus-ae");
 assert.equal(ikeaByShortKey?.key, "ikea-uae");
 assert.equal(ikeaByDashedKey?.key, "ikea-uae");
 assert.equal(ikeaByAdapterKey?.key, "ikea-uae");
+assert.equal(marinaHomeByShortKey?.key, "marinahome-ae");
+assert.equal(marinaHomeByDashedKey?.key, "marinahome-ae");
+assert.equal(marinaHomeByAdapterKey?.key, "marinahome-ae");
 assert.deepEqual(parseArgs(["pan-home", "--dry-run", "--limit=3"]), {
   adapterKey: "pan-home",
   dryRun: true,
@@ -36,6 +42,11 @@ assert.deepEqual(parseArgs(["ikea", "--dry-run", "--limit=2"]), {
   dryRun: true,
   limit: 2
 });
+assert.deepEqual(parseArgs(["marina-home", "--dry-run", "--limit=3"]), {
+  adapterKey: "marina-home",
+  dryRun: true,
+  limit: 3
+});
 
 assert.throws(
   () => assertLiveIngestionAllowed(panHomeByShortKey!),
@@ -48,6 +59,10 @@ assert.throws(
 assert.throws(
   () => assertLiveIngestionAllowed(ikeaByShortKey!),
   /ikea-uae is dry-run-only/
+);
+assert.throws(
+  () => assertLiveIngestionAllowed(marinaHomeByShortKey!),
+  /marinahome-ae is dry-run-only/
 );
 
 const homeCentre = resolveAdapterForCli("homecentre");
