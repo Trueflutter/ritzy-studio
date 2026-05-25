@@ -126,3 +126,8 @@ Ritzy asks retailers for:
 - Are product images licensed for use in AI-assisted room concepts?
 - How frequently can inventory/price feed refresh?
 - Are UAE-specific prices and stock available?
+
+## Active Planned Ingestion Coverage
+
+- Pan Home UAE: planned dry-run-only adapter coverage via UAE sitemap/product URLs. Live catalog writes remain blocked pending separate approval.
+- Homes r Us UAE: next planned feasibility target after Pan Home; handle separately with category-seed-only discovery because query URLs are disallowed and `Crawl-delay: 10` applies.
