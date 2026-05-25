@@ -1,11 +1,17 @@
 export { AnimatedStatus } from "./animated-status";
 export { AutoSubmit } from "./auto-submit";
 export { Button, ButtonLink } from "./button";
+export type { ButtonVariant } from "./button";
 export { Card, Panel } from "./card";
 export { Chip } from "./chip";
 export { Field, Label, Textarea, TextInput } from "./form";
 export { ImageDropzone } from "./image-dropzone";
 export type { DropzoneProgress, ImageDropzoneError } from "./image-dropzone";
+export { DecorativeRule, MarketingDisplay, SectionEyebrow } from "./marketing-display";
+export { MarketingPanel } from "./marketing-panel";
+export type { MarketingPanelElevation, MarketingPanelTone } from "./marketing-panel";
+export { Reveal } from "./reveal";
+export { useRevealOnScroll } from "./use-reveal-on-scroll";
 export { SegmentedControl, Tab, Tabs } from "./tabs";
 export { SubmitButton } from "./submit-button";
 export { cx } from "./utils";
