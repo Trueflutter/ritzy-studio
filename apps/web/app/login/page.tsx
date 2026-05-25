@@ -12,6 +12,7 @@ import { Nav } from "./sections/nav";
 import { Philosophy } from "./sections/philosophy";
 import { Pricing } from "./sections/pricing";
 import { StyleLibrary } from "./sections/style-library";
+import { TrustBar } from "./sections/trust-bar";
 
 export const dynamic = "force-dynamic";
 
@@ -35,6 +36,7 @@ export default async function LoginPage({
     <main className="min-h-dvh bg-page text-ink">
       <Nav />
       <Hero />
+      <TrustBar />
       <Access message={message} />
       <Philosophy />
       <StyleLibrary />
