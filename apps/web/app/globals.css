@@ -93,6 +93,11 @@
   --rs-duration-reveal: 480ms;
   --rs-ease-standard: cubic-bezier(0.2, 0.7, 0.2, 1);
   --rs-ease-linear: linear;
+
+  /* §17.3 Marketing surfaces (opt-in) — scoped to /login + future marketing routes. */
+  --rs-text-display-marketing: clamp(56px, 8vw, 96px);
+  --rs-text-button-l: 14px;
+  --rs-shadow-marketing-float: 0 1px 2px rgba(31, 31, 29, 0.06), 0 18px 42px rgba(31, 31, 29, 0.08);
 }
 
 @theme inline {
@@ -163,6 +168,9 @@
   --duration-standard: var(--rs-duration-standard);
   --duration-reveal: var(--rs-duration-reveal);
   --ease-standard: var(--rs-ease-standard);
+  --text-display-marketing: var(--rs-text-display-marketing);
+  --text-button-l: var(--rs-text-button-l);
+  --shadow-marketing-float: var(--rs-shadow-marketing-float);
 }
 
 html {
@@ -234,5 +242,28 @@ textarea:-webkit-autofill:active {
   }
   30% {
     opacity: 1;
+  }
+}
+
+/* Marketing reveal-on-scroll — opt-in via [data-reveal] attribute set by useRevealOnScroll.
+   Respects prefers-reduced-motion (reset to opacity 1 / no transform by the rule above). */
+[data-reveal] {
+  opacity: 0;
+  transform: translateY(24px);
+  transition:
+    opacity var(--rs-duration-reveal) var(--rs-ease-standard),
+    transform var(--rs-duration-reveal) var(--rs-ease-standard);
+}
+
+[data-reveal][data-revealed="true"] {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-reveal] {
+    opacity: 1;
+    transform: none;
+    transition: none;
   }
 }
