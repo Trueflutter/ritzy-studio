@@ -1,9 +1,13 @@
 # Catalog Ingestion Agent Comms
 
 ## Current PR
-Pending branch: `codex/catalog-ingestion-ikea-feasibility`
+PR #138: https://github.com/Trueflutter/ritzy-studio/pull/138
 
-PR URL: to be filled after the docs-only IKEA UAE feasibility PR is opened.
+Branch: `codex/catalog-ingestion-ikea-feasibility`
+
+Touched files:
+- `docs/Tracks/v2-commercial/25_IKEA_UAE_Ingestion_Feasibility.md`
+- `docs/Tracks/v2-commercial/process/catalog-ingestion-agent-comms.md`
 
 ## Current stage
 DUAL_TRACK:
@@ -30,7 +34,7 @@ Start one docs-only Catalog Ingestion PR for IKEA UAE feasibility only:
 Hard stop: this docs-only PR must not execute crawlers, implement an adapter, add fixtures/tests/scripts, remove `dryRunOnly`, perform live catalog writes, change DB/schema/generated types, alter UI/runtime/app actions/prompts/payment/checkout, change production flags, deploy, widen request volume, use private APIs, bypass access controls, use auth-only/search/filter/query/cart/checkout/account URLs, use `/catalog/` or other internal storefront paths, couple to Product Matching runtime, or couple to Catalog-First runtime.
 
 ## Last action taken
-Started the docs-only IKEA UAE feasibility spike from latest `origin/main`. This update is documentation-only and does not execute crawlers, run ingestion commands, run dry-run ingestion commands, perform live writes, remove `dryRunOnly`, widen request volume beyond the tiny feasibility request set, implement an adapter, or touch runtime coupling.
+Opened PR #138 for the docs-only IKEA UAE feasibility spike from latest `origin/main`. This update is documentation-only and does not execute crawlers, run ingestion commands, run dry-run ingestion commands, perform live writes, remove `dryRunOnly`, widen request volume beyond the tiny feasibility request set, implement an adapter, or touch runtime coupling.
 
 ## Next intended action
 Implementation agent: open the docs-only IKEA UAE feasibility PR described above, update this mailbox with the PR URL after creation, then leave an `ARCHITECT_NOTE:` with PR URL, branch, head commit, files touched, verification run, recommendation, and confirmation that no stop rule was crossed.
