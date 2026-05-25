@@ -32,7 +32,18 @@ Merged PR #129 at `0d41e6ac9699f9ca52e0a511f01f57a025ae61aa` after explicit Chie
 ## Next intended action
 Implementation agent: open the docs-only preview runbook PR described above, then leave an `ARCHITECT_NOTE:` with PR URL, branch, head commit, files touched, and confirmation that no stop rule was crossed.
 
+Create or keep a Product Matching heartbeat after opening the PR. The heartbeat should run every 10 minutes and monitor:
+
+- the active Product Matching PR, if one exists
+- `docs/Tracks/v2-commercial/process/product-matching-agent-comms.md`
+- PR comments beginning `ARCHITECT_NOTE:` or `CHIEF_ARCHITECT_REPLY:`
+- GitHub checks/mergeability for the active PR
+
+Do not delete the Product Matching heartbeat just because a PR merged. Delete a PR-specific monitor only after either a lane-level heartbeat is active or this mailbox on `main` points to the next safe action. If the PR merges and the next safe action is already in this mailbox, immediately start that next safe action instead of waiting for Sam or Chief Architect.
+
 Sam: separately answer the controlled-preview approval request with exact scope, environment, allowlist, app-path/write boundary, and stop/rollback rules before any preview configuration or execution.
 
 ## Durable next-state handoff after merge
 WAITING_FOR_SAM_APPROVAL remains the runtime gate. APPROVED_DOCS_ONLY_PREVIEW_RUNBOOK may proceed as a small docs-only PR under the guardrails above.
+
+The Product Matching lane must maintain a heartbeat while work is active or routed. If the lane has no open PR and no approved safe next action, the heartbeat should leave an `ARCHITECT_NOTE:` requesting routing instead of going silent.

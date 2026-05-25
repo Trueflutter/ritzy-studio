@@ -31,7 +31,18 @@ PR #131 updated the mailbox after PR #130 added the Homes r Us dry-run ingestion
 ## Next intended action
 Implementation agent: open the docs-only coverage/readiness PR described above, then leave an `ARCHITECT_NOTE:` with PR URL, branch, head commit, files touched, and confirmation that no stop rule was crossed.
 
+Create or keep a Catalog Ingestion heartbeat after opening the PR. The heartbeat should run every 10 minutes and monitor:
+
+- the active Catalog Ingestion PR, if one exists
+- `docs/Tracks/v2-commercial/process/catalog-ingestion-agent-comms.md`
+- PR comments beginning `ARCHITECT_NOTE:` or `CHIEF_ARCHITECT_REPLY:`
+- GitHub checks/mergeability for the active PR
+
+Do not delete the Catalog Ingestion heartbeat just because a PR merged. Delete a PR-specific monitor only after either a lane-level heartbeat is active or this mailbox on `main` points to the next safe action. If the PR merges and the next safe action is already in this mailbox, immediately start that next safe action instead of waiting for Sam or Chief Architect.
+
 ## Durable next-state handoff after merge
 Pan Home and Homes r Us live ingestion remain blocked by adapter `dryRunOnly` plus CLI/runner guards. Keep request volume low for any future dry runs, preserve Homes r Us `Crawl-delay: 10`, and avoid query URLs, `/catalog/` paths, private APIs, auth-only paths, search/filter URLs, and broad crawl behavior.
 
 After any PR merges, the agent must not delete its last monitor and go idle unless this mailbox already points to the next safe action or explicitly records that no docs/domain/dry-run work is approved. If there is no next action, leave an `ARCHITECT_NOTE:` in the mailbox or PR requesting Chief Architect routing.
+
+The Catalog Ingestion lane must maintain a heartbeat while work is active or routed. If the lane has no open PR and no approved safe next action, the heartbeat should leave an `ARCHITECT_NOTE:` requesting routing instead of going silent.
