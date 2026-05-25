@@ -9,6 +9,7 @@ import type { Database } from "@ritzy-studio/db";
 import { chattelsAdapter } from "./adapters/chattels";
 import { danubeAdapter } from "./adapters/danube";
 import { homeCentreAdapter } from "./adapters/homecentre";
+import { homesRusAdapter } from "./adapters/homesrus";
 import { panHomeAdapter } from "./adapters/panhome";
 import { twoXlAdapter } from "./adapters/twoxl";
 import { categoryCounts } from "./catalog-counts";
@@ -31,6 +32,9 @@ const adapters = new Map<string, CatalogAdapter>([
   [twoXlAdapter.key, twoXlAdapter],
   ["chattels", chattelsAdapter],
   [chattelsAdapter.key, chattelsAdapter],
+  ["homesrus", homesRusAdapter],
+  ["homes-r-us", homesRusAdapter],
+  [homesRusAdapter.key, homesRusAdapter],
   ["panhome", panHomeAdapter],
   ["pan-home", panHomeAdapter],
   [panHomeAdapter.key, panHomeAdapter]

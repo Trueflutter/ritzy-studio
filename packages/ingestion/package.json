@@ -15,9 +15,10 @@
     "ingest:2xl:dry-run": "tsx src/cli.ts 2xl --dry-run",
     "ingest:chattels": "tsx src/cli.ts chattels",
     "ingest:chattels:dry-run": "tsx src/cli.ts chattels --dry-run",
+    "ingest:homesrus:dry-run": "tsx src/cli.ts homesrus --dry-run",
     "ingest:panhome:dry-run": "tsx src/cli.ts panhome --dry-run",
     "typecheck": "tsc --noEmit",
-    "test": "tsx src/normalization.test.ts && tsx src/catalog-counts.test.ts && tsx src/cli.test.ts && tsx src/runner.test.ts && tsx src/adapters/homecentre.test.ts && tsx src/adapters/danube.test.ts && tsx src/adapters/chattels.test.ts && tsx src/adapters/twoxl.test.ts && tsx src/adapters/panhome.test.ts"
+    "test": "tsx src/normalization.test.ts && tsx src/catalog-counts.test.ts && tsx src/cli.test.ts && tsx src/runner.test.ts && tsx src/adapters/homecentre.test.ts && tsx src/adapters/danube.test.ts && tsx src/adapters/chattels.test.ts && tsx src/adapters/twoxl.test.ts && tsx src/adapters/panhome.test.ts && tsx src/adapters/homesrus.test.ts"
   },
   "dependencies": {
     "@ritzy-studio/db": "workspace:*",
