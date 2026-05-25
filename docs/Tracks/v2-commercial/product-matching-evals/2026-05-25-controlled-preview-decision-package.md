@@ -1,6 +1,6 @@
 # Product Matching Engine V1 Controlled Preview Decision Package
 
-Runtime impact: none. This is a docs/artifacts-only go/no-go package after PR #111.
+Runtime impact: none. This is a docs/artifacts-only go/no-go package updated after PR #122.
 
 ## Recommended Decision
 
@@ -10,6 +10,7 @@ Rationale:
 
 - Required-role blockers from the old PR #103 state have been cleared in the latest evidence chain.
 - Living, dining, bedroom, and representative home-office/study evidence now pass required-role QA stop rules with warnings.
+- Chief Architect accepted PR #121 as clearing the dining chair and over-table-lighting quality blocker for controlled default-off preview readiness in PR #122.
 - The remaining warnings are visible review constraints, not current required-anchor blockers for a controlled internal preview.
 - Product Matching V1 remains unsuitable for default-on, production rollout, unattended shopping-list writes, or customer-facing promises because dimensions, catalog evidence, supporting roles, and full home-office selected-concept coverage still need review.
 
@@ -82,6 +83,7 @@ These do not block a controlled default-off preview if they remain visible to op
 - Partial or weak catalog evidence for otherwise plausible required products.
 - Supporting roles missing, acceptable, or closest-available when required anchors pass.
 - Supporting lighting/decor/storage needing manual review.
+- Same-target dining lighting no longer has the PR #117 `closest_available` floor-lamp blocker after PR #121, but lighting metadata can still be weak and must remain visible to operators.
 - Home-office/study evidence still relying on a representative/static image, if the preview decision explicitly accepts that caveat.
 - QA harness reproducibility work still pending, if runs are isolated and evidence is documented.
 
@@ -116,11 +118,16 @@ Stop immediately if any occur:
 | `manual-qa/2026-05-24-timeout-payload-investigation.md` | PR #108: dining and home-office completed in targeted read-only QA; timeout issue reduced to harness evidence quality. |
 | `manual-qa/2026-05-25-home-office-desk-role-quality-investigation.md` | PR #109: deterministic desk scoring gap fixed while staying default-off. |
 | `manual-qa/2026-05-25-post-109-home-office-read-only-qa.md` | PR #110: representative home-office/study QA passed with required desk `strong_match`, no required closest-available roles, and warnings. |
+| `manual-qa/2026-05-25-bounded-dining-controlled-preview-evidence.md` | PR #117: same-target Dubai South dining evidence passed stop rules but exposed stool-like chair and over-table-lighting closest-available quality concerns. |
+| `manual-qa/2026-05-25-dining-quality-investigation.md` | PR #119: narrow deterministic dining chair and over-table-lighting role-quality scoring fix. |
+| `manual-qa/2026-05-25-post-119-dining-re-evidence.md` | PR #121: same-target dining re-evidence cleared the stool-like chair and floor-lamp closest-available concerns; accepted by Chief Architect in PR #122. |
 | `manual-qa/2026-05-23-post-105-fresh-qa.md` | Fresh living and bedroom required-role pass evidence with warnings. |
 | `manual-qa/2026-05-23-product-matching-engine-v1-evidence.md` | Initial living/dining/bedroom evidence and original blocker context. |
 | `manual-qa/2026-05-23-post-105-validation-evidence.md` | Bedroom bedside-table blocker cleared under deterministic replay. |
 
 ## Downstream Sequencing
+
+Next explicit approval gate: Sam or Chief Architect must decide whether to authorize controlled default-off preview configuration/execution from this evidence set. That decision must name the exact scope, environment, allowlist, app-path/writes boundary, and stop/rollback rules.
 
 If Sam/Chief Architect approves controlled default-off preview:
 
