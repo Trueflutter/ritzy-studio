@@ -1,43 +1,38 @@
 # Catalog Ingestion Agent Comms
 
 ## Current PR
-PR #147: https://github.com/Trueflutter/ritzy-studio/pull/147
-
-Branch: `codex/catalog-ingestion-marina-home-feasibility`
-
-Touched files:
-- `docs/Tracks/v2-commercial/27_Marina_Home_Ingestion_Feasibility.md`
-- `docs/Tracks/v2-commercial/process/catalog-ingestion-agent-comms.md`
+None. PR #147 (https://github.com/Trueflutter/ritzy-studio/pull/147) merged into `main`.
 
 ## Current stage
 DUAL_TRACK:
 - `LIVE_INGESTION_BLOCKED_WAITING_FOR_APPROVAL`
-- `APPROVED_DOCS_ONLY_MARINA_HOME_FEASIBILITY_SPIKE`
+- `APPROVED_DRY_RUN_ONLY_MARINA_HOME_ADAPTER_SPIKE`
 
 ## Blockers
 Live ingestion remains blocked. Do not perform live catalog writes, DB/schema changes, generated DB type changes, production flags, deploys, payment/checkout changes, UI changes, Product Matching runtime coupling, Catalog-First runtime coupling, or broad crawler execution without explicit approval.
 
 ## Chief architect routing
-ARCHITECT_NOTE: Pan Home and Homes r Us now have dry-run-only adapter coverage. Keep both live ingestion paths blocked until a separate explicit approval removes the dry-run-only guards.
+ARCHITECT_NOTE: Pan Home, Homes r Us, and IKEA UAE now have dry-run-only adapter coverage. Keep live ingestion paths blocked until a separate explicit approval removes dry-run-only guards.
 
-Do not sit idle while live ingestion is blocked. PR #143 completed the dry-run-only IKEA UAE adapter. Start one docs-only Catalog Ingestion PR for Marina Home UAE feasibility only:
+Do not sit idle while live ingestion is blocked. PR #147 completed the Marina Home feasibility spike and recommended a tightly bounded dry-run-only adapter/parser spike. Start one small Catalog Ingestion PR for Marina Home dry-run-only coverage only:
 
-1. Branch from latest `main`; suggested branch `codex/catalog-ingestion-marina-home-feasibility`.
-2. Add or update `docs/Tracks/v2-commercial/27_Marina_Home_Ingestion_Feasibility.md`.
-3. Inspect only public documentation/source metadata and lightweight public pages needed to assess feasibility; do not run an ingestion crawler.
-4. Record canonical host, clean UAE category/product URL shapes, robots/terms notes, request pacing, accepted/rejected surfaces, static parser fields likely available, known gaps, and go/no-go criteria for a future dry-run-only adapter PR.
-5. Include a recommendation: proceed to dry-run-only adapter, defer for partner/feed access, or stop.
-6. Leave a tracked mailbox update pointing to the feasibility PR and keeping live ingestion blocked.
+1. Branch from latest `main`; suggested branch `codex/catalog-ingestion-marina-home-dry-run-adapter`.
+2. Implement the smallest dry-run-only Marina Home adapter/parser spike using sitemap-first, metadata-first discovery from the public UAE English sitemap and a tiny hand-curated Ritzy-relevant allowlist.
+3. Add saved fixtures for sitemap metadata and one or two clean category/product page samples before parser expansion.
+4. Add URL validators that accept only clean `https://www.marinahomeinteriors.com/en-uae/...html` category/product URLs and reject query/hash/search/filter/cart/account/checkout/review/tag/Magento `/catalog/...` paths before fetch.
+5. Extract only fields safely proven by public clean fixtures: canonical URL, product name, external SKU/code, image URLs/titles, source category route, conservative color/material hints from slug/image metadata, and source freshness. Leave price, sale price, availability, dimensions, and rich attributes `null` unless the clean fixtures prove them without private APIs or broad execution.
+6. Preserve `dryRunOnly` and add/extend static fixtures, unit tests, and dry-run command coverage consistent with existing retailer adapter patterns.
+7. Leave a tracked mailbox update pointing to the adapter PR and keeping live ingestion blocked.
 
-Hard stop: this docs-only PR must not execute crawlers, implement an adapter, add fixtures/tests/scripts, remove `dryRunOnly`, perform live catalog writes, change DB/schema/generated types, alter UI/runtime/app actions/prompts/payment/checkout, change production flags, deploy, widen request volume, use private APIs, bypass access controls, couple to Product Matching runtime, or couple to Catalog-First runtime.
+Hard stop: this adapter PR must not perform live catalog writes, remove `dryRunOnly`, broaden request volume beyond the tiny allowlist, call private APIs, use auth-only paths, execute headless browser ingestion at scale, use search/filter/query URLs, use cart/account/checkout/review/tag/Magento `/catalog/...` paths, change DB/schema/generated types, alter UI/runtime/app actions/prompts/payment/checkout, change production flags, deploy, couple to Product Matching runtime, or couple to Catalog-First runtime.
 
 ## Last action taken
-Opened PR #147 for the docs-only Marina Home UAE feasibility spike from latest `main`. The feasibility note records canonical host/path, robots constraints, accepted/rejected URL surfaces, source metadata, static parser feasibility, known gaps, and a recommendation for any future dry-run-only adapter.
+PR #147 merged the docs-only Marina Home UAE feasibility spike into `main`. The feasibility note records canonical host/path, robots constraints, accepted/rejected URL surfaces, source metadata, static parser feasibility, known gaps, and a recommendation for a future dry-run-only adapter.
 
 ## Next intended action
-Implementation agent: monitor PR #147 for reviewer feedback. If rejected, fix only listed docs blockers, rerun relevant verification, push the update, and report the new head. If approved and explicitly approved to merge, merge PR #147 only because runtime impact is none/docs-only, sync latest `main`, then stop at `AWAIT_CHIEF_ARCHITECT_RETAILER_ROUTING`.
+Implementation agent: start the Marina Home dry-run-only adapter/parser spike described above, open a small PR, and leave an `ARCHITECT_NOTE:` with PR URL, branch, head commit, files touched, verification run, parsed fixture coverage, null-field policy, and confirmation that no stop rule was crossed.
 
-Create or keep a Catalog Ingestion heartbeat after opening the PR. The heartbeat should run every 10 minutes and monitor:
+Create or keep a Catalog Ingestion heartbeat after starting the PR. The heartbeat should run every 10 minutes and monitor:
 
 - the active Catalog Ingestion PR, if one exists
 - `docs/Tracks/v2-commercial/process/catalog-ingestion-agent-comms.md`
@@ -49,7 +44,7 @@ Do not delete the Catalog Ingestion heartbeat just because a PR merged. Delete a
 ## Durable next-state handoff after merge
 Pan Home and Homes r Us live ingestion remain blocked by adapter `dryRunOnly` plus CLI/runner guards. Keep request volume low for any future dry runs, preserve Homes r Us `Crawl-delay: 10`, and avoid query URLs, `/catalog/` paths, private APIs, auth-only paths, search/filter URLs, and broad crawl behavior.
 
-Recommended next safe stage after the Marina Home feasibility PR merges: `AWAIT_CHIEF_ARCHITECT_RETAILER_ROUTING`. Do not start a Marina Home adapter, live ingestion, controlled preview, broader IKEA discovery, or another retailer without explicit Chief Architect/Sam routing.
+Recommended next safe stage after this routing PR merges: `APPROVED_DRY_RUN_ONLY_MARINA_HOME_ADAPTER_SPIKE`. Do not start live ingestion, controlled preview, broader retailer discovery, production flags, deploys, or runtime coupling from this approval.
 
 After any PR merges, the agent must not delete its last monitor and go idle unless this mailbox already points to the next safe action or explicitly records that no docs/domain/dry-run work is approved. If there is no next action, leave an `ARCHITECT_NOTE:` in the mailbox or PR requesting Chief Architect routing.
 
