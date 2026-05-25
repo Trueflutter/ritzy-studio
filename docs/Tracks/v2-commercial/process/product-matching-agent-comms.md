@@ -1,22 +1,22 @@
 # Product Matching Engine Agent Comms
 
 ## Current PR
-None. PR #119 merged.
+Draft PR #121: https://github.com/Trueflutter/ritzy-studio/pull/121 on branch `codex/product-match-dining-re-evidence`.
 
 ## Current stage
-NEXT_PR_PLANNED for a bounded dining re-evidence pass on the same target.
+WAITING_FOR_CHIEF_ARCHITECT after the bounded same-target dining re-evidence PR review/merge.
 
 ## Blockers
-No active implementation blocker. Chief Architect selected the next smallest Product Matching step after PR #119: rerun bounded dining evidence on the same target to validate whether the dining-chair and over-table-lighting scoring changes improved the warnings. Product Matching Engine V1 is still not approved for default-on activation, production rollout, broad deploy/production flag changes, live catalog writes, DB/schema changes, generated DB types, UI redesign, prompt changes, payment/checkout changes, Catalog-First runtime coupling, new preview targets, or broader allowlist expansion without a new approval.
+No active implementation blocker. The exact PR #120 handoff was followed: one local/QA-only same-target dining re-evidence pass was run for Dubai South / Ground Floor Dining Room from PR #117 after the PR #119 dining role-quality fix. Product Matching Engine V1 is still not approved for default-on activation, production rollout, broad deploy/production flag changes, live catalog writes, DB/schema changes, generated DB types, UI redesign, prompt changes, payment/checkout changes, Catalog-First runtime coupling, new preview targets, or broader allowlist expansion without a new approval.
 
 ## Chief architect question
-No open question. Chief Architect chose same-target dining re-evidence over a QA-harness-only reproducibility script or lane pause because PR #119 changed role-quality scoring and needs bounded evidence before any broader controlled-preview decision.
+Chief Architect should decide whether the post-PR119 same-target dining evidence clears the dining quality blocker for controlled default-off preview readiness. Evidence summary: QA stop rules still pass with 0 blockers and 8 warnings; dining chairs moved from the PR #117 stool selection to Lourin Dining Arm Chair; over-table lighting moved from PR #117 `closest_available` floor lamp to Javi 6-Lights Linen Chandelier as `strong_match`; remaining warnings are metadata/supporting coverage warnings.
 
 ## Last action taken
-Merged PR #119 after explicit implementation-agent merge instruction, synced `main` to `d4767e3`, and left this tracked mailbox update on `main`.
+Merged PR #120 at `0b86be3`, synced `main`, read this mailbox, ran exactly one same-target local/QA-only dining re-evidence pass, and captured the evidence in `docs/Tracks/v2-commercial/product-matching-evals/manual-qa/2026-05-25-post-119-dining-re-evidence.md`. Existing app action was not invoked, no draft shopping-list rows were created/refreshed, and no DB/live catalog writes were performed.
 
 ## Next intended action
-NEXT_PR_PLANNED: Product Matching implementation agent should open the smallest possible docs/evidence PR for a bounded dining re-evidence pass on the same Dubai South / Ground Floor Dining Room target used in PR #117. Keep the run local/QA-only if possible, do not invoke app actions, do not create or refresh draft shopping-list rows, do not change runtime code/env defaults, do not run new preview targets, and do not expand the allowlist. Compare the new evidence against PR #117, especially dining-chair manual-review status and over-table-lighting closest-available status.
+WAITING_FOR_CHIEF_ARCHITECT: review the same-target dining re-evidence PR and decide the next Product Matching stage. Recommended decision point: whether the dining chair and over-table-lighting quality blocker is cleared for controlled default-off preview readiness, or whether another bounded evidence pass / docs-only readiness update is needed.
 
 ## Durable next-state handoff after merge
-ARCHITECT_NOTE: Next approved Product Matching stage is exactly one bounded dining re-evidence pass on the same target from PR #117. This is not approval for new preview targets, allowlist expansion, app-action execution, draft shopping-list creates/refreshes, runtime/env-default changes, default-on activation, production rollout, broad deploy/production flag changes, live catalog writes, DB/schema/generated types, UI/prompt/payment/checkout changes, or Catalog-First runtime coupling. After the re-evidence PR merges, leave a tracked mailbox update on `main` with one of: `NEXT_PR_PLANNED`, `WAITING_FOR_CHIEF_ARCHITECT`, `WAITING_FOR_SAM_APPROVAL`, or `LANE_PAUSED`, plus the exact next action.
+ARCHITECT_NOTE: This PR is docs/evidence only. It does not approve or perform new preview targets, allowlist expansion, app-action execution, draft shopping-list creates/refreshes, runtime/env-default changes, default-on activation, production rollout, broad deploy/production flag changes, live catalog writes, DB/schema/generated types, UI/prompt/payment/checkout changes, or Catalog-First runtime coupling. After this re-evidence PR merges, leave a tracked mailbox update on `main` with one of: `NEXT_PR_PLANNED`, `WAITING_FOR_CHIEF_ARCHITECT`, `WAITING_FOR_SAM_APPROVAL`, or `LANE_PAUSED`, plus the exact next action.
