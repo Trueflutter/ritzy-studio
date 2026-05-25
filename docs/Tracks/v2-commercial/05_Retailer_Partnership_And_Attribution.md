@@ -130,4 +130,4 @@ Ritzy asks retailers for:
 ## Active Planned Ingestion Coverage
 
 - Pan Home UAE: planned dry-run-only adapter coverage via UAE sitemap/product URLs. Live catalog writes remain blocked pending separate approval.
-- Homes r Us UAE: next planned feasibility target after Pan Home; handle separately with category-seed-only discovery because query URLs are disallowed and `Crawl-delay: 10` applies.
+- Homes r Us UAE: planned dry-run-only adapter coverage via tiny clean category seeds. Live catalog writes remain blocked pending separate approval; query URLs and `/catalog/` paths remain disallowed, and `Crawl-delay: 10` applies.
