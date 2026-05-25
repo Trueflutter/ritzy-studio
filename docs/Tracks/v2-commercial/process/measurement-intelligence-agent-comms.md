@@ -1,7 +1,11 @@
 # Measurement Intelligence Agent Comms
 
 ## Current PR
-None. PR #146 (<https://github.com/Trueflutter/ritzy-studio/pull/146>) merged into `main`.
+PR #151: <https://github.com/Trueflutter/ritzy-studio/pull/151>
+
+Branch: `codex/measurement-reviewed-seed-json-candidate`
+
+PR #146 (<https://github.com/Trueflutter/ritzy-studio/pull/146>) merged into `main`.
 
 PR #144 (<https://github.com/Trueflutter/ritzy-studio/pull/144>) merged into `main`.
 
@@ -33,10 +37,10 @@ Do not sit idle while DB/schema/runtime work is blocked. PR #146 completed the s
 Hard stop: this domain-only PR must not add migrations, generated DB types, runtime/UI/app actions, Supabase connections or writes, seed importer writes, production data, external parser/vendor integration, private/user floor-plan assets, raw copyrighted plan images, Product Matching runtime coupling, Catalog-First runtime coupling, deploys, production flags, payment/checkout changes, or live customer-facing behavior.
 
 ## Last action taken
-PR #146 merged a docs-only seed-candidate shortlist into `main`. It narrows PR #144's feasibility pack to Murooj Al Furjan 4-bedroom townhouse and Maple at Dubai Hills Estate 4-bedroom Type 2E as the lowest-risk first reviewed structured-facts seed candidates.
+PR #151 opened the first reviewed structured-facts seed JSON candidate. It adds one default-off Murooj Al Furjan 4-bedroom townhouse candidate and a focused domain schema parse test.
 
 ## Next intended action
-Implementation agent: start the reviewed structured-facts seed JSON candidate described above, open a small PR, and leave an `ARCHITECT_NOTE:` with PR URL, branch, head commit, files touched, verification run, chosen file path, candidate records included, rights/confidence/disclaimer posture, and confirmation that no stop rule was crossed.
+Implementation agent: monitor PR #151 for review feedback, `CHIEF_ARCHITECT_REPLY:` comments, checks, and mergeability. Do not merge unless the review explicitly says approved to merge. If the PR is rejected, fix only listed blockers within the domain-only reviewed-seed-JSON-candidate scope.
 
 Create or keep a Measurement Intelligence heartbeat after starting the PR. The heartbeat should run every 10 minutes and monitor:
 
