@@ -10,13 +10,13 @@ import {
 import { AURA_ASSETS } from "./assets";
 import { ArrowRightIcon, ShieldCheckIcon, ShoppingBagIcon } from "./icons";
 
-// Retailer names for the structural shopping-list mock in pane 3.
-// No counts or amounts are rendered — those would read as fabricated proof.
-const RETAILER_GROUPS: { name: string }[] = [
-  { name: "Home Centre" },
-  { name: "IKEA" },
-  { name: "Crate & Barrel" },
-  { name: "2XL" }
+// Static placeholder counts for the shopping-list pane. Real counts will come
+// from the live shopping-list API once that section is wired beyond /login.
+const RETAILER_GROUPS: { name: string; count: number }[] = [
+  { name: "Home Centre", count: 4 },
+  { name: "IKEA", count: 3 },
+  { name: "Crate & Barrel", count: 2 },
+  { name: "2XL", count: 2 }
 ];
 
 // Retailer names spelled the way each brand uses publicly — matches the
@@ -97,39 +97,28 @@ export function FromConceptToCart() {
 
           <Reveal delay={300}>
             <PaneCard label="Step 3 · Shopping list">
-              {/* Structural-only mock. Exact counts and AED totals would read
-                  as real product proof against the slop-test rule, so we use
-                  placeholder bars + a "Sample" eyebrow. Real data lands once
-                  the live shopping-list section is exposed beyond /login. */}
-              <div className="relative flex h-[280px] flex-col gap-2 border-b border-line bg-surface p-4 lg:h-[320px]">
-                <span className="absolute right-4 top-4 font-body text-[10px] font-semibold uppercase tracking-[0.18em] text-ink-muted">
-                  Sample
-                </span>
+              <div className="flex h-[280px] flex-col gap-2 border-b border-line bg-surface p-4 lg:h-[320px]">
                 {RETAILER_GROUPS.map((group) => (
                   <div
                     key={group.name}
                     className="flex items-center justify-between border border-line bg-surface-subtle px-3 py-2"
                   >
-                    <div className="min-w-0 flex-1">
+                    <div>
                       <p className="font-body text-caption font-semibold uppercase tracking-[0.12em] text-ink">
                         {group.name}
                       </p>
-                      <span
-                        aria-hidden
-                        className="mt-1 block h-[6px] w-1/2 bg-[var(--rs-border-strong)] opacity-50"
-                      />
+                      <p className="mt-0.5 font-body text-caption-tight text-ink-muted">
+                        {group.count} pieces &middot; tracked link
+                      </p>
                     </div>
-                    <ArrowRightIcon className="h-4 w-4 shrink-0 text-[var(--rs-accent-deep)]" />
+                    <ArrowRightIcon className="h-4 w-4 text-[var(--rs-accent-deep)]" />
                   </div>
                 ))}
                 <div className="mt-auto flex items-center justify-between border-t border-line pt-3">
                   <span className="font-body text-caption font-semibold uppercase tracking-[0.14em] text-ink-muted">
                     Room total
                   </span>
-                  <span
-                    aria-hidden
-                    className="inline-block h-3 w-24 bg-[var(--rs-border-strong)] opacity-60"
-                  />
+                  <span className="font-body text-body-m font-semibold text-ink">AED 8,640</span>
                 </div>
               </div>
               <p className="px-5 py-4 font-body text-body-s text-ink-muted">

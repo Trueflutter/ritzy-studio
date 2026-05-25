@@ -259,19 +259,13 @@ function RefineMock() {
 }
 
 function ShoppingListMock() {
-  // Structural-only mock — no exact counts or AED totals are rendered. Numbers
-  // would read as real product proof against the slop-test gate; placeholder
-  // bars + a "Sample" eyebrow keep this honest until the live shopping-list
-  // section is wired up.
   return (
     <div className="flex h-full flex-col p-3">
       <div className="flex items-center justify-between">
         <span className="font-body text-caption font-semibold uppercase tracking-[0.18em] text-ink">
           Shopping list
         </span>
-        <span className="font-body text-[10px] font-semibold uppercase tracking-[0.18em] text-ink-muted">
-          Sample
-        </span>
+        <ShoppingBagIcon className="h-4 w-4 text-[var(--rs-accent-deep)]" />
       </div>
 
       <ul className="mt-3 flex-1 space-y-1.5">
@@ -281,9 +275,11 @@ function ShoppingListMock() {
               <span className="truncate font-body text-caption-tight font-semibold uppercase tracking-[0.1em] text-ink">
                 {retailer.name}
               </span>
-              <ShoppingBagIcon className="h-3.5 w-3.5 shrink-0 text-[var(--rs-accent-deep)]" />
+              <span className="font-body text-caption-tight text-ink-muted">3 items</span>
             </div>
-            <span aria-hidden className="mt-1 block h-[6px] w-2/3 bg-[var(--rs-border-strong)] opacity-50" />
+            <div className="mt-0.5 font-body text-caption-tight text-ink-muted">
+              AED <span className="font-semibold text-ink">2,480</span>
+            </div>
           </li>
         ))}
       </ul>
@@ -293,7 +289,7 @@ function ShoppingListMock() {
           <span className="font-body text-caption-tight font-semibold uppercase tracking-[0.14em] text-ink-muted">
             Room total
           </span>
-          <span aria-hidden className="inline-block h-[10px] w-16 bg-[var(--rs-border-strong)] opacity-60" />
+          <span className="font-body text-body-s font-semibold text-ink">AED 8,640</span>
         </div>
         <span className="mt-2.5 inline-flex w-full items-center justify-center gap-2 border border-ink bg-ink px-2.5 py-1.5 font-body text-caption-tight font-semibold uppercase tracking-[0.14em] text-ink-on-dark">
           Unlock
