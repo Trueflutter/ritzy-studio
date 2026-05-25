@@ -155,3 +155,37 @@ Stop and defer to partner/feed access if a future implementation requires:
 Proceed to a separate, explicitly approved, dry-run-only IKEA UAE adapter PR if Chief Architect/Sam want IKEA as the next budget/core catalog coverage candidate.
 
 The adapter should start from a tiny seed set and saved fixtures for one category and one product page. It should not use broad sitemap discovery, pagination expansion, private APIs, or live writes.
+
+## Dry-Run Adapter Scope
+
+PR status: routed after PR #139 for dry-run-only implementation.
+
+Implemented scope:
+
+- Adapter key: `ikea-uae`
+- CLI aliases: `ikea`, `ikea-uae`
+- Dry-run command: `pnpm --filter @ritzy-studio/ingestion ingest:ikea:dry-run -- --limit=2`
+- Live-write status: blocked by adapter `dryRunOnly` plus existing CLI/runner guards
+- Fixture coverage: one saved category fixture and one saved product fixture
+- Discovery posture: tiny hand-seeded category list; clean `/ae/en/cat/` category pages only; no pagination, sitemap breadth, search, filter, query, cart, account, checkout, auth-only, `/catalog/`, `/iows/`, `/retail/`, `/m3/`, `/cdn-cgi/`, recommendation, private module, or internal path traversal
+- Parser coverage: static category/product HTML and JSON-LD only for name, canonical URL, SKU/MPN, AED price, sale/strikethrough price where present, availability, image gallery, category, dimensions, color, material, and source freshness from dry-run fetch timestamp
+
+Known adapter gaps:
+
+- No broad sitemap discovery.
+- No pagination following.
+- No private commerce or availability APIs.
+- Product-page sale pricing remains conservative; category price specifications can carry strikethrough/list price.
+- Missing fields remain null rather than inferred from unrelated scripts.
+
+Controlled dry-run verification:
+
+- Command: `pnpm --filter @ritzy-studio/ingestion ingest:ikea:dry-run -- --limit=2`
+- Result: `seen: 2`, `failed: 0`, category counts `{ "sofas": 2 }`
+- Samples: GLOSTAD 3-seat sofa, Knisa dark grey at AED 495 and KIVIK 3-seat sofa, Tresund light beige at AED 1,695
+- Write behavior: dry-run summary only; no Supabase client or live write path used
+
+Live-write guard verification:
+
+- Command: `pnpm --filter @ritzy-studio/ingestion exec tsx src/cli.ts ikea`
+- Result: rejected with `ikea-uae is dry-run-only. Run with --dry-run; live catalog writes require a separate approved PR.`

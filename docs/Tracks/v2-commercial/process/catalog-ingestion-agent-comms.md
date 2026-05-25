@@ -1,12 +1,14 @@
 # Catalog Ingestion Agent Comms
 
 ## Current PR
-None. PR #138 (https://github.com/Trueflutter/ritzy-studio/pull/138) merged into `main`.
+Pending branch: `codex/ikea-uae-ingestion-dry-run`
+
+PR URL: to be filled after the dry-run-only IKEA UAE adapter PR is opened.
 
 ## Current stage
 DUAL_TRACK:
 - `LIVE_INGESTION_BLOCKED_WAITING_FOR_APPROVAL`
-- `APPROVED_DRY_RUN_ONLY_IKEA_UAE_ADAPTER`
+- `APPROVED_DRY_RUN_ONLY_IKEA_UAE_ADAPTER_IN_PROGRESS`
 
 ## Blockers
 Live ingestion remains blocked. Do not perform live catalog writes, DB/schema changes, generated DB type changes, production flags, deploys, payment/checkout changes, UI changes, Product Matching runtime coupling, Catalog-First runtime coupling, or broad crawler execution without explicit approval.
@@ -31,7 +33,7 @@ Chief Architect routing: start one small dry-run-only IKEA UAE adapter PR:
 Hard stop: this PR must not remove `dryRunOnly`, perform live catalog writes, change DB/schema/generated types, alter UI/runtime/app actions/prompts/payment/checkout, change production flags, deploy, widen request volume beyond the tiny dry-run scope, use private APIs, bypass access controls, use auth-only/search/filter/query/cart/checkout/account URLs, use `/catalog/` or other internal storefront paths, follow pagination/sitemap breadth, couple to Product Matching runtime, or couple to Catalog-First runtime.
 
 ## Last action taken
-Merged PR #138 for the docs-only IKEA UAE feasibility spike. This update did not execute crawlers, run ingestion commands, run dry-run ingestion commands, perform live writes, remove `dryRunOnly`, widen request volume beyond the tiny feasibility request set, implement an adapter, or touch runtime coupling.
+Started the dry-run-only IKEA UAE adapter PR from latest `origin/main`. This update keeps the adapter `dryRunOnly`, fixture-backed, tiny/hand-seeded, and blocked from live writes by existing CLI/runner guards.
 
 ## Next intended action
 Implementation agent: open the dry-run-only IKEA UAE adapter PR described above, update this mailbox with the PR URL after creation, then leave an `ARCHITECT_NOTE:` with PR URL, branch, head commit, files touched, verification run, dry-run command, and confirmation that no stop rule was crossed.
@@ -48,7 +50,7 @@ Do not delete the Catalog Ingestion heartbeat just because a PR merged. Delete a
 ## Durable next-state handoff after merge
 Pan Home and Homes r Us live ingestion remain blocked by adapter `dryRunOnly` plus CLI/runner guards. Keep request volume low for any future dry runs, preserve Homes r Us `Crawl-delay: 10`, and avoid query URLs, `/catalog/` paths, private APIs, auth-only paths, search/filter URLs, and broad crawl behavior.
 
-Recommended next safe stage after this routing PR merges: `APPROVED_DRY_RUN_ONLY_IKEA_UAE_ADAPTER`. Do not start live ingestion, controlled preview, or runtime coupling from this approval.
+Recommended next safe stage after the IKEA UAE adapter PR merges: `AWAIT_CHIEF_ARCHITECT_RETAILER_ROUTING`. Do not start live ingestion, controlled preview, broader IKEA discovery, or another retailer without explicit Chief Architect/Sam routing.
 
 After any PR merges, the agent must not delete its last monitor and go idle unless this mailbox already points to the next safe action or explicitly records that no docs/domain/dry-run work is approved. If there is no next action, leave an `ARCHITECT_NOTE:` in the mailbox or PR requesting Chief Architect routing.
 
