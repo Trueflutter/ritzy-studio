@@ -1,7 +1,7 @@
 # Product Matching Engine Agent Comms
 
 ## Current PR
-None. PR #129 (https://github.com/Trueflutter/ritzy-studio/pull/129) merged into `main` at `0d41e6ac9699f9ca52e0a511f01f57a025ae61aa`.
+Draft PR #135: https://github.com/Trueflutter/ritzy-studio/pull/135 on branch `codex/product-match-preview-runbook`.
 
 ## Current stage
 DUAL_TRACK:
@@ -27,10 +27,10 @@ Do not sit idle while waiting for that approval. Start one docs-only Product Mat
 Hard stop: this runbook PR must not configure or execute controlled preview, invoke app actions, expand allowlists, create/refresh draft shopping-list or catalog rows, change runtime/env defaults, DB/schema/generated types, UI, prompts, payment/checkout, production flags, deploys, live catalog writes, or Catalog-First runtime coupling.
 
 ## Last action taken
-Merged PR #129 at `0d41e6ac9699f9ca52e0a511f01f57a025ae61aa` after explicit Chief Architect approval. The merged warning burn-down keeps Product Matching default-off and improves deterministic QA stop-rule warning specificity using existing dimension, evidence completeness, freshness, and supporting-role metadata. No controlled-preview configuration/execution, app action, evidence pass, draft shopping-list row create/refresh, DB/schema/generated type change, live catalog write, UI/prompt/payment/checkout change, production flag/deploy, new preview target, allowlist expansion, or Catalog-First runtime coupling was performed.
+Merged PR #129 at `0d41e6ac9699f9ca52e0a511f01f57a025ae61aa` after explicit Chief Architect approval. The merged warning burn-down keeps Product Matching default-off and improves deterministic QA stop-rule warning specificity using existing dimension, evidence completeness, freshness, and supporting-role metadata. Then started the approved docs-only preview runbook PR from latest `main`; the runbook prepares Sam approval fields but does not configure or execute preview. No controlled-preview configuration/execution, app action, evidence pass, draft shopping-list row create/refresh, DB/schema/generated type change, live catalog write, UI/prompt/payment/checkout change, production flag/deploy, new preview target, allowlist expansion, or Catalog-First runtime coupling was performed.
 
 ## Next intended action
-Implementation agent: open the docs-only preview runbook PR described above, then leave an `ARCHITECT_NOTE:` with PR URL, branch, head commit, files touched, and confirmation that no stop rule was crossed.
+Implementation agent: open/review the docs-only preview runbook PR, then leave an `ARCHITECT_NOTE:` with PR URL, branch, head commit, files touched, verification run, and confirmation that no stop rule was crossed.
 
 Create or keep a Product Matching heartbeat after opening the PR. The heartbeat should run every 10 minutes and monitor:
 
