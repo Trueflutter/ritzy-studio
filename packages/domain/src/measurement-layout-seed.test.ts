@@ -100,3 +100,18 @@ const exampleJson = JSON.parse(
 const parsedJsonExample = measurementLayoutSeedDatasetSchema.parse(exampleJson);
 assert.equal(parsedJsonExample.layouts[0].id, "synthetic-dubai-garden-townhouse-4br-end");
 assert.deepEqual(parsedJsonExample, syntheticMeasurementLayoutSeedExample);
+
+const reviewedCandidateJson = JSON.parse(
+  readFileSync(
+    new URL("../../../docs/Tracks/v2-commercial/measurement-layout-seed.reviewed-candidates.json", import.meta.url),
+    "utf8"
+  )
+) as unknown;
+const parsedReviewedCandidate = measurementLayoutSeedDatasetSchema.parse(reviewedCandidateJson);
+assert.equal(parsedReviewedCandidate.layouts[0].id, "murooj-al-furjan-townhouse-4br-corner-layout-a");
+assert.equal(parsedReviewedCandidate.layouts[0].layoutConfidence, "prefill");
+assert.equal(parsedReviewedCandidate.layouts[0].sourceRightsStatus, "structured_facts_only");
+assert.ok(
+  parsedReviewedCandidate.layouts[0].rooms.every((room) => room.measurementConfidence === "prefill"),
+  "reviewed candidate must remain prefill-only"
+);
