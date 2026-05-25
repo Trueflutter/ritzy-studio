@@ -6,13 +6,14 @@ Runtime impact: none. This is a docs-only decision record.
 
 Product Matching Engine V1 is not approved for default-on activation, production rollout, live catalog writes, shopping-list writes, deployments, production flags, app-action flow changes, prompt changes, UI changes, DB/schema changes, generated DB type changes, or Catalog-First runtime coupling.
 
-After PRs #108-#110, the earlier PR #103-era blockers have been reduced to warning and decision-gate items:
+After PRs #108-#122, the earlier PR #103-era blockers and the later dining quality blocker have been reduced to warning and decision-gate items:
 
 - Bedroom bedside-table required-role blocker: cleared by PR #105 validation and fresh bedroom QA.
 - Dining/home-office timeout ambiguity: cleared as a QA-harness evidence issue by PR #108.
 - Home-office required desk `closest_available` blocker: cleared for the representative read-only external/static image probe by PRs #109 and #110.
+- Dining chair / over-table-lighting quality blocker: cleared for the same Dubai South dining target by PRs #119 and #121, and accepted by Chief Architect in PR #122.
 
-Controlled default-off preview is still not approved inside this PR. The current evidence is sufficient to prepare a controlled-preview decision, but Sam or Chief Architect must approve that preview separately.
+Controlled default-off preview is still not approved inside this PR. The current evidence is sufficient to request the next explicit approval gate, but Sam or Chief Architect must approve the preview configuration/execution plan separately.
 
 For the consolidated room-by-room map, proposed preview plan, remaining warnings, exact gates, and stop/rollback rules, see `2026-05-25-release-readiness-map.md`.
 
@@ -33,6 +34,9 @@ This decision is based on:
 - `manual-qa/2026-05-24-timeout-payload-investigation.md`
 - `manual-qa/2026-05-25-home-office-desk-role-quality-investigation.md`
 - `manual-qa/2026-05-25-post-109-home-office-read-only-qa.md`
+- `manual-qa/2026-05-25-bounded-dining-controlled-preview-evidence.md`
+- `manual-qa/2026-05-25-dining-quality-investigation.md`
+- `manual-qa/2026-05-25-post-119-dining-re-evidence.md`
 - `12_Product_Matching_Engine_PRD.md`
 
 ## Evidence Summary
@@ -40,7 +44,7 @@ This decision is based on:
 | Area | Latest result | Readiness impact |
 | --- | --- | --- |
 | Living room beige/cream sofa fidelity | Passed with warnings | No olive-sofa regression in retained evidence; supporting roles and metadata still need review. |
-| Dining chair role fidelity | Passed with warnings | Dining chairs stayed inside the chair-compatible pool and did not select bulky armchairs; lighting/storage warnings remain. |
+| Dining chair and over-table lighting fidelity | Passed with warnings | PR #121 same-target dining re-evidence moved from stool-like chair to dining arm chair and from closest-available floor lamp to chandelier `strong_match`; remaining dining warnings are metadata/supporting coverage warnings. |
 | Bedroom required roles | Passed with warnings | Bed and bedside tables pass required-role gates; dimension and catalog-evidence warnings remain. |
 | Home-office/study required desk | Representative probe passed with warnings | Required desk resolved as `strong_match` after PR #109/#110; full E2E selected Ritzy-generated home-office concept coverage remains pending. |
 | Timeout evidence | Investigated | PR #108 reduced the dining/home-office timeout issue to QA-harness evidence quality rather than a stable runtime defect. |
@@ -74,3 +78,7 @@ The minimum gates are:
 ## Coordination Note
 
 Catalog-First and Measurement should wait on the explicit gates listed in `2026-05-25-release-readiness-map.md`. They can continue docs/domain dry-run work, but should not wire runtime behavior, duplicate Product Matching retrieval/ranking/visual arbitration, strengthen fit decisions beyond available measurement confidence, or write live data before the controlled-preview decision is approved separately.
+
+## Recommended Next Gate
+
+`WAITING_FOR_SAM_APPROVAL`: request an explicit decision on whether to configure/execute the controlled default-off Product Matching V1 preview from the current evidence set. The approval must keep Product Matching V1 default-off globally, name the exact allowlist/environment, preserve no-write boundaries unless separately approved, and restate stop/rollback rules.
