@@ -1,7 +1,11 @@
 # Measurement Intelligence Agent Comms
 
 ## Current PR
-None. PR #144 (https://github.com/Trueflutter/ritzy-studio/pull/144) merged into `main`.
+PR #146: <https://github.com/Trueflutter/ritzy-studio/pull/146>
+
+Branch: `codex/measurement-layout-seed-candidate-shortlist`
+
+PR #144 (<https://github.com/Trueflutter/ritzy-studio/pull/144>) merged into `main`.
 
 Previous completed PR: PR #102 (<https://github.com/Trueflutter/ritzy-studio/pull/102>) merged into `main` at `f61b4e2027762c023a14663649936cefbec42db5`.
 
@@ -30,10 +34,10 @@ Do not sit idle while DB/schema/runtime work is blocked. PR #144 completed the f
 Hard stop: this docs-only PR must not add migrations, generated DB types, runtime/UI/app actions, Supabase connections or writes, seed importer writes, production data, external parser/vendor integration, private/user floor-plan assets, raw copyrighted plan images, Product Matching runtime coupling, Catalog-First runtime coupling, deploys, production flags, payment/checkout changes, or live customer-facing behavior.
 
 ## Last action taken
-PR #144 merged a docs-only source-feasibility pack for Measurement Intelligence layout-prefill candidates. It evaluates Murooj Al Furjan, Maple at Dubai Hills Estate, Elan at Tilal Al Ghaf, DAMAC Hills 2 Violet/Natura, and Arabian Ranches III Joy/Ruba for reviewed structured-facts seed feasibility.
+PR #146 opened a docs-only seed-candidate shortlist. It narrows PR #144's feasibility pack to Murooj Al Furjan 4-bedroom townhouse and Maple at Dubai Hills Estate 4-bedroom Type 2E as the lowest-risk first reviewed structured-facts seed candidates.
 
 ## Next intended action
-Implementation agent: open the docs-only seed-candidate shortlist PR described above, then leave an `ARCHITECT_NOTE:` with PR URL, branch, head commit, files touched, verification run, recommendation, and confirmation that no stop rule was crossed.
+Implementation agent: monitor PR #146 for review feedback, `CHIEF_ARCHITECT_REPLY:` comments, checks, and mergeability. Do not merge unless the review explicitly says approved to merge. If the PR is rejected, fix only listed blockers within the docs-only seed-candidate-shortlist scope.
 
 Create or keep a Measurement Intelligence heartbeat after opening the PR. The heartbeat should run every 10 minutes and monitor:
 
