@@ -7,16 +7,27 @@ import {
   SectionEyebrow
 } from "@ritzy-studio/ui";
 
-import { AURA_ASSETS, RETAILERS } from "./assets";
+import { AURA_ASSETS } from "./assets";
 import { ArrowRightIcon, ShieldCheckIcon, ShoppingBagIcon } from "./icons";
 
 // Static placeholder counts for the shopping-list pane. Real counts will come
 // from the live shopping-list API once that section is wired beyond /login.
 const RETAILER_GROUPS: { name: string; count: number }[] = [
   { name: "Home Centre", count: 4 },
-  { name: "IKEA UAE", count: 3 },
-  { name: "Crate & Barrel UAE", count: 2 },
-  { name: "2XL Home", count: 2 }
+  { name: "IKEA", count: 3 },
+  { name: "Crate & Barrel", count: 2 },
+  { name: "2XL", count: 2 }
+];
+
+// Retailer names spelled the way each brand uses publicly — matches the
+// top-of-page trust bar so the same six names reappear in the same order.
+const RETAILER_NAMES = [
+  "Home Centre",
+  "Pan Home",
+  "Chattels & More",
+  "Crate & Barrel",
+  "2XL",
+  "IKEA"
 ];
 
 /**
@@ -117,11 +128,13 @@ export function FromConceptToCart() {
           </Reveal>
         </div>
 
-        {/* Retailer logo strip */}
+        {/* Retailer logo strip — full names, ink-muted typography. Same six
+            retailers as the top-of-page trust bar but spread across with more
+            breathing room since this is the section that explains the model. */}
         <Reveal delay={300}>
-          <MarketingPanel className="mt-14 px-6 py-6 sm:px-10 sm:py-8">
-            <div className="flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between sm:gap-10">
-              <div className="max-w-[300px]">
+          <MarketingPanel className="mt-14 px-6 py-8 sm:px-10 sm:py-10">
+            <div className="flex flex-col gap-8 lg:flex-row lg:items-center lg:justify-between lg:gap-12">
+              <div className="lg:max-w-[260px]">
                 <p className="font-body text-caption font-semibold uppercase tracking-[0.18em] text-[var(--rs-accent-deep)]">
                   Sourced from
                 </p>
@@ -129,20 +142,18 @@ export function FromConceptToCart() {
                   UAE retailers Ritzy knows.
                 </p>
               </div>
-              <div className="grid flex-1 grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-                {RETAILERS.map((retailer) => (
-                  <div
-                    key={retailer.name}
-                    className="flex h-[64px] items-center justify-center border border-line bg-surface px-3 text-center"
-                    title={retailer.name}
-                  >
-                    {/* ASSET: aura-cdn / retailer-placeholder — swap with logo SVG */}
-                    <span className="font-body text-caption-tight font-semibold uppercase tracking-[0.16em] text-ink">
-                      {retailer.short}
+              <ul className="grid flex-1 grid-cols-2 gap-x-8 gap-y-5 sm:grid-cols-3 lg:grid-cols-6 lg:gap-x-6">
+                {RETAILER_NAMES.map((name) => (
+                  <li key={name} className="flex items-center justify-center text-center">
+                    {/* ASSET: aura-cdn / retailer-placeholder — swap each name span
+                        for an SVG logo at the same footprint when partner brand
+                        assets land. Until then, typographic treatment is canonical. */}
+                    <span className="font-body text-body-s font-medium uppercase tracking-[0.18em] text-ink-muted">
+                      {name}
                     </span>
-                  </div>
+                  </li>
                 ))}
-              </div>
+              </ul>
             </div>
           </MarketingPanel>
         </Reveal>
@@ -157,8 +168,8 @@ export function FromConceptToCart() {
             />
             <TrustItem
               icon={<ShieldCheckIcon className="h-6 w-6 text-[var(--rs-accent-deep)]" />}
-              title="Tracked links"
-              body="Outbound clicks open the retailer with attribution intact, never bypassed."
+              title="Buy where you trust"
+              body="Each piece opens in its retailer's flow — Home Centre, IKEA, the rest. No middleman cart."
             />
             <TrustItem
               icon={<ArrowRightIcon className="h-6 w-6 text-[var(--rs-accent-deep)]" />}

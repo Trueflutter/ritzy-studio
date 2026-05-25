@@ -10,7 +10,7 @@ export function Footer() {
               Ritzy Studio
             </p>
             <p className="mt-5 max-w-[22rem] font-body text-body-m text-ink-muted">
-              AI-assisted residential interior design for the homes and studios of Dubai. Designed quickly. Sourced for real.
+              AI-assisted residential interior design for UAE homes and the studios that design them. Designed quickly. Sourced for real.
             </p>
           </div>
 

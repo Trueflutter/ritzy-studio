@@ -87,7 +87,7 @@ export function FinalCta() {
                   &ldquo;A real shopping list is the thing every render had been missing.&rdquo;
                 </p>
                 <p className="mt-5 font-body text-caption font-semibold uppercase tracking-[0.18em] text-ink-on-dark-muted">
-                  Voice to confirm — placeholder
+                  — Faten Ibrahim
                 </p>
               </div>
 

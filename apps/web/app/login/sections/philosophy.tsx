@@ -9,12 +9,9 @@ import {
 
 import { AURA_ASSETS } from "./assets";
 import {
-  BookmarkIcon,
-  CrosshairIcon,
   LayoutIcon,
   PaletteIcon,
   ScanSearchIcon,
-  ShieldCheckIcon,
   SparklesIcon
 } from "./icons";
 
@@ -22,7 +19,7 @@ export function Philosophy() {
   return (
     <section className="border-t border-line py-20 lg:py-28">
       <div className="mx-auto grid max-w-[1440px] gap-14 px-5 md:px-8 lg:grid-cols-[0.92fr_1.08fr] lg:gap-20 lg:px-12 xl:px-16">
-        {/* LEFT — copy + quote + three points */}
+        {/* LEFT — copy + quote */}
         <div>
           <Reveal>
             <SectionEyebrow>Our approach</SectionEyebrow>
@@ -35,7 +32,7 @@ export function Philosophy() {
             </MarketingDisplay>
 
             <p className="mt-7 max-w-[34rem] font-body text-body-l text-ink-secondary">
-              Ritzy exists to bring clarity to the moment a project gets real. Upload your room, explore curated directions, and see polished concepts with a real shopping list — so you can move from uncertainty to a room you can actually build.
+              Every piece on a Ritzy concept is a real SKU from a UAE retailer — no fabricated catalogue, no &ldquo;something like this&rdquo; renders. Upload your room, explore curated directions, and see polished concepts with a shopping list you can actually buy from.
             </p>
           </Reveal>
 
@@ -57,26 +54,6 @@ export function Philosophy() {
                 </div>
               </div>
             </MarketingPanel>
-          </Reveal>
-
-          <Reveal delay={300}>
-            <div className="mt-14 grid gap-8 sm:grid-cols-3 sm:gap-6">
-              <PhilosophyPoint
-                icon={<CrosshairIcon className="h-7 w-7 text-[var(--rs-accent-deep)]" />}
-                title="Clarity first"
-                body="Turn guesswork into a confident creative direction."
-              />
-              <PhilosophyPoint
-                icon={<BookmarkIcon className="h-7 w-7 text-[var(--rs-accent-deep)]" />}
-                title="Sourced, not invented"
-                body="Every piece on the list is a real SKU from a UAE retailer."
-              />
-              <PhilosophyPoint
-                icon={<ShieldCheckIcon className="h-7 w-7 text-[var(--rs-accent-deep)]" />}
-                title="Built for Dubai"
-                body="Homes, clients, and budgets the region actually has."
-              />
-            </div>
           </Reveal>
         </div>
 
@@ -133,26 +110,6 @@ export function Philosophy() {
         </div>
       </div>
     </section>
-  );
-}
-
-function PhilosophyPoint({
-  icon,
-  title,
-  body
-}: {
-  icon: React.ReactNode;
-  title: string;
-  body: string;
-}) {
-  return (
-    <div>
-      {icon}
-      <h3 className="mt-4 font-body text-body-m font-semibold uppercase tracking-[0.06em] text-ink">
-        {title}
-      </h3>
-      <p className="mt-3 font-body text-body-s text-ink-muted">{body}</p>
-    </div>
   );
 }
 

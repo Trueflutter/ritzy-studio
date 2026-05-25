@@ -18,36 +18,33 @@ type Style = {
   variant: "large" | "compact";
 };
 
+// 4 of Ritzy's 6 styles shown on the landing — Modern, Contemporary,
+// Scandinavian, Bohemian. Industrial + Traditional live in the app's full
+// picker so users discover them once they're in the brief flow.
 const STYLES: Style[] = [
   {
-    name: "Editorial Luxe",
-    body: "Refined materials, layered textures, and a sense of quiet opulence.",
+    name: "Contemporary",
+    body: "Current design language. Mixed textures, curved forms, evolving palette.",
     image: AURA_ASSETS.conceptEditorial,
     popular: true,
     variant: "large"
   },
   {
-    name: "Soft Minimal",
-    body: "Understated and serene. Beauty in restraint.",
+    name: "Modern",
+    body: "Clean lines, neutral palette, intentional simplicity.",
     image: AURA_ASSETS.conceptSoftMinimal,
     variant: "large"
   },
   {
-    name: "Japandi",
-    body: "Japanese calm meets Scandinavian function.",
-    image: AURA_ASSETS.conceptSoftMinimal,
-    variant: "compact"
-  },
-  {
-    name: "Modern Organic",
-    body: "Earthy materials, fluid forms, spaces that feel alive.",
-    image: AURA_ASSETS.conceptEditorialSm,
-    variant: "compact"
-  },
-  {
-    name: "Warm Contemporary",
-    body: "Modern lines with warmth and texture for real life.",
+    name: "Scandinavian",
+    body: "Light wood, soft neutrals. Cosy and quietly functional.",
     image: AURA_ASSETS.conceptWarmContemporary,
+    variant: "compact"
+  },
+  {
+    name: "Bohemian",
+    body: "Layered patterns, plants, collected pieces from many places.",
+    image: AURA_ASSETS.conceptEditorialSm,
     variant: "compact"
   }
 ];
@@ -72,7 +69,7 @@ export function StyleLibrary() {
             </MarketingDisplay>
 
             <p className="mt-7 max-w-[32rem] font-body text-body-l text-ink-secondary">
-              Curated aesthetics, timeless ideas, and refined interior languages — chosen for the way Dubai homes actually live.
+              Four directions we lead with on the landing. Two more — Industrial and Traditional — wait in the app, so you can shape every room to the way UAE homes actually live.
             </p>
 
             <a
