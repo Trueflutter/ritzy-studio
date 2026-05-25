@@ -1,12 +1,10 @@
 # Product Matching Engine Agent Comms
 
 ## Current PR
-Draft PR #129: https://github.com/Trueflutter/ritzy-studio/pull/129 on branch `codex/product-match-warning-burn-down`.
+None. PR #129 (https://github.com/Trueflutter/ritzy-studio/pull/129) merged into `main` at `0d41e6ac9699f9ca52e0a511f01f57a025ae61aa`.
 
 ## Current stage
-DUAL_TRACK:
-- `WAITING_FOR_SAM_APPROVAL` for controlled default-off preview configuration/execution.
-- `APPROVED_NON_RUNTIME_WARNING_BURN_DOWN` for the next small implementation/docs PR.
+`WAITING_FOR_SAM_APPROVAL` for controlled default-off preview configuration/execution.
 
 ## Blockers
 Controlled default-off preview configuration/execution remains blocked until Sam explicitly approves the exact scope, environment, allowlist, app path, write boundary, and stop/rollback rules.
@@ -14,23 +12,13 @@ Controlled default-off preview configuration/execution remains blocked until Sam
 Product Matching Engine V1 is still not approved for default-on activation, production rollout, broad deploy/production flag changes, live catalog writes, DB/schema changes, generated DB types, UI redesign, prompt changes, payment/checkout changes, Catalog-First runtime coupling, new preview targets, app-action execution, draft shopping-list creates/refreshes, controlled-preview configuration/execution, or broader allowlist expansion without a new approval.
 
 ## Chief architect routing
-ARCHITECT_NOTE: Do not sit idle while the preview activation gate waits for Sam. Start the next smallest Product Matching PR that does not cross the activation boundary:
-
-1. Read the current readiness docs and latest QA evidence only.
-2. Identify the remaining warning classes from PR #123/#125, especially metadata/supporting evidence completeness and dimension/catalog freshness warnings.
-3. Propose and implement one narrow default-off warning-burn-down improvement that stays inside domain/test/docs or QA-harness-only code.
-4. Prefer a change that improves warning specificity, evidence reporting, or deterministic QA visibility without invoking app actions or creating/refreshing shopping-list/catalog rows.
-5. Open a small PR and include before/after evidence from local tests or static fixtures.
-
-If the warning-burn-down pass discovers that the next useful improvement requires controlled-preview execution, app actions, draft shopping-list writes, DB/schema/generated types, UI/prompt/payment/checkout changes, production flags, live catalog writes, or Catalog-First runtime coupling, stop and ask Chief Architect instead of widening the PR.
+ARCHITECT_NOTE: PR #129 completed the approved non-runtime warning-burn-down pass. Do not run or configure controlled preview until Sam explicitly approves the exact scope, environment, allowlist, app path, write boundary, and stop/rollback rules.
 
 ## Last action taken
-Merged PR #125 at `1315a4c` after explicit implementation-agent merge instruction. Then started the approved non-runtime warning burn-down from latest `main`: deterministic QA stop-rule warnings now surface existing dimension, evidence completeness, freshness, and supporting-role details more specifically. Existing app action was not invoked, no evidence pass was run, no preview configuration/execution was performed, no draft shopping-list rows were created/refreshed, and no DB/live catalog writes were performed.
+Merged PR #129 at `0d41e6ac9699f9ca52e0a511f01f57a025ae61aa` after explicit Chief Architect approval. The merged warning burn-down keeps Product Matching default-off and improves deterministic QA stop-rule warning specificity using existing dimension, evidence completeness, freshness, and supporting-role metadata. No controlled-preview configuration/execution, app action, evidence pass, draft shopping-list row create/refresh, DB/schema/generated type change, live catalog write, UI/prompt/payment/checkout change, production flag/deploy, new preview target, allowlist expansion, or Catalog-First runtime coupling was performed.
 
 ## Next intended action
-Implementation agent: open/review the small warning-burn-down PR. Keep the PR small and default-off. Do not run or configure controlled preview.
-
-Chief Architect/Sam: separately answer the controlled-preview approval request with exact scope, environment, allowlist, app-path/write boundary, and stop/rollback rules.
+Sam: answer the controlled-preview approval request with exact scope, environment, allowlist, app-path/write boundary, and stop/rollback rules before any preview configuration or execution.
 
 ## Durable next-state handoff after merge
-The preview activation gate remains `WAITING_FOR_SAM_APPROVAL`. The non-runtime warning-burn-down lane may proceed in a small PR under the guardrails above.
+WAITING_FOR_SAM_APPROVAL: controlled default-off preview configuration/execution remains blocked until Sam explicitly approves the exact scope, environment, allowlist, app path, write boundary, and stop/rollback rules.
