@@ -184,6 +184,7 @@ All product UI uses tokens. Hex values below are canonical.
 
 - **Permitted:** auth pages, project-dashboard empty state, presentation export cover.
 - **Forbidden:** operational screens (room upload, brief, concept gallery, critique, product matching, product substitution, final render review, settings).
+- **Marketing surfaces only (opt-in, see §17.3):** the marketing display tier (`--rs-text-display-marketing`, ≈96px Cormorant Light, tracking `-0.035em`, leading `0.94`) is permitted on the public landing (`/login`) and any future marketing routes (`/about`, `/pricing`, `/for-designers`). Never used inside the authenticated app.
 
 ---
 
@@ -1267,6 +1268,47 @@ const config: Config = {
 
 export default config;
 ```
+
+---
+
+### 17.3 Marketing surfaces (opt-in)
+
+The public marketing landing (`/login` today, plus future `/about`, `/pricing`, `/for-designers`) needs more typographic and shadow impact than the authenticated app. Two opt-in tokens unlock that without polluting the operational token set.
+
+**Allowed routes.** `/login` and any future marketing route. **Never** the studio dashboard, the brief flow, the concept / product-matching / shopping-list / presentation screens, or any settings chrome.
+
+**Tokens introduced.**
+
+```css
+:root {
+  /* Marketing display tier — Cormorant Light, larger and tighter than --rs-text-display-xl. */
+  --rs-text-display-marketing: clamp(56px, 8vw, 96px);
+  --rs-tracking-display-marketing: -0.035em;
+  --rs-leading-display-marketing: 0.94;
+
+  /* Single elevated shadow for floating overlays inside the marketing hero. */
+  /* Sits one notch above --rs-shadow-2; never used on operational surfaces. */
+  --rs-shadow-marketing-float:
+    0 1px 2px rgba(31, 31, 29, 0.06),
+    0 18px 42px rgba(31, 31, 29, 0.08);
+}
+```
+
+Tailwind mappings (added to `@theme inline`):
+
+- `text-display-marketing` → `--rs-text-display-marketing`
+- `shadow-marketing-float` → `--rs-shadow-marketing-float`
+
+**Locked rules that stay in force on marketing surfaces.**
+
+- Buttons remain square (`border-radius: 0`). Marketing CTAs may use a taller `size="hero"` Button variant (62px tall) but never round corners.
+- Inputs remain square. The newsletter form in the marketing footer is presentational only in the first cut; when wired up, the input stays square.
+- Cards remain at `--rs-radius-2` (4px) maximum. The Aura template inspiration uses 20px corners; Ritzy does not. Marketing panels (`MarketingPanel` in `packages/ui`) inherit `--rs-radius-2` with hairline border.
+- No `inset 0 1px 0 rgba(255,255,255,n)` highlight on cards. Hairline border carries the edge definition.
+- Fonts stay locked to Cormorant Garamond + DM Sans. No Manrope, no Newsreader.
+- One subtle elevation tier remains the rule. The new `--rs-shadow-marketing-float` is a single-step lift (no three-layer Aura-style drop), scoped to floating hero overlays.
+
+**Rationale.** Opens the door for landing-page impact without polluting operational tokens. The marketing display tier is a single new variable, not a re-scale; the rest of the type scale (`--rs-text-display-xl` through `--rs-text-caption-tight`) is unchanged. The marketing-float shadow is one additional step beyond `--rs-shadow-2`, used only on hero overlays, not on the page body.
 
 ---
 
