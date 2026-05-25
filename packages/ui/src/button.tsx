@@ -3,9 +3,11 @@ import type { AnchorHTMLAttributes, ButtonHTMLAttributes, ReactNode } from "reac
 import { cx } from "./utils";
 
 export type ButtonVariant = "primary" | "secondary" | "accent" | "quiet" | "chrome" | "destructive";
+export type ButtonSize = "default" | "hero";
 
 type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
   variant?: ButtonVariant;
+  size?: ButtonSize;
   leading?: ReactNode;
   trailing?: ReactNode;
 };
@@ -25,11 +27,29 @@ const variantClasses: Record<ButtonVariant, string> = {
     "border-[var(--rs-destructive)] bg-transparent text-[var(--rs-destructive)] hover:bg-[var(--rs-destructive)] hover:text-[var(--rs-surface)] disabled:border-[var(--rs-border-strong)] disabled:bg-transparent disabled:text-[var(--rs-text-disabled)]"
 };
 
+const sizeClasses: Record<ButtonSize, string> = {
+  default: "h-[52px] gap-3 px-8 font-body text-button font-medium uppercase",
+  hero: "h-[62px] gap-3 px-9 font-body text-button-l font-semibold uppercase tracking-[0.06em]"
+};
+
+function leadingIconClass(variant: ButtonVariant) {
+  if (variant === "chrome") return "text-[var(--rs-text-muted)] group-hover:text-[var(--rs-text)]";
+  if (variant === "quiet") return "text-[var(--rs-accent-deep)]";
+  return "text-inherit";
+}
+
+function trailingIconClass(variant: ButtonVariant) {
+  if (variant === "chrome") return "text-[var(--rs-text-muted)] group-hover:text-[var(--rs-text)]";
+  if (variant === "primary" || variant === "secondary" || variant === "accent") return "text-inherit";
+  return "text-[var(--rs-accent-deep)]";
+}
+
 export function Button({
   children,
   className,
   type = "button",
   variant = "primary",
+  size = "default",
   leading,
   trailing,
   ...props
@@ -41,10 +61,8 @@ export function Button({
   return (
     <button
       className={cx(
-        "inline-flex items-center justify-center border border-solid leading-none transition-colors duration-micro ease-standard focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[var(--rs-focus-ring)] disabled:cursor-not-allowed",
-        isInline
-          ? "gap-2"
-          : "h-[52px] gap-3 px-8 font-body text-button font-medium uppercase",
+        "group inline-flex items-center justify-center border border-solid leading-none transition-colors duration-micro ease-standard focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[var(--rs-focus-ring)] disabled:cursor-not-allowed",
+        isInline ? "gap-2" : sizeClasses[size],
         isQuiet && "text-button-quiet",
         variantClasses[variant],
         className
@@ -56,7 +74,8 @@ export function Button({
         <span
           aria-hidden
           className={cx(
-            "text-[var(--rs-text-muted)] transition-transform duration-standard ease-standard",
+            leadingIconClass(variant),
+            "transition-transform duration-standard ease-standard",
             isInline && "group-hover:-translate-x-1"
           )}
         >
@@ -68,7 +87,7 @@ export function Button({
         <span
           aria-hidden
           className={cx(
-            isChrome ? "text-[var(--rs-text-muted)]" : "text-[var(--rs-accent-deep)]",
+            trailingIconClass(variant),
             "transition-transform duration-standard ease-standard",
             isInline && "group-hover:translate-x-1"
           )}
@@ -82,6 +101,7 @@ export function Button({
 
 type ButtonLinkProps = AnchorHTMLAttributes<HTMLAnchorElement> & {
   variant?: ButtonVariant;
+  size?: ButtonSize;
   leading?: ReactNode;
   trailing?: ReactNode;
 };
@@ -90,6 +110,7 @@ export function ButtonLink({
   children,
   className,
   variant = "primary",
+  size = "default",
   leading,
   trailing,
   ...props
@@ -102,9 +123,7 @@ export function ButtonLink({
     <a
       className={cx(
         "group inline-flex items-center justify-center border border-solid leading-none transition-colors duration-micro ease-standard focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[var(--rs-focus-ring)]",
-        isInline
-          ? "gap-2"
-          : "h-[52px] gap-3 px-8 font-body text-button font-medium uppercase",
+        isInline ? "gap-2" : sizeClasses[size],
         isQuiet && "text-button-quiet",
         variantClasses[variant],
         className
@@ -115,8 +134,8 @@ export function ButtonLink({
         <span
           aria-hidden
           className={cx(
+            leadingIconClass(variant),
             "transition-transform duration-standard ease-standard",
-            isChrome ? "text-[var(--rs-text-muted)] group-hover:text-[var(--rs-text)]" : "text-[var(--rs-accent-deep)]",
             "group-hover:-translate-x-1"
           )}
         >
@@ -128,8 +147,8 @@ export function ButtonLink({
         <span
           aria-hidden
           className={cx(
+            trailingIconClass(variant),
             "transition-transform duration-standard ease-standard",
-            isChrome ? "text-[var(--rs-text-muted)] group-hover:text-[var(--rs-text)]" : "text-[var(--rs-accent-deep)]",
             "group-hover:translate-x-1"
           )}
         >
