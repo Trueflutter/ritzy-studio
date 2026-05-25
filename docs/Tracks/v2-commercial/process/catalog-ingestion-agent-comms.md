@@ -1,12 +1,14 @@
 # Catalog Ingestion Agent Comms
 
 ## Current PR
-None. PR #136 (https://github.com/Trueflutter/ritzy-studio/pull/136) merged into `main`.
+Pending branch: `codex/catalog-ingestion-ikea-feasibility`
+
+PR URL: to be filled after the docs-only IKEA UAE feasibility PR is opened.
 
 ## Current stage
 DUAL_TRACK:
 - `LIVE_INGESTION_BLOCKED_WAITING_FOR_APPROVAL`
-- `APPROVED_DOCS_ONLY_IKEA_UAE_FEASIBILITY_SPIKE`
+- `APPROVED_DOCS_ONLY_IKEA_UAE_FEASIBILITY_SPIKE_IN_PROGRESS`
 
 ## Blockers
 Live ingestion remains blocked. Do not perform live catalog writes, DB/schema changes, generated DB type changes, production flags, deploys, payment/checkout changes, UI changes, Product Matching runtime coupling, Catalog-First runtime coupling, or broad crawler execution without explicit approval.
@@ -25,10 +27,10 @@ Start one docs-only Catalog Ingestion PR for IKEA UAE feasibility only:
 5. Include a recommendation: proceed to dry-run-only adapter, defer for partner/feed access, or stop.
 6. Leave a tracked mailbox update pointing to the feasibility PR and keeping live ingestion blocked.
 
-Hard stop: this docs-only PR must not execute crawlers, implement an adapter, add fixtures/tests/scripts, remove `dryRunOnly`, perform live catalog writes, change DB/schema/generated types, alter UI/runtime/app actions/prompts/payment/checkout, change production flags, deploy, widen request volume, use private APIs, bypass access controls, couple to Product Matching runtime, or couple to Catalog-First runtime.
+Hard stop: this docs-only PR must not execute crawlers, implement an adapter, add fixtures/tests/scripts, remove `dryRunOnly`, perform live catalog writes, change DB/schema/generated types, alter UI/runtime/app actions/prompts/payment/checkout, change production flags, deploy, widen request volume, use private APIs, bypass access controls, use auth-only/search/filter/query/cart/checkout/account URLs, use `/catalog/` or other internal storefront paths, couple to Product Matching runtime, or couple to Catalog-First runtime.
 
 ## Last action taken
-Merged PR #136 for the docs-only coverage/readiness map. This update is documentation-only and does not execute crawlers, run dry-run commands, perform live writes, remove `dryRunOnly`, widen request volume, or touch runtime coupling.
+Started the docs-only IKEA UAE feasibility spike from latest `origin/main`. This update is documentation-only and does not execute crawlers, run ingestion commands, run dry-run ingestion commands, perform live writes, remove `dryRunOnly`, widen request volume beyond the tiny feasibility request set, implement an adapter, or touch runtime coupling.
 
 ## Next intended action
 Implementation agent: open the docs-only IKEA UAE feasibility PR described above, update this mailbox with the PR URL after creation, then leave an `ARCHITECT_NOTE:` with PR URL, branch, head commit, files touched, verification run, recommendation, and confirmation that no stop rule was crossed.
@@ -45,7 +47,7 @@ Do not delete the Catalog Ingestion heartbeat just because a PR merged. Delete a
 ## Durable next-state handoff after merge
 Pan Home and Homes r Us live ingestion remain blocked by adapter `dryRunOnly` plus CLI/runner guards. Keep request volume low for any future dry runs, preserve Homes r Us `Crawl-delay: 10`, and avoid query URLs, `/catalog/` paths, private APIs, auth-only paths, search/filter URLs, and broad crawl behavior.
 
-Recommended next safe stage after this docs-only routing PR merges: `APPROVED_DOCS_ONLY_IKEA_UAE_FEASIBILITY_SPIKE`. Do not start an IKEA adapter, crawler execution, controlled preview, or live ingestion stage until Chief Architect/Sam explicitly assigns it after reviewing the feasibility result.
+Recommended next safe stage after the IKEA UAE feasibility PR merges: `AWAIT_CHIEF_ARCHITECT_IKEA_ADAPTER_ROUTING`. Do not start an IKEA adapter unless Chief Architect/Sam explicitly approve a separate dry-run-only adapter PR.
 
 After any PR merges, the agent must not delete its last monitor and go idle unless this mailbox already points to the next safe action or explicitly records that no docs/domain/dry-run work is approved. If there is no next action, leave an `ARCHITECT_NOTE:` in the mailbox or PR requesting Chief Architect routing.
 
