@@ -76,7 +76,7 @@ Plus a reveal-on-scroll CSS pair:
 }
 ```
 
-Allowed routes per brand spec §17.3: `/login` and any future marketing route (`/about`, `/pricing`, `/for-designers`). Not used inside the authenticated app's operational chrome unless explicitly opted in per this brief.
+Allowed routes per brand spec §17.3: `/login` and any future marketing route (`/about`, `/pricing`, `/for-designers`). Not used inside the authenticated app — this brief does not grant an in-app opt-in for the marketing display tier; the spec boundary is locked. In-app screens use the existing app display tier (`display-l` / `display-m`, Cormorant 300). The other primitives (`SectionEyebrow`, `DecorativeRule`, `MarketingPanel`, `Reveal`) are not bound by the same routing restriction and are used inside the app where they earn their place.
 
 ### Components (in `packages/ui/src/`)
 
@@ -103,21 +103,28 @@ All five exports are public via `packages/ui/src/index.ts`.
 
 ## App alignment strategy
 
-### High-confidence applications (apply landing patterns here)
+### Landed (alignment work merged to `main`)
 
-- **`/` dashboard empty state.** Today: a dashed-border centered block. Replace with: `SectionEyebrow` + `DecorativeRule` + `MarketingDisplay as="h2"` + body + CTA. Same brand DNA, just leveled up.
-- **`/onboarding`** (persona selection). Two persona cards become `MarketingPanel`-style with image headers, hairline borders, ochre accent on selected state. Add a `SectionEyebrow` above the headline.
-- **`/projects/new`** (project creation). Use `MarketingPanel` for the form container, `SectionEyebrow` + `DecorativeRule` above the heading.
-- **`/projects/[projectId]/rooms/new`** (room creation). Same pattern as project creation. Image preview of the room type, hairline `MarketingPanel`.
-- **`/projects/[projectId]/rooms/[roomId]/brief/style`** (style picker). Image-led card grid pattern from the landing's style library — exact same component shape, just with the full 6-style taxonomy (Modern, Contemporary, Scandinavian, Industrial, Traditional, Bohemian) instead of the landing's 4.
+These screens have already been brought into alignment with the landing's voice. They live as references for the remaining work below.
+
+- **`/` dashboard empty state** — PR #140. Validated pattern: `MarketingPanel` + N° eyebrow + display-tier H2 + full-weight CTA.
+- **`/projects/new`** (project creation) — PR #163. `MarketingPanel` form container, `SectionEyebrow` + `DecorativeRule` above the heading.
+- **`/projects/[projectId]/rooms/new`** (room creation) — PR #165. Same pattern as project creation, with an image preview of the room type.
+- **`/projects/[projectId]/rooms/[roomId]/photos`** (photo upload) — PR #167. `SectionEyebrow` + app display heading; dropzone borrows the floating overlay treatment from the landing hero.
+- **`/projects/[projectId]/rooms/[roomId]/concepts`** (concept gallery) — PR #172. Floating overlay panels on the selected concept image (Before/After style); `DecorativeRule` between concept variants.
+
+### Remaining (next alignment screens)
+
+In-app screens use the app's existing display tier (`display-l` / `display-m`, Cormorant 300) for their headings, not `MarketingDisplay`. The marketing display tier (Cormorant Light at 56–96px) stays scoped to `/login` and future marketing routes per the brand spec. `SectionEyebrow`, `DecorativeRule`, and `MarketingPanel` are fine in-app; the display tier is the part that is not.
+
+- **`/onboarding`** (persona selection). Two persona cards become `MarketingPanel`-style with image headers, hairline borders, ochre accent on selected state. `SectionEyebrow` above the heading; `display-m` for the heading itself.
+- **`/projects/[projectId]/rooms/[roomId]/brief/style`** (style picker). Image-led card grid pattern from the landing's style library — same component shape, just with the full 6-style taxonomy (Modern, Contemporary, Scandinavian, Industrial, Traditional, Bohemian) instead of the landing's 4.
 - **`/projects/[projectId]/rooms/[roomId]/brief/inspiration`** (inspiration picker). Same image-led card grid.
-- **`/projects/[projectId]/rooms/[roomId]/presentation`** (client presentation/export). This is the client-facing artifact — adopt the landing's marketing aesthetic in full. `SectionEyebrow` + `DecorativeRule` + `MarketingDisplay` headings; `MarketingPanel` for room summary cards; floating overlay treatment on the hero room image; retailer-grouped shopping list with the trust-bar treatment.
+- **`/projects/[projectId]/rooms/[roomId]/presentation`** (client presentation/export). Client-facing artifact, but still inside the authenticated app, so the locked spec applies: `SectionEyebrow` + `DecorativeRule` + `display-l` / `display-m` headings (not `MarketingDisplay`); `MarketingPanel` for room summary cards; floating overlay treatment on the hero room image; retailer-grouped shopping list with the trust-bar treatment.
 
-### Medium-confidence (consider, but don't force)
+### Other considerations
 
-- **`/projects/[projectId]/rooms/[roomId]/photos`** (photo upload). The dropzone could borrow the floating overlay treatment from the landing hero. `SectionEyebrow` + display heading helps anchor the screen.
-- **`/projects/[projectId]/rooms/[roomId]/concepts`** (concept gallery). Floating overlay panels on the selected concept image (Before/After style). `DecorativeRule` between concept variants. Don't introduce the marketing display tier here unless empty state.
-- **Account / settings / sign-out** screens if/when they exist.
+- **Account / settings / sign-out** screens if/when they exist — same default as the brief screens: `SectionEyebrow` may be fine, but the full marketing aesthetic is not.
 
 ### No-go zones (do NOT redesign)
 
@@ -136,7 +143,7 @@ All five exports are public via `packages/ui/src/index.ts`.
 - Stage files by name — never `git add .` — the working tree carries untracked scratch.
 - Lint + typecheck via workspace-local binaries: `apps/web/node_modules/.bin/tsc -p tsconfig.json --noEmit` and `apps/web/node_modules/.bin/eslint .` Both must be clean before pushing.
 - Commit trailer required: `Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>`.
-- Open PRs with `gh pr create --base codex/v2-commercial-testing` unless promoting straight to `main` (which requires Chief Architect routing).
+- Open PRs with `gh pr create --base main` after the Chief Architect routes the readiness message. The earlier `codex/v2-commercial-testing` integration branch is no longer the default base; only use it if the architect explicitly says so for a given PR.
 
 ---
 
