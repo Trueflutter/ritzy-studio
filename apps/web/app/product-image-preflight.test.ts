@@ -41,6 +41,11 @@ async function run() {
     reason: "invalid_url"
   });
 
+  assert.deepEqual(await validateProductImageUrlForAi("not a retailer URL"), {
+    status: "rejected",
+    reason: "invalid_url"
+  });
+
   assert.deepEqual(await validateProductImageUrlForAi("https://retailer.example/product.svg"), {
     status: "rejected",
     reason: "unsupported_extension"
@@ -97,6 +102,15 @@ async function run() {
         })) as typeof fetch
     }),
     { status: "rejected", reason: "timeout" }
+  );
+
+  assert.deepEqual(
+    await validateProductImageUrlForAi("https://retailer.example/broken-cdn.jpg", {
+      fetcher: fetcherFor({
+        "https://retailer.example/broken-cdn.jpg": new Error("socket hang up")
+      })
+    }),
+    { status: "rejected", reason: "fetch_failed" }
   );
 
   const preflight = await preflightProductCandidateImages(
