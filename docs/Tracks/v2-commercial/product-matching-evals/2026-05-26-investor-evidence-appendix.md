@@ -81,4 +81,3 @@ Sam/Chief must approve or edit every field before any future bounded preview exe
 Answer:
 
 > Not without approval. Tomorrow we can show the evidence appendix, the two prepared target results, the warning/reporting improvements, the execution boundary, and the image-resilience fix. To run live or semi-live, Sam/Chief must first approve the exact scope, allowlist, environment, app path, write boundary, stop rules, rollback rules, artifacts, owner, and expiration.
-
