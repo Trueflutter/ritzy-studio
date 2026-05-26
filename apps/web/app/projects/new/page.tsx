@@ -1,4 +1,11 @@
-import { ButtonLink, Panel, SubmitButton, TextInput } from "@ritzy-studio/ui";
+import {
+  ButtonLink,
+  DecorativeRule,
+  MarketingPanel,
+  SectionEyebrow,
+  SubmitButton,
+  TextInput
+} from "@ritzy-studio/ui";
 import { redirect } from "next/navigation";
 
 import { createProjectAction } from "@/app/actions";
@@ -35,9 +42,8 @@ export default async function NewProjectPage({
   return (
     <main className="min-h-dvh bg-page px-5 py-16 text-ink md:px-8 lg:px-16">
       <section className="mx-auto max-w-[720px]">
-        <p className="font-body text-caption font-medium uppercase text-ink-muted">
-          N° 02 · Step 1 of 2 — Project
-        </p>
+        <SectionEyebrow>N° 03 — Project</SectionEyebrow>
+        <DecorativeRule className="mt-5" />
         <h1 className="mt-6 font-display text-display-l font-light leading-none tracking-[-0.015em] text-ink">
           Create the project.
         </h1>
@@ -52,7 +58,7 @@ export default async function NewProjectPage({
           </p>
         ) : null}
 
-        <Panel className="mt-12 rounded-card p-8 md:p-12">
+        <MarketingPanel tone="paper" elevation="flat" className="mt-12 p-8 md:p-12">
           <form action={createProjectAction} className="space-y-2">
             <TextInput
               autoComplete="off"
@@ -100,7 +106,7 @@ export default async function NewProjectPage({
               <SubmitButton pendingLabel="Saving project...">Continue</SubmitButton>
             </div>
           </form>
-        </Panel>
+        </MarketingPanel>
       </section>
     </main>
   );
