@@ -252,6 +252,7 @@ export type SourceProductsFromConceptInput = {
   conceptImageUrl: string;
   candidates: ConceptProductSourcingCandidate[];
   roleCandidatePools?: ConceptProductSourcingRolePool[];
+  conceptImageDetail?: ProductSourcingImageDetail;
   candidateImageLimit?: number;
   candidateImageDetail?: ProductSourcingImageDetail;
 };
@@ -870,7 +871,7 @@ export async function sourceProductsFromConcept(
           {
             type: "input_image",
             image_url: input.conceptImageUrl,
-            detail: "high"
+            detail: input.conceptImageDetail ?? "high"
           },
           ...candidateImageContent
         ]
