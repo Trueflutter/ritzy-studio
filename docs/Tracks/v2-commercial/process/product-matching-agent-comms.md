@@ -1,7 +1,7 @@
 # Product Matching Engine Agent Comms
 
 ## Current PR
-Pending docs-only pitch-readiness PR from branch `codex/product-match-pitch-readiness-package`.
+PR #176 (https://github.com/Trueflutter/ritzy-studio/pull/176) on branch `codex/product-match-pitch-readiness-package`.
 
 ## Current stage
 DUAL_TRACK:
