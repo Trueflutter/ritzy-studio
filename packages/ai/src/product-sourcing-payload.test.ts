@@ -55,3 +55,17 @@ assert.deepEqual(
   }),
   []
 );
+
+assert.deepEqual(
+  productSourcingCandidateImageContent(
+    [
+      candidate("one", "https://retailer.example/one.jpg"),
+      candidate("two", "https://retailer.example/two.jpg")
+    ],
+    {
+      candidateLimit: 2,
+      candidateImageLimit: 0
+    }
+  ),
+  []
+);
