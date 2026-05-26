@@ -10,14 +10,14 @@ export function AutoSubmit({ formId }: AutoSubmitProps) {
   const submittedRef = useRef(false);
 
   useEffect(() => {
-    if (submittedRef.current) {
-      return;
-    }
-    submittedRef.current = true;
-
     const handle = window.setTimeout(() => {
+      if (submittedRef.current) {
+        return;
+      }
+
       const form = document.getElementById(formId);
       if (form instanceof HTMLFormElement) {
+        submittedRef.current = true;
         form.requestSubmit();
       }
     }, 200);
