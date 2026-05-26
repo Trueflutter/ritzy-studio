@@ -1,7 +1,7 @@
 # Measurement Intelligence Agent Comms
 
 ## Current PR
-Pending PR for docs-only Measurement Intelligence investor readiness pack.
+PR #177 (<https://github.com/Trueflutter/ritzy-studio/pull/177>) is open for the docs-only Measurement Intelligence investor readiness pack.
 
 Branch: `codex/measurement-intelligence-investor-readiness`
 
