@@ -79,7 +79,7 @@ export default async function NewProjectPage({
             <TextInput
               autoComplete="address-level2"
               id="location"
-              label="Location"
+              label="City"
               name="location"
               placeholder="Dubai"
             />
