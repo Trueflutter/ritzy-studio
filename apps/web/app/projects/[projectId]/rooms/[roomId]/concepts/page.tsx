@@ -1,4 +1,11 @@
-import { ButtonLink, SubmitButton, Textarea } from "@ritzy-studio/ui";
+import {
+  ButtonLink,
+  DecorativeRule,
+  MarketingPanel,
+  SectionEyebrow,
+  SubmitButton,
+  Textarea
+} from "@ritzy-studio/ui";
 import Image from "next/image";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
@@ -151,14 +158,14 @@ export default async function ConceptsPage({
 
         <div className="mt-10 flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
           <div className="max-w-[860px]">
-            <p className="font-body text-caption font-medium uppercase tracking-[0.32em] text-ink-muted">
-              N° 05 — The Concept
-            </p>
-            <h1 className="mt-4 font-display text-display-l font-light leading-[1.05] tracking-[-0.015em] text-ink">
+            <SectionEyebrow>N° 08 — Concepts</SectionEyebrow>
+            <DecorativeRule className="mt-5" />
+            <h1 className="mt-6 font-display text-display-l font-light leading-[1.05] tracking-[-0.015em] text-ink">
               {hero ? "Your room, reimagined." : "Generate the first room direction."}
             </h1>
             <p className="mt-4 font-body text-body-m text-ink-muted">
-              {project.name} · {room.name} · {room.room_type}
+              {project.name} · {room.name}
+              {room.name === room.room_type ? null : ` · ${room.room_type}`}
             </p>
           </div>
 
@@ -189,7 +196,7 @@ export default async function ConceptsPage({
         ) : (
           <>
             <article className="mt-10">
-              <div className="border border-line bg-surface p-[14px]">
+              <MarketingPanel className="p-[14px]" elevation="float" tone="paper">
                 <div className="flex aspect-[4/3] items-center justify-center overflow-hidden bg-page">
                   {hero.signedUrl ? (
                     <Image
@@ -205,7 +212,7 @@ export default async function ConceptsPage({
                     <p className="font-display text-body-s italic text-error">render could not load</p>
                   )}
                 </div>
-              </div>
+              </MarketingPanel>
 
               <div className="mx-auto mt-10 max-w-[720px]">
                 <p className="font-body text-caption font-medium uppercase tracking-[0.32em] text-accent-deep">
@@ -215,17 +222,17 @@ export default async function ConceptsPage({
                   {hero.title}
                 </h2>
                 {hero.rationale ? (
-                  <p className="mt-6 whitespace-pre-line font-body text-body-l text-ink-secondary">
+                  <p className="mt-6 whitespace-pre-line font-body text-body-l leading-relaxed text-ink-secondary text-justify">
                     {hero.rationale}
                   </p>
                 ) : null}
 
                 {hero.uncertainty ? (
                   <div className="mt-8 border-t border-line pt-6">
-                    <p className="font-body text-caption font-medium uppercase tracking-[0.32em] text-ink-muted">
+                    <p className="font-body text-caption font-medium uppercase tracking-[0.32em] text-accent-deep">
                       What we assumed
                     </p>
-                    <p className="mt-3 font-display text-body-m italic text-ink-muted">
+                    <p className="mt-3 font-body text-body-l leading-relaxed text-ink-secondary text-justify">
                       {hero.uncertainty}
                     </p>
                   </div>
@@ -249,8 +256,11 @@ export default async function ConceptsPage({
                   </div>
                 ) : null}
 
-                <div className="mt-10 grid gap-6 border-t border-line pt-8 md:grid-cols-2">
-                  <form action={selectConceptAction} className="flex flex-col md:justify-end">
+                <div className="mt-10 border-t border-line pt-8">
+                  <p className="font-body text-caption font-medium uppercase tracking-[0.32em] text-accent-deep">
+                    If this direction works
+                  </p>
+                  <form action={selectConceptAction} className="mt-5">
                     <input name="projectId" type="hidden" value={projectId} />
                     <input name="roomId" type="hidden" value={roomId} />
                     <input name="conceptId" type="hidden" value={hero.id} />
@@ -262,14 +272,19 @@ export default async function ConceptsPage({
                       Proceed to sourcing
                     </SubmitButton>
                   </form>
+                </div>
 
-                  <form action={reviseConceptAction} className="flex flex-col">
+                <div className="mt-10 border-t border-line pt-8">
+                  <p className="font-body text-caption font-medium uppercase tracking-[0.32em] text-accent-deep">
+                    If you&rsquo;d like changes
+                  </p>
+                  <form action={reviseConceptAction} className="mt-5">
                     <input name="projectId" type="hidden" value={projectId} />
                     <input name="roomId" type="hidden" value={roomId} />
                     <input name="conceptId" type="hidden" value={hero.id} />
                     <Textarea
                       id={`critique-${hero.id}`}
-                      label="Or describe what to change"
+                      label="Describe what to change"
                       name="critique"
                       placeholder="make the palette warmer, keep the sofa placement, reduce ornament..."
                     />
@@ -282,8 +297,9 @@ export default async function ConceptsPage({
             </article>
 
             {earlierConcepts.length > 0 ? (
-              <section className="mt-16 border-t border-line pt-10">
-                <p className="font-body text-caption font-medium uppercase tracking-[0.32em] text-ink-muted">
+              <section className="mt-16">
+                <DecorativeRule />
+                <p className="mt-6 font-body text-caption font-medium uppercase tracking-[0.32em] text-ink-muted">
                   Earlier versions
                 </p>
                 <p className="mt-3 max-w-[560px] font-body text-body-s text-ink-muted">
