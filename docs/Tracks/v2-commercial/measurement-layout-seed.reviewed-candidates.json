@@ -266,7 +266,7 @@
           "label": "Emaar Maple official project page",
           "url": "https://www.emaar.com/en/properties/maple/",
           "publisherName": "Emaar",
-          "retrievedAt": "2026-05-26T20:00:00.000+04:00",
+          "retrievedAt": "2026-05-26T07:00:00.000+04:00",
           "disclaimer": "Public developer source used for structured facts only. Do not store or display raw floor-plan images from this or related sources.",
           "notes": "Confirms Maple at Dubai Hills Estate as a townhouse development with 3-, 4-, and 5-bedroom homes and high-level room features. Does not provide as-built room measurements."
         },
@@ -277,7 +277,7 @@
           "label": "PSI Maple floor-plan summary",
           "url": "https://psinv.net/en/projects/dubai/dubai-hills-estate/dubai-hills-estate3/maple/floor-plan",
           "publisherName": "PSI",
-          "retrievedAt": "2026-05-26T20:00:00.000+04:00",
+          "retrievedAt": "2026-05-26T07:00:00.000+04:00",
           "disclaimer": "Public broker/project source used for structured facts and alias review only. Do not store or display raw floor-plan images.",
           "notes": "Used as supporting evidence for Maple type/model naming and size summaries. Not treated as as-built measurement truth."
         },
@@ -288,7 +288,7 @@
           "label": "Ritzy Measurement Intelligence seed candidate shortlist",
           "url": "https://github.com/Trueflutter/ritzy-studio/blob/main/docs/Tracks/v2-commercial/28_Measurement_Intelligence_Seed_Candidate_Shortlist.md",
           "publisherName": "Ritzy Studio",
-          "retrievedAt": "2026-05-26T20:00:00.000+04:00",
+          "retrievedAt": "2026-05-26T07:00:00.000+04:00",
           "disclaimer": "Internal structured-facts review only. This is not a permission grant for raw developer floor-plan assets.",
           "notes": "Documents why Maple at Dubai Hills Estate 4-bedroom Type 2E is a reviewed structured-facts seed candidate and keeps confidence conservative."
         }
