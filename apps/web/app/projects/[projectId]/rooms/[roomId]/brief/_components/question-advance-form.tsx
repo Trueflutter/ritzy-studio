@@ -39,25 +39,25 @@ export function QuestionAdvanceForm({
       <input name="currentIndex" type="hidden" value={currentIndex} />
       <input name="questionCount" type="hidden" value={questionCount} />
 
-      <p className="font-body text-caption font-medium uppercase text-ink-muted">
-        Question {String(currentIndex + 1).padStart(2, "0")} of {questionCount}
-      </p>
-      <h1 className="mt-4 font-display text-display-xs font-light italic leading-snug text-ink">
-        {question}
-      </h1>
-      <textarea
-        className="mt-6 min-h-20 w-full resize-y border-0 border-b border-line-strong bg-transparent px-0 pb-3 font-display text-display-xs font-light italic leading-snug text-ink outline-none transition-colors duration-micro ease-standard placeholder:text-ink-placeholder focus:border-accent-deep"
-        defaultValue={answer}
-        name="answer"
-        onKeyDown={(event) => {
-          if (event.key === "Enter" && !event.shiftKey) {
-            event.preventDefault();
-            formRef.current?.requestSubmit();
-          }
-        }}
-        placeholder="Type your answer..."
-        ref={textareaRef}
-      />
+      <div className="border border-line bg-surface p-5">
+        <label className="block font-body text-body-l text-ink" htmlFor="answer">
+          {question}
+        </label>
+        <textarea
+          className="mt-4 block min-h-[88px] w-full resize-y border-0 bg-transparent p-0 font-body text-body-m text-ink outline-none placeholder:text-[var(--rs-text-placeholder)]"
+          defaultValue={answer}
+          id="answer"
+          name="answer"
+          onKeyDown={(event) => {
+            if (event.key === "Enter" && !event.shiftKey) {
+              event.preventDefault();
+              formRef.current?.requestSubmit();
+            }
+          }}
+          placeholder="Type your answer..."
+          ref={textareaRef}
+        />
+      </div>
 
       <div className="mt-6 flex flex-col gap-4 border-t border-line pt-6 md:flex-row md:items-center md:justify-between">
         <p className="font-body text-caption font-medium uppercase text-ink-muted">
@@ -65,7 +65,7 @@ export function QuestionAdvanceForm({
         </p>
         <div className="flex items-center gap-6">
           <button
-            className="font-display text-body-s italic text-ink-muted transition-colors duration-micro hover:text-ink"
+            className="font-body text-body-s text-ink-muted transition-colors duration-micro hover:text-ink"
             name="skip"
             type="submit"
             value="1"
