@@ -1,7 +1,7 @@
 # Product Matching Engine Agent Comms
 
 ## Current PR
-PR #209 (<https://github.com/Trueflutter/ritzy-studio/pull/209>) on branch `codex/product-match-post-207-handoff`.
+None. PR #209 merged (<https://github.com/Trueflutter/ritzy-studio/pull/209>).
 
 ## Current stage
 DUAL_TRACK:
