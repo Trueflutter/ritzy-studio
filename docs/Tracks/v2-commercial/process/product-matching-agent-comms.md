@@ -1,7 +1,7 @@
 # Product Matching Engine Agent Comms
 
 ## Current PR
-None. PR #170 (https://github.com/Trueflutter/ritzy-studio/pull/170) merged into `main`.
+Pending docs-only pitch-readiness PR from branch `codex/product-match-pitch-readiness-package`.
 
 ## Current stage
 DUAL_TRACK:
@@ -14,6 +14,8 @@ Controlled default-off preview configuration/execution remains blocked until Sam
 Product Matching Engine V1 is still not approved for controlled-preview configuration/execution, app actions, runtime allowlist expansion, draft shopping-list/catalog writes, live catalog writes, DB/schema changes, generated DB types, runtime/UI redesign/prompt changes, payment/checkout changes, production flags/deploys, default-on activation, production rollout, selection/scoring changes, Catalog-First runtime coupling, new preview targets, or broader allowlist expansion without a new approval.
 
 ## Chief architect routing
+ARCHITECT_NOTE: PR #173 merged into `main` at `f86d902e7bdf648b15453ad2345de3128b27a773` and the product-sourcing image-resilience fix is present on `origin/main`. The fix improves image preflight safety in the existing product-sourcing path, but it does not approve Product Matching controlled-preview configuration/execution, app actions, runtime allowlist expansion, writes, runtime/schema/UI/prompt/payment/checkout changes, production flags/deploys, default-on activation, production rollout, selection/scoring changes, or Catalog-First runtime coupling.
+
 ARCHITECT_NOTE: PR #142 completed the one Sam-approved bounded local QA / read-only manual harness evidence pass for the two approved targets only. PR #148 completed the docs-only post-evidence warning triage. PR #153 completed the QA-harness-only warning report improvement. Do not run or configure any further controlled preview until Sam/Chief explicitly approves the next bounded execution.
 
 ARCHITECT_NOTE: PR #160 completed the docs-only controlled-preview execution-boundary approval package. PR #170 completed mailbox hygiene that cleared stale PR #160 state while keeping the lane parked at `CONTROLLED_PREVIEW_EXECUTION_BOUNDARY_READY_WAITING_FOR_SAM_CHIEF_DECISION`, with `CONTROLLED_PREVIEW_EXPANSION_BLOCKED_WAITING_FOR_SAM_CHIEF_DECISION` still the runtime gate. It does not approve, configure, or execute controlled preview.
@@ -21,12 +23,16 @@ ARCHITECT_NOTE: PR #160 completed the docs-only controlled-preview execution-bou
 Hard stop: no controlled-preview configuration/execution, app actions, runtime allowlist expansion, draft shopping-list/catalog writes, live catalog writes, DB/schema/generated types, runtime/env default changes, runtime/UI/prompt/payment/checkout changes, production flags/deploys, default-on activation, production rollout, selection/scoring changes, or Catalog-First runtime coupling without explicit Sam/Chief approval.
 
 ## Last action taken
+PR #173 completed the product-sourcing image-resilience hotfix on `main`. `apps/web/app/product-image-preflight.ts` and `apps/web/app/product-image-preflight.test.ts` are present on `origin/main`, and merge commit `f86d902e7bdf648b15453ad2345de3128b27a773` is included in `origin/main`.
+
+This docs-only pitch-readiness package adds `docs/Tracks/v2-commercial/product-matching-evals/2026-05-26-pitch-readiness-status.md` to summarize what is safer after PR #173, what remains blocked, the controlled-preview approval fields still needed, investor-demo confidence, and the do-not-execute boundary.
+
 PR #160 completed the docs-only controlled-preview execution-boundary package after PR #153. The package prepares approval fields for proposed scope, project/room/user allowlist, environment, app path, write boundary, stop rules, rollback rules, owner, expiration, and evidence artifacts. No controlled-preview configuration/execution, app action, evidence pass, draft shopping-list row create/refresh, DB/schema/generated type change, live catalog write, UI/prompt/payment/checkout change, production flag/deploy, new preview target, allowlist expansion, default-on activation, production rollout, selection/scoring behavior change, or Catalog-First runtime coupling was performed.
 
 PR #170 merged to clean stale mailbox state after PR #160 merged. This was docs/mailbox only.
 
 ## Next intended action
-Implementation agent: wait for explicit Sam/Chief approval, edits, or rejection of the prepared execution boundary before starting any further Product Matching implementation or execution stage. Do not start implementation or execution from PR #160 alone.
+Implementation agent: after this docs-only pitch-readiness PR is reviewed/merged, wait for explicit Sam/Chief approval, edits, or rejection of the prepared execution boundary before starting any further Product Matching implementation or execution stage. Do not start implementation or execution from PR #160, PR #173, or this pitch-readiness package alone.
 
 Keep the Product Matching lane heartbeat active. It must not be deleted after merges. The heartbeat should run every 10 minutes and monitor:
 
