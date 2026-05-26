@@ -69,8 +69,10 @@ const PRODUCT_SOURCING_AI_TIMEOUT_MS = 45_000;
 const PRODUCT_MATCHING_CATALOG_LIMIT = 1500;
 const PRODUCT_SOURCING_IMAGE_PREFLIGHT_TIMEOUT_MS = 2_500;
 const PRODUCT_SOURCING_MAX_IMAGE_BYTES = 20 * 1024 * 1024;
-const PRODUCT_SOURCING_AI_CANDIDATE_IMAGE_LIMIT = 12;
+const PRODUCT_SOURCING_AI_CONCEPT_IMAGE_DETAIL = "low" as const;
+const PRODUCT_SOURCING_AI_CANDIDATE_IMAGE_LIMIT = 0;
 const PRODUCT_SOURCING_AI_CANDIDATE_IMAGE_DETAIL = "low" as const;
+const PRODUCT_SOURCING_AI_PRODUCT_IMAGES_ENABLED = PRODUCT_SOURCING_AI_CANDIDATE_IMAGE_LIMIT > 0;
 
 function productReferenceOrderingV2Enabled() {
   return process.env.RITZY_PRODUCT_REFERENCE_ORDERING_V2_ENABLED === "true";
@@ -1973,7 +1975,9 @@ export async function groundProductsAction(formData: FormData) {
     timeoutMs: PRODUCT_SOURCING_IMAGE_PREFLIGHT_TIMEOUT_MS,
     maxBytes: PRODUCT_SOURCING_MAX_IMAGE_BYTES
   });
-  const aiSourcingCandidates = initialImagePreflight.candidates;
+  const aiSourcingCandidates = PRODUCT_SOURCING_AI_PRODUCT_IMAGES_ENABLED
+    ? initialImagePreflight.candidates
+    : sourcingCandidates;
   const sourcingCandidateIds = new Set(sourcingCandidates.map((candidate) => candidate.id));
   const sourcingCandidatePools = sourcingPools.map((pool) => poolToSourcingRolePool(pool, sourcingCandidateIds));
   const initialImageGate = buildProductImagePreflightGate({
@@ -2035,7 +2039,7 @@ export async function groundProductsAction(formData: FormData) {
     throw new Error(sourcingJobError.message);
   }
 
-  if (!initialImageGate.usable) {
+  if (PRODUCT_SOURCING_AI_PRODUCT_IMAGES_ENABLED && !initialImageGate.usable) {
     await serviceSupabase
       .from("ai_jobs")
       .update({
@@ -2066,6 +2070,7 @@ export async function groundProductsAction(formData: FormData) {
         conceptImageUrl: conceptSignedImage.signedUrl,
         candidates: aiSourcingCandidates.map(matchToSourcingCandidate),
         roleCandidatePools: productMatchingEngineEnabled ? sourcingCandidatePools : undefined,
+        conceptImageDetail: PRODUCT_SOURCING_AI_CONCEPT_IMAGE_DETAIL,
         candidateImageLimit: PRODUCT_SOURCING_AI_CANDIDATE_IMAGE_LIMIT,
         candidateImageDetail: PRODUCT_SOURCING_AI_CANDIDATE_IMAGE_DETAIL
       }),
@@ -2198,7 +2203,9 @@ export async function groundProductsAction(formData: FormData) {
       maxBytes: PRODUCT_SOURCING_MAX_IMAGE_BYTES
     });
     retryProductImagePreflightSummary = retryImagePreflight.summary;
-    const aiRetryCandidates = retryImagePreflight.candidates;
+    const aiRetryCandidates = PRODUCT_SOURCING_AI_PRODUCT_IMAGES_ENABLED
+      ? retryImagePreflight.candidates
+      : retryCandidates;
     const retryCandidateIds = new Set(retryCandidates.map((candidate) => candidate.id));
     const retryImageGate = buildProductImagePreflightGate({
       candidateCount: retryCandidates.length,
@@ -2207,7 +2214,7 @@ export async function groundProductsAction(formData: FormData) {
     });
     retryProductImagePreflightGate = retryImageGate;
     const retryResult =
-      retryImageGate.usable
+      (!PRODUCT_SOURCING_AI_PRODUCT_IMAGES_ENABLED || retryImageGate.usable)
         ? await withTimeout(
             sourceProductsFromConcept({
               roomType: room.room_type,
@@ -2218,6 +2225,7 @@ export async function groundProductsAction(formData: FormData) {
               roleCandidatePools: productMatchingEngineEnabled
                 ? retryPools.map((pool) => poolToSourcingRolePool(pool, retryCandidateIds))
                 : undefined,
+              conceptImageDetail: PRODUCT_SOURCING_AI_CONCEPT_IMAGE_DETAIL,
               candidateImageLimit: PRODUCT_SOURCING_AI_CANDIDATE_IMAGE_LIMIT,
               candidateImageDetail: PRODUCT_SOURCING_AI_CANDIDATE_IMAGE_DETAIL
             }),
@@ -3701,8 +3709,10 @@ function productSourcingFailureMessage(error: unknown) {
 
 function productSourcingAiPayloadSummary() {
   return {
+    conceptImageDetail: PRODUCT_SOURCING_AI_CONCEPT_IMAGE_DETAIL,
     candidateImageLimit: PRODUCT_SOURCING_AI_CANDIDATE_IMAGE_LIMIT,
-    candidateImageDetail: PRODUCT_SOURCING_AI_CANDIDATE_IMAGE_DETAIL
+    candidateImageDetail: PRODUCT_SOURCING_AI_CANDIDATE_IMAGE_DETAIL,
+    productCandidateImagesEnabled: PRODUCT_SOURCING_AI_PRODUCT_IMAGES_ENABLED
   };
 }
 
