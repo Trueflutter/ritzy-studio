@@ -1,7 +1,11 @@
 # Measurement Intelligence Agent Comms
 
 ## Current PR
-None. PR #151 (<https://github.com/Trueflutter/ritzy-studio/pull/151>) merged into `main`.
+PR #158: <https://github.com/Trueflutter/ritzy-studio/pull/158>
+
+Branch: `codex/measurement-maple-reviewed-seed-json-candidate`
+
+PR #151 (<https://github.com/Trueflutter/ritzy-studio/pull/151>) merged into `main`.
 
 PR #146 (<https://github.com/Trueflutter/ritzy-studio/pull/146>) merged into `main`.
 
@@ -35,10 +39,12 @@ Do not sit idle while DB/schema/runtime work is blocked. Start one small domain-
 Hard stop: this domain-only PR must not add migrations, generated DB types, runtime/UI/app actions, Supabase connections or writes, seed importer writes, production data, external parser/vendor integration, private/user floor-plan assets, raw copyrighted plan images, Product Matching runtime coupling, Catalog-First runtime coupling, deploys, production flags, payment/checkout changes, or live customer-facing behavior.
 
 ## Last action taken
-PR #151 merged the first reviewed structured-facts seed JSON candidate into `main`. It adds one default-off Murooj Al Furjan 4-bedroom townhouse candidate and a focused domain schema parse test. No DB/schema migration, generated DB types, Supabase connections/writes, runtime/UI/app-action wiring, seed importer writes, production data, external parser/vendor/OCR integration, private/user floor-plan assets, raw copyrighted plan images, Product Matching or Catalog-First runtime coupling, production flags, deploys, or live customer-facing behavior was added.
+PR #158 adds the Maple at Dubai Hills Estate 4-bedroom Type 2E reviewed structured-facts seed JSON candidate. It extends the existing default-off reviewed-candidates file and focused domain schema parse test.
 
 ## Next intended action
-Implementation agent: start the Maple reviewed structured-facts seed JSON candidate described above, open a small PR, and leave an `ARCHITECT_NOTE:` with PR URL, branch, head commit, files touched, verification run, candidate record included, rights/confidence/disclaimer posture, and confirmation that no stop rule was crossed.
+Implementation agent: monitor PR #158 for review feedback, `CHIEF_ARCHITECT_REPLY:` comments, checks, and mergeability. Do not merge unless the review explicitly says approved to merge. If the PR is rejected, fix only listed blockers within the domain-only Maple reviewed-seed-JSON-candidate scope.
+
+After PR #158 merges, treat the Maple reviewed seed candidate stage as complete. Do not continue into more seed records, importer writes, database/schema work, runtime wiring, or parser/vendor integration without an explicit next approved stage from the Chief Architect or Sam.
 
 Create or keep a Measurement Intelligence heartbeat after starting the PR. The heartbeat should run every 10 minutes and monitor:
 
@@ -50,6 +56,8 @@ Create or keep a Measurement Intelligence heartbeat after starting the PR. The h
 Do not delete the Measurement Intelligence heartbeat just because a PR merged. Delete a PR-specific monitor only after either a lane-level heartbeat is active or this mailbox on `main` points to the next safe action. If the PR merges and this mailbox does not name a specific approved next safe stage, leave an `ARCHITECT_NOTE:` requesting Chief Architect routing instead of going idle.
 
 ## Durable next-state handoff after merge
-Recommended next safe stage after this routing PR merges: `APPROVED_DOMAIN_ONLY_MAPLE_REVIEWED_SEED_JSON_CANDIDATE`. Do not start DB/schema migration, generated type changes, runtime/UI wiring, write-capable importers, external parser integrations, or real seed writes from this approval.
+After PR #158 merges, there is no further Measurement Intelligence stage approved in this mailbox. Keep DB/schema/runtime/write work blocked, keep the Measurement Intelligence heartbeat active, and request Chief Architect routing before starting another PR.
+
+Do not start DB/schema migration, generated type changes, runtime/UI wiring, write-capable importers, external parser integrations, additional reviewed seed records, or real seed writes from this approval.
 
 The Measurement Intelligence lane must maintain a heartbeat while work is active or routed. If the lane has no open PR and no approved safe next action, the heartbeat should leave an `ARCHITECT_NOTE:` requesting routing instead of going silent.

@@ -185,6 +185,208 @@
       ],
       "notes": "First reviewed structured-facts candidate from the Measurement Intelligence shortlist. Dimensions are intentionally omitted because reviewed sources do not provide as-built room length, width, or ceiling height. This candidate is for future default-off seed review only.",
       "disclaimer": "Known developer-layout prefill only. Not an as-built measurement, not a tight-clearance source, and not suitable for product-fit decisions until user or designer confirmation is captured. Raw floor-plan images were not stored or republished."
+    },
+    {
+      "id": "maple-dubai-hills-townhouse-4br-type-2e",
+      "community": {
+        "slug": "dubai-hills-estate",
+        "name": "Dubai Hills Estate",
+        "city": "Dubai",
+        "country": "AE",
+        "aliases": [
+          {
+            "value": "Dubai Hills",
+            "kind": "community"
+          },
+          {
+            "value": "Dubai Hills Estate Maple",
+            "kind": "marketing_name"
+          }
+        ]
+      },
+      "development": {
+        "slug": "maple",
+        "name": "Maple",
+        "developer": "Emaar",
+        "aliases": [
+          {
+            "value": "Emaar Maple",
+            "kind": "marketing_name"
+          },
+          {
+            "value": "Maple at Dubai Hills Estate",
+            "kind": "development"
+          },
+          {
+            "value": "Maple Dubai Hills",
+            "kind": "user_phrase"
+          }
+        ]
+      },
+      "propertyType": "townhouse",
+      "bedroomCount": 4,
+      "unitTypeCode": "2E",
+      "aliases": [
+        {
+          "value": "Maple 4 bedroom townhouse",
+          "kind": "user_phrase"
+        },
+        {
+          "value": "Maple 4BR Type 2E",
+          "kind": "user_phrase"
+        },
+        {
+          "value": "Type 2E",
+          "kind": "layout_code"
+        },
+        {
+          "value": "Unit 2E",
+          "kind": "layout_code"
+        },
+        {
+          "value": "2E",
+          "kind": "layout_code"
+        },
+        {
+          "value": "4 bedroom Type 2E",
+          "kind": "user_phrase"
+        },
+        {
+          "value": "4 bedroom end unit",
+          "kind": "user_phrase"
+        }
+      ],
+      "layoutConfidence": "prefill",
+      "sourceRightsStatus": "structured_facts_only",
+      "sources": [
+        {
+          "id": "emaar-maple-official",
+          "kind": "developer_brochure",
+          "rightsStatus": "structured_facts_only",
+          "label": "Emaar Maple official project page",
+          "url": "https://www.emaar.com/en/properties/maple/",
+          "publisherName": "Emaar",
+          "retrievedAt": "2026-05-26T07:00:00.000+04:00",
+          "disclaimer": "Public developer source used for structured facts only. Do not store or display raw floor-plan images from this or related sources.",
+          "notes": "Confirms Maple at Dubai Hills Estate as a townhouse development with 3-, 4-, and 5-bedroom homes and high-level room features. Does not provide as-built room measurements."
+        },
+        {
+          "id": "psi-maple-floor-plan-summary",
+          "kind": "broker_floor_plan",
+          "rightsStatus": "structured_facts_only",
+          "label": "PSI Maple floor-plan summary",
+          "url": "https://psinv.net/en/projects/dubai/dubai-hills-estate/dubai-hills-estate3/maple/floor-plan",
+          "publisherName": "PSI",
+          "retrievedAt": "2026-05-26T07:00:00.000+04:00",
+          "disclaimer": "Public broker/project source used for structured facts and alias review only. Do not store or display raw floor-plan images.",
+          "notes": "Used as supporting evidence for Maple type/model naming and size summaries. Not treated as as-built measurement truth."
+        },
+        {
+          "id": "ritzy-seed-candidate-shortlist-2026-05-25",
+          "kind": "internal_research",
+          "rightsStatus": "structured_facts_only",
+          "label": "Ritzy Measurement Intelligence seed candidate shortlist",
+          "url": "https://github.com/Trueflutter/ritzy-studio/blob/main/docs/Tracks/v2-commercial/28_Measurement_Intelligence_Seed_Candidate_Shortlist.md",
+          "publisherName": "Ritzy Studio",
+          "retrievedAt": "2026-05-26T07:00:00.000+04:00",
+          "disclaimer": "Internal structured-facts review only. This is not a permission grant for raw developer floor-plan assets.",
+          "notes": "Documents why Maple at Dubai Hills Estate 4-bedroom Type 2E is a reviewed structured-facts seed candidate and keeps confidence conservative."
+        }
+      ],
+      "rooms": [
+        {
+          "id": "ground-living-dining",
+          "name": "Living / Dining",
+          "normalizedRoomType": "living_room",
+          "floorLevel": "ground",
+          "sourceId": "ritzy-seed-candidate-shortlist-2026-05-25",
+          "measurementConfidence": "prefill",
+          "notes": "Room label candidate only. Exact length, width, and ceiling height are intentionally unknown.",
+          "disclaimer": "Prefill room label only; not an as-built measurement and not suitable for tight-clearance decisions."
+        },
+        {
+          "id": "ground-kitchen",
+          "name": "Kitchen",
+          "normalizedRoomType": "kitchen",
+          "floorLevel": "ground",
+          "sourceId": "emaar-maple-official",
+          "measurementConfidence": "prefill",
+          "notes": "Source-backed high-level room feature. Exact layout, openings, and dimensions require confirmation.",
+          "disclaimer": "Prefill room label only; user or designer confirmation required."
+        },
+        {
+          "id": "ground-maids-room",
+          "name": "Maid's Room",
+          "normalizedRoomType": "other",
+          "floorLevel": "ground",
+          "sourceId": "emaar-maple-official",
+          "measurementConfidence": "prefill",
+          "notes": "Normalized as other because the current seed schema has no dedicated maid's room enum.",
+          "disclaimer": "Prefill room label only; user or designer confirmation required."
+        },
+        {
+          "id": "ground-storage-laundry",
+          "name": "Storage / Laundry",
+          "normalizedRoomType": "other",
+          "floorLevel": "ground",
+          "sourceId": "ritzy-seed-candidate-shortlist-2026-05-25",
+          "measurementConfidence": "prefill",
+          "notes": "Potential support room row from the reviewed shortlist. Exact label, location, and dimensions require source review and confirmation.",
+          "disclaimer": "Prefill room label only; user or designer confirmation required."
+        },
+        {
+          "id": "first-primary-bedroom",
+          "name": "Primary Bedroom",
+          "normalizedRoomType": "bedroom",
+          "floorLevel": "first",
+          "sourceId": "ritzy-seed-candidate-shortlist-2026-05-25",
+          "measurementConfidence": "prefill",
+          "notes": "Bedroom row candidate for a 4-bedroom townhouse; primary/master semantics are notes only.",
+          "disclaimer": "Prefill room label only; not suitable for product-fit decisions without confirmation."
+        },
+        {
+          "id": "first-bedroom-2",
+          "name": "Bedroom 2",
+          "normalizedRoomType": "bedroom",
+          "floorLevel": "first",
+          "sourceId": "ritzy-seed-candidate-shortlist-2026-05-25",
+          "measurementConfidence": "prefill",
+          "notes": "Bedroom row candidate; exact location and dimensions are unknown.",
+          "disclaimer": "Prefill room label only; not suitable for product-fit decisions without confirmation."
+        },
+        {
+          "id": "first-bedroom-3",
+          "name": "Bedroom 3",
+          "normalizedRoomType": "bedroom",
+          "floorLevel": "first",
+          "sourceId": "ritzy-seed-candidate-shortlist-2026-05-25",
+          "measurementConfidence": "prefill",
+          "notes": "Bedroom row candidate; exact location and dimensions are unknown.",
+          "disclaimer": "Prefill room label only; not suitable for product-fit decisions without confirmation."
+        },
+        {
+          "id": "first-bedroom-4",
+          "name": "Bedroom 4",
+          "normalizedRoomType": "bedroom",
+          "floorLevel": "first",
+          "sourceId": "ritzy-seed-candidate-shortlist-2026-05-25",
+          "measurementConfidence": "prefill",
+          "notes": "Bedroom row candidate; exact location and dimensions are unknown.",
+          "disclaimer": "Prefill room label only; not suitable for product-fit decisions without confirmation."
+        },
+        {
+          "id": "exterior-garden",
+          "name": "Garden / Terrace",
+          "normalizedRoomType": "other",
+          "floorLevel": "other",
+          "sourceId": "emaar-maple-official",
+          "measurementConfidence": "prefill",
+          "notes": "Exterior context only. Do not use for interior furnishing fit.",
+          "disclaimer": "Prefill outdoor label only; not an interior room measurement."
+        }
+      ],
+      "notes": "Second reviewed structured-facts candidate from the Measurement Intelligence shortlist. Dimensions are intentionally omitted because reviewed sources do not provide as-built room length, width, or ceiling height. Treat Maple subphase and upgraded-home variation as a required confirmation point before any fit-related use.",
+      "disclaimer": "Known developer-layout prefill only. Not an as-built measurement, not a tight-clearance source, and not suitable for product-fit decisions until user or designer confirmation is captured. Raw floor-plan images were not stored or republished."
     }
   ]
 }

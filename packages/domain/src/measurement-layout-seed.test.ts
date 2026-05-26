@@ -109,9 +109,18 @@ const reviewedCandidateJson = JSON.parse(
 ) as unknown;
 const parsedReviewedCandidate = measurementLayoutSeedDatasetSchema.parse(reviewedCandidateJson);
 assert.equal(parsedReviewedCandidate.layouts[0].id, "murooj-al-furjan-townhouse-4br-corner-layout-a");
-assert.equal(parsedReviewedCandidate.layouts[0].layoutConfidence, "prefill");
-assert.equal(parsedReviewedCandidate.layouts[0].sourceRightsStatus, "structured_facts_only");
+assert.equal(parsedReviewedCandidate.layouts[1].id, "maple-dubai-hills-townhouse-4br-type-2e");
 assert.ok(
-  parsedReviewedCandidate.layouts[0].rooms.every((room) => room.measurementConfidence === "prefill"),
-  "reviewed candidate must remain prefill-only"
+  parsedReviewedCandidate.layouts.every((layout) => layout.layoutConfidence === "prefill"),
+  "reviewed candidates must remain prefill-only"
+);
+assert.ok(
+  parsedReviewedCandidate.layouts.every((layout) => layout.sourceRightsStatus === "structured_facts_only"),
+  "reviewed candidates must remain structured-facts-only"
+);
+assert.ok(
+  parsedReviewedCandidate.layouts.every((layout) =>
+    layout.rooms.every((room) => room.measurementConfidence === "prefill")
+  ),
+  "reviewed candidate rooms must remain prefill-only"
 );
