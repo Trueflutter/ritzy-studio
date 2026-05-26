@@ -1,11 +1,15 @@
 # Catalog Ingestion Agent Comms
 
 ## Current PR
-PR #154 merged: https://github.com/Trueflutter/ritzy-studio/pull/154
+PR #156: https://github.com/Trueflutter/ritzy-studio/pull/156
 
-Merge commit: `2c8f76e517a585fd616de53fb91497b3b7daa6ad`
+Branch: `codex/catalog-ingestion-crate-barrel-feasibility`
 
-Runtime impact: none / dry-run-only
+Touched files:
+- `docs/Tracks/v2-commercial/28_Crate_And_Barrel_UAE_Category_Discovery_Feasibility.md`
+- `docs/Tracks/v2-commercial/process/catalog-ingestion-agent-comms.md`
+
+Runtime impact: none / docs-only
 
 ## Current stage
 `APPROVED_DOCS_ONLY_CRATE_AND_BARREL_UAE_CATEGORY_DISCOVERY_FEASIBILITY`
@@ -40,10 +44,12 @@ Scope for the next stage:
 Why Crate & Barrel: the existing UAE retailer feasibility docs rank it as the next P1 after already-covered P0/P1 retailers, with strong product detail pages but unresolved category discovery. Home Box remains a no-go for direct ingestion from prior Cloudflare 403 findings, and West Elm/Pottery Barn need partner/network verification before technical ingestion.
 
 ## Last Action Taken
-Merged PR #154 after explicit approval to merge. The Marina Home adapter remains dry-run-only, sitemap-first, metadata-first, tiny-allowlist-bound, and guarded against live writes.
+Started the routed Crate & Barrel UAE docs-only category discovery feasibility stage from latest `main`.
+
+The feasibility note records a tiny manually bounded public check. It found promising clean category and product URL shapes through public index evidence, but direct `robots.txt` and storefront fetches timed out from this environment, so robots posture and clean category fetchability remain unresolved gates before any adapter work.
 
 ## Next Intended Action
-After PR #155 is approved and merged, sync latest `main` and start the docs-only Crate & Barrel UAE category discovery feasibility PR from latest `main`.
+Open the Crate & Barrel UAE docs-only feasibility PR, leave an `ARCHITECT_NOTE:` with PR URL, branch, head commit, files touched, verification, and hard-stop confirmation, then wait for Chief Architect review.
 
 Do not start live ingestion, controlled preview, adapter implementation, broad discovery, production flag, deploy, runtime coupling, or write path from this approval.
 
@@ -52,6 +58,7 @@ Keep the Catalog Ingestion heartbeat active while the lane is routed or awaiting
 
 - `docs/Tracks/v2-commercial/process/catalog-ingestion-agent-comms.md`
 - recent PR comments beginning `ARCHITECT_NOTE:` or `CHIEF_ARCHITECT_REPLY:`
-- PR #155 and any follow-up PR comments beginning `ARCHITECT_NOTE:` or `CHIEF_ARCHITECT_REPLY:`
+- the active Crate & Barrel UAE feasibility PR once opened
+- follow-up PR comments beginning `ARCHITECT_NOTE:` or `CHIEF_ARCHITECT_REPLY:`
 
-If PR #155 merges, keep the heartbeat active and proceed only to the docs-only Crate & Barrel UAE category discovery feasibility stage described above.
+If the feasibility PR is rejected, fix only listed docs blockers. If it is approved and explicitly approved to merge, merge only if runtime impact remains none/docs-only and no hard stop was crossed.
