@@ -49,12 +49,12 @@ const APPROVED_PRODUCT_SEEDS: TheOneSeed[] = [
   },
   {
     url: "https://www.theone.com/product/ruth-dining-table-white-dia-100cm-659377",
-    categoryHint: "dining",
+    categoryHint: "dining table",
     seedCategoryUrl: "https://www.theone.com/category/dining-dining-tables"
   },
   {
     url: "https://www.theone.com/product/kiwin-bedside-table-clear-561435",
-    categoryHint: "bedroom",
+    categoryHint: "nightstand",
     seedCategoryUrl: "https://www.theone.com/category/bed-bath-beds-bedside-tables"
   },
   {
