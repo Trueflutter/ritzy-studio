@@ -149,16 +149,16 @@ Blocker: Waiting for explicit Sam/Chief routing.
 ### Ticket RE-001
 
 Owner: Resilience Engineer_Product I...
-Status: ROUTED
-Branch: `codex/product-sourcing-timeout-second-pass`
-Allowed scope: Second runtime defensive hotfix for baseline product sourcing timeout after PR #194. Keep the fix inside `groundProductsAction` / `sourceProductsFromConcept` timeout resilience and focused tests. Since 12 low-detail candidate images still timed out, investigate and implement a narrower fallback such as zero/fewer product images, lower concept-image detail if safe, longer timeout only if justified, model-specific timeout handling, or a deterministic non-vision fallback using the existing ranked candidate text. Preserve the existing successful sourcing path and failure classification.
+Status: PARKED
+Branch: none
+Allowed scope: Claude/local retest follow-through only after pulling latest `origin/main` with PR #197 and restarting the dev server. If product sourcing still fails, collect the newest `ai_jobs` evidence and request a fresh RE-001 route.
 Forbidden scope: No DB migrations, generated DB types, Product Matching controlled-preview configuration/execution, runtime allowlist expansion, Product Matching Engine V1 activation, catalog writes, draft shopping-list writes except the existing successful sourcing path, payment/checkout changes, deploys, UI redesign, prompt/schema changes, broad sourcing architecture changes, or Catalog-First runtime coupling unless a new ticket explicitly routes that scope.
-Expected next artifact: PR with second-pass timeout fix, updated tests, and fresh ai_jobs evidence in the PR body.
-SLA: Agent ack within one heartbeat; branch, commit, PR, mailbox update, or blocker within 30 minutes after ack.
-Last architect instruction: PR #194 merged at `6325bc1`, but retest still fails. Fresh `ai_jobs` rows after #194 for room `19d312f0-0cd0-4e92-a612-8897767992b3` show `error_message: "Product visual sourcing timed out."`, about 45 second runtime, model `gpt-5-mini`, `productImagePreflight` `36/36` accepted, `productImagePreflightGate.usable: true`, `providerImageDownloadFailure: false`, `productMatchingEngineEnabled: false`, and `productSourcingAiPayload` `{ candidateImageLimit: 12, candidateImageDetail: "low" }`. Payload reduction helped classification/observability but did not resolve the timeout. Own the second-pass baseline sourcing resilience fix; this is still not Product Matching Engine V1 work.
-Agent ack: pending
-Current PR: none
-Blocker: none
+Expected next artifact: Claude retest result. If it fails, capture `ai_jobs.error_message`, runtime, `productSourcingAiPayload`, `productImagePreflight`, `productImagePreflightGate`, `providerImageDownloadFailure`, `productMatchingEngineEnabled`, and model before routing another fix.
+SLA: None while parked pending retest.
+Last architect instruction: PR #197 merged at `8eb6593` after #194 still timed out. It disables product candidate image transport for baseline Product Sourcing, preserves the full text candidate list, lowers concept image detail to `low`, and avoids product-image preflight hard-gating when product images are not sent. Pull latest main, restart the dev server, and retest product/catalogue sourcing.
+Agent ack: #197 was the acknowledgement and implementation artifact for the second-pass RE-001 route.
+Current PR: none; #197 merged (<https://github.com/Trueflutter/ritzy-studio/pull/197>)
+Blocker: Waiting for Claude/local retest on latest main.
 
 ### Ticket CI-001
 
