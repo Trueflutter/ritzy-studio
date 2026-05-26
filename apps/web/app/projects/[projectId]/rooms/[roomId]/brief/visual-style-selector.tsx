@@ -85,10 +85,10 @@ export function VisualStyleSelector({
                   </span>
                 </span>
                 <span className="block p-4">
-                  <span className="font-display text-body-l font-light italic text-ink">
+                  <span className="block font-display text-display-xs font-light tracking-[-0.02em] text-ink">
                     {style.name}
                   </span>
-                  <span className="mt-2 block font-body text-body-s text-ink-secondary">
+                  <span className="mt-2 block font-body text-body-s text-ink-muted">
                     {style.description}
                   </span>
                 </span>
