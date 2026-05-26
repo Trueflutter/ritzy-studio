@@ -107,16 +107,16 @@ Docs-only, test-only, domain-only, and dry-run-only work may proceed only when t
 ### Ticket PM-001
 
 Owner: Product Matching Agent
-Status: BLOCKED
-Branch: none
-Allowed scope: Docs/artifacts-only synthesis from already committed evidence, static screenshots, merged PR notes, and mailbox history. No new Product Matching execution is allowed by this ticket.
-Forbidden scope: No controlled-preview configuration or execution, no preview-target expansion, no app-action execution, no runtime allowlist expansion, no draft shopping-list writes, no catalog writes, no live writes, no default-on activation, no production flags, no deploys, no DB/schema/generated type changes, no UI changes, no prompt changes, no app-action flow changes, no Product Matching selection/scoring behavior changes, and no Catalog-First runtime coupling.
-Expected next artifact: None until Sam/Chief explicitly approves the exact execution boundary. A docs-only decision request may be opened if the Product Matching Agent needs that approval captured durably.
-SLA: None while blocked.
-Last architect instruction: Sync latest `origin/main` including PR #191 at `a8b45ac`, but do not run Product Matching Engine V1, controlled preview, app actions, preview allowlist changes, draft shopping-list creation/refresh, or catalog writes from this ticket. If further validation evidence is needed, first request explicit Sam/Chief approval for the exact local-only read-only harness or execution boundary, including what will run, where it will run, what data it may read, and proof that it cannot write.
-Agent ack: not required while blocked
+Status: ACKED
+Branch: `codex/product-match-local-preview-evidence`
+Allowed scope: Local/dev-only controlled Product Matching V1 preview for Sam's current test project/room/user/email. Enable Product Matching V1 only in the local process, use request-scoped preview allowlist only for project `7e1f060d-b95d-462d-8cc2-22b6dd0e92a5`, room `19d312f0-0cd0-4e92-a612-8897767992b3`, and the resolved current test user/email, run product sourcing locally to compare Product Matching V1 results against the generated concept, inspect `ai_jobs` evidence and selected products, and open docs/code PRs only if needed to fix matching quality.
+Forbidden scope: No production deploy, production flags, broad allowlist expansion, live catalog writes, DB/schema/generated type changes, payment/checkout/UI changes, Catalog-First runtime coupling, default-on activation, production rollout, Product Matching selection/scoring behavior changes unless a narrow quality-fix PR is opened for review, or any scope outside the local/dev current test project/room/user/email boundary.
+Expected next artifact: Local evidence note or small PR only if needed after the local run; otherwise concise PM-001 result note.
+SLA: Show local-run evidence, a PR, or explicit blocker within 30 minutes of this ack.
+Last architect instruction: Sam approved routing Product Matching Agent to run a local-only controlled Product Matching V1 preview for the current test project/room/user. Allowed: enable Product Matching V1 only in local/dev env; use request-scoped preview allowlist only for the current project/room/user/email; run product sourcing locally to compare Product Matching V1 results against the generated concept; inspect `ai_jobs` evidence and selected products; open docs/code PRs only if needed to fix matching quality. Forbidden: no production deploy, no production flags, no broad allowlist expansion, no live catalog writes, no schema/generated type changes, no payment/checkout/UI changes, no Catalog-First runtime coupling.
+Agent ack: Product Matching Agent acknowledged PM-001 and will use branch `codex/product-match-local-preview-evidence`; the current local route is project `7e1f060d-b95d-462d-8cc2-22b6dd0e92a5`, room `19d312f0-0cd0-4e92-a612-8897767992b3`.
 Current PR: none
-Blocker: Product Matching controlled-preview/app-action/runtime execution remains gated pending explicit Sam/Chief approval for the exact boundary.
+Blocker: none for the approved local/dev current test boundary; stop if the current test user/email cannot be resolved without exposing secrets or if the run would require a forbidden write/deploy/schema/UI/payment/checkout/Catalog-First action.
 
 ### Ticket MI-001
 
