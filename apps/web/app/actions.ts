@@ -52,9 +52,16 @@ import {
   getStripe,
   HOMEOWNER_ROOM_UNLOCK_AMOUNT_AED
 } from "@/lib/billing/stripe";
+import {
+  buildProductImagePreflightGate,
+  preflightProductCandidateImages,
+  type ProductImagePreflightSummary
+} from "./product-image-preflight";
 
 const PRODUCT_SOURCING_AI_TIMEOUT_MS = 45_000;
 const PRODUCT_MATCHING_CATALOG_LIMIT = 1500;
+const PRODUCT_SOURCING_IMAGE_PREFLIGHT_TIMEOUT_MS = 2_500;
+const PRODUCT_SOURCING_MAX_IMAGE_BYTES = 20 * 1024 * 1024;
 
 function productReferenceOrderingV2Enabled() {
   return process.env.RITZY_PRODUCT_REFERENCE_ORDERING_V2_ENABLED === "true";
@@ -1953,8 +1960,18 @@ export async function groundProductsAction(formData: FormData) {
   });
   const sourcingPools = sourcingPlan.roleScopedPools;
   const sourcingCandidates = sourcingPlan.candidates;
+  const initialImagePreflight = await preflightProductCandidateImages(sourcingCandidates, {
+    timeoutMs: PRODUCT_SOURCING_IMAGE_PREFLIGHT_TIMEOUT_MS,
+    maxBytes: PRODUCT_SOURCING_MAX_IMAGE_BYTES
+  });
+  const aiSourcingCandidates = initialImagePreflight.candidates;
   const sourcingCandidateIds = new Set(sourcingCandidates.map((candidate) => candidate.id));
   const sourcingCandidatePools = sourcingPools.map((pool) => poolToSourcingRolePool(pool, sourcingCandidateIds));
+  const initialImageGate = buildProductImagePreflightGate({
+    candidateCount: sourcingCandidates.length,
+    acceptedCandidateIds: initialImagePreflight.acceptedCandidateIds,
+    rolePools: sourcingPools
+  });
   const rolePoolDiversity = productMatchingEngineEnabled ? summarizeRolePoolDiversity(sourcingPools) : undefined;
   const rolePoolQuality = productMatchingEngineEnabled ? summarizeRolePoolQuality(sourcingPools) : undefined;
   const productMatchingRoomMeasurements = measurements
@@ -1986,6 +2003,8 @@ export async function groundProductsAction(formData: FormData) {
           matchedScopes: productMatchingPreview.gate.matchedScopes
         },
         candidateCount: sourcingCandidates.length,
+        productImagePreflight: initialImagePreflight.summary,
+        productImagePreflightGate: initialImageGate,
         blueprintRoleCount: blueprintRoles.length,
         roleCandidateCounts: productMatchingEngineEnabled ? roleCandidateCountSummary(sourcingPools) : undefined,
         rolePoolDiversity,
@@ -2006,6 +2025,26 @@ export async function groundProductsAction(formData: FormData) {
     throw new Error(sourcingJobError.message);
   }
 
+  if (!initialImageGate.usable) {
+    await serviceSupabase
+      .from("ai_jobs")
+      .update({
+        status: "failed",
+        completed_at: new Date().toISOString(),
+        error_message: "Product visual sourcing did not have enough AI-usable product images.",
+        output_summary: {
+          productMatchingEngineEnabled,
+          productImagePreflight: initialImagePreflight.summary,
+          productImagePreflightGate: initialImageGate,
+          usableProductImageCount: initialImagePreflight.summary.acceptedCount,
+          minUsableProductImageCount: initialImageGate.minAcceptedCount
+        }
+      })
+      .eq("id", sourcingJob.id);
+
+    redirect(`${redirectPath}?message=${encodeURIComponent(productImageCatalogRefreshMessage())}`);
+  }
+
   let sourcingResult: Awaited<ReturnType<typeof sourceProductsFromConcept>>;
   try {
     sourcingResult = await withTimeout(
@@ -2014,7 +2053,7 @@ export async function groundProductsAction(formData: FormData) {
         conceptTitle: concept.title,
         conceptDescription: concept.description,
         conceptImageUrl: conceptSignedImage.signedUrl,
-        candidates: sourcingCandidates.map(matchToSourcingCandidate),
+        candidates: aiSourcingCandidates.map(matchToSourcingCandidate),
         roleCandidatePools: productMatchingEngineEnabled ? sourcingCandidatePools : undefined
       }),
       PRODUCT_SOURCING_AI_TIMEOUT_MS,
@@ -2035,6 +2074,8 @@ export async function groundProductsAction(formData: FormData) {
           missingRoleCount: sourcingResult.missingRoles.length,
           missingRoles: sourcingResult.missingRoles,
           productMatchingEngineEnabled,
+          productImagePreflight: initialImagePreflight.summary,
+          productImagePreflightGate: initialImageGate,
           roleCandidateCounts: productMatchingEngineEnabled ? roleCandidateCountSummary(sourcingPools) : undefined,
           roleStatuses: productMatchingEngineEnabled ? roleStatusSummary(sourcingResult.roleResults) : undefined,
           ...(productMatchingEngineEnabled
@@ -2054,15 +2095,20 @@ export async function groundProductsAction(formData: FormData) {
       .update({
         status: "failed",
         completed_at: new Date().toISOString(),
-        error_message: error instanceof Error ? error.message : "Product visual sourcing failed."
+        error_message: error instanceof Error ? error.message : "Product visual sourcing failed.",
+        output_summary: {
+          productMatchingEngineEnabled,
+          productImagePreflight: initialImagePreflight.summary,
+          productImagePreflightGate: initialImageGate,
+          providerImageDownloadFailure: isProviderImageDownloadError(error)
+        }
       })
       .eq("id", sourcingJob.id);
 
-    redirect(
-      `${redirectPath}?message=${encodeURIComponent(
-        "Product sourcing could not read the concept image clearly enough. Please try sourcing again."
-      )}`
-    );
+    const message = isProviderImageDownloadError(error)
+      ? productImageCatalogRefreshMessage()
+      : "Product sourcing could not read the concept image clearly enough. Please try sourcing again.";
+    redirect(`${redirectPath}?message=${encodeURIComponent(message)}`);
   }
 
   if (sourcingResult.needs.length === 0 || sourcingResult.selectedProducts.length === 0) {
@@ -2107,6 +2153,9 @@ export async function groundProductsAction(formData: FormData) {
   let missingRequiredVisualRoles = staticRoles.filter(
     (role) => role.priority === "required" && visualMissingRoleCategories.has(role.category)
   );
+  let retryProductImagePreflightSummary: ProductImagePreflightSummary | null = null;
+  let retryProductImagePreflightGate: ReturnType<typeof buildProductImagePreflightGate> | null = null;
+  let retryProviderImageDownloadFailure = false;
 
   if (missingRequiredVisualRoles.length > 0) {
     const retryRoles = mergeRoomRoles(missingRequiredVisualRoles, staticRoles);
@@ -2128,21 +2177,39 @@ export async function groundProductsAction(formData: FormData) {
     });
     const retryPools = retryPlan.roleScopedPools;
     const retryCandidates = retryPlan.candidates;
+    const retryImagePreflight = await preflightProductCandidateImages(retryCandidates, {
+      timeoutMs: PRODUCT_SOURCING_IMAGE_PREFLIGHT_TIMEOUT_MS,
+      maxBytes: PRODUCT_SOURCING_MAX_IMAGE_BYTES
+    });
+    retryProductImagePreflightSummary = retryImagePreflight.summary;
+    const aiRetryCandidates = retryImagePreflight.candidates;
     const retryCandidateIds = new Set(retryCandidates.map((candidate) => candidate.id));
-    const retryResult = await withTimeout(
-      sourceProductsFromConcept({
-        roomType: room.room_type,
-        conceptTitle: concept.title,
-        conceptDescription: concept.description,
-        conceptImageUrl: conceptSignedImage.signedUrl,
-        candidates: retryCandidates.map(matchToSourcingCandidate),
-        roleCandidatePools: productMatchingEngineEnabled
-          ? retryPools.map((pool) => poolToSourcingRolePool(pool, retryCandidateIds))
-          : undefined
-      }),
-      PRODUCT_SOURCING_AI_TIMEOUT_MS,
-      "Product visual sourcing retry timed out."
-    ).catch(() => null);
+    const retryImageGate = buildProductImagePreflightGate({
+      candidateCount: retryCandidates.length,
+      acceptedCandidateIds: retryImagePreflight.acceptedCandidateIds,
+      rolePools: retryPools
+    });
+    retryProductImagePreflightGate = retryImageGate;
+    const retryResult =
+      retryImageGate.usable
+        ? await withTimeout(
+            sourceProductsFromConcept({
+              roomType: room.room_type,
+              conceptTitle: concept.title,
+              conceptDescription: concept.description,
+              conceptImageUrl: conceptSignedImage.signedUrl,
+              candidates: aiRetryCandidates.map(matchToSourcingCandidate),
+              roleCandidatePools: productMatchingEngineEnabled
+                ? retryPools.map((pool) => poolToSourcingRolePool(pool, retryCandidateIds))
+                : undefined
+            }),
+            PRODUCT_SOURCING_AI_TIMEOUT_MS,
+            "Product visual sourcing retry timed out."
+          ).catch((error) => {
+            retryProviderImageDownloadFailure = isProviderImageDownloadError(error);
+            return null;
+          })
+        : null;
 
     if (retryResult?.needs.length && retryResult.selectedProducts.length) {
       sourcingResult = retryResult;
@@ -2168,6 +2235,10 @@ export async function groundProductsAction(formData: FormData) {
             missingRoleCount: sourcingResult.missingRoles.length,
             missingRoles: sourcingResult.missingRoles,
             productMatchingEngineEnabled,
+            productImagePreflight: initialImagePreflight.summary,
+            productImagePreflightGate: initialImageGate,
+            retryProductImagePreflight: retryImagePreflight.summary,
+            retryProductImagePreflightGate: retryImageGate,
             roleCandidateCounts: productMatchingEngineEnabled ? roleCandidateCountSummary(retryPools) : undefined,
             roleStatuses: productMatchingEngineEnabled ? roleStatusSummary(sourcingResult.roleResults) : undefined,
             ...(productMatchingEngineEnabled
@@ -2201,6 +2272,11 @@ export async function groundProductsAction(formData: FormData) {
           missingRoleCount: sourcingResult.missingRoles.length,
           missingRoles: sourcingResult.missingRoles,
           productMatchingEngineEnabled,
+          productImagePreflight: initialImagePreflight.summary,
+          productImagePreflightGate: initialImageGate,
+          retryProductImagePreflight: retryProductImagePreflightSummary,
+          retryProductImagePreflightGate,
+          retryProviderImageDownloadFailure,
           roleCandidateCounts: productMatchingEngineEnabled
             ? roleCandidateCountSummary(latestConfidencePools)
             : undefined,
@@ -2220,7 +2296,9 @@ export async function groundProductsAction(formData: FormData) {
 
     redirect(
       `${redirectPath}?message=${encodeURIComponent(
-        `Product grounding needs better catalog matches before it is usable. Missing: ${missingLabels.join(", ")}.`
+        retryProviderImageDownloadFailure
+          ? productImageCatalogRefreshMessage()
+          : `Product grounding needs better catalog matches before it is usable. Missing: ${missingLabels.join(", ")}.`
       )}`
     );
   }
@@ -3584,6 +3662,23 @@ function catalogUnavailableMessage(products: ProductRow[]) {
   }
 
   return "The shopping catalog is refreshing eligible products. Please try again shortly.";
+}
+
+function productImageCatalogRefreshMessage() {
+  return "The shopping catalog is refreshing eligible products. Please try again shortly.";
+}
+
+function isProviderImageDownloadError(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error ?? "");
+  const normalized = message.toLowerCase();
+
+  return (
+    normalized.includes("unable to download content") ||
+    normalized.includes("download content from the provided url") ||
+    normalized.includes("invalid image url") ||
+    normalized.includes("failed to download image") ||
+    normalized.includes("could not download image")
+  );
 }
 
 function mergeRoomRoles(primary: RoomProductRoleSpec[], secondary: RoomProductRoleSpec[]) {
