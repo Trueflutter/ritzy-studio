@@ -158,7 +158,7 @@ export default async function ConceptsPage({
 
         <div className="mt-10 flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
           <div className="max-w-[860px]">
-            <SectionEyebrow>N° 08 — Concepts</SectionEyebrow>
+            <SectionEyebrow>N° 10 — Concepts</SectionEyebrow>
             <DecorativeRule className="mt-5" />
             <h1 className="mt-6 font-display text-display-l font-light leading-[1.05] tracking-[-0.015em] text-ink">
               {hero ? "Your room, reimagined." : "Generate the first room direction."}
