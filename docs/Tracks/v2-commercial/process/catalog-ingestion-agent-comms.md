@@ -1,9 +1,9 @@
 # Catalog Ingestion Agent Comms
 
 ## Current PR
-PR #159: https://github.com/Trueflutter/ritzy-studio/pull/159 merged.
+PR #161: https://github.com/Trueflutter/ritzy-studio/pull/161
 
-Active local branch for the routed next stage: `codex/catalog-ingestion-the-one-fixture-parser`
+Branch: `codex/catalog-ingestion-the-one-fixture-parser`
 
 Current stage: `APPROVED_DRY_RUN_ONLY_THE_ONE_FIXTURE_PARSER_SPIKE`
 
@@ -35,10 +35,22 @@ Preserve Homes r Us `Crawl-delay: 10`.
 ## Chief Architect Routing
 ARCHITECT_NOTE:
 Lane: Catalog Ingestion
-Current PR: pending PR for the tiny dry-run-only The One UAE fixture/parser spike
+Current PR: PR #161 completes the tiny dry-run-only The One UAE fixture/parser spike
 Current stage: `APPROVED_DRY_RUN_ONLY_THE_ONE_FIXTURE_PARSER_SPIKE`
-What is complete: PR #159 completed docs-only route feasibility for The One UAE and routed this next tiny dry-run-only fixture/parser spike. This stage adds strict URL validators, saved fixtures, parser tests, CLI aliases, and one low-limit dry-run verification path. Live ingestion remains blocked.
-Decision: Wait for Chief Architect review on the fixture/parser PR after it is opened.
+What is complete: PR #159 completed docs-only route feasibility for The One UAE and routed this tiny dry-run-only fixture/parser spike. PR #161 adds strict URL validators, saved fixtures, parser tests, CLI aliases, and one low-limit dry-run verification path. The One remains dry-run-only/manual-seed-only. Live ingestion remains blocked.
+Decision: If PR #161 is approved and merged, proceed only to the next routed dry-run-only QA/report stage from latest `main`.
+
+Approved next stage after PR #161 merge:
+`APPROVED_DRY_RUN_ONLY_THE_ONE_MULTI_CATEGORY_SAMPLE_QA`
+
+Scope for the next stage:
+
+1. Branch from latest `main`.
+2. Run the existing The One adapter with the existing tiny manual seed set only.
+3. Use `--dry-run --limit=4`.
+4. Capture normalized sample output, category coverage, parser gaps, and stop-rule observations in docs.
+5. Add or adjust tests only if the run exposes a deterministic parser issue.
+6. Do not add new seed expansion, new broad discovery, or new crawling behavior without review.
 
 Completed scope:
 
@@ -62,7 +74,7 @@ Verification run locally:
 - `pnpm --filter @ritzy-studio/ingestion exec tsx src/cli.ts theone --dry-run --limit=1`
 
 ## Next Intended Action
-Open the fixture/parser spike PR, leave an `ARCHITECT_NOTE:`, then monitor review/checks.
+If PR #161 is rejected, fix only listed blockers. If PR #161 is approved and explicitly approved to merge, merge only if runtime impact remains none/dry-run-only and no hard stop was crossed. After merge, sync latest `main` and proceed only to `APPROVED_DRY_RUN_ONLY_THE_ONE_MULTI_CATEGORY_SAMPLE_QA`.
 
 Do not start live ingestion, controlled preview, broad discovery, production flag, deploy, runtime coupling, or write path from this approval.
 
@@ -71,7 +83,8 @@ Keep the Catalog Ingestion heartbeat active while the lane is routed or awaiting
 
 - `docs/Tracks/v2-commercial/process/catalog-ingestion-agent-comms.md`
 - recent PR comments beginning `ARCHITECT_NOTE:` or `CHIEF_ARCHITECT_REPLY:`
-- the next The One UAE fixture/parser spike PR once opened
+- PR #161
+- the next The One UAE multi-category sample QA PR once opened
 - follow-up PR comments beginning `ARCHITECT_NOTE:` or `CHIEF_ARCHITECT_REPLY:`
 
-If the fixture/parser PR is rejected, fix only listed blockers. If it is approved and explicitly approved to merge, merge only if runtime impact remains none/dry-run-only and no hard stop was crossed. Keep the Catalog Ingestion heartbeat active after merge unless the mailbox records a complete next safe action.
+If PR #161 is rejected, fix only listed blockers. If it is approved and explicitly approved to merge, merge only if runtime impact remains none/dry-run-only and no hard stop was crossed, then proceed only to the routed The One multi-category sample QA stage from latest `main`. Keep the Catalog Ingestion heartbeat active after merge.
