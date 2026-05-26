@@ -13,6 +13,7 @@ import { homesRusAdapter } from "./adapters/homesrus";
 import { ikeaAdapter } from "./adapters/ikea";
 import { marinaHomeAdapter } from "./adapters/marinahome";
 import { panHomeAdapter } from "./adapters/panhome";
+import { theOneAdapter } from "./adapters/theone";
 import { twoXlAdapter } from "./adapters/twoxl";
 import { categoryCounts } from "./catalog-counts";
 import { normalizeProductCandidate } from "./normalization";
@@ -45,7 +46,10 @@ const adapters = new Map<string, CatalogAdapter>([
   [ikeaAdapter.key, ikeaAdapter],
   ["marinahome", marinaHomeAdapter],
   ["marina-home", marinaHomeAdapter],
-  [marinaHomeAdapter.key, marinaHomeAdapter]
+  [marinaHomeAdapter.key, marinaHomeAdapter],
+  ["theone", theOneAdapter],
+  ["the-one", theOneAdapter],
+  [theOneAdapter.key, theOneAdapter]
 ]);
 
 if (isCliEntrypoint()) {
