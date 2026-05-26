@@ -243,6 +243,8 @@ export type ConceptProductSourcingRolePool = {
   candidateIds: string[];
 };
 
+export type ProductSourcingImageDetail = "low" | "high" | "auto";
+
 export type SourceProductsFromConceptInput = {
   roomType: string;
   conceptTitle: string;
@@ -250,6 +252,8 @@ export type SourceProductsFromConceptInput = {
   conceptImageUrl: string;
   candidates: ConceptProductSourcingCandidate[];
   roleCandidatePools?: ConceptProductSourcingRolePool[];
+  candidateImageLimit?: number;
+  candidateImageDetail?: ProductSourcingImageDetail;
 };
 
 export type ProductVisualMatchStatus =
@@ -829,20 +833,11 @@ export async function sourceProductsFromConcept(
           )
           .join("\n")
       : "No role-scoped pools supplied. Use the expected product roles and candidate list.";
-  const candidateImageContent = input.candidates
-    .slice(0, candidateLimit)
-    .filter((candidate) => candidate.primaryImageUrl)
-    .flatMap((candidate) => [
-      {
-        type: "input_text" as const,
-        text: `Candidate product image for id ${candidate.id}: ${candidate.name}`
-      },
-      {
-        type: "input_image" as const,
-        image_url: candidate.primaryImageUrl as string,
-        detail: "high" as const
-      }
-    ]);
+  const candidateImageContent = productSourcingCandidateImageContent(input.candidates, {
+    candidateLimit,
+    candidateImageLimit: input.candidateImageLimit,
+    detail: input.candidateImageDetail
+  });
 
   const response = await client.responses.create({
     model: env.OPENAI_TEXT_MODEL,
@@ -901,6 +896,37 @@ export async function sourceProductsFromConcept(
     needs: parsed.needs,
     ...validated
   };
+}
+
+export function productSourcingCandidateImageContent(
+  candidates: ConceptProductSourcingCandidate[],
+  {
+    candidateLimit = 36,
+    candidateImageLimit = candidateLimit,
+    detail = "high"
+  }: {
+    candidateLimit?: number;
+    candidateImageLimit?: number;
+    detail?: ProductSourcingImageDetail;
+  } = {}
+) {
+  const imageLimit = Math.max(0, Math.min(candidateLimit, candidateImageLimit));
+
+  return candidates
+    .slice(0, candidateLimit)
+    .filter((candidate) => candidate.primaryImageUrl)
+    .slice(0, imageLimit)
+    .flatMap((candidate) => [
+      {
+        type: "input_text" as const,
+        text: `Candidate product image for id ${candidate.id}: ${candidate.name}`
+      },
+      {
+        type: "input_image" as const,
+        image_url: candidate.primaryImageUrl as string,
+        detail
+      }
+    ]);
 }
 
 export function validateProductSourcingRoleContract(
