@@ -8,3 +8,4 @@ export * from "./adapters/twoxl";
 export * from "./adapters/panhome";
 export * from "./adapters/homesrus";
 export * from "./adapters/ikea";
+export * from "./adapters/marinahome";
