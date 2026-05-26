@@ -22,7 +22,7 @@ export function FloorPlanUploader({
   const [lastFile, setLastFile] = useState<File | null>(null);
   const [status, setStatus] = useState<UploadStatus>("idle");
   const [message, setMessage] = useState(
-    existingStoragePath ? "Floor plan attached" : "Drag the floor plan here, or click to upload"
+    existingStoragePath ? "Floor plan attached" : "Drop a floor plan or click to upload"
   );
   const [isPending, startTransition] = useTransition();
   const router = useRouter();
