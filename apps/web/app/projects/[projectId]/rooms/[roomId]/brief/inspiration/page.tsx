@@ -58,7 +58,7 @@ export default async function BriefInspirationPage({
     <BriefShell
       backHref={`/projects/${projectId}/rooms/${roomId}/brief/style`}
       currentStep={2}
-      eyebrow="N° 05 — Inspiration"
+      eyebrow="N° 09 — Inspiration"
       projectName={project.name}
       roomName={room.name}
       roomType={room.room_type}
@@ -76,8 +76,8 @@ export default async function BriefInspirationPage({
       {signedAssets.length > 0 ? (
         <div className="mt-6 grid grid-cols-2 gap-3 md:grid-cols-4">
           {signedAssets.map((asset, index) => (
-            <figure className="border border-line bg-surface p-2" key={asset.id}>
-              <div className="flex aspect-square items-center justify-center bg-surface-subtle">
+            <figure className="border border-line bg-surface" key={asset.id}>
+              <div className="flex aspect-square items-center justify-center overflow-hidden bg-surface-subtle">
                 {asset.signedUrl ? (
                   <Image
                     alt={`Inspiration reference ${index + 1}`}
@@ -91,7 +91,7 @@ export default async function BriefInspirationPage({
                   <p className="font-display text-body-s italic text-error">missing</p>
                 )}
               </div>
-              <form action={deleteInspirationImageAction} className="mt-2">
+              <form action={deleteInspirationImageAction} className="border-t border-line">
                 <input name="projectId" type="hidden" value={projectId} />
                 <input name="roomId" type="hidden" value={roomId} />
                 <input name="assetId" type="hidden" value={asset.id} />
@@ -111,10 +111,10 @@ export default async function BriefInspirationPage({
         <input name="briefStep" type="hidden" value="inspiration" />
         <input name="nextPath" type="hidden" value={`/projects/${projectId}/rooms/${roomId}/brief/details`} />
         <Link
-          className="font-display text-body-s italic text-ink-muted transition-colors duration-micro hover:text-ink"
+          className="font-body text-body-s text-ink-muted transition-colors duration-micro hover:text-ink"
           href={`/projects/${projectId}/rooms/${roomId}/brief/details`}
         >
-          skip — I don&apos;t have any
+          {signedAssets.length > 0 ? "skip" : "skip — I don't have any"}
         </Link>
         <SubmitButton pendingLabel="Saving references...">Continue →</SubmitButton>
       </form>
