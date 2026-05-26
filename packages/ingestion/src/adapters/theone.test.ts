@@ -19,6 +19,17 @@ const missingFieldsHtml = readFileSync(join(fixturesDir, "theone-product-missing
 assert.equal(theOneAdapter.key, "theone-ae");
 assert.equal(theOneAdapter.dryRunOnly, true);
 
+const seedDiscoveries = [];
+for await (const discovery of await theOneAdapter.discoverProducts({ limit: 4 })) {
+  seedDiscoveries.push(discovery);
+}
+assert.deepEqual(seedDiscoveries.map((discovery) => discovery.categoryHint), [
+  "lighting",
+  "dining table",
+  "nightstand",
+  "rugs/floor covering"
+]);
+
 assert.deepEqual(parseTheOneProductUrls(categoryHtml), [
   "https://www.theone.com/product/casablanca-lantern-nickel-h64cm-449686",
   "https://www.theone.com/product/miyu-table-lamp-cream-h79cm-585717"
