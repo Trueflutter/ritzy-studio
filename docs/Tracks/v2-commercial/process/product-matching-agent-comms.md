@@ -1,11 +1,11 @@
 # Product Matching Engine Agent Comms
 
 ## Current PR
-PR #207 (<https://github.com/Trueflutter/ritzy-studio/pull/207>) on branch `codex/product-match-coffee-table-quality-fix`.
+PR #209 (<https://github.com/Trueflutter/ritzy-studio/pull/209>) on branch `codex/product-match-post-207-handoff`.
 
 ## Current stage
 DUAL_TRACK:
-- `PM001_COFFEE_TABLE_QUALITY_FIX_READY_FOR_REVIEW`
+- `PM001_COFFEE_TABLE_QUALITY_FIX_MERGED_BLOCKED_WAITING_FOR_SAM_CHIEF_DECISION`
 - `CONTROLLED_PREVIEW_EXPANSION_BLOCKED_WAITING_FOR_SAM_CHIEF_DECISION` remains the runtime gate outside the approved local/dev current test boundary
 
 ## Blockers
@@ -33,6 +33,8 @@ ARCHITECT_NOTE: PR #160 completed the docs-only controlled-preview execution-bou
 Hard stop: no controlled-preview configuration/execution, app actions, runtime allowlist expansion, draft shopping-list/catalog writes, live catalog writes, DB/schema/generated types, runtime/env default changes, runtime/UI/prompt/payment/checkout changes, production flags/deploys, default-on activation, production rollout, selection/scoring changes, or Catalog-First runtime coupling without explicit Sam/Chief approval.
 
 ## Last action taken
+PR #207 merged the PM-001 coffee-table quality fix. The fix tightened coffee-table role matching, added focused domain tests, and documented retest evidence at `docs/Tracks/v2-commercial/product-matching-evals/manual-qa/2026-05-26-pm001-coffee-table-quality-fix.md`.
+
 PM-001 coffee-table quality fix completed. The retest persisted `ai_jobs` evidence row `182e8d5b-2386-4f1a-a139-5d905e67d2fe`; QA stop rules pass with 0 blockers, and required role `coffee table` is now `acceptable_match`. No app action, draft shopping-list row create/refresh, catalog write, DB/schema/generated type change, live catalog write, UI/prompt/payment/checkout change, production flag/deploy, broad allowlist expansion, default-on activation, production rollout, broad scoring rewrite, unrelated quality change, or Catalog-First runtime coupling was performed.
 
 PM-001 local/dev current test preview evidence completed. The run persisted `ai_jobs` evidence row `b218a6f6-55bf-4c49-961d-9812827d6553` and added `docs/Tracks/v2-commercial/product-matching-evals/manual-qa/2026-05-26-pm001-local-preview-evidence.md`. QA stop rules did not pass because required role `coffee table` returned `closest_available`. No app action, draft shopping-list row create/refresh, catalog write, DB/schema/generated type change, live catalog write, UI/prompt/payment/checkout change, production flag/deploy, broad allowlist expansion, default-on activation, production rollout, selection/scoring behavior change, or Catalog-First runtime coupling was performed.
@@ -50,7 +52,7 @@ PR #160 completed the docs-only controlled-preview execution-boundary package af
 PR #170 merged to clean stale mailbox state after PR #160 merged. This was docs/mailbox only.
 
 ## Next intended action
-Implementation agent: wait for Chief/Sam review of the PM-001 coffee-table quality-fix PR before any customer-facing reuse, additional quality-fix work, or retest. Do not start further Product Matching execution, app actions, writes, broad allowlist changes, production activity, broad scoring rewrites, unrelated quality changes, or Catalog-First coupling without a new explicit boundary.
+Implementation agent: wait for Chief/Sam decision on the merged PM-001 coffee-table quality fix and retest evidence before any customer-facing reuse, additional quality-fix work, or retest. Do not start further Product Matching execution, app actions, writes, broad allowlist changes, production activity, broad scoring rewrites, unrelated quality changes, or Catalog-First coupling without a new explicit boundary.
 
 Keep the Product Matching lane heartbeat active. It must not be deleted after merges. The heartbeat should run every 10 minutes and monitor:
 
@@ -64,6 +66,8 @@ Do not delete the Product Matching heartbeat just because a PR merged. If the ma
 Sam/Chief: separately review whether the PR #142 two-target evidence is sufficient for a next bounded preview step. Any further execution requires a new explicit approval with scope, project/room/user allowlist, environment, app path, write boundary, stop rules, rollback rules, evidence artifacts, owner, and expiration.
 
 ## Durable next-state handoff after merge
+PR #207 merged the PM-001 coffee-table quality fix. The lane state is `PM001_COFFEE_TABLE_QUALITY_FIX_MERGED_BLOCKED_WAITING_FOR_SAM_CHIEF_DECISION`. The runtime gate remains `CONTROLLED_PREVIEW_EXPANSION_BLOCKED_WAITING_FOR_SAM_CHIEF_DECISION` outside the already completed local/dev evidence and retest passes. Do not reuse the output for customer-facing decisions, run another Product Matching execution, invoke app actions, expand allowlists, create or refresh draft shopping-list/catalog rows, change DB/schema/generated types, change runtime/UI/prompt/payment/checkout, deploy production flags, activate default-on behavior, make broad scoring rewrites or unrelated quality changes, or add Catalog-First runtime coupling without explicit Chief/Sam approval.
+
 PR #187 merged the docs-only Product Matching investor evidence appendix at `docs/Tracks/v2-commercial/product-matching-evals/2026-05-26-investor-evidence-appendix.md`. The lane state remains `CONTROLLED_PREVIEW_EXECUTION_BOUNDARY_READY_WAITING_FOR_SAM_CHIEF_DECISION`. `CONTROLLED_PREVIEW_EXPANSION_BLOCKED_WAITING_FOR_SAM_CHIEF_DECISION` remains the runtime gate. Do not start controlled-preview configuration/execution, app actions, allowlist expansion in runtime config, draft shopping-list/catalog writes, DB/schema/generated type changes, runtime/UI/prompt/payment/checkout work, live catalog writes, production flags/deploys, default-on activation, production rollout, Product Matching selection/scoring changes, or Catalog-First runtime coupling without explicit Sam/Chief approval.
 
 PR #181 merged the docs-only Product Matching investor demo runbook at `docs/Tracks/v2-commercial/product-matching-evals/2026-05-26-investor-demo-runbook.md`. The lane state remains `CONTROLLED_PREVIEW_EXECUTION_BOUNDARY_READY_WAITING_FOR_SAM_CHIEF_DECISION`. `CONTROLLED_PREVIEW_EXPANSION_BLOCKED_WAITING_FOR_SAM_CHIEF_DECISION` remains the runtime gate. Do not start controlled-preview configuration/execution, app actions, allowlist expansion in runtime config, draft shopping-list/catalog writes, DB/schema/generated type changes, runtime/UI/prompt/payment/checkout work, live catalog writes, production flags/deploys, default-on activation, production rollout, Product Matching selection/scoring changes, or Catalog-First runtime coupling without explicit Sam/Chief approval.
