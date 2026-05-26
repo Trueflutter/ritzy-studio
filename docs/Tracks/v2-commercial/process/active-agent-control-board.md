@@ -149,16 +149,16 @@ Blocker: Waiting for explicit Sam/Chief routing.
 ### Ticket RE-001
 
 Owner: Resilience Engineer_Product I...
-Status: ROUTED
-Branch: `codex/product-sourcing-text-fallback`
-Allowed scope: Third runtime defensive hotfix for baseline Product Sourcing timeout after PR #197. Add a bounded text-only or deterministic fallback that uses the existing approved concept title/description, room type, blueprint roles, ranked candidate text metadata, and existing successful sourcing/write path when the vision structured-output call times out. Keep focused tests and fresh `ai_jobs` evidence in the PR body.
+Status: PARKED
+Branch: none
+Allowed scope: Claude/local retest follow-through only after pulling latest `origin/main` with PR #200 and restarting the dev server. If product sourcing still fails, collect the newest `ai_jobs` evidence and request a fresh RE-001 route.
 Forbidden scope: No DB migrations, generated DB types, Product Matching controlled-preview configuration/execution, runtime allowlist expansion, Product Matching Engine V1 activation, live catalog writes, draft shopping-list writes except the existing successful sourcing path, payment/checkout changes, deploys, UI redesign, prompt/schema changes unless narrowly required for the fallback and explicitly called out for review, broad sourcing architecture changes, or Catalog-First runtime coupling unless a new ticket explicitly routes that scope.
-Expected next artifact: PR with a third-pass timeout fix, updated tests, and fresh retest evidence. The PR must show whether the fallback succeeded or, if it still fails, include the newest `ai_jobs.error_message`, runtime, `productSourcingAiPayload`, `productImagePreflight`, `productImagePreflightGate`, `providerImageDownloadFailure`, `productMatchingEngineEnabled`, and model.
-SLA: Agent ack within one heartbeat; branch, commit, PR, mailbox update, or blocker within 30 minutes after ack.
-Last architect instruction: PR #197 merged at `8eb6593`, was retested, and still failed. Latest `ai_jobs` row `fd6acb47-f5da-416a-9a66-1be1db31d39a` for room `19d312f0-0cd0-4e92-a612-8897767992b3` shows `error_message: "Product visual sourcing timed out."`, runtime `45.2s`, model `gpt-5-mini`, `productSourcingAiPayload` `{ conceptImageDetail: "low", candidateImageLimit: 0, candidateImageDetail: "low", productCandidateImagesEnabled: false }`, `productImagePreflight` `36/36` accepted, `productImagePreflightGate.usable: true`, `providerImageDownloadFailure: false`, and `productMatchingEngineEnabled: false`. Product candidate image transport is no longer the bottleneck. Own a fallback that avoids blocking catalogue generation on the slow vision structured-output call.
-Agent ack: pending
-Current PR: none
-Blocker: none
+Expected next artifact: Claude/local retest result. If product sourcing still fails, include the newest `ai_jobs.error_message`, runtime, `productSourcingAiPayload`, `productImagePreflight`, `productImagePreflightGate`, `providerImageDownloadFailure`, `productMatchingEngineEnabled`, model, and whether `productSourcingTextFallbackUsed` was recorded.
+SLA: None while parked pending retest.
+Last architect instruction: PR #200 merged at `9313ca6`. It adds the bounded deterministic text fallback for Product Sourcing timeouts, preserves the existing shopping-list path, and does not widen Product Matching, controlled preview, catalog/live writes, schema/types, deploys, payment/checkout, UI, or Catalog-First scope. Pull latest main, restart the dev server, and retest product/catalogue sourcing.
+Agent ack: #200 was the acknowledgement and implementation artifact for the third-pass RE-001 route.
+Current PR: none; #200 merged (<https://github.com/Trueflutter/ritzy-studio/pull/200>)
+Blocker: Waiting for Claude/local retest on latest main.
 
 ### Ticket CI-001
 
