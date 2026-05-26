@@ -107,16 +107,16 @@ Docs-only, test-only, domain-only, and dry-run-only work may proceed only when t
 ### Ticket PM-001
 
 Owner: Product Matching Agent
-Status: BLOCKED
-Branch: none
-Allowed scope: Docs/artifacts-only synthesis from already committed evidence, static screenshots, merged PR notes, and mailbox history. No new Product Matching execution is allowed by this ticket.
-Forbidden scope: No controlled-preview configuration or execution, no preview-target expansion, no app-action execution, no runtime allowlist expansion, no draft shopping-list writes, no catalog writes, no live writes, no default-on activation, no production flags, no deploys, no DB/schema/generated type changes, no UI changes, no prompt changes, no app-action flow changes, no Product Matching selection/scoring behavior changes, and no Catalog-First runtime coupling.
-Expected next artifact: None until Sam/Chief explicitly approves the exact execution boundary. A docs-only decision request may be opened if the Product Matching Agent needs that approval captured durably.
-SLA: None while blocked.
-Last architect instruction: Sync latest `origin/main` including PR #191 at `a8b45ac`, but do not run Product Matching Engine V1, controlled preview, app actions, preview allowlist changes, draft shopping-list creation/refresh, or catalog writes from this ticket. If further validation evidence is needed, first request explicit Sam/Chief approval for the exact local-only read-only harness or execution boundary, including what will run, where it will run, what data it may read, and proof that it cannot write.
-Agent ack: not required while blocked
+Status: ROUTED
+Branch: `codex/product-matching-local-preview`
+Allowed scope: Sam approved a local-only controlled Product Matching V1 preview on 2026-05-26. Enable Product Matching V1 only in local/dev env, with request-scoped preview allowlist only for Sam's current test project/room/user/email. Run product sourcing locally to compare Product Matching V1 results against the generated concept, inspect `ai_jobs` evidence and selected products, and open docs/code PRs only if needed to fix matching quality within the approved local-preview boundary.
+Forbidden scope: No production deploys, no production flags, no broad allowlist expansion, no live catalog writes, no schema/generated type changes, no payment/checkout/UI changes, no Catalog-First runtime coupling, no default-on activation, no production rollout, no preview-target expansion beyond Sam's current test project/room/user/email, and no Product Matching app-action/runtime execution outside the approved local/dev controlled preview.
+Expected next artifact: Agent acknowledgement with the exact local project/room/user/email scope used, followed by either a PR with local-preview findings/fixes and `ai_jobs` evidence or a blocker if the scope identifiers are missing.
+SLA: Agent ack within one heartbeat; branch, commit, PR, mailbox update, or blocker within 30 minutes after ack.
+Last architect instruction: Product sourcing resilience is now unblocked after PR #200/#201, but baseline fallback sourcing is not using Product Matching V1 and selected products still do not visually match the generated concept well enough. Sam explicitly approved: "Product Matching local controlled preview." Use the existing gated Product Matching V1 runtime only in local/dev with request-scoped allowlist for Sam's current test project/room/user/email, compare against the current failed-quality catalog sourcing flow, and collect `ai_jobs` evidence including `productMatchingEngineEnabled`, role pool summaries, selected products, role statuses/confidence, and any QA stop-rule fields.
+Agent ack: pending
 Current PR: none
-Blocker: Product Matching controlled-preview/app-action/runtime execution remains gated pending explicit Sam/Chief approval for the exact boundary.
+Blocker: none
 
 ### Ticket MI-001
 
