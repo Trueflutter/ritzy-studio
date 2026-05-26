@@ -45,7 +45,7 @@ Wait for explicit Chief Architect or Sam routing before any additional seed reco
 If a concrete next safe scope is approved, open one small PR, leave an `ARCHITECT_NOTE:` on that PR with the approved scope and stop-rule confirmation, and keep/recreate the Measurement Intelligence/Floor Plan Model heartbeat.
 
 ## Heartbeat
-Keep the Measurement Intelligence/Floor Plan Model lane heartbeat active while the lane is parked after PR #179. It should monitor:
+Keep the Measurement Intelligence/Floor Plan Model lane heartbeat active while the lane is parked after PR #182. It should monitor:
 
 - this mailbox file
 - active Measurement Intelligence or Floor Plan Model PRs, if any
