@@ -1,4 +1,4 @@
-import { ButtonLink } from "@ritzy-studio/ui";
+import { ButtonLink, DecorativeRule, SectionEyebrow } from "@ritzy-studio/ui";
 import Link from "next/link";
 import type { ReactNode } from "react";
 
@@ -44,7 +44,8 @@ export function BriefShell({
       <div className="mx-auto max-w-[1040px] px-5 py-12 md:px-8 lg:px-12 xl:px-16">
         <BriefProgress currentStep={currentStep} />
         <div className="mt-12">
-          <p className="font-body text-caption font-medium uppercase text-ink-muted">{eyebrow}</p>
+          <SectionEyebrow>{eyebrow}</SectionEyebrow>
+          <DecorativeRule className="mt-5" />
           {title ? (
             <h1 className="mt-6 max-w-[780px] font-display text-display-l font-light leading-none tracking-[-0.015em] text-ink">
               {title}
@@ -54,11 +55,12 @@ export function BriefShell({
             <p className="mt-6 max-w-[640px] font-body text-body-m text-ink-secondary">{subtitle}</p>
           ) : null}
           <p className="mt-5 font-body text-body-s text-ink-muted">
-            {projectName} · {roomName} · {roomType}
+            {projectName} · {roomName}
+            {roomName === roomType ? null : ` · ${roomType}`}
           </p>
         </div>
 
-        <div className="mt-12">{children}</div>
+        <div className="mt-10">{children}</div>
 
         <div className="mt-10">
           <ButtonLink href={backHref} leading="←" variant="chrome">
@@ -72,7 +74,10 @@ export function BriefShell({
 
 export function BriefProgress({ currentStep }: { currentStep: number }) {
   return (
-    <div aria-label={`Brief step ${currentStep} of ${steps.length}`} className="flex items-center gap-4">
+    <div
+      aria-label={`Brief step ${currentStep} of ${steps.length}`}
+      className="flex flex-wrap items-center gap-x-6 gap-y-3"
+    >
       {steps.map((step, index) => {
         const active = index + 1 === currentStep;
         return (
@@ -81,7 +86,9 @@ export function BriefProgress({ currentStep }: { currentStep: number }) {
               aria-hidden
               className={active ? "block h-px w-12 bg-ink" : "block h-px w-12 bg-line-strong"}
             />
-            <span className={active ? "font-body text-caption font-medium uppercase text-ink" : "sr-only"}>
+            <span
+              className={`font-body text-caption font-medium uppercase ${active ? "text-ink" : "text-ink-muted"}`}
+            >
               {step}
             </span>
           </span>

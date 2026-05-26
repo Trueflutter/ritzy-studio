@@ -1,4 +1,4 @@
-import { ButtonLink, SubmitButton, TextInput, Textarea } from "@ritzy-studio/ui";
+import { ButtonLink, SubmitButton } from "@ritzy-studio/ui";
 import { notFound, redirect } from "next/navigation";
 
 import { saveDesignBriefAction } from "@/app/actions";
@@ -82,7 +82,7 @@ export default async function BriefDetailsPage({
       title="Complete the design brief."
     >
       {message ? (
-        <p className="mb-8 border border-line bg-surface px-4 py-3 font-display text-body-s italic text-ink-secondary">
+        <p className="mb-10 border border-line bg-surface px-4 py-3 font-body text-body-s text-ink-secondary">
           {message}
         </p>
       ) : null}
@@ -98,137 +98,187 @@ export default async function BriefDetailsPage({
           value={project.budget_max_aed ? `AED ${Number(project.budget_max_aed).toLocaleString("en-AE")} maximum` : ""}
         />
 
-        {selectedStyles.liked.length > 0 ? (
-          <div className="mb-9 border border-line bg-surface px-5 py-4">
-            <div className="flex items-baseline justify-between gap-4">
-              <p className="font-body text-caption font-medium uppercase text-ink-muted">
-                Style — from your earlier choices
-              </p>
-              <ButtonLink
-                href={`/projects/${projectId}/rooms/${roomId}/brief/style`}
-                trailing="→"
-                variant="quiet"
-              >
-                change
-              </ButtonLink>
+        <div className="flex flex-col gap-4">
+          {selectedStyles.liked.length > 0 ? (
+            <div className="border border-line bg-surface p-5">
+              <div className="flex items-baseline justify-between gap-4">
+                <p className="font-body text-caption font-medium uppercase text-ink-muted">
+                  Style — from earlier
+                </p>
+                <ButtonLink
+                  href={`/projects/${projectId}/rooms/${roomId}/brief/style`}
+                  trailing="→"
+                  variant="quiet"
+                >
+                  change
+                </ButtonLink>
+              </div>
+              <p className="mt-2 font-body text-body-m text-ink">{selectedStyles.liked.join(", ")}</p>
+              {selectedStyles.avoided.length > 0 ? (
+                <p className="mt-1 font-body text-body-s text-ink-muted">
+                  Avoiding: {selectedStyles.avoided.join(", ")}
+                </p>
+              ) : null}
             </div>
-            <p className="mt-2 font-body text-body-m text-ink">{selectedStyles.liked.join(", ")}</p>
-            {selectedStyles.avoided.length > 0 ? (
-              <p className="mt-1 font-body text-body-s text-ink-muted">
-                Avoiding: {selectedStyles.avoided.join(", ")}
-              </p>
-            ) : null}
+          ) : null}
+
+          {colorPrefilled ? (
+            <div className="border border-line bg-surface p-5">
+              <label
+                className="block font-body text-caption font-medium uppercase text-ink-muted"
+                htmlFor="colorNotes"
+              >
+                Colour preferences — pulled from your inspiration
+              </label>
+              <textarea
+                className="mt-3 block min-h-[64px] w-full resize-y border-0 bg-transparent p-0 font-body text-body-m text-ink outline-none placeholder:text-[var(--rs-text-placeholder)]"
+                defaultValue={colorNotesValue}
+                id="colorNotes"
+                name="colorNotes"
+              />
+            </div>
+          ) : (
+            <div className="border border-line bg-surface p-5">
+              <label className="block font-body text-body-l text-ink" htmlFor="colorNotes">
+                Which colours do you want, and any to avoid?
+              </label>
+              <textarea
+                className="mt-4 block min-h-[88px] w-full resize-y border-0 bg-transparent p-0 font-body text-body-m text-ink outline-none placeholder:text-[var(--rs-text-placeholder)]"
+                defaultValue=""
+                id="colorNotes"
+                name="colorNotes"
+                placeholder="warm neutrals, brushed brass, deep walnut; nothing cold or grey..."
+              />
+            </div>
+          )}
+
+          <div className="border border-line bg-surface p-5">
+            <label className="block font-body text-body-l text-ink" htmlFor="functionalRequirements">
+              What does this room need to do day to day?
+            </label>
+            <textarea
+              className="mt-4 block min-h-[88px] w-full resize-y border-0 bg-transparent p-0 font-body text-body-m text-ink outline-none placeholder:text-[var(--rs-text-placeholder)]"
+              defaultValue={designBrief?.functional_requirements ?? ""}
+              id="functionalRequirements"
+              name="functionalRequirements"
+              placeholder="seating for six, child-safe finishes, blackout curtains, storage for toys..."
+            />
           </div>
-        ) : null}
 
-        <Textarea
-          defaultValue={colorNotesValue}
-          helper={
-            colorPrefilled
-              ? "Pulled from your inspiration photos — edit anything that's off."
-              : "Which colours do you want, and any to avoid?"
-          }
-          id="colorNotes"
-          label="Colour preferences"
-          name="colorNotes"
-          placeholder="warm neutrals, brushed brass, deep walnut; nothing cold or grey..."
-        />
-
-        {project.budget_min_aed || project.budget_max_aed ? (
-          <div className="mb-9 border border-line bg-surface px-5 py-4">
-            <p className="font-body text-caption font-medium uppercase text-ink-muted">
-              Budget — from your project setup
-            </p>
-            <p className="mt-2 font-body text-body-m text-ink">
-              {formatBudget(project.budget_min_aed, project.budget_max_aed)}
-            </p>
+          <div className="border border-line bg-surface p-5">
+            <label className="block font-body text-body-l text-ink" htmlFor="avoidNotes">
+              Anything we should keep out of the design?
+            </label>
+            <textarea
+              className="mt-4 block min-h-[88px] w-full resize-y border-0 bg-transparent p-0 font-body text-body-m text-ink outline-none placeholder:text-[var(--rs-text-placeholder)]"
+              defaultValue={designBrief?.avoid_notes ?? ""}
+              id="avoidNotes"
+              name="avoidNotes"
+              placeholder="no glass coffee table, no high-pile rug, avoid visible brass..."
+            />
           </div>
-        ) : null}
 
-        <Textarea
-          defaultValue={designBrief?.functional_requirements ?? ""}
-          helper="What does this room need to do day to day?"
-          id="functionalRequirements"
-          label="Functional requirements"
-          name="functionalRequirements"
-          placeholder="seating for six, child-safe finishes, blackout curtains, storage for toys..."
-        />
-        <Textarea
-          defaultValue={designBrief?.avoid_notes ?? ""}
-          helper="Anything we should keep out of the design?"
-          id="avoidNotes"
-          label="Avoid"
-          name="avoidNotes"
-          placeholder="no glass coffee table, no high-pile rug, avoid visible brass..."
-        />
-        <Textarea
-          defaultValue={designBrief?.inspiration_notes ?? ""}
-          helper="Anything else about your references we should know — what to copy, what to ignore?"
-          id="inspirationNotes"
-          label="Inspiration notes"
-          name="inspirationNotes"
-          placeholder="copy the calm of the second image; ignore the dark wall..."
-        />
-
-        <div className="mt-10 border-t border-line pt-8">
-          <div className="flex flex-wrap items-baseline justify-between gap-3">
-            <p className="font-body text-caption font-medium uppercase text-ink-muted">Measurements</p>
-            <p className="font-body text-caption font-medium uppercase text-accent-deep">Required</p>
+          <div className="border border-line bg-surface p-5">
+            <label className="block font-body text-body-l text-ink" htmlFor="inspirationNotes">
+              Anything else about your references — what to copy, what to ignore?
+            </label>
+            <textarea
+              className="mt-4 block min-h-[88px] w-full resize-y border-0 bg-transparent p-0 font-body text-body-m text-ink outline-none placeholder:text-[var(--rs-text-placeholder)]"
+              defaultValue={designBrief?.inspiration_notes ?? ""}
+              id="inspirationNotes"
+              name="inspirationNotes"
+              placeholder="copy the calm of the second image; ignore the dark wall..."
+            />
           </div>
-          <p className="mt-2 font-display text-body-s italic text-ink-helper">
+        </div>
+
+        <section className="mt-12">
+          <h2 className="font-display text-display-xs font-light tracking-[-0.01em] text-ink">
+            Measurements
+            <span className="ml-3 align-middle font-body text-caption font-medium uppercase tracking-wider text-ink-helper">
+              · Required
+            </span>
+          </h2>
+          <p className="mt-4 max-w-[72ch] font-body text-body-s text-ink-muted">
             Add the main wall, room depth, and ceiling height before moving ahead. These dimensions keep
             sofa, table, chair, lighting, and rug recommendations from becoming misleading.
           </p>
-          <div className="mt-6 grid gap-x-6 md:grid-cols-3">
-            <TextInput
-              aria-required="true"
-              defaultValue={measurements?.wall_length_cm ?? ""}
-              helper="Measure the longest usable wall in the room."
-              id="wallLengthCm"
-              label="Main wall cm"
-              min="1"
-              name="wallLengthCm"
-              placeholder="520"
-              required
-              type="number"
-            />
-            <TextInput
-              aria-required="true"
-              defaultValue={measurements?.room_depth_cm ?? ""}
-              helper="Measure from that wall to the opposite side."
-              id="roomDepthCm"
-              label="Room depth cm"
-              min="1"
-              name="roomDepthCm"
-              placeholder="410"
-              required
-              type="number"
-            />
-            <TextInput
-              aria-required="true"
-              defaultValue={measurements?.ceiling_height_cm ?? ""}
-              helper="Use your best measured ceiling height."
-              id="ceilingHeightCm"
-              label="Ceiling cm"
-              min="1"
-              name="ceilingHeightCm"
-              placeholder="290"
-              required
-              type="number"
-            />
+          <div className="mt-6 grid gap-4 md:grid-cols-3">
+            <div className="border border-line bg-surface p-5">
+              <label className="block font-body text-body-l text-ink" htmlFor="wallLengthCm">
+                Main wall cm
+              </label>
+              <p className="mt-2 font-body text-body-s text-ink-muted">
+                The longest usable wall in the room.
+              </p>
+              <input
+                aria-required="true"
+                className="mt-4 block w-full border-0 border-b border-[var(--rs-border)] bg-transparent px-0 pb-2 font-body text-body-m text-ink outline-none transition-colors duration-micro ease-standard placeholder:text-[var(--rs-text-placeholder)] focus:border-[var(--rs-accent-deep)]"
+                defaultValue={measurements?.wall_length_cm ?? ""}
+                id="wallLengthCm"
+                min="1"
+                name="wallLengthCm"
+                placeholder="520"
+                required
+                type="number"
+              />
+            </div>
+            <div className="border border-line bg-surface p-5">
+              <label className="block font-body text-body-l text-ink" htmlFor="roomDepthCm">
+                Room depth cm
+              </label>
+              <p className="mt-2 font-body text-body-s text-ink-muted">
+                From that wall to the opposite side.
+              </p>
+              <input
+                aria-required="true"
+                className="mt-4 block w-full border-0 border-b border-[var(--rs-border)] bg-transparent px-0 pb-2 font-body text-body-m text-ink outline-none transition-colors duration-micro ease-standard placeholder:text-[var(--rs-text-placeholder)] focus:border-[var(--rs-accent-deep)]"
+                defaultValue={measurements?.room_depth_cm ?? ""}
+                id="roomDepthCm"
+                min="1"
+                name="roomDepthCm"
+                placeholder="410"
+                required
+                type="number"
+              />
+            </div>
+            <div className="border border-line bg-surface p-5">
+              <label className="block font-body text-body-l text-ink" htmlFor="ceilingHeightCm">
+                Ceiling cm
+              </label>
+              <p className="mt-2 font-body text-body-s text-ink-muted">
+                Your best measured ceiling height.
+              </p>
+              <input
+                aria-required="true"
+                className="mt-4 block w-full border-0 border-b border-[var(--rs-border)] bg-transparent px-0 pb-2 font-body text-body-m text-ink outline-none transition-colors duration-micro ease-standard placeholder:text-[var(--rs-text-placeholder)] focus:border-[var(--rs-accent-deep)]"
+                defaultValue={measurements?.ceiling_height_cm ?? ""}
+                id="ceilingHeightCm"
+                min="1"
+                name="ceilingHeightCm"
+                placeholder="290"
+                required
+                type="number"
+              />
+            </div>
           </div>
-        </div>
+        </section>
 
-        <div className="mt-10 border-t border-line pt-8">
-          <p className="font-body text-caption font-medium uppercase text-ink-muted">Floor plan</p>
-          <p className="mt-2 font-display text-body-s italic text-ink-helper">
-            Optional for now — if you have a plan, upload it here as a reference. Project-level floor-plan
-            extraction and room labels are the next measurement upgrade.
+        <section className="mt-12">
+          <h2 className="font-display text-display-xs font-light tracking-[-0.01em] text-ink">
+            Floor plan
+            <span className="ml-3 align-middle font-body text-caption font-medium uppercase tracking-wider text-ink-helper">
+              · Optional
+            </span>
+          </h2>
+          <p className="mt-4 max-w-[72ch] font-body text-body-s text-ink-muted">
+            If you have a plan, upload it here as a reference. Project-level floor-plan extraction and
+            room labels are the next measurement upgrade.
           </p>
-          <div className="mt-5">
+          <div className="mt-6">
             <FloorPlanUploader existingStoragePath={floorPlan?.storage_path} roomId={roomId} userId={user.id} />
           </div>
-        </div>
+        </section>
 
         <div className="mt-12 flex justify-end border-t border-line pt-8">
           <SubmitButton pendingLabel="Preparing questions...">Continue →</SubmitButton>
@@ -236,18 +286,6 @@ export default async function BriefDetailsPage({
       </form>
     </BriefShell>
   );
-}
-
-function formatBudget(min: number | null, max: number | null) {
-  if (min && max) {
-    return `AED ${Number(min).toLocaleString("en-AE")} to AED ${Number(max).toLocaleString("en-AE")}`;
-  }
-
-  if (max) {
-    return `Up to AED ${Number(max).toLocaleString("en-AE")}`;
-  }
-
-  return `From AED ${Number(min).toLocaleString("en-AE")}`;
 }
 
 function inspirationAnalysisFromStructuredJson(value: unknown) {
