@@ -51,12 +51,12 @@ export default async function BriefStylePage({
     <BriefShell
       backHref={`/projects/${projectId}/rooms/${roomId}/photos`}
       currentStep={1}
-      eyebrow="N° 04 — Visual Style"
+      eyebrow="N° 08 — Style"
       projectName={project.name}
       roomName={room.name}
       roomType={room.room_type}
       subtitle="Pick the visual directions that feel closest. You can refine the language later."
-      title="Choose the rooms that feel right."
+      title="Choose the styles that feel right."
     >
       <form action={saveDesignBriefAction}>
         <input name="projectId" type="hidden" value={projectId} />
