@@ -1,7 +1,7 @@
 # Product Matching Engine Agent Comms
 
 ## Current PR
-PR pending: docs-only investor demo runbook on branch `codex/product-match-investor-demo-runbook`.
+PR #181 (https://github.com/Trueflutter/ritzy-studio/pull/181) on branch `codex/product-match-investor-demo-runbook`.
 
 ## Current stage
 DUAL_TRACK:
@@ -14,7 +14,7 @@ Controlled default-off preview configuration/execution remains blocked until Sam
 Product Matching Engine V1 is still not approved for controlled-preview configuration/execution, app actions, runtime allowlist expansion, draft shopping-list/catalog writes, live catalog writes, DB/schema changes, generated DB types, runtime/UI redesign/prompt changes, payment/checkout changes, production flags/deploys, default-on activation, production rollout, selection/scoring changes, Catalog-First runtime coupling, new preview targets, or broader allowlist expansion without a new approval.
 
 ## Chief architect routing
-ARCHITECT_NOTE: Pending docs-only investor demo runbook PR adds `docs/Tracks/v2-commercial/product-matching-evals/2026-05-26-investor-demo-runbook.md`. It explains the pitch-safe Product Matching story after PR #176 and PR #173, what can be shown without controlled preview, what must not be claimed, future bounded-preview approval fields, and the fallback if asked whether this can run live today. It does not approve or perform controlled-preview configuration/execution, app actions, runtime allowlist expansion, writes, runtime/schema/UI/prompt/payment/checkout changes, production flags/deploys, default-on activation, production rollout, selection/scoring changes, or Catalog-First runtime coupling.
+ARCHITECT_NOTE: PR #181 adds the docs-only investor demo runbook at `docs/Tracks/v2-commercial/product-matching-evals/2026-05-26-investor-demo-runbook.md`. It explains the pitch-safe Product Matching story after PR #176 and PR #173, what can be shown without controlled preview, what must not be claimed, future bounded-preview approval fields, and the fallback if asked whether this can run live today. It does not approve or perform controlled-preview configuration/execution, app actions, runtime allowlist expansion, writes, runtime/schema/UI/prompt/payment/checkout changes, production flags/deploys, default-on activation, production rollout, selection/scoring changes, or Catalog-First runtime coupling.
 
 ARCHITECT_NOTE: PR #176 merged into `main` and completed the docs/artifacts-only Product Matching pitch-readiness package after PR #173. The package confirms the product-sourcing image-resilience fix is present on main, summarizes what is now safer for investor-demo readiness, and keeps controlled-preview execution blocked pending explicit Sam/Chief approval of the execution boundary.
 
@@ -27,7 +27,7 @@ ARCHITECT_NOTE: PR #160 completed the docs-only controlled-preview execution-bou
 Hard stop: no controlled-preview configuration/execution, app actions, runtime allowlist expansion, draft shopping-list/catalog writes, live catalog writes, DB/schema/generated types, runtime/env default changes, runtime/UI/prompt/payment/checkout changes, production flags/deploys, default-on activation, production rollout, selection/scoring changes, or Catalog-First runtime coupling without explicit Sam/Chief approval.
 
 ## Last action taken
-Pending docs-only investor demo runbook PR created `docs/Tracks/v2-commercial/product-matching-evals/2026-05-26-investor-demo-runbook.md` and updated this mailbox. No controlled-preview configuration/execution, app action, evidence pass, draft shopping-list row create/refresh, DB/schema/generated type change, live catalog write, UI/prompt/payment/checkout change, production flag/deploy, new preview target, allowlist expansion, default-on activation, production rollout, selection/scoring behavior change, or Catalog-First runtime coupling was performed.
+PR #181 created `docs/Tracks/v2-commercial/product-matching-evals/2026-05-26-investor-demo-runbook.md` and updated this mailbox. No controlled-preview configuration/execution, app action, evidence pass, draft shopping-list row create/refresh, DB/schema/generated type change, live catalog write, UI/prompt/payment/checkout change, production flag/deploy, new preview target, allowlist expansion, default-on activation, production rollout, selection/scoring behavior change, or Catalog-First runtime coupling was performed.
 
 PR #176 merged the docs/artifacts-only pitch-readiness package. It added `docs/Tracks/v2-commercial/product-matching-evals/2026-05-26-pitch-readiness-status.md` and updated this mailbox. No controlled-preview configuration/execution, app action, evidence pass, draft shopping-list row create/refresh, DB/schema/generated type change, live catalog write, UI/prompt/payment/checkout change, production flag/deploy, new preview target, allowlist expansion, default-on activation, production rollout, selection/scoring behavior change, or Catalog-First runtime coupling was performed.
 
