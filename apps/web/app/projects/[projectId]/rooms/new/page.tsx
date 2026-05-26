@@ -1,5 +1,13 @@
 import { canonicalRoomTypes } from "@ritzy-studio/domain";
-import { ButtonLink, Panel, SubmitButton, TextInput } from "@ritzy-studio/ui";
+import {
+  ButtonLink,
+  DecorativeRule,
+  MarketingPanel,
+  Panel,
+  SectionEyebrow,
+  SubmitButton,
+  TextInput
+} from "@ritzy-studio/ui";
 import { notFound, redirect } from "next/navigation";
 
 import {
@@ -86,15 +94,13 @@ export default async function NewRoomPage({
   return (
     <main className="min-h-dvh bg-page px-5 py-16 text-ink md:px-8 lg:px-16">
       <section className="mx-auto max-w-[720px]">
-        <p className="font-body text-caption font-medium uppercase text-ink-muted">
-          {isFirstRoom ? "N° 02 · Step 2 of 2 — First room" : "New room"}
-        </p>
+        <SectionEyebrow>{isFirstRoom ? "N° 04 — Room" : "Room"}</SectionEyebrow>
+        <DecorativeRule className="mt-5" />
         <h1 className="mt-6 font-display text-display-l font-light leading-none tracking-[-0.015em] text-ink">
-          {isFirstRoom ? "Name the first room." : "Add a room."}
+          Set up the room.
         </h1>
         <p className="mt-6 max-w-[58ch] font-body text-body-m text-ink-secondary">
-          {project.name} — give the room a short name and choose what we&apos;re designing, then
-          we&apos;ll move on to photographs.
+          Pick what you&apos;re designing. Photographs come next.
         </p>
 
         {message ? (
@@ -103,8 +109,8 @@ export default async function NewRoomPage({
           </p>
         ) : null}
 
-        <Panel className="mt-12 rounded-card p-8 md:p-12">
-          {designerRoomLimitReached ? (
+        {designerRoomLimitReached ? (
+          <Panel className="mt-12 rounded-card p-8 md:p-12">
             <form action={createDesignerSubscriptionCheckoutAction}>
               <input
                 name="returnTo"
@@ -126,20 +132,20 @@ export default async function NewRoomPage({
                 Start designer plan
               </SubmitButton>
             </form>
-          ) : (
+          </Panel>
+        ) : (
+          <MarketingPanel tone="paper" elevation="flat" className="mt-12 p-8 md:p-12">
             <form action={createRoomAction} className="space-y-2">
               <input name="projectId" type="hidden" value={project.id} />
+              <RoomTypeSelector roomTypes={canonicalRoomTypes} />
               <TextInput
                 autoComplete="off"
-                helper="A short label you'll recognise on the dashboard — make it personal."
                 id="name"
-                label="Room name"
+                label="Label this room (optional)"
                 name="name"
                 narrative
-                placeholder="Ground floor lounge"
-                required
+                placeholder="Master bedroom"
               />
-              <RoomTypeSelector roomTypes={canonicalRoomTypes} />
 
               <div className="mt-4 flex flex-col-reverse gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <ButtonLink href="/" variant="chrome">
@@ -148,8 +154,8 @@ export default async function NewRoomPage({
                 <SubmitButton pendingLabel="Saving room...">Continue</SubmitButton>
               </div>
             </form>
-          )}
-        </Panel>
+          </MarketingPanel>
+        )}
       </section>
     </main>
   );

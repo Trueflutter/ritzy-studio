@@ -884,10 +884,13 @@ export async function createProjectAction(formData: FormData) {
 }
 
 export async function createRoomAction(formData: FormData) {
+  const rawName = String(formData.get("name") ?? "").trim();
+  const rawRoomType = String(formData.get("roomType") ?? "").trim();
+
   const parsed = createRoomSchema.parse({
     projectId: String(formData.get("projectId") ?? "").trim(),
-    name: String(formData.get("name") ?? "").trim(),
-    roomType: String(formData.get("roomType") ?? "").trim()
+    name: rawName || rawRoomType,
+    roomType: rawRoomType
   });
 
   const supabase = await createClient();
@@ -944,7 +947,7 @@ export async function createRoomAction(formData: FormData) {
     .from("rooms")
     .insert({
       project_id: project.id,
-      name: parsed.name,
+      name: rawName || parsed.roomType,
       room_type: parsed.roomType,
       status: "draft"
     })
