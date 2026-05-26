@@ -1,11 +1,12 @@
 # Measurement Intelligence Agent Comms
 
 ## Current PR
-PR #185 (<https://github.com/Trueflutter/ritzy-studio/pull/185>) prepares the docs-only Measurement Intelligence investor proof appendix.
+None. PR #185 (<https://github.com/Trueflutter/ritzy-studio/pull/185>) merged the docs-only Measurement Intelligence investor proof appendix into `main`.
 
-Branch: `codex/measurement-investor-proof-appendix`
+Branch: none active.
 
 Previous completed PRs:
+- PR #185 (<https://github.com/Trueflutter/ritzy-studio/pull/185>) merged the docs-only Measurement Intelligence investor proof appendix.
 - PR #182 (<https://github.com/Trueflutter/ritzy-studio/pull/182>) merged the docs-only Measurement Intelligence investor demo script.
 - PR #179 (<https://github.com/Trueflutter/ritzy-studio/pull/179>) merged the floor-plan model decision brief for investor-readiness.
 - PR #177 (<https://github.com/Trueflutter/ritzy-studio/pull/177>) merged the docs-only Measurement Intelligence investor readiness pack.
@@ -18,7 +19,7 @@ Previous completed PRs:
 ## Current stage
 DUAL_TRACK:
 - `DB_SCHEMA_RUNTIME_BLOCKED_WAITING_FOR_SAM_APPROVAL`
-- `MEASUREMENT_INVESTOR_PROOF_APPENDIX_PR_ACTIVE`
+- `MEASUREMENT_INVESTOR_PROOF_APPENDIX_COMPLETE_WAITING_FOR_CHIEF_SAM_ROUTING`
 
 ## Blockers
 Do not apply Supabase migrations, change generated DB types, write seed data, connect to Supabase, add runtime/app/UI wiring, execute production imports, add external floor-plan parser/vendor integrations, or use user/private floor-plan assets without explicit Sam approval.
@@ -26,9 +27,9 @@ Do not apply Supabase migrations, change generated DB types, write seed data, co
 Raw floor plans are sensitive and may be copyrighted. Shared library value must default to reviewed structured facts, provenance, rights posture, confidence, disclaimers, and user confirmation gates rather than public raw-plan display.
 
 ## Chief architect routing
-PR #177 completed the docs-only Measurement Intelligence investor readiness pack. PR #179 completed the docs-only floor-plan model decision brief for investor-readiness. PR #182 completed the docs-only investor demo script. The current branch prepares the docs-only investor proof appendix. These are planning and narrative artifacts only, not parser/vendor/OCR implementation, DB/schema work, runtime work, private-asset handling, or seed writes.
+PR #177 completed the docs-only Measurement Intelligence investor readiness pack. PR #179 completed the docs-only floor-plan model decision brief for investor-readiness. PR #182 completed the docs-only investor demo script. PR #185 completed the docs-only investor proof appendix. These are planning and narrative artifacts only, not parser/vendor/OCR implementation, DB/schema work, runtime work, private-asset handling, or seed writes.
 
-Keep the lane parked until the Chief Architect or Sam explicitly routes the next safe scope. Do not infer approval for floor-plan parser integration, vendor SDKs, OCR, additional reviewed seed records, importer writes, database/schema work, runtime wiring, private/user floor-plan asset handling, or real seed writes from the completed docs-only artifacts or this script.
+Keep the lane parked until the Chief Architect or Sam explicitly routes the next safe scope. Do not infer approval for floor-plan parser integration, vendor SDKs, OCR, additional reviewed seed records, importer writes, database/schema work, runtime wiring, private/user floor-plan asset handling, or real seed writes from the completed docs-only artifacts or appendix.
 
 Hard stop: no Measurement Intelligence work may add migrations, generated DB types, runtime/UI/app actions, Supabase connections or writes, seed importer writes, production data, external parser/vendor/OCR integration, private/user floor-plan assets, raw copyrighted floor-plan images, Product Matching runtime coupling, Catalog-First runtime coupling, deploys, production flags, payment/checkout changes, or live customer-facing behavior without explicit approval.
 
@@ -39,7 +40,7 @@ PR #179 added `docs/Tracks/v2-commercial/34_Floor_Plan_Model_Decision_Brief.md` 
 
 PR #182 added `docs/Tracks/v2-commercial/36_Measurement_Intelligence_Investor_Demo_Script.md` as a concise docs-only founder/investor talk track from branch `codex/measurement-investor-demo-script`.
 
-Current branch adds `docs/Tracks/v2-commercial/37_Measurement_Intelligence_Investor_Proof_Appendix.md` as a docs-only investor proof appendix from branch `codex/measurement-investor-proof-appendix`.
+PR #185 added `docs/Tracks/v2-commercial/37_Measurement_Intelligence_Investor_Proof_Appendix.md` as a docs-only investor proof appendix from branch `codex/measurement-investor-proof-appendix`.
 
 ## Next intended action
 Wait for explicit Chief Architect or Sam routing before any additional seed records, importer writes, DB/schema work, runtime wiring, parser/vendor/OCR integration, private/user floor-plan asset handling, or real seed writes.
@@ -47,7 +48,7 @@ Wait for explicit Chief Architect or Sam routing before any additional seed reco
 If a concrete next safe scope is approved, open one small PR, leave an `ARCHITECT_NOTE:` on that PR with the approved scope and stop-rule confirmation, and keep/recreate the Measurement Intelligence/Floor Plan Model heartbeat.
 
 ## Heartbeat
-Keep the Measurement Intelligence/Floor Plan Model lane heartbeat active while this PR is active. It should monitor:
+Keep the Measurement Intelligence/Floor Plan Model lane heartbeat active while the lane is parked after PR #185. It should monitor:
 
 - this mailbox file
 - active Measurement Intelligence or Floor Plan Model PRs, if any
