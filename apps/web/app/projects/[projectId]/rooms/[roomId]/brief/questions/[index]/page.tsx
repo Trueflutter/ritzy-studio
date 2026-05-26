@@ -77,10 +77,11 @@ export default async function BriefQuestionPage({
           : `/projects/${projectId}/rooms/${roomId}/brief/details`
       }
       currentStep={4}
-      eyebrow="N° 07 — Clarifying Questions"
+      eyebrow="N° 07 — Questions"
       projectName={project.name}
       roomName={room.name}
       roomType={room.room_type}
+      title="A few clarifying questions."
     >
       <QuestionDots answeredCount={answeredCount} currentIndex={currentIndex} total={questions.length} />
       <div className="mt-12">
