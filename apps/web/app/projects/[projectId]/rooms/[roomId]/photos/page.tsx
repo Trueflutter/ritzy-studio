@@ -1,4 +1,11 @@
-import { Button, ButtonLink, SubmitButton } from "@ritzy-studio/ui";
+import {
+  Button,
+  ButtonLink,
+  DecorativeRule,
+  MarketingPanel,
+  SectionEyebrow,
+  SubmitButton
+} from "@ritzy-studio/ui";
 import Image from "next/image";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
@@ -81,14 +88,14 @@ export default async function RoomPhotosPage({
         </p>
         <div className="mt-3 h-px w-32 bg-ink" />
 
-        <p className="mt-8 font-body text-caption font-medium uppercase tracking-[0.32em] text-ink-muted">
-          N° 03 — Photographs
-        </p>
-        <h1 className="mt-4 font-display text-display-m font-light leading-[1.05] tracking-[-0.015em] text-ink">
+        <SectionEyebrow className="mt-8">N° 05 — Photos</SectionEyebrow>
+        <DecorativeRule className="mt-5" />
+        <h1 className="mt-6 font-display text-display-m font-light leading-[1.05] tracking-[-0.015em] text-ink">
           Upload the room you want to redesign.
         </h1>
         <p className="mt-4 font-body text-body-s text-ink-muted">
-          {project.name} · {room.name} · {room.room_type}
+          {project.name} · {room.name}
+          {room.name === room.room_type ? null : ` · ${room.room_type}`}
         </p>
         <p className="mt-3 max-w-[62ch] font-body text-body-s text-ink-secondary">
           Use a current room photo, or an empty-room photo if you want the system to ignore existing
@@ -101,9 +108,9 @@ export default async function RoomPhotosPage({
           </p>
         ) : null}
 
-        <div className="mt-8">
+        <MarketingPanel className="mt-8 p-6 md:p-8" elevation="float" tone="paper">
           <RoomPhotoUploader existingCount={signedAssets.length} roomId={roomId} userId={user.id} />
-        </div>
+        </MarketingPanel>
 
         {signedAssets.length > 0 ? (
           <div className="mt-8 grid grid-cols-2 gap-4 md:grid-cols-3">
