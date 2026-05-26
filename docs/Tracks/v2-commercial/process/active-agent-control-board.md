@@ -107,16 +107,16 @@ Docs-only, test-only, domain-only, and dry-run-only work may proceed only when t
 ### Ticket PM-001
 
 Owner: Product Matching Agent
-Status: REVIEW_REQUESTED
-Branch: `codex/product-match-coffee-table-quality-fix`
-Allowed scope: Narrow Product Matching V1 local/dev quality-fix investigation for the PM-001 coffee-table required-role failure captured in PR #204. The agent may inspect merged evidence row `b218a6f6-55bf-4c49-961d-9812827d6553`, add focused tests, and open a small PR for review that improves required coffee-table role matching inside the existing Product Matching selection/scoring code. If needed, one local/dev retest may use the same request-scoped project `7e1f060d-b95d-462d-8cc2-22b6dd0e92a5`, room `19d312f0-0cd0-4e92-a612-8897767992b3`, user `87c551bf-8288-49df-99c4-a58b530f32ce`, and email `sam.olatoye@gmail.com`.
+Status: BLOCKED
+Branch: none
+Allowed scope: Docs/artifacts/mailbox-only synthesis from the merged PM-001 local/dev evidence and coffee-table quality fix. No further Product Matching execution is allowed without a new explicit Sam/Chief boundary.
 Forbidden scope: No production deploy, production flags, broad allowlist expansion, live catalog writes, DB/schema/generated type changes, payment/checkout/UI changes, Catalog-First runtime coupling, default-on activation, production rollout, Product Matching execution outside the approved local/dev current test boundary, app actions, draft shopping-list/catalog writes outside the existing successful local sourcing path, broad scoring rewrites, or quality changes unrelated to the coffee-table required-role blocker.
-Expected next artifact: Chief/Sam review of the narrow coffee-table matching fix, focused tests, and local/dev retest evidence.
-SLA: Agent ack within one heartbeat; branch, commit, PR, mailbox update, or blocker within 30 minutes after ack.
+Expected next artifact: Chief/Sam decision on whether the passing PM-001 coffee-table fix/retest is sufficient for narrative-only reuse, or whether to route another exact docs/domain/local-dev boundary.
+SLA: Stay parked until Chief/Sam routes the next explicit action.
 Last architect instruction: PR #204 merged and documented the approved PM-001 local/dev Product Matching V1 preview. The preview completed without forbidden writes/deploys, but QA stop rules did not pass because required role `coffee table` returned `closest_available`. Route a narrow quality-fix investigation/PR for that blocker only; keep all production, write, schema, UI, Catalog-First, and broad scoring gates closed.
-Agent ack: Product Matching Agent completed the narrow coffee-table fix on branch `codex/product-match-coffee-table-quality-fix`. Focused domain tests pass, and the one approved local/dev retest persisted `ai_jobs` row `182e8d5b-2386-4f1a-a139-5d905e67d2fe`.
-Current PR: #207 (<https://github.com/Trueflutter/ritzy-studio/pull/207>)
-Blocker: none for review. The retest passes QA stop rules with 0 blockers and the required coffee-table role moved from `closest_available` to `acceptable_match`; remaining coffee-table material/dimension/evidence findings are warnings. No production deploy, production flags, broad allowlist expansion, app action, shopping-list/catalog writes, DB/schema/generated type changes, UI/payment/checkout changes, broad scoring rewrite, or Catalog-First runtime coupling were performed.
+Agent ack: Product Matching Agent completed the narrow coffee-table fix and PR #207 merged it. Focused domain tests passed, and the one approved local/dev retest persisted `ai_jobs` row `182e8d5b-2386-4f1a-a139-5d905e67d2fe`.
+Current PR: #209 (<https://github.com/Trueflutter/ritzy-studio/pull/209>)
+Blocker: PR #207 merged and the retest passed QA stop rules with 0 blockers, moving required coffee-table from `closest_available` to `acceptable_match`; Product Matching remains blocked pending Chief/Sam decision before customer-facing reuse, further execution, app actions, shopping-list/catalog writes, production deploy/flags, broad allowlist expansion, DB/schema/generated type changes, UI/payment/checkout changes, broad scoring rewrites, unrelated quality changes, or Catalog-First runtime coupling.
 
 ### Ticket MI-001
 
