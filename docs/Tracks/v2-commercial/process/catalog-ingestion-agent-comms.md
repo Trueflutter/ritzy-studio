@@ -1,18 +1,18 @@
 # Catalog Ingestion Agent Comms
 
 ## Current PR
-PR #156: https://github.com/Trueflutter/ritzy-studio/pull/156
+PR #157: https://github.com/Trueflutter/ritzy-studio/pull/157
 
-Branch: `codex/catalog-ingestion-crate-barrel-feasibility`
+Branch: `codex/catalog-ingestion-premium-route-verification`
 
 Touched files:
-- `docs/Tracks/v2-commercial/28_Crate_And_Barrel_UAE_Category_Discovery_Feasibility.md`
+- `docs/Tracks/v2-commercial/29_Premium_Retailer_Route_Verification.md`
 - `docs/Tracks/v2-commercial/process/catalog-ingestion-agent-comms.md`
 
 Runtime impact: none / docs-only
 
 ## Current stage
-`APPROVED_DOCS_ONLY_PREMIUM_RETAILER_ROUTE_VERIFICATION`
+`AWAIT_CHIEF_ARCHITECT_PREMIUM_RETAILER_ROUTING`
 
 ## Blockers
 Live ingestion remains blocked.
@@ -24,32 +24,29 @@ Preserve Homes r Us `Crawl-delay: 10`.
 ## Chief Architect Routing
 ARCHITECT_NOTE:
 Lane: Catalog Ingestion
-Current PR: PR #156 completes the Crate & Barrel UAE docs-only category-discovery feasibility stage
-Current stage: `APPROVED_DOCS_ONLY_PREMIUM_RETAILER_ROUTE_VERIFICATION`
-What is complete: Pan Home, Homes r Us, IKEA UAE, and Marina Home have dry-run-only adapter coverage. PR #156 records Crate & Barrel UAE as a promising premium candidate, but adapter work is blocked until robots access and clean category/product fetchability are proved. Live ingestion remains blocked by `dryRunOnly` plus CLI/runner guards.
-Decision: After PR #156 merges, start the next small safe stage: docs-only premium-retailer route verification for West Elm UAE and Pottery Barn UAE.
+Current PR: pending PR completes docs-only premium-retailer route verification for West Elm UAE and Pottery Barn UAE
+Current stage: `AWAIT_CHIEF_ARCHITECT_PREMIUM_RETAILER_ROUTING`
+What is complete: Pan Home, Homes r Us, IKEA UAE, and Marina Home have dry-run-only adapter coverage. PR #156 records Crate & Barrel UAE as promising but blocked on robots access plus clean category/product fetchability. This route-verification stage records West Elm UAE and Pottery Barn UAE as partner-first/no-adapter candidates because official UAE domains currently serve closure pages.
+Decision needed after merge: route the next safe Catalog Ingestion stage, or confirm the lane should stay paused with live ingestion blocked.
 
-Approved next stage:
-`APPROVED_DOCS_ONLY_PREMIUM_RETAILER_ROUTE_VERIFICATION`
+Recommended next options:
 
-Scope for the next stage:
+1. Route a docs-only feasibility stage for another premium retailer, such as The One UAE, if Chief Architect wants another public-route candidate.
+2. Route a partner/feed outreach planning doc for West Elm/Pottery Barn/Crate & Barrel if these brands remain commercially important.
+3. Route a controlled live-ingestion planning doc for already-covered dry-run adapters without enabling writes.
+4. Keep the lane paused at `AWAIT_CHIEF_ARCHITECT_PREMIUM_RETAILER_ROUTING` with live ingestion blocked.
 
-1. Branch from latest `main`; suggested branch `codex/catalog-ingestion-premium-route-verification`.
-2. Create or update a docs-only route verification note for West Elm UAE and Pottery Barn UAE.
-3. Verify official UAE URLs, robots/terms posture if safely readable, public category/product URL shapes if visible from public index or tiny manual checks, partner/affiliate route evidence, and whether either retailer is a candidate for a later technical feasibility stage or should stay partner-first.
-4. Use only read-only public research and existing partner-network evidence. Do not run crawler-scale discovery, do not implement an adapter, do not add parser fixtures/scripts, and do not fetch broad category/product sets.
-5. Preserve live-ingestion blockers: no live catalog writes, no `dryRunOnly` removal, no private APIs, no auth-only paths, no checkout/cart/account/search/filter/query URLs, no Magento/internal paths, no DB/schema/generated type changes, no UI/runtime/app-action changes, no prompts/payment/checkout changes, no production flags/deploys, no Product Matching runtime coupling, and no Catalog-First runtime coupling.
-6. Keep the Catalog Ingestion heartbeat active after merge and monitor this mailbox plus PR comments; do not delete the lane monitor just because PR-specific work closes.
+Recommendation: do not proceed to West Elm UAE or Pottery Barn UAE adapter work. Route either another docs-only retailer feasibility target or a partner/feed outreach plan.
 
-Why this stage: Crate & Barrel is promising, but PR #156 correctly finds that robots/fetchability are unresolved gates. The next safe work is not a parser. It is docs-only route verification for the next premium candidates called out in existing research before choosing another adapter target.
+Keep live-ingestion blockers: no live catalog writes, no `dryRunOnly` removal, no private APIs, no auth-only paths, no checkout/cart/account/search/filter/query URLs, no Magento/internal paths, no DB/schema/generated type changes, no UI/runtime/app-action changes, no prompts/payment/checkout changes, no production flags/deploys, no Product Matching runtime coupling, and no Catalog-First runtime coupling.
 
 ## Last Action Taken
-Opened PR #156 for the routed Crate & Barrel UAE docs-only category discovery feasibility stage from latest `main`.
+Started the routed docs-only premium-retailer route verification stage from latest `main`.
 
-The feasibility note records a tiny manually bounded public check. It found promising clean category and product URL shapes through public index evidence, but direct `robots.txt` and storefront fetches timed out from this environment, so robots posture and clean category fetchability remain unresolved gates before any adapter work.
+The route verification note records tiny manually bounded public checks for West Elm UAE and Pottery Barn UAE. Both official UAE domains returned closure pages, including for `robots.txt`, so robots posture is not readable and old category/product index records should be treated as stale route evidence.
 
 ## Next Intended Action
-After PR #156 is approved and merged, sync latest `main` and start the docs-only premium-retailer route verification PR for West Elm UAE and Pottery Barn UAE from latest `main`.
+Open the docs-only premium-retailer route verification PR, leave an `ARCHITECT_NOTE:` with PR URL, branch, head commit, files touched, verification, and hard-stop confirmation, then wait for Chief Architect review.
 
 Do not start live ingestion, controlled preview, adapter implementation, parser fixtures/scripts, broad discovery, production flag, deploy, runtime coupling, or write path from this approval.
 
@@ -58,7 +55,7 @@ Keep the Catalog Ingestion heartbeat active while the lane is routed or awaiting
 
 - `docs/Tracks/v2-commercial/process/catalog-ingestion-agent-comms.md`
 - recent PR comments beginning `ARCHITECT_NOTE:` or `CHIEF_ARCHITECT_REPLY:`
-- PR #156 and the next premium-retailer route verification PR once opened
+- the active premium-retailer route verification PR once opened
 - follow-up PR comments beginning `ARCHITECT_NOTE:` or `CHIEF_ARCHITECT_REPLY:`
 
-If PR #156 is rejected, fix only listed docs blockers. If it is approved and explicitly approved to merge, merge only if runtime impact remains none/docs-only and no hard stop was crossed, then proceed only to the docs-only premium-retailer route verification stage described above.
+If the PR is rejected, fix only listed docs blockers. If it is approved and explicitly approved to merge, merge only if runtime impact remains none/docs-only and no hard stop was crossed. After merge, keep the heartbeat active and wait for explicit routing unless the mailbox has been updated with a specific next safe stage.
