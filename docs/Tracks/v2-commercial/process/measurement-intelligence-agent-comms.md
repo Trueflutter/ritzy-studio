@@ -1,7 +1,11 @@
 # Measurement Intelligence Agent Comms
 
 ## Current PR
-None. PR #151 (<https://github.com/Trueflutter/ritzy-studio/pull/151>) merged into `main`.
+PR #158: <https://github.com/Trueflutter/ritzy-studio/pull/158>
+
+Branch: `codex/measurement-maple-reviewed-seed-json-candidate`
+
+PR #151 (<https://github.com/Trueflutter/ritzy-studio/pull/151>) merged into `main`.
 
 PR #146 (<https://github.com/Trueflutter/ritzy-studio/pull/146>) merged into `main`.
 
@@ -35,10 +39,10 @@ Do not sit idle while DB/schema/runtime work is blocked. Start one small domain-
 Hard stop: this domain-only PR must not add migrations, generated DB types, runtime/UI/app actions, Supabase connections or writes, seed importer writes, production data, external parser/vendor integration, private/user floor-plan assets, raw copyrighted plan images, Product Matching runtime coupling, Catalog-First runtime coupling, deploys, production flags, payment/checkout changes, or live customer-facing behavior.
 
 ## Last action taken
-PR #151 merged the first reviewed structured-facts seed JSON candidate into `main`. It adds one default-off Murooj Al Furjan 4-bedroom townhouse candidate and a focused domain schema parse test. No DB/schema migration, generated DB types, Supabase connections/writes, runtime/UI/app-action wiring, seed importer writes, production data, external parser/vendor/OCR integration, private/user floor-plan assets, raw copyrighted plan images, Product Matching or Catalog-First runtime coupling, production flags, deploys, or live customer-facing behavior was added.
+PR #158 opened the Maple at Dubai Hills Estate 4-bedroom Type 2E reviewed structured-facts seed JSON candidate. It extends the existing default-off reviewed-candidates file and focused domain schema parse test.
 
 ## Next intended action
-Implementation agent: start the Maple reviewed structured-facts seed JSON candidate described above, open a small PR, and leave an `ARCHITECT_NOTE:` with PR URL, branch, head commit, files touched, verification run, candidate record included, rights/confidence/disclaimer posture, and confirmation that no stop rule was crossed.
+Implementation agent: monitor PR #158 for review feedback, `CHIEF_ARCHITECT_REPLY:` comments, checks, and mergeability. Do not merge unless the review explicitly says approved to merge. If the PR is rejected, fix only listed blockers within the domain-only Maple reviewed-seed-JSON-candidate scope.
 
 Create or keep a Measurement Intelligence heartbeat after starting the PR. The heartbeat should run every 10 minutes and monitor:
 
