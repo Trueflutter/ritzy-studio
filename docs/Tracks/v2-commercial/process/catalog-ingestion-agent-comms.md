@@ -1,9 +1,9 @@
 # Catalog Ingestion Agent Comms
 
 ## Current PR
-PR #161: https://github.com/Trueflutter/ritzy-studio/pull/161 merged.
+PR #162: https://github.com/Trueflutter/ritzy-studio/pull/162
 
-Active local branch for routed sample QA: `codex/catalog-ingestion-the-one-sample-qa`
+Branch: `codex/catalog-ingestion-the-one-sample-qa`
 
 Current stage: `APPROVED_DRY_RUN_ONLY_THE_ONE_MULTI_CATEGORY_SAMPLE_QA`
 
@@ -26,10 +26,12 @@ Preserve Homes r Us `Crawl-delay: 10`.
 ## Chief Architect Routing
 ARCHITECT_NOTE:
 Lane: Catalog Ingestion
-Current PR: pending PR for The One UAE multi-category sample QA
-Current stage: `APPROVED_DRY_RUN_ONLY_THE_ONE_MULTI_CATEGORY_SAMPLE_QA`
-What is complete: PR #159 completed docs-only route feasibility for The One UAE. PR #161 completed the tiny dry-run-only fixture/parser spike and kept The One dry-run-only/manual-seed-only. This sample QA stage ran the existing adapter with the existing tiny manual seed set only, `--dry-run --limit=4`, and captured normalized sample output, category coverage, parser gaps, and stop-rule observations. Live ingestion remains blocked.
-Decision needed after this PR: Chief Architect/Sam routing for whether to pause, address category normalization gaps, add more saved fixtures, pursue partner/feed approval, or define another narrow dry-run-only QA step.
+Current PR: PR #162 completes The One UAE multi-category sample QA
+Current stage: `THE_ONE_SAMPLE_QA_COMPLETE_WAITING_FOR_CHIEF_SAM_ROUTING`
+What is complete: PR #159 completed docs-only route feasibility for The One UAE. PR #161 completed the tiny dry-run-only fixture/parser spike and kept The One dry-run-only/manual-seed-only. PR #162 completes the dry-run-only The One UAE multi-category sample QA report: it ran the existing adapter with the existing tiny manual seed set only, `--dry-run --limit=4`, and captured normalized sample output, category coverage, parser gaps, and stop-rule observations. The One remains dry-run-only/manual-seed-only. Live ingestion remains blocked.
+Decision needed after merge: Chief Architect/Sam routing for whether to pause, address category normalization gaps, add more saved fixtures, pursue partner/feed approval, or define another narrow dry-run-only QA step.
+
+Do not start category-normalization work, more fixture work, partner/feed work, controlled preview, live ingestion, or any new PR unless that exact next stage is separately approved.
 
 Completed scope:
 
@@ -51,7 +53,7 @@ Verification run locally:
 - `pnpm --filter @ritzy-studio/ingestion exec tsx src/cli.ts theone --dry-run --limit=4`
 
 ## Next Intended Action
-Open the sample QA report PR and request Chief Architect review/routing. If approved and explicitly approved to merge, merge only if runtime impact remains none/docs-only dry-run QA report and no hard stop was crossed.
+If PR #162 is rejected, fix only listed docs/report blockers. If PR #162 is approved and explicitly approved to merge, merge only if runtime impact remains none/docs-only dry-run QA report and no hard stop was crossed. After merge, keep the lane at `THE_ONE_SAMPLE_QA_COMPLETE_WAITING_FOR_CHIEF_SAM_ROUTING` unless Chief Architect/Sam explicitly routes a specific safe next stage.
 
 Do not start live ingestion, controlled preview, broad discovery, production flag, deploy, runtime coupling, or write path from this approval.
 
@@ -60,7 +62,7 @@ Keep the Catalog Ingestion heartbeat active while the lane is routed or awaiting
 
 - `docs/Tracks/v2-commercial/process/catalog-ingestion-agent-comms.md`
 - recent PR comments beginning `ARCHITECT_NOTE:` or `CHIEF_ARCHITECT_REPLY:`
-- the The One UAE multi-category sample QA PR once opened
+- PR #162
 - follow-up PR comments beginning `ARCHITECT_NOTE:` or `CHIEF_ARCHITECT_REPLY:`
 
-If the sample QA PR is rejected, fix only listed blockers. If it is approved and explicitly approved to merge, merge only if runtime impact remains none/docs-only dry-run QA report and no hard stop was crossed. After merge, proceed only if Chief Architect/Sam explicitly routes a specific safe next stage; otherwise leave an `ARCHITECT_NOTE:` requesting routing and keep the Catalog Ingestion heartbeat active.
+If PR #162 is rejected, fix only listed blockers. If it is approved and explicitly approved to merge, merge only if runtime impact remains none/docs-only dry-run QA report and no hard stop was crossed. After merge, do not start a new PR unless Chief Architect/Sam explicitly routes a specific safe next stage. Keep the Catalog Ingestion heartbeat active and surface the QA findings for Chief Architect/Sam routing.
