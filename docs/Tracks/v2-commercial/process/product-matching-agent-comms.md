@@ -1,9 +1,7 @@
 # Product Matching Engine Agent Comms
 
 ## Current PR
-PR #170: https://github.com/Trueflutter/ritzy-studio/pull/170
-
-Branch: `codex/product-match-mailbox-hygiene`
+None. PR #170 (https://github.com/Trueflutter/ritzy-studio/pull/170) merged into `main`.
 
 ## Current stage
 DUAL_TRACK:
@@ -18,14 +16,14 @@ Product Matching Engine V1 is still not approved for controlled-preview configur
 ## Chief architect routing
 ARCHITECT_NOTE: PR #142 completed the one Sam-approved bounded local QA / read-only manual harness evidence pass for the two approved targets only. PR #148 completed the docs-only post-evidence warning triage. PR #153 completed the QA-harness-only warning report improvement. Do not run or configure any further controlled preview until Sam/Chief explicitly approves the next bounded execution.
 
-ARCHITECT_NOTE: PR #160 completed the docs-only controlled-preview execution-boundary approval package. PR #170 is mailbox hygiene that clears stale PR #160 state while keeping the lane parked at `CONTROLLED_PREVIEW_EXECUTION_BOUNDARY_READY_WAITING_FOR_SAM_CHIEF_DECISION`, with `CONTROLLED_PREVIEW_EXPANSION_BLOCKED_WAITING_FOR_SAM_CHIEF_DECISION` still the runtime gate. It does not approve, configure, or execute controlled preview.
+ARCHITECT_NOTE: PR #160 completed the docs-only controlled-preview execution-boundary approval package. PR #170 completed mailbox hygiene that cleared stale PR #160 state while keeping the lane parked at `CONTROLLED_PREVIEW_EXECUTION_BOUNDARY_READY_WAITING_FOR_SAM_CHIEF_DECISION`, with `CONTROLLED_PREVIEW_EXPANSION_BLOCKED_WAITING_FOR_SAM_CHIEF_DECISION` still the runtime gate. It does not approve, configure, or execute controlled preview.
 
 Hard stop: no controlled-preview configuration/execution, app actions, runtime allowlist expansion, draft shopping-list/catalog writes, live catalog writes, DB/schema/generated types, runtime/env default changes, runtime/UI/prompt/payment/checkout changes, production flags/deploys, default-on activation, production rollout, selection/scoring changes, or Catalog-First runtime coupling without explicit Sam/Chief approval.
 
 ## Last action taken
 PR #160 completed the docs-only controlled-preview execution-boundary package after PR #153. The package prepares approval fields for proposed scope, project/room/user allowlist, environment, app path, write boundary, stop rules, rollback rules, owner, expiration, and evidence artifacts. No controlled-preview configuration/execution, app action, evidence pass, draft shopping-list row create/refresh, DB/schema/generated type change, live catalog write, UI/prompt/payment/checkout change, production flag/deploy, new preview target, allowlist expansion, default-on activation, production rollout, selection/scoring behavior change, or Catalog-First runtime coupling was performed.
 
-PR #170 opened to clean stale mailbox state after PR #160 merged. This is docs/mailbox only.
+PR #170 merged to clean stale mailbox state after PR #160 merged. This was docs/mailbox only.
 
 ## Next intended action
 Implementation agent: wait for explicit Sam/Chief approval, edits, or rejection of the prepared execution boundary before starting any further Product Matching implementation or execution stage. Do not start implementation or execution from PR #160 alone.
