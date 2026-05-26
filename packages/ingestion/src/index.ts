@@ -9,3 +9,4 @@ export * from "./adapters/panhome";
 export * from "./adapters/homesrus";
 export * from "./adapters/ikea";
 export * from "./adapters/marinahome";
+export * from "./adapters/theone";
