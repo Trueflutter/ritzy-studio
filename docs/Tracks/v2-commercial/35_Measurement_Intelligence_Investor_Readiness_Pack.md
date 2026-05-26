@@ -1,4 +1,4 @@
-# 34 Measurement Intelligence Investor Readiness Pack
+# 35 Measurement Intelligence Investor Readiness Pack
 
 Status: docs/domain-only investor readiness pack
 Date: 2026-05-26
