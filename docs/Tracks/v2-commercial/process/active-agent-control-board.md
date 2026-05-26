@@ -149,15 +149,15 @@ Blocker: Waiting for explicit Sam/Chief routing.
 ### Ticket RE-001
 
 Owner: Resilience Engineer_Product I...
-Status: PR_OPEN
-Branch: `codex/product-sourcing-timeout-resilience`
-Allowed scope: Runtime defensive hotfix for baseline product sourcing timeout/failure classification around `groundProductsAction` and `sourceProductsFromConcept`, plus focused tests. Improve timeout handling and user-facing failure copy; consider reducing visual payload or adding a narrower retry/fallback only if it stays within the existing successful sourcing path.
-Forbidden scope: No DB migrations, generated DB types, Product Matching controlled-preview configuration/execution, runtime allowlist expansion, Product Matching Engine V1 activation, catalog writes, draft shopping-list writes except the existing successful sourcing path, payment/checkout changes, deploys, UI redesign, or broad sourcing architecture changes. Stop and ask before prompt/schema changes or broad architecture changes.
-Expected next artifact: Chief Architect and strict PR review of PR #194.
-SLA: Review response on PR #194 before implementation proceeds further.
-Last architect instruction: Product sourcing still fails after PR #191. Recent `ai_jobs` rows for rooms `2381322e-a871-424a-bbdd-305479a171c6` and `19d312f0-0cd0-4e92-a612-8897767992b3` show `error_message: "Product visual sourcing timed out."`, roughly 45 second runtime matching `PRODUCT_SOURCING_AI_TIMEOUT_MS`, product image preflight passing `35/36` or `36/36`, `productImagePreflightGate.usable: true`, `providerImageDownloadFailure: false`, `productMatchingEngineEnabled: false`, and model `gpt-5-mini`. The current user-facing copy wrongly reports concept image legibility for these timeout failures. Own the baseline sourcing resilience hotfix; this is not Product Matching Engine V1 work.
-Agent ack: PR #194 is the acknowledgement and implementation artifact for RE-001.
-Current PR: #194 (<https://github.com/Trueflutter/ritzy-studio/pull/194>)
+Status: ROUTED
+Branch: `codex/product-sourcing-timeout-second-pass`
+Allowed scope: Second runtime defensive hotfix for baseline product sourcing timeout after PR #194. Keep the fix inside `groundProductsAction` / `sourceProductsFromConcept` timeout resilience and focused tests. Since 12 low-detail candidate images still timed out, investigate and implement a narrower fallback such as zero/fewer product images, lower concept-image detail if safe, longer timeout only if justified, model-specific timeout handling, or a deterministic non-vision fallback using the existing ranked candidate text. Preserve the existing successful sourcing path and failure classification.
+Forbidden scope: No DB migrations, generated DB types, Product Matching controlled-preview configuration/execution, runtime allowlist expansion, Product Matching Engine V1 activation, catalog writes, draft shopping-list writes except the existing successful sourcing path, payment/checkout changes, deploys, UI redesign, prompt/schema changes, broad sourcing architecture changes, or Catalog-First runtime coupling unless a new ticket explicitly routes that scope.
+Expected next artifact: PR with second-pass timeout fix, updated tests, and fresh ai_jobs evidence in the PR body.
+SLA: Agent ack within one heartbeat; branch, commit, PR, mailbox update, or blocker within 30 minutes after ack.
+Last architect instruction: PR #194 merged at `6325bc1`, but retest still fails. Fresh `ai_jobs` rows after #194 for room `19d312f0-0cd0-4e92-a612-8897767992b3` show `error_message: "Product visual sourcing timed out."`, about 45 second runtime, model `gpt-5-mini`, `productImagePreflight` `36/36` accepted, `productImagePreflightGate.usable: true`, `providerImageDownloadFailure: false`, `productMatchingEngineEnabled: false`, and `productSourcingAiPayload` `{ candidateImageLimit: 12, candidateImageDetail: "low" }`. Payload reduction helped classification/observability but did not resolve the timeout. Own the second-pass baseline sourcing resilience fix; this is still not Product Matching Engine V1 work.
+Agent ack: pending
+Current PR: none
 Blocker: none
 
 ### Ticket CI-001
