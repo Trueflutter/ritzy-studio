@@ -1,7 +1,7 @@
 # Product Matching Engine Agent Comms
 
 ## Current PR
-PR #209 (<https://github.com/Trueflutter/ritzy-studio/pull/209>) on branch `codex/product-match-post-207-handoff`.
+PR #211 (<https://github.com/Trueflutter/ritzy-studio/pull/211>) on branch `codex/product-match-post-209-hygiene`.
 
 ## Current stage
 DUAL_TRACK:
@@ -33,6 +33,8 @@ ARCHITECT_NOTE: PR #160 completed the docs-only controlled-preview execution-bou
 Hard stop: no controlled-preview configuration/execution, app actions, runtime allowlist expansion, draft shopping-list/catalog writes, live catalog writes, DB/schema/generated types, runtime/env default changes, runtime/UI/prompt/payment/checkout changes, production flags/deploys, default-on activation, production rollout, selection/scoring changes, or Catalog-First runtime coupling without explicit Sam/Chief approval.
 
 ## Last action taken
+PR #209 merged the docs/mailbox-only post-207 handoff, keeping PM-001 blocked pending Chief/Sam decision before customer-facing reuse, further execution, app actions, writes, production activity, broad scoring rewrites, unrelated quality changes, or Catalog-First coupling.
+
 PR #207 merged the PM-001 coffee-table quality fix. The fix tightened coffee-table role matching, added focused domain tests, and documented retest evidence at `docs/Tracks/v2-commercial/product-matching-evals/manual-qa/2026-05-26-pm001-coffee-table-quality-fix.md`.
 
 PM-001 coffee-table quality fix completed. The retest persisted `ai_jobs` evidence row `182e8d5b-2386-4f1a-a139-5d905e67d2fe`; QA stop rules pass with 0 blockers, and required role `coffee table` is now `acceptable_match`. No app action, draft shopping-list row create/refresh, catalog write, DB/schema/generated type change, live catalog write, UI/prompt/payment/checkout change, production flag/deploy, broad allowlist expansion, default-on activation, production rollout, broad scoring rewrite, unrelated quality change, or Catalog-First runtime coupling was performed.

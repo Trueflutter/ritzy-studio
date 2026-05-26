@@ -115,7 +115,7 @@ Expected next artifact: Chief/Sam decision on whether the passing PM-001 coffee-
 SLA: Stay parked until Chief/Sam routes the next explicit action.
 Last architect instruction: PR #204 merged and documented the approved PM-001 local/dev Product Matching V1 preview. The preview completed without forbidden writes/deploys, but QA stop rules did not pass because required role `coffee table` returned `closest_available`. Route a narrow quality-fix investigation/PR for that blocker only; keep all production, write, schema, UI, Catalog-First, and broad scoring gates closed.
 Agent ack: Product Matching Agent completed the narrow coffee-table fix and PR #207 merged it. Focused domain tests passed, and the one approved local/dev retest persisted `ai_jobs` row `182e8d5b-2386-4f1a-a139-5d905e67d2fe`.
-Current PR: #209 (<https://github.com/Trueflutter/ritzy-studio/pull/209>)
+Current PR: #211 (<https://github.com/Trueflutter/ritzy-studio/pull/211>)
 Blocker: PR #207 merged and the retest passed QA stop rules with 0 blockers, moving required coffee-table from `closest_available` to `acceptable_match`; Product Matching remains blocked pending Chief/Sam decision before customer-facing reuse, further execution, app actions, shopping-list/catalog writes, production deploy/flags, broad allowlist expansion, DB/schema/generated type changes, UI/payment/checkout changes, broad scoring rewrites, unrelated quality changes, or Catalog-First runtime coupling.
 
 ### Ticket MI-001
