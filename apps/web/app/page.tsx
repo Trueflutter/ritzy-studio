@@ -1,5 +1,15 @@
 import type { Database } from "@ritzy-studio/db";
-import { Button, ButtonLink, Card, Tab, Tabs } from "@ritzy-studio/ui";
+import {
+  Button,
+  ButtonLink,
+  Card,
+  DecorativeRule,
+  MarketingDisplay,
+  MarketingPanel,
+  SectionEyebrow,
+  Tab,
+  Tabs
+} from "@ritzy-studio/ui";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
@@ -101,18 +111,24 @@ export default async function DashboardPage() {
         </div>
 
         {projects.length === 0 ? (
-          <section className="mt-20 flex min-h-[420px] flex-col items-center justify-center border border-dashed border-line-strong bg-surface px-8 text-center">
-            <p className="font-display text-display-s font-light italic text-ink">
+          <MarketingPanel
+            as="section"
+            tone="paper"
+            className="mt-20 flex min-h-[420px] flex-col items-center justify-center px-8 py-16 text-center"
+          >
+            <SectionEyebrow>N° 02 — Begin</SectionEyebrow>
+            <DecorativeRule className="mt-5" />
+            <MarketingDisplay as="h2" className="mt-6 max-w-[18ch]">
               begin with a client room
-            </p>
-            <p className="mt-5 max-w-[48ch] font-body text-body-m text-ink-secondary">
+            </MarketingDisplay>
+            <p className="mt-6 max-w-[48ch] font-body text-body-m text-ink-secondary">
               Create a project and add the first room. Photo upload and brief capture follow in
               the next workflow slices.
             </p>
-            <ButtonLink className="mt-8" href="/projects/new" trailing="→" variant="quiet">
-              begin a project
+            <ButtonLink className="mt-10" href="/projects/new">
+              Begin a project
             </ButtonLink>
-          </section>
+          </MarketingPanel>
         ) : (
           <div className="mt-12 grid gap-6 md:grid-cols-2 lg:grid-cols-3">
             {projects.map((project) => {
