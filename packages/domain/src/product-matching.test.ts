@@ -641,6 +641,67 @@ assert.ok(
   diningChairStoolPool.pools[0].weaknessReasons.includes("stool or bench seating is weak for dining chair role")
 );
 
+const coffeeTablePool = buildRoleScopedCandidatePools({
+  roomType: "living room",
+  conceptText: "traditional living room with a round warm walnut coffee table and antique brass accents",
+  roles: [
+    {
+      category: "coffee_tables",
+      label: "coffee table",
+      visualBrief: "round warm walnut coffee table",
+      quantity: 1,
+      priority: "required"
+    }
+  ],
+  candidates: [
+    {
+      ...base,
+      id: "00000000-0000-4000-8000-000000000557",
+      name: "Jackie Office Table in Black Oak, 160x80",
+      categoryNormalized: "coffee_tables",
+      availability: "in stock",
+      primaryImageUrl: "https://example.com/office-table.jpg",
+      colorTags: ["black", "oak"],
+      materialTags: ["wood"]
+    },
+    {
+      ...base,
+      id: "00000000-0000-4000-8000-000000000558",
+      name: "Happy Day Left Recamiere in Grey Aluminum",
+      categoryNormalized: "coffee_tables",
+      availability: "in stock",
+      primaryImageUrl: "https://example.com/recamiere.jpg",
+      colorTags: ["grey"],
+      materialTags: ["aluminum"]
+    },
+    {
+      ...base,
+      id: "00000000-0000-4000-8000-000000000559",
+      name: "Animal Tiger Side Table in Brown Polyresin",
+      categoryNormalized: "coffee_tables",
+      availability: "in stock",
+      primaryImageUrl: "https://example.com/side-table.jpg",
+      colorTags: ["brown"]
+    },
+    {
+      ...base,
+      id: "00000000-0000-4000-8000-000000000560",
+      name: "Electra Coffee Table, 75Cm",
+      categoryNormalized: "coffee_tables",
+      availability: "in stock",
+      primaryImageUrl: "https://example.com/electra-coffee-table.jpg",
+      colorTags: ["natural", "warm"],
+      materialTags: ["wood"]
+    }
+  ]
+});
+assert.deepEqual(
+  coffeeTablePool.pools[0].candidates.map((candidate) => candidate.name),
+  ["Electra Coffee Table, 75Cm"]
+);
+assert.equal(coffeeTablePool.pools[0].rejectionReasons.coffee_table_role_mismatch, 3);
+assert.ok(coffeeTablePool.pools[0].candidates[0].attributeScore.roleFit > 0);
+
 const diningOverTableLightingPool = buildRoleScopedCandidatePools({
   roomType: "dining room",
   conceptText: "aged brass chandelier over the dining table",

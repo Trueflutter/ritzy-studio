@@ -1085,6 +1085,13 @@ function roleGateRejectionReason(
     return "category_mismatch";
   }
 
+  if (role.category === "coffee_tables" && candidate.categoryNormalized === "coffee_tables") {
+    const coffeeTableMismatch = coffeeTableRoleMismatchReason(candidate);
+    if (coffeeTableMismatch) {
+      return coffeeTableMismatch;
+    }
+  }
+
   const availability = candidate.availability?.toLowerCase() ?? "";
   if (
     availability.includes("out of stock") ||
@@ -1102,6 +1109,24 @@ function roleGateRejectionReason(
   return null;
 }
 
+function coffeeTableRoleMismatchReason(candidate: ProductMatchCandidate) {
+  const candidateTokens = candidateNameTokens(candidate);
+
+  if (hasAnyToken(candidateTokens, ["coffee", "cocktail"])) {
+    return null;
+  }
+
+  if (hasAnyToken(candidateTokens, ["office", "desk", "recamiere", "chaise", "sofa", "armchair", "bedside"])) {
+    return "coffee_table_role_mismatch";
+  }
+
+  if (candidateTokens.has("side") && candidateTokens.has("table")) {
+    return "coffee_table_role_mismatch";
+  }
+
+  return null;
+}
+
 export function scoreProductCandidateForRole({
   candidate,
   role,
@@ -1113,6 +1138,7 @@ export function scoreProductCandidateForRole({
 }): ProductRoleAttributeScore {
   const roleTokens = tokensFor(attributeCueText(role, conceptText));
   const candidateTokens = candidateSearchTokens(candidate);
+  const nameTokens = candidateNameTokens(candidate);
   const reasons: string[] = [];
   const weaknessReasons: string[] = [];
   let category = 0;
@@ -1170,7 +1196,7 @@ export function scoreProductCandidateForRole({
   reasons.push(...silhouetteScore.reasons);
   weaknessReasons.push(...silhouetteScore.weaknessReasons);
 
-  const roleKeywordScore = roleSpecificKeywordScore(role, candidateTokens, roleTokens);
+  const roleKeywordScore = roleSpecificKeywordScore(role, candidateTokens, roleTokens, nameTokens);
   roleFit = roleKeywordScore.score;
   reasons.push(...roleKeywordScore.reasons);
   weaknessReasons.push(...roleKeywordScore.weaknessReasons);
@@ -1197,7 +1223,8 @@ export function scoreProductCandidateForRole({
 function roleSpecificKeywordScore(
   role: RoomProductRoleSpec,
   candidateTokens: Set<string>,
-  roleCueTokens: Set<string>
+  roleCueTokens: Set<string>,
+  candidateNameTokenSet: Set<string> = candidateTokens
 ) {
   const roleText = `${role.category} ${role.label} ${role.visualBrief ?? ""}`.toLowerCase();
   const roleTokens = tokensFor(roleText);
@@ -1250,6 +1277,14 @@ function roleSpecificKeywordScore(
         score -= 30;
         weaknessReasons.push("metal or glass desk is weak for requested wood desk role");
       }
+    }
+  }
+
+  if (role.category === "coffee_tables") {
+    const nameTokens = candidateNameTokenSet;
+    if (hasAnyToken(nameTokens, ["coffee", "cocktail"]) && nameTokens.has("table")) {
+      score += 26;
+      reasons.push("coffee table language matches role");
     }
   }
 
@@ -1329,6 +1364,10 @@ function candidateSearchTokens(candidate: ProductMatchCandidate) {
       .filter(Boolean)
       .join(" ")
   );
+}
+
+function candidateNameTokens(candidate: ProductMatchCandidate) {
+  return tokensFor(candidate.name);
 }
 
 function hasAnyToken(tokens: Set<string>, values: string[]) {
