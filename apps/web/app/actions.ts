@@ -64,6 +64,7 @@ import {
   productSourcingGenericFailureMessage,
   productSourcingTimeoutMessage
 } from "./product-sourcing-failure";
+import { buildProductSourcingTextFallbackResult } from "./product-sourcing-text-fallback";
 
 const PRODUCT_SOURCING_AI_TIMEOUT_MS = 45_000;
 const PRODUCT_MATCHING_CATALOG_LIMIT = 1500;
@@ -1971,6 +1972,16 @@ export async function groundProductsAction(formData: FormData) {
   });
   const sourcingPools = sourcingPlan.roleScopedPools;
   const sourcingCandidates = sourcingPlan.candidates;
+  const legacyRequiredRoles: RoomProductRoleSpec[] = productRolesForRoom(room.room_type)
+    .filter((role) => role.required)
+    .map((role) => ({
+      category: role.category,
+      label: role.label,
+      visualBrief: role.visualBrief ?? null,
+      quantity: role.quantity,
+      priority: "required"
+    }));
+  const staticRoles = mergeRoomRoles(blueprintRoles, legacyRequiredRoles);
   const initialImagePreflight = await preflightProductCandidateImages(sourcingCandidates, {
     timeoutMs: PRODUCT_SOURCING_IMAGE_PREFLIGHT_TIMEOUT_MS,
     maxBytes: PRODUCT_SOURCING_MAX_IMAGE_BYTES
@@ -2061,6 +2072,8 @@ export async function groundProductsAction(formData: FormData) {
   }
 
   let sourcingResult: Awaited<ReturnType<typeof sourceProductsFromConcept>>;
+  let productSourcingTextFallbackUsed = false;
+  let productSourcingTextFallbackReason: string | null = null;
   try {
     sourcingResult = await withTimeout(
       sourceProductsFromConcept({
@@ -2093,6 +2106,8 @@ export async function groundProductsAction(formData: FormData) {
           missingRoles: sourcingResult.missingRoles,
           productMatchingEngineEnabled,
           productSourcingAiPayload: productSourcingAiPayloadSummary(),
+          productSourcingTextFallbackUsed,
+          productSourcingTextFallbackReason,
           productImagePreflight: initialImagePreflight.summary,
           productImagePreflightGate: initialImageGate,
           roleCandidateCounts: productMatchingEngineEnabled ? roleCandidateCountSummary(sourcingPools) : undefined,
@@ -2110,25 +2125,97 @@ export async function groundProductsAction(formData: FormData) {
       .eq("id", sourcingJob.id);
   } catch (error) {
     const productSourcingTimedOut = isProductSourcingTimeoutError(error);
-    await serviceSupabase
-      .from("ai_jobs")
-      .update({
-        status: "failed",
-        completed_at: new Date().toISOString(),
-        error_message: error instanceof Error ? error.message : "Product visual sourcing failed.",
-        output_summary: {
-          productMatchingEngineEnabled,
-          productSourcingAiPayload: productSourcingAiPayloadSummary(),
-          productImagePreflight: initialImagePreflight.summary,
-          productImagePreflightGate: initialImageGate,
-          productSourcingTimedOut,
-          providerImageDownloadFailure: isProviderImageDownloadError(error)
-        }
-      })
-      .eq("id", sourcingJob.id);
+    if (productSourcingTimedOut) {
+      productSourcingTextFallbackUsed = true;
+      productSourcingTextFallbackReason = "initial_visual_sourcing_timeout";
+      sourcingResult = buildProductSourcingTextFallbackResult({
+        roomType: room.room_type,
+        conceptTitle: concept.title,
+        conceptDescription: concept.description,
+        roles: staticRoles,
+        rankedCandidates: sourcingCandidates,
+        model: process.env.OPENAI_TEXT_MODEL ?? "gpt-5-mini"
+      });
 
-    const message = productSourcingFailureMessage(error);
-    redirect(`${redirectPath}?message=${encodeURIComponent(message)}`);
+      if (sourcingResult.needs.length > 0 && sourcingResult.selectedProducts.length > 0) {
+        await serviceSupabase
+          .from("ai_jobs")
+          .update({
+            status: "succeeded",
+            completed_at: new Date().toISOString(),
+            model: sourcingResult.model,
+            prompt_version: sourcingResult.promptVersion,
+            output_summary: {
+              promptKey: sourcingResult.promptKey,
+              needCount: sourcingResult.needs.length,
+              selectedProductCount: sourcingResult.selectedProducts.length,
+              missingRoleCount: sourcingResult.missingRoles.length,
+              missingRoles: sourcingResult.missingRoles,
+              productMatchingEngineEnabled,
+              productSourcingAiPayload: productSourcingAiPayloadSummary(),
+              productSourcingTimedOut,
+              productSourcingTextFallbackUsed,
+              productSourcingTextFallbackReason,
+              productImagePreflight: initialImagePreflight.summary,
+              productImagePreflightGate: initialImageGate,
+              roleCandidateCounts: productMatchingEngineEnabled ? roleCandidateCountSummary(sourcingPools) : undefined,
+              roleStatuses: productMatchingEngineEnabled ? roleStatusSummary(sourcingResult.roleResults) : undefined,
+              ...(productMatchingEngineEnabled
+                ? roleConfidenceOutputFields(
+                    sourcingPools,
+                    sourcingResult.roleResults,
+                    productMatchingLoggedAtMs,
+                    productMatchingRoomMeasurements
+                  )
+                : {})
+            }
+          })
+          .eq("id", sourcingJob.id);
+      } else {
+        await serviceSupabase
+          .from("ai_jobs")
+          .update({
+            status: "failed",
+            completed_at: new Date().toISOString(),
+            error_message: "Product visual sourcing timed out and text fallback found no usable products.",
+            output_summary: {
+              productMatchingEngineEnabled,
+              productSourcingAiPayload: productSourcingAiPayloadSummary(),
+              productImagePreflight: initialImagePreflight.summary,
+              productImagePreflightGate: initialImageGate,
+              productSourcingTimedOut,
+              productSourcingTextFallbackUsed,
+              productSourcingTextFallbackReason,
+              providerImageDownloadFailure: false
+            }
+          })
+          .eq("id", sourcingJob.id);
+
+        redirect(`${redirectPath}?message=${encodeURIComponent(productSourcingTimeoutMessage())}`);
+      }
+    } else {
+      await serviceSupabase
+        .from("ai_jobs")
+        .update({
+          status: "failed",
+          completed_at: new Date().toISOString(),
+          error_message: error instanceof Error ? error.message : "Product visual sourcing failed.",
+          output_summary: {
+            productMatchingEngineEnabled,
+            productSourcingAiPayload: productSourcingAiPayloadSummary(),
+            productImagePreflight: initialImagePreflight.summary,
+            productImagePreflightGate: initialImageGate,
+            productSourcingTimedOut,
+            productSourcingTextFallbackUsed,
+            productSourcingTextFallbackReason,
+            providerImageDownloadFailure: isProviderImageDownloadError(error)
+          }
+        })
+        .eq("id", sourcingJob.id);
+
+      const message = productSourcingFailureMessage(error);
+      redirect(`${redirectPath}?message=${encodeURIComponent(message)}`);
+    }
   }
 
   if (sourcingResult.needs.length === 0 || sourcingResult.selectedProducts.length === 0) {
@@ -2156,17 +2243,6 @@ export async function groundProductsAction(formData: FormData) {
       : null,
     candidates
   });
-  const legacyRequiredRoles: RoomProductRoleSpec[] = productRolesForRoom(room.room_type)
-    .filter((role) => role.required)
-    .map((role) => ({
-      category: role.category,
-      label: role.label,
-      visualBrief: role.visualBrief ?? null,
-      quantity: role.quantity,
-      priority: "required"
-    }));
-  const staticRoles = mergeRoomRoles(blueprintRoles, legacyRequiredRoles);
-
   let visualMissingRoleCategories = new Set(
     sourcingResult.missingRoles.map((role) => normalizeSourcingCategory(role, role))
   );
@@ -2178,7 +2254,7 @@ export async function groundProductsAction(formData: FormData) {
   let retryProviderImageDownloadFailure = false;
   let retryProductSourcingTimedOut = false;
 
-  if (missingRequiredVisualRoles.length > 0) {
+  if (!productSourcingTextFallbackUsed && missingRequiredVisualRoles.length > 0) {
     const retryRoles = mergeRoomRoles(missingRequiredVisualRoles, staticRoles);
     const retryPlan = buildProductSourcingRuntimePlan({
       engineEnabled: productMatchingEngineEnabled,
@@ -2263,6 +2339,8 @@ export async function groundProductsAction(formData: FormData) {
             missingRoles: sourcingResult.missingRoles,
             productMatchingEngineEnabled,
             productSourcingAiPayload: productSourcingAiPayloadSummary(),
+            productSourcingTextFallbackUsed,
+            productSourcingTextFallbackReason,
             productImagePreflight: initialImagePreflight.summary,
             productImagePreflightGate: initialImageGate,
             retryProductImagePreflight: retryImagePreflight.summary,
@@ -2301,6 +2379,8 @@ export async function groundProductsAction(formData: FormData) {
           missingRoles: sourcingResult.missingRoles,
           productMatchingEngineEnabled,
           productSourcingAiPayload: productSourcingAiPayloadSummary(),
+          productSourcingTextFallbackUsed,
+          productSourcingTextFallbackReason,
           productImagePreflight: initialImagePreflight.summary,
           productImagePreflightGate: initialImageGate,
           retryProductImagePreflight: retryProductImagePreflightSummary,
