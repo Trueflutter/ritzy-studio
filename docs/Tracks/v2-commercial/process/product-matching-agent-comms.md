@@ -1,11 +1,11 @@
 # Product Matching Engine Agent Comms
 
 ## Current PR
-PR #204 (<https://github.com/Trueflutter/ritzy-studio/pull/204>) on branch `codex/product-match-local-preview-evidence`.
+PR #206 (<https://github.com/Trueflutter/ritzy-studio/pull/206>) on branch `codex/product-match-post-204-handoff`.
 
 ## Current stage
 DUAL_TRACK:
-- `PM001_LOCAL_PREVIEW_EVIDENCE_READY_FOR_REVIEW`
+- `PM001_LOCAL_PREVIEW_EVIDENCE_MERGED_BLOCKED_WAITING_FOR_SAM_CHIEF_DECISION`
 - `CONTROLLED_PREVIEW_EXPANSION_BLOCKED_WAITING_FOR_SAM_CHIEF_DECISION` remains the runtime gate outside the approved local/dev current test boundary
 
 ## Blockers
@@ -31,6 +31,8 @@ ARCHITECT_NOTE: PR #160 completed the docs-only controlled-preview execution-bou
 Hard stop: no controlled-preview configuration/execution, app actions, runtime allowlist expansion, draft shopping-list/catalog writes, live catalog writes, DB/schema/generated types, runtime/env default changes, runtime/UI/prompt/payment/checkout changes, production flags/deploys, default-on activation, production rollout, selection/scoring changes, or Catalog-First runtime coupling without explicit Sam/Chief approval.
 
 ## Last action taken
+PR #204 merged the PM-001 local/dev current test preview evidence at `docs/Tracks/v2-commercial/product-matching-evals/manual-qa/2026-05-26-pm001-local-preview-evidence.md`. The evidence records `ai_jobs` row `b218a6f6-55bf-4c49-961d-9812827d6553`, selected products, write boundary, and the QA stop-rule failure caused by required role `coffee table` returning `closest_available`.
+
 PM-001 local/dev current test preview evidence completed. The run persisted `ai_jobs` evidence row `b218a6f6-55bf-4c49-961d-9812827d6553` and added `docs/Tracks/v2-commercial/product-matching-evals/manual-qa/2026-05-26-pm001-local-preview-evidence.md`. QA stop rules did not pass because required role `coffee table` returned `closest_available`. No app action, draft shopping-list row create/refresh, catalog write, DB/schema/generated type change, live catalog write, UI/prompt/payment/checkout change, production flag/deploy, broad allowlist expansion, default-on activation, production rollout, selection/scoring behavior change, or Catalog-First runtime coupling was performed.
 
 PR #187 created `docs/Tracks/v2-commercial/product-matching-evals/2026-05-26-investor-evidence-appendix.md`. No controlled-preview configuration/execution, app action, evidence pass, draft shopping-list row create/refresh, DB/schema/generated type change, live catalog write, UI/prompt/payment/checkout change, production flag/deploy, new preview target, allowlist expansion, default-on activation, production rollout, selection/scoring behavior change, or Catalog-First runtime coupling was performed.
@@ -60,6 +62,8 @@ Do not delete the Product Matching heartbeat just because a PR merged. If the ma
 Sam/Chief: separately review whether the PR #142 two-target evidence is sufficient for a next bounded preview step. Any further execution requires a new explicit approval with scope, project/room/user allowlist, environment, app path, write boundary, stop rules, rollback rules, evidence artifacts, owner, and expiration.
 
 ## Durable next-state handoff after merge
+PR #204 merged the PM-001 local/dev current test preview evidence. The lane state is `PM001_LOCAL_PREVIEW_EVIDENCE_MERGED_BLOCKED_WAITING_FOR_SAM_CHIEF_DECISION`. The runtime gate remains `CONTROLLED_PREVIEW_EXPANSION_BLOCKED_WAITING_FOR_SAM_CHIEF_DECISION` outside the already completed local/dev evidence pass. Do not reuse the output for customer-facing decisions, run another Product Matching execution, invoke app actions, expand allowlists, create or refresh draft shopping-list/catalog rows, change DB/schema/generated types, change runtime/UI/prompt/payment/checkout, deploy production flags, activate default-on behavior, change selection/scoring behavior, or add Catalog-First runtime coupling without explicit Chief/Sam approval.
+
 PR #187 merged the docs-only Product Matching investor evidence appendix at `docs/Tracks/v2-commercial/product-matching-evals/2026-05-26-investor-evidence-appendix.md`. The lane state remains `CONTROLLED_PREVIEW_EXECUTION_BOUNDARY_READY_WAITING_FOR_SAM_CHIEF_DECISION`. `CONTROLLED_PREVIEW_EXPANSION_BLOCKED_WAITING_FOR_SAM_CHIEF_DECISION` remains the runtime gate. Do not start controlled-preview configuration/execution, app actions, allowlist expansion in runtime config, draft shopping-list/catalog writes, DB/schema/generated type changes, runtime/UI/prompt/payment/checkout work, live catalog writes, production flags/deploys, default-on activation, production rollout, Product Matching selection/scoring changes, or Catalog-First runtime coupling without explicit Sam/Chief approval.
 
 PR #181 merged the docs-only Product Matching investor demo runbook at `docs/Tracks/v2-commercial/product-matching-evals/2026-05-26-investor-demo-runbook.md`. The lane state remains `CONTROLLED_PREVIEW_EXECUTION_BOUNDARY_READY_WAITING_FOR_SAM_CHIEF_DECISION`. `CONTROLLED_PREVIEW_EXPANSION_BLOCKED_WAITING_FOR_SAM_CHIEF_DECISION` remains the runtime gate. Do not start controlled-preview configuration/execution, app actions, allowlist expansion in runtime config, draft shopping-list/catalog writes, DB/schema/generated type changes, runtime/UI/prompt/payment/checkout work, live catalog writes, production flags/deploys, default-on activation, production rollout, Product Matching selection/scoring changes, or Catalog-First runtime coupling without explicit Sam/Chief approval.

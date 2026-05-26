@@ -107,16 +107,16 @@ Docs-only, test-only, domain-only, and dry-run-only work may proceed only when t
 ### Ticket PM-001
 
 Owner: Product Matching Agent
-Status: REVIEW_REQUESTED
-Branch: `codex/product-match-local-preview-evidence`
-Allowed scope: Local/dev-only controlled Product Matching V1 preview for Sam's current test project/room/user/email. Enable Product Matching V1 only in the local process, use request-scoped preview allowlist only for project `7e1f060d-b95d-462d-8cc2-22b6dd0e92a5`, room `19d312f0-0cd0-4e92-a612-8897767992b3`, and the resolved current test user/email, run product sourcing locally to compare Product Matching V1 results against the generated concept, inspect `ai_jobs` evidence and selected products, and open docs/code PRs only if needed to fix matching quality.
+Status: BLOCKED
+Branch: none
+Allowed scope: Docs/artifacts/mailbox-only synthesis from the merged PM-001 local/dev evidence. No further Product Matching execution is allowed without a new explicit Sam/Chief boundary.
 Forbidden scope: No production deploy, production flags, broad allowlist expansion, live catalog writes, DB/schema/generated type changes, payment/checkout/UI changes, Catalog-First runtime coupling, default-on activation, production rollout, Product Matching selection/scoring behavior changes unless a narrow quality-fix PR is opened for review, or any scope outside the local/dev current test project/room/user/email boundary.
-Expected next artifact: Chief/Sam review of the local evidence note and coffee-table required-role blocker.
-SLA: Show local-run evidence, a PR, or explicit blocker within 30 minutes of this ack.
+Expected next artifact: Chief/Sam decision on whether to accept the PM-001 coffee-table blocker for narrative-only use, route a narrow quality-fix investigation, or approve an exact retest boundary.
+SLA: Stay parked until Chief/Sam routes the next explicit action.
 Last architect instruction: Sam approved routing Product Matching Agent to run a local-only controlled Product Matching V1 preview for the current test project/room/user. Allowed: enable Product Matching V1 only in local/dev env; use request-scoped preview allowlist only for the current project/room/user/email; run product sourcing locally to compare Product Matching V1 results against the generated concept; inspect `ai_jobs` evidence and selected products; open docs/code PRs only if needed to fix matching quality. Forbidden: no production deploy, no production flags, no broad allowlist expansion, no live catalog writes, no schema/generated type changes, no payment/checkout/UI changes, no Catalog-First runtime coupling.
-Agent ack: Product Matching Agent completed the approved local/dev current test boundary run on branch `codex/product-match-local-preview-evidence`; the current local route is project `7e1f060d-b95d-462d-8cc2-22b6dd0e92a5`, room `19d312f0-0cd0-4e92-a612-8897767992b3`, user `87c551bf-8288-49df-99c4-a58b530f32ce`, and email `sam.olatoye@gmail.com`.
-Current PR: #204 (<https://github.com/Trueflutter/ritzy-studio/pull/204>)
-Blocker: Local harness completed and persisted `ai_jobs` evidence row `b218a6f6-55bf-4c49-961d-9812827d6553`, but QA stop rules did not pass because required role `coffee table` returned `closest_available`. No production deploy, production flags, broad allowlist expansion, app action, shopping-list/catalog writes, DB/schema/generated type changes, UI/payment/checkout changes, selection/scoring changes, or Catalog-First runtime coupling were performed.
+Agent ack: Product Matching Agent completed the approved local/dev current test boundary run and PR #204 merged the evidence. Route was project `7e1f060d-b95d-462d-8cc2-22b6dd0e92a5`, room `19d312f0-0cd0-4e92-a612-8897767992b3`, user `87c551bf-8288-49df-99c4-a58b530f32ce`, and email `sam.olatoye@gmail.com`.
+Current PR: #206 (<https://github.com/Trueflutter/ritzy-studio/pull/206>)
+Blocker: PR #204 merged the local evidence and persisted `ai_jobs` evidence row `b218a6f6-55bf-4c49-961d-9812827d6553`, but QA stop rules did not pass because required role `coffee table` returned `closest_available`. Product Matching is blocked pending Chief/Sam decision before customer-facing reuse, quality-fix work, retest, further execution, app actions, shopping-list/catalog writes, production deploy/flags, broad allowlist expansion, DB/schema/generated type changes, UI/payment/checkout changes, selection/scoring changes, or Catalog-First runtime coupling.
 
 ### Ticket MI-001
 
