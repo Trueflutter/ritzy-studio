@@ -1,11 +1,14 @@
 # Measurement Intelligence Agent Comms
 
 ## Current PR
-None. PR #177 (<https://github.com/Trueflutter/ritzy-studio/pull/177>) merged the docs-only Measurement Intelligence investor readiness pack into `main`.
+None. PR #179 (<https://github.com/Trueflutter/ritzy-studio/pull/179>) merged the docs-only floor-plan model decision brief into `main`.
 
 Branch: none active.
 
 Previous completed PRs:
+- PR #179 (<https://github.com/Trueflutter/ritzy-studio/pull/179>) merged the floor-plan model decision brief for investor-readiness.
+- PR #177 (<https://github.com/Trueflutter/ritzy-studio/pull/177>) merged the docs-only Measurement Intelligence investor readiness pack.
+- PR #171 (<https://github.com/Trueflutter/ritzy-studio/pull/171>) merged mailbox hygiene after PR #158.
 - PR #151 (<https://github.com/Trueflutter/ritzy-studio/pull/151>) merged the first default-off reviewed structured-facts seed JSON candidate for Murooj Al Furjan.
 - PR #146 (<https://github.com/Trueflutter/ritzy-studio/pull/146>) merged the docs-only seed-candidate shortlist.
 - PR #144 (<https://github.com/Trueflutter/ritzy-studio/pull/144>) merged the docs-only source-feasibility pack.
@@ -14,7 +17,7 @@ Previous completed PRs:
 ## Current stage
 DUAL_TRACK:
 - `DB_SCHEMA_RUNTIME_BLOCKED_WAITING_FOR_SAM_APPROVAL`
-- `MEASUREMENT_INVESTOR_READINESS_PACK_COMPLETE_WAITING_FOR_CHIEF_SAM_ROUTING`
+- `FLOOR_PLAN_MODEL_DECISION_BRIEF_COMPLETE_WAITING_FOR_CHIEF_SAM_ROUTING`
 
 ## Blockers
 Do not apply Supabase migrations, change generated DB types, write seed data, connect to Supabase, add runtime/app/UI wiring, execute production imports, add external floor-plan parser/vendor integrations, or use user/private floor-plan assets without explicit Sam approval.
@@ -22,30 +25,28 @@ Do not apply Supabase migrations, change generated DB types, write seed data, co
 Raw floor plans are sensitive and may be copyrighted. Shared library value must default to reviewed structured facts, provenance, rights posture, confidence, disclaimers, and user confirmation gates rather than public raw-plan display.
 
 ## Chief architect routing
-PR #158 completed the Maple at Dubai Hills Estate 4-bedroom Type 2E reviewed structured-facts seed JSON candidate. PR #177 completed the docs-only investor readiness pack. There is no active Measurement Intelligence implementation PR and no further Measurement Intelligence implementation stage approved in this mailbox.
+PR #177 completed the docs-only Measurement Intelligence investor readiness pack. PR #179 completed the docs-only floor-plan model decision brief for investor-readiness. These are planning and evaluation artifacts only, not parser/vendor/OCR implementation, DB/schema work, runtime work, private-asset handling, or seed writes.
 
-Current durable state: Measurement Intelligence is parked after the investor readiness pack. Do not infer approval for additional reviewed seed records, importer writes, database/schema work, runtime wiring, parser/vendor integration, private/user floor-plan assets, or real seed writes from the completed investor-readiness work.
-
-Coordination note: PR #179 is a separate docs-only Floor Plan Model / Measurement Intelligence decision brief that also edits this mailbox. If PR #179 proceeds, rebase/merge sequencing must preserve both completed docs-only artifacts and must not revert this post-merge parked state.
+Keep the lane parked until the Chief Architect or Sam explicitly routes the next safe scope. Do not infer approval for floor-plan parser integration, vendor SDKs, OCR, additional reviewed seed records, importer writes, database/schema work, runtime wiring, private/user floor-plan asset handling, or real seed writes from the completed docs-only artifacts.
 
 Hard stop: no Measurement Intelligence work may add migrations, generated DB types, runtime/UI/app actions, Supabase connections or writes, seed importer writes, production data, external parser/vendor/OCR integration, private/user floor-plan assets, raw copyrighted floor-plan images, Product Matching runtime coupling, Catalog-First runtime coupling, deploys, production flags, payment/checkout changes, or live customer-facing behavior without explicit approval.
 
 ## Last action taken
-PR #158 completed the Maple reviewed structured-facts seed JSON candidate. It added exactly one default-off, prefill-only, `structured_facts_only` Maple at Dubai Hills Estate 4-bedroom Type 2E candidate and kept dimensions omitted unless reviewed sources prove structured facts.
-
 PR #177 added `docs/Tracks/v2-commercial/35_Measurement_Intelligence_Investor_Readiness_Pack.md` and kept the lane implementation-blocked.
 
-## Next intended action
-Wait for explicit Chief Architect or Sam routing before any additional seed records, importer writes, DB/schema work, runtime wiring, parser/vendor integration, private/user floor-plan assets, or real seed writes.
+PR #179 added `docs/Tracks/v2-commercial/34_Floor_Plan_Model_Decision_Brief.md` as a docs-only investor-readiness brief from branch `codex/floor-plan-model-decision-brief`.
 
-If a concrete next safe scope is approved, open one small PR, leave an `ARCHITECT_NOTE:` on that PR with the approved scope and stop-rule confirmation, and keep/recreate the Measurement Intelligence PR-check heartbeat.
+## Next intended action
+Wait for explicit Chief Architect or Sam routing before any additional seed records, importer writes, DB/schema work, runtime wiring, parser/vendor/OCR integration, private/user floor-plan asset handling, or real seed writes.
+
+If a concrete next safe scope is approved, open one small PR, leave an `ARCHITECT_NOTE:` on that PR with the approved scope and stop-rule confirmation, and keep/recreate the Measurement Intelligence/Floor Plan Model heartbeat.
 
 ## Heartbeat
-Keep the Measurement Intelligence lane heartbeat active while the lane is parked after PR #177. It should monitor:
+Keep the Measurement Intelligence/Floor Plan Model lane heartbeat active while the lane is parked after PR #179. It should monitor:
 
 - this mailbox file
-- active Measurement Intelligence PRs, if any
+- active Measurement Intelligence or Floor Plan Model PRs, if any
 - PR comments beginning `ARCHITECT_NOTE:` or `CHIEF_ARCHITECT_REPLY:`
 - explicit Chief Architect or Sam routing in the coordinator thread
 
-Do not delete the Measurement Intelligence heartbeat just because a PR merged. Delete a PR-specific monitor only after either a lane-level heartbeat is active or this mailbox on `main` points to the next safe action.
+Do not delete the lane heartbeat just because a PR merged. Delete a PR-specific monitor only after either a lane-level heartbeat is active or this mailbox on `main` points to the next safe action.
