@@ -110,15 +110,15 @@ Docs-only, test-only, domain-only, and dry-run-only work may proceed only when t
 
 Owner: Product Matching Agent
 Status: REVIEW_REQUESTED
-Branch: codex/product-match-narrative-readiness
-Allowed scope: Docs/artifacts/mailbox-only narrative-readiness synthesis from the merged PM-001 local/dev evidence and coffee-table quality fix. No further Product Matching execution is allowed without a new explicit Sam/Chief boundary.
-Forbidden scope: No production deploy, production flags, broad allowlist expansion, live catalog writes, DB/schema/generated type changes, payment/checkout/UI changes, Catalog-First runtime coupling, default-on activation, production rollout, Product Matching execution outside the approved local/dev current test boundary, app actions, draft shopping-list/catalog writes outside the existing successful local sourcing path, broad scoring rewrites, or quality changes unrelated to the coffee-table required-role blocker.
-Expected next artifact: Chief/Sam review of the PM-001 narrative-readiness package and its recommended next exact execution boundary.
-SLA: Review requested on the docs-only PR; no execution while awaiting review.
-Last architect instruction: Approved next boundary for PM-001 is narrative-readiness and next-step recommendation only. Use merged PM-001 evidence from PR #204, PR #207, and this control board; do not run Product Matching again, invoke app actions, write shopping-list/catalog rows, expand allowlists, change runtime config, schema/types, UI, prompts, production flags, or Catalog-First coupling.
-Agent ack: Product Matching Agent opened the docs-only narrative-readiness branch and summarized what is safe to claim, what remains blocked, and the exact recommended future execution boundary.
-Current PR: #212 (<https://github.com/Trueflutter/ritzy-studio/pull/212>)
-Blocker: PR #207 merged and the retest passed QA stop rules with 0 blockers, moving required coffee-table from `closest_available` to `acceptable_match`; Product Matching remains blocked pending Chief/Sam decision before customer-facing reuse, further execution, app actions, shopping-list/catalog writes, production deploy/flags, broad allowlist expansion, DB/schema/generated type changes, UI/payment/checkout changes, broad scoring rewrites, unrelated quality changes, or Catalog-First runtime coupling.
+Branch: codex/product-match-catalogue-grounding-investigation
+Allowed scope: Docs/artifacts/mailbox-only and read-only/domain-only investigation of the current concept-generation flow, Product Matching selected-products output, catalogue candidate metadata, image evidence/preflight path, and shopping-list/product-sourcing path. No Product Matching execution or implementation is allowed without a new explicit Sam/Chief boundary.
+Forbidden scope: No production deploy, production flags, broad/runtime allowlist expansion, live catalog writes, DB/schema/generated type changes, payment/checkout/UI changes, Catalog-First runtime coupling, default-on activation, production rollout, Product Matching execution, controlled-preview execution, preview QA, app actions, draft shopping-list/catalog writes, prompt/runtime/image-generation behavior changes, code implementation PRs, broad scoring rewrites, floor-plan work, or unrelated quality changes.
+Expected next artifact: Chief/Sam review of the PM-001 catalogue-grounding investigation and decision on the proposed exact local/dev catalogue-grounded concept-generation boundary.
+SLA: Review requested on the docs-only investigation PR; no execution or implementation while awaiting review.
+Last architect instruction: PR #212 merged, and the 2026-05-27 morning route moved PM-001 from narrative readiness to investor-demo catalogue grounding. Product Matching Agent should identify why concept images/recommendations are not grounded in ingested catalogue products and propose the shortest safe next boundary. Do not run Product Matching, controlled preview, app actions, writes, allowlist expansion, schema/types, UI/payment/checkout, production flags/deploys, prompt/runtime/image-generation behavior changes, code implementation, floor-plan work, or Catalog-First coupling without a new exact approval.
+Agent ack: Product Matching Agent opened the docs-only catalogue-grounding investigation branch and summarized files inspected, current failure mode, gating points, catalogue metadata state, and the proposed next exact boundary.
+Current PR: #216 (<https://github.com/Trueflutter/ritzy-studio/pull/216>)
+Blocker: Concept generation currently runs before catalogue-backed product selection exists; Product Matching recommendations are downstream of the generic concept image. Any local/dev implementation, prompt/runtime/image-generation behavior change, Product Matching execution, app action, or write path remains blocked until Sam/Chief explicitly approves the exact boundary.
 
 ### Ticket MI-001
 
