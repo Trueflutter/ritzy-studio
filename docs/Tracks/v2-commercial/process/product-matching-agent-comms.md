@@ -1,10 +1,11 @@
 # Product Matching Engine Agent Comms
 
 ## Current PR
-None. PR #209 merged (<https://github.com/Trueflutter/ritzy-studio/pull/209>).
+PR #212 (<https://github.com/Trueflutter/ritzy-studio/pull/212>) on branch `codex/product-match-narrative-readiness`.
 
 ## Current stage
 DUAL_TRACK:
+- `PM001_NARRATIVE_READINESS_RECOMMENDATION_READY_FOR_REVIEW`
 - `PM001_COFFEE_TABLE_QUALITY_FIX_MERGED_BLOCKED_WAITING_FOR_SAM_CHIEF_DECISION`
 - `CONTROLLED_PREVIEW_EXPANSION_BLOCKED_WAITING_FOR_SAM_CHIEF_DECISION` remains the runtime gate outside the approved local/dev current test boundary
 
@@ -14,6 +15,8 @@ PM-001 coffee-table blocker has a narrow fix and one approved local/dev retest. 
 Product Matching Engine V1 is still not approved for production deploys, production flags, broad/runtime allowlist expansion, app actions, draft shopping-list/catalog writes, live catalog writes, DB/schema changes, generated DB types, runtime/UI redesign/prompt changes, payment/checkout changes, default-on activation, production rollout, selection/scoring changes, Catalog-First runtime coupling, new preview targets, or broader execution without a new approval.
 
 ## Chief architect routing
+ARCHITECT_NOTE: PR #212 prepared the PM-001 narrative-readiness package on branch `codex/product-match-narrative-readiness`. It uses only merged PR #204 and PR #207 evidence plus the active control board to answer what is safe to claim after the passing coffee-table retest, what remains blocked, and the exact recommended next local/dev execution boundary for Sam/Chief approval. It does not run Product Matching, invoke app actions, expand allowlists, write shopping-list/catalog rows, change runtime config, schema/types, UI, prompts, production flags, or Catalog-First coupling.
+
 ARCHITECT_NOTE: PM-001 coffee-table quality fix completed on branch `codex/product-match-coffee-table-quality-fix`. The fix rejects obvious non-coffee-table product-name language from the coffee-table role pool and adds a focused coffee-table role-fit signal. Focused domain tests pass, and the one approved local/dev retest persisted `ai_jobs` row `182e8d5b-2386-4f1a-a139-5d905e67d2fe`; QA stop rules now pass with 0 blockers and the required coffee-table role is `acceptable_match`. This does not approve customer-facing reuse, another execution, app actions, writes, production flags/deploys, broad allowlist expansion, DB/schema/generated type changes, UI/payment/checkout changes, broad scoring rewrites, or Catalog-First runtime coupling.
 
 ARCHITECT_NOTE: PM-001 local/dev current test preview evidence completed on branch `codex/product-match-local-preview-evidence`. Evidence was captured in `docs/Tracks/v2-commercial/product-matching-evals/manual-qa/2026-05-26-pm001-local-preview-evidence.md` from `ai_jobs` row `b218a6f6-55bf-4c49-961d-9812827d6553`. The run used request-scoped local process allowlisting for project `7e1f060d-b95d-462d-8cc2-22b6dd0e92a5`, room `19d312f0-0cd0-4e92-a612-8897767992b3`, user `87c551bf-8288-49df-99c4-a58b530f32ce`, and email `sam.olatoye@gmail.com`. It completed without app actions, shopping-list/catalog writes, deploys, production flags, DB/schema/generated type changes, UI/payment/checkout changes, selection/scoring changes, or Catalog-First runtime coupling. QA stop rules did not pass because the required coffee-table role returned `closest_available`; Chief/Sam routing is needed before any customer-facing reuse or quality-fix/retest work.
@@ -33,6 +36,8 @@ ARCHITECT_NOTE: PR #160 completed the docs-only controlled-preview execution-bou
 Hard stop: no controlled-preview configuration/execution, app actions, runtime allowlist expansion, draft shopping-list/catalog writes, live catalog writes, DB/schema/generated types, runtime/env default changes, runtime/UI/prompt/payment/checkout changes, production flags/deploys, default-on activation, production rollout, selection/scoring changes, or Catalog-First runtime coupling without explicit Sam/Chief approval.
 
 ## Last action taken
+Prepared `docs/Tracks/v2-commercial/product-matching-evals/2026-05-27-pm001-narrative-readiness.md`, a docs-only PM-001 narrative-readiness and recommended next-boundary package. No Product Matching execution, app action, draft shopping-list row create/refresh, catalog write, DB/schema/generated type change, live catalog write, UI/prompt/payment/checkout change, production flag/deploy, broad allowlist expansion, default-on activation, production rollout, broad scoring rewrite, unrelated quality change, or Catalog-First runtime coupling was performed.
+
 PR #207 merged the PM-001 coffee-table quality fix. The fix tightened coffee-table role matching, added focused domain tests, and documented retest evidence at `docs/Tracks/v2-commercial/product-matching-evals/manual-qa/2026-05-26-pm001-coffee-table-quality-fix.md`.
 
 PM-001 coffee-table quality fix completed. The retest persisted `ai_jobs` evidence row `182e8d5b-2386-4f1a-a139-5d905e67d2fe`; QA stop rules pass with 0 blockers, and required role `coffee table` is now `acceptable_match`. No app action, draft shopping-list row create/refresh, catalog write, DB/schema/generated type change, live catalog write, UI/prompt/payment/checkout change, production flag/deploy, broad allowlist expansion, default-on activation, production rollout, broad scoring rewrite, unrelated quality change, or Catalog-First runtime coupling was performed.
@@ -52,7 +57,7 @@ PR #160 completed the docs-only controlled-preview execution-boundary package af
 PR #170 merged to clean stale mailbox state after PR #160 merged. This was docs/mailbox only.
 
 ## Next intended action
-Implementation agent: wait for Chief/Sam decision on the merged PM-001 coffee-table quality fix and retest evidence before any customer-facing reuse, additional quality-fix work, or retest. Do not start further Product Matching execution, app actions, writes, broad allowlist changes, production activity, broad scoring rewrites, unrelated quality changes, or Catalog-First coupling without a new explicit boundary.
+Implementation agent: wait for Chief/Sam review of the PM-001 narrative-readiness PR before any customer-facing reuse, additional quality-fix work, or retest. Do not start further Product Matching execution, app actions, writes, broad allowlist changes, production activity, broad scoring rewrites, unrelated quality changes, or Catalog-First coupling without a new explicit boundary.
 
 Keep the Product Matching lane heartbeat active. It must not be deleted after merges. The heartbeat should run every 10 minutes and monitor:
 
