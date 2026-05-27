@@ -109,16 +109,16 @@ Docs-only, test-only, domain-only, and dry-run-only work may proceed only when t
 ### Ticket PM-001
 
 Owner: Product Matching Agent
-Status: MERGED_PENDING_MAIN_VALIDATION
+Status: POST_MERGE_VALIDATED_LOCAL_DEV
 Branch: `main` includes PR #220 at `abf2e517db19d8e1fd7cd2adcc6f11a01c82405b`
 Allowed scope: Founder-approved local/dev PM-001 aesthetic-quality rescue. Scope includes docs, focused domain/app selection logic, tests, and local/dev validation needed to make catalogue-grounded living-room concept renders and shopping recommendations use actual ingested SKUs with investor-demo taste quality. The narrow implementation may add a local/dev-only taste-arbitration gate for living-room chair suitability, coffee-table/rug visual-noise conflicts, and sofa/chair/table/rug harmony. Local/dev execution is limited to existing test/demo project and room data on `http://localhost:3001` using existing catalogue rows only.
 Forbidden scope: No production deploy, production flags, live catalog writes, live ingestion, DB/schema/generated type changes, payment/checkout changes, floor-plan work, Catalog-First runtime coupling, controlled-preview expansion, production Product Matching execution, runtime allowlist expansion, default-on production activation, unrelated UI redesign, or broad catalogue rewrites. Do not mutate catalogue/product rows. Do not make production selection behavior change unless a future Sam/Chief boundary explicitly approves rollout.
-Expected next artifact: Post-merge local/main validation note confirming PR #220 evidence remains present on `main` and naming any remaining investor-demo caveats.
+Expected next artifact: None for the approved local/dev aesthetic-quality rescue; further execution or rollout requires a fresh Sam/Chief boundary.
 SLA: Branch, commits, PR, or explicit blocker within 30 minutes. If the local/dev gate cannot reach 9/10 quality with existing SKUs, stop with evidence and propose the smallest next architecture slice.
 Last architect instruction: Sam set the active goal in-thread on 2026-05-27: deliver an investor-demo-quality catalogue-grounded living-room flow with actual SKUs, target aesthetic score 9/10 or better, no unsuitable hero items, and no office/task/dining/shell/pedestal chair unless explicitly requested. Sam called the current black/brown pedestal shell chair and noisy striped coffee table unacceptable for investors.
 Agent ack: Ritzy Chief Architect accepted the goal, created branch `codex/pm001-aesthetic-taste-gate`, ran adversarial plan and code reviews, merged PR #220 after strict approval, and verified the implementation remains local/dev gated.
 Current PR: none; #220 merged into `main` at `abf2e517db19d8e1fd7cd2adcc6f11a01c82405b`.
-Blocker: No implementation blocker currently. Completion still requires post-merge validation from latest `main`; no production deploys/flags or new execution outside the recorded local/dev evidence boundary.
+Blocker: No implementation blocker currently for the approved local/dev investor-demo evidence path. No production deploys/flags or new execution outside the recorded local/dev evidence boundary.
 
 ### Ticket MI-001
 
