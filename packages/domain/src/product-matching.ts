@@ -104,6 +104,9 @@ const materialFamilies: Record<string, string[]> = {
   wood: ["wood", "walnut", "oak", "ash", "teak"]
 };
 
+const colorFamilyTerms = new Set(Object.values(colorFamilies).flat());
+const materialFamilyTerms = new Set(Object.values(materialFamilies).flat());
+
 const ignoredMatchTokens = new Set([
   "and",
   "are",
@@ -1015,6 +1018,12 @@ function flatSourcingCandidates(ranked: RankedProductMatch[], roles: RoomProduct
   return [...selected, ...fill].slice(0, limit);
 }
 
+type ScoredRoleCandidate = {
+  match: RoleScopedRankedProductMatch;
+  roleScore: number;
+  weaknesses: string[];
+};
+
 function buildRolePool({
   role,
   request,
@@ -1026,7 +1035,7 @@ function buildRolePool({
   preferredCategories: string[];
   candidatesPerRole: number;
 }): RoleScopedCandidatePool {
-  const scored: Array<{ match: RoleScopedRankedProductMatch; roleScore: number; weaknesses: string[] }> = [];
+  const scored: ScoredRoleCandidate[] = [];
   const rejectionReasons: Record<string, number> = {};
 
   for (const candidate of request.candidates) {
@@ -1050,9 +1059,7 @@ function buildRolePool({
     });
   }
 
-  const candidates = scored
-    .sort((left, right) => right.match.score - left.match.score || right.roleScore - left.roleScore)
-    .slice(0, candidatesPerRole)
+  const candidates = diverseRoleCandidates(scored, candidatesPerRole)
     .map(({ match }, index) => ({ ...match, score: Number((match.score - index * 0.001).toFixed(3)) }));
 
   return {
@@ -1063,6 +1070,106 @@ function buildRolePool({
     rejectionReasons,
     weaknessReasons: Array.from(new Set(scored.flatMap(({ weaknesses }) => weaknesses)))
   };
+}
+
+function diverseRoleCandidates(scored: ScoredRoleCandidate[], candidatesPerRole: number) {
+  const ranked = [...scored].sort(
+    (left, right) =>
+      right.match.score - left.match.score ||
+      right.roleScore - left.roleScore ||
+      stableCandidateTieBreak(left.match.id, right.match.id)
+  );
+  const selected: ScoredRoleCandidate[] = [];
+  const remaining = [...ranked];
+
+  while (selected.length < candidatesPerRole && remaining.length > 0) {
+    let bestIndex = 0;
+    let bestAdjustedScore = Number.NEGATIVE_INFINITY;
+    let bestCandidateId = remaining[0]?.match.id ?? "";
+
+    for (let index = 0; index < remaining.length; index += 1) {
+      const candidate = remaining[index];
+      const adjustedScore =
+        selected.length === 0
+          ? candidate.match.score
+          : candidate.match.score - diversityPenalty(candidate.match, selected.map(({ match }) => match));
+
+      if (
+        adjustedScore > bestAdjustedScore ||
+        (adjustedScore === bestAdjustedScore && stableCandidateTieBreak(candidate.match.id, bestCandidateId) < 0)
+      ) {
+        bestAdjustedScore = adjustedScore;
+        bestIndex = index;
+        bestCandidateId = candidate.match.id;
+      }
+    }
+
+    const [nextCandidate] = remaining.splice(bestIndex, 1);
+    selected.push(nextCandidate);
+  }
+
+  return selected;
+}
+
+function diversityPenalty(candidate: RoleScopedRankedProductMatch, selected: RoleScopedRankedProductMatch[]) {
+  return selected.reduce((penalty, selectedCandidate) => {
+    let nextPenalty = penalty;
+
+    if (candidate.retailerName.toLowerCase() === selectedCandidate.retailerName.toLowerCase()) {
+      nextPenalty += 8;
+    }
+
+    if (productNameSignature(candidate.name) === productNameSignature(selectedCandidate.name)) {
+      nextPenalty += 60;
+    }
+
+    if (productPriceBand(candidate) === productPriceBand(selectedCandidate)) {
+      nextPenalty += 2;
+    }
+
+    nextPenalty +=
+      overlappingSignals(
+        candidate.attributeScore.candidateColorFamilies,
+        selectedCandidate.attributeScore.candidateColorFamilies
+      ) * 4;
+    nextPenalty +=
+      overlappingSignals(
+        candidate.attributeScore.candidateMaterialFamilies,
+        selectedCandidate.attributeScore.candidateMaterialFamilies
+      ) * 3;
+    nextPenalty += overlappingSignals(candidate.styleTags, selectedCandidate.styleTags) * 2;
+
+    return nextPenalty;
+  }, 0);
+}
+
+function productNameSignature(name: string) {
+  return Array.from(tokensFor(name))
+    .filter((token) => !colorFamilyTerms.has(token) && !materialFamilyTerms.has(token))
+    .slice(0, 4)
+    .join(" ");
+}
+
+function productPriceBand(candidate: RoleScopedRankedProductMatch) {
+  const price = candidate.salePriceAed ?? candidate.priceAed;
+  if (price === null) {
+    return "unknown";
+  }
+  if (price < 500) {
+    return "entry";
+  }
+  if (price < 1500) {
+    return "accessible";
+  }
+  if (price < 5000) {
+    return "premium";
+  }
+  return "statement";
+}
+
+function overlappingSignals(left: string[], right: string[]) {
+  const rightSignals = new Set(right.map((signal) => signal.toLowerCase()));
+  return new Set(left.map((signal) => signal.toLowerCase()).filter((signal) => rightSignals.has(signal))).size;
 }
 
 function defaultRoleSpecsForRoom(roomType: string): RoomProductRoleSpec[] {
@@ -1084,7 +1191,7 @@ function roleGateRejectionReason(
     return "missing_image";
   }
 
-  if (!candidate.categoryNormalized || !categoriesForScopedRole(role).has(candidate.categoryNormalized)) {
+  if (!candidate.categoryNormalized || !scopedCategoriesForProductRole(role).has(candidate.categoryNormalized)) {
     return "category_mismatch";
   }
 
@@ -1154,7 +1261,7 @@ export function scoreProductCandidateForRole({
   if (candidate.categoryNormalized === role.category) {
     category = 48;
     reasons.push(`category matches role: ${role.label}`);
-  } else if (candidate.categoryNormalized && categoriesForScopedRole(role).has(candidate.categoryNormalized)) {
+  } else if (candidate.categoryNormalized && scopedCategoriesForProductRole(role).has(candidate.categoryNormalized)) {
     category = 12;
     weaknessReasons.push(`uses compatible fallback category ${candidate.categoryNormalized} for ${role.category}`);
   } else {
@@ -1448,7 +1555,7 @@ function categoriesForRole(category: string) {
   return categories;
 }
 
-function categoriesForScopedRole(role: RoomProductRoleSpec) {
+export function scopedCategoriesForProductRole(role: RoomProductRoleSpec) {
   const categories = new Set([role.category]);
   const roleText = `${role.category} ${role.label} ${role.visualBrief ?? ""}`.toLowerCase();
 
@@ -1462,6 +1569,18 @@ function categoriesForScopedRole(role: RoomProductRoleSpec) {
   }
 
   return categories;
+}
+
+function stableCandidateTieBreak(leftId: string, rightId: string) {
+  return stableHash(leftId) - stableHash(rightId);
+}
+
+function stableHash(value: string) {
+  let hash = 0;
+  for (let index = 0; index < value.length; index += 1) {
+    hash = (hash * 31 + value.charCodeAt(index)) >>> 0;
+  }
+  return hash;
 }
 
 // Flatten role option pools into shopping_list_item rows. The chosen product

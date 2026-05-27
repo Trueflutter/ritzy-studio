@@ -23,6 +23,29 @@ function possessiveClientFirstName(clientName: string | null | undefined) {
   return firstName.endsWith("s") ? `${firstName}'` : `${firstName}'s`;
 }
 
+function publicProductMatchingMessage(message: string | undefined) {
+  if (!message) {
+    return undefined;
+  }
+
+  const lower = message.toLowerCase();
+  const internalFragments = [
+    "catalogue-grounded concept anchors",
+    "product grounding diverged",
+    "better catalog matches",
+    "more catalog coverage",
+    "missing:",
+    "rolecandidate",
+    "attribute score"
+  ];
+
+  if (internalFragments.some((fragment) => lower.includes(fragment))) {
+    return "We need one more catalogue pass before this shopping list is ready. Please try sourcing again.";
+  }
+
+  return message;
+}
+
 export default async function ProductMatchingPage({
   params,
   searchParams
@@ -32,6 +55,7 @@ export default async function ProductMatchingPage({
 }) {
   const { projectId, roomId } = await params;
   const { message } = await searchParams;
+  const displayMessage = publicProductMatchingMessage(message);
   const supabase = await createClient();
   const {
     data: { user }
@@ -123,12 +147,12 @@ export default async function ProductMatchingPage({
           </p>
           <div className="mt-3 h-px w-24 bg-ink" />
 
-          {message ? (
+          {displayMessage ? (
             <>
               <h1 className="mt-9 font-display text-display-m font-light italic leading-[1.1] text-ink">
                 Sourcing didn’t complete.
               </h1>
-              <p className="mt-4 font-body text-body-m text-ink-muted">{message}</p>
+              <p className="mt-4 font-body text-body-m text-ink-muted">{displayMessage}</p>
               <form action={groundProductsAction} className="mt-9">
                 <input name="projectId" type="hidden" value={projectId} />
                 <input name="roomId" type="hidden" value={roomId} />

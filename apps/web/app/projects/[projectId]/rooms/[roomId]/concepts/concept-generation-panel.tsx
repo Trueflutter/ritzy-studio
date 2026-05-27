@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { useFormStatus } from "react-dom";
 import { AnimatedStatus, SubmitButton } from "@ritzy-studio/ui";
 
 import { generateInitialConceptAction } from "@/app/actions";
@@ -16,6 +17,24 @@ const generationPhases = [
   "Balancing light and materials",
   "Preparing the concept render"
 ];
+
+function GenerateConceptSubmit({ autoGenerate, canGenerate }: { autoGenerate: boolean; canGenerate: boolean }) {
+  const { pending } = useFormStatus();
+
+  if (autoGenerate || pending) {
+    return null;
+  }
+
+  return (
+    <SubmitButton
+      className="mt-10 w-full"
+      disabled={!canGenerate}
+      pendingLabel="Generating concept..."
+    >
+      Generate concept
+    </SubmitButton>
+  );
+}
 
 export function ConceptGenerationPanel({
   autoGenerate,
@@ -59,13 +78,7 @@ export function ConceptGenerationPanel({
             </h2>
             <RenderExpectationNote className="mx-auto mt-5 max-w-[360px]" />
             <AnimatedStatus className="mt-8" phases={generationPhases} />
-            <SubmitButton
-              className="mt-10 w-full"
-              disabled={!canGenerate}
-              pendingLabel="Generating concept..."
-            >
-              {autoGenerate ? "Generating concept..." : "Generate concept"}
-            </SubmitButton>
+            <GenerateConceptSubmit autoGenerate={autoGenerate} canGenerate={canGenerate} />
           </div>
         </div>
       </div>
