@@ -2,11 +2,13 @@ import type { SourceProductsFromConceptResult } from "@ritzy-studio/ai";
 import {
   composeRoomProductOptions,
   type RankedProductMatch,
+  type RoleProductOptions,
   type RoomProductRoleSpec
 } from "@ritzy-studio/domain";
 
 const TEXT_FALLBACK_PROMPT_KEY = "product_sourcing_text_fallback";
-const TEXT_FALLBACK_PROMPT_VERSION = "2026-05-26.1";
+const TEXT_FALLBACK_PROMPT_VERSION = "2026-05-27.1";
+const TEXT_FALLBACK_OPTIONS_PER_ROLE = 6;
 
 export function buildProductSourcingTextFallbackResult({
   roomType,
@@ -26,9 +28,11 @@ export function buildProductSourcingTextFallbackResult({
   const roleOptions = composeRoomProductOptions({
     ranked: rankedCandidates,
     roles,
-    optionsPerRole: 1
+    optionsPerRole: TEXT_FALLBACK_OPTIONS_PER_ROLE
   });
-  const optionsByCategory = new Map(roleOptions.map((role) => [role.category, role.options[0]]));
+  const optionsByCategory = new Map(
+    roleOptions.map((role) => [role.category, bestFallbackOptionForRole(role)])
+  );
   const conceptContext = [conceptTitle, conceptDescription].filter(Boolean).join(" - ");
   const selectedProducts: SourceProductsFromConceptResult["selectedProducts"] = [];
   const roleResults: SourceProductsFromConceptResult["roleResults"] = [];
@@ -93,4 +97,102 @@ export function buildProductSourcingTextFallbackResult({
     roleResults,
     missingRoles
   };
+}
+
+function bestFallbackOptionForRole(role: RoleProductOptions) {
+  if (role.priority === "required") {
+    return role.options[0] ?? null;
+  }
+
+  return (
+    role.options.find((option) => isCredibleSupportFallbackOption(option, role)) ??
+    null
+  );
+}
+
+function isCredibleSupportFallbackOption(option: RankedProductMatch, role: RoleProductOptions) {
+  const tokens = catalogueTokens(
+    [
+      option.name,
+      option.color,
+      option.material,
+      option.description,
+      option.styleTags.join(" "),
+      option.colorTags.join(" "),
+      option.materialTags.join(" ")
+    ]
+      .filter(Boolean)
+      .join(" ")
+  );
+  const effectivePrice = option.salePriceAed ?? option.priceAed;
+
+  if (option.categoryNormalized !== role.category) {
+    return false;
+  }
+
+  if (effectivePrice === 0) {
+    return false;
+  }
+
+  if (role.category === "wall_art") {
+    return (
+      hasAnyToken(tokens, ["art", "artwork", "canvas", "framed", "painting", "print"]) &&
+      !hasAnyToken(tokens, ["hook", "holder", "mail", "panel", "panels", "rack", "shelf", "shelves"])
+    );
+  }
+
+  if (role.category === "decor") {
+    return (
+      hasAnyToken(tokens, ["bowl", "ceramic", "object", "planter", "tray", "vase", "vessel"]) &&
+      !hasAnyToken(tokens, ["bench", "chair", "stool", "table"])
+    );
+  }
+
+  if (role.category === "lighting") {
+    return (
+      (effectivePrice === null || effectivePrice >= 250) &&
+      !hasAnyToken(tokens, ["chrome", "dna", "led", "novelty", "office", "spiral", "twisted"])
+    );
+  }
+
+  if (role.category === "curtains") {
+    return (
+      hasAnyToken(tokens, ["curtain", "curtains", "drape", "drapes", "linen", "sheer", "textile", "voile"]) &&
+      !hasAnyToken(tokens, ["shower"])
+    );
+  }
+
+  if (role.category === "mirrors") {
+    return hasAnyToken(tokens, ["mirror"]);
+  }
+
+  if (role.category === "side_tables") {
+    return (
+      hasAnyToken(tokens, ["accent", "end", "side"]) &&
+      !hasAnyToken(tokens, ["bedside", "nightstand"])
+    );
+  }
+
+  if (role.category === "storage") {
+    return (
+      hasAnyToken(tokens, ["console", "credenza", "media", "sideboard", "tv"]) &&
+      !hasAnyToken(tokens, ["bookcase", "rack", "shelf", "shelves"])
+    );
+  }
+
+  return true;
+}
+
+function catalogueTokens(value: string) {
+  return new Set(
+    value
+      .toLowerCase()
+      .split(/[^a-z0-9]+/)
+      .map((token) => token.trim())
+      .filter(Boolean)
+  );
+}
+
+function hasAnyToken(tokens: Set<string>, expected: string[]) {
+  return expected.some((token) => tokens.has(token));
 }
