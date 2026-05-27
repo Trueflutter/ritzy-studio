@@ -975,6 +975,77 @@ assert.equal(runtimePlanOn.roleScopedPools.length, 2);
 assert.ok(runtimePlanOn.roleScopedPools.every((pool) => pool.candidateCount > 0));
 assert.equal("attributeScore" in runtimePlanOn.candidates[0], true);
 
+const diversifiedSofaCandidates: ProductMatchCandidate[] = [
+  {
+    ...base,
+    id: "00000000-0000-4000-8000-000000000584",
+    name: "Ivory Linen Track Arm Sofa",
+    retailerName: "Same Retailer",
+    categoryNormalized: "sofas",
+    availability: "in stock",
+    primaryImageUrl: "https://example.com/ivory-track-arm-sofa.jpg",
+    colorTags: ["ivory"],
+    materialTags: ["linen"],
+    styleTags: ["contemporary"]
+  },
+  {
+    ...base,
+    id: "00000000-0000-4000-8000-000000000585",
+    name: "Ivory Linen Track Arm Sofa II",
+    retailerName: "Same Retailer",
+    categoryNormalized: "sofas",
+    availability: "in stock",
+    primaryImageUrl: "https://example.com/ivory-track-arm-sofa-2.jpg",
+    colorTags: ["ivory"],
+    materialTags: ["linen"],
+    styleTags: ["contemporary"]
+  },
+  {
+    ...base,
+    id: "00000000-0000-4000-8000-000000000586",
+    name: "Curved Cream Boucle Sofa",
+    retailerName: "Different Retailer",
+    categoryNormalized: "sofas",
+    availability: "in stock",
+    primaryImageUrl: "https://example.com/curved-cream-boucle-sofa.jpg",
+    colorTags: ["cream"],
+    materialTags: ["boucle"],
+    styleTags: ["contemporary"]
+  }
+];
+const diversifiedSofaRoles: RoomProductRoleSpec[] = [
+  {
+    category: "sofas",
+    label: "anchor seating",
+    visualBrief: "ivory linen sofa with a refined contemporary profile",
+    quantity: 1,
+    priority: "required"
+  }
+];
+const diversifiedSofaPool = buildRoleScopedCandidatePools({
+  roomType: "living room",
+  conceptText: "ivory linen sofa with a refined contemporary profile",
+  candidates: diversifiedSofaCandidates,
+  roles: diversifiedSofaRoles,
+  candidatesPerRole: 2
+});
+assert.deepEqual(
+  diversifiedSofaPool.pools[0].candidates.map((candidate) => candidate.name),
+  ["Ivory Linen Track Arm Sofa", "Curved Cream Boucle Sofa"]
+);
+
+const reorderedDiversifiedSofaPool = buildRoleScopedCandidatePools({
+  roomType: "living room",
+  conceptText: "ivory linen sofa with a refined contemporary profile",
+  candidates: [...diversifiedSofaCandidates].reverse(),
+  roles: diversifiedSofaRoles,
+  candidatesPerRole: 2
+});
+assert.deepEqual(
+  reorderedDiversifiedSofaPool.pools[0].candidates.map((candidate) => candidate.id),
+  diversifiedSofaPool.pools[0].candidates.map((candidate) => candidate.id)
+);
+
 // selected estimate uses selected rows only
 assert.equal(
   selectedItemsTotalAed([

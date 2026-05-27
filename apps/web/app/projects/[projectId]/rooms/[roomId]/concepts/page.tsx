@@ -34,6 +34,26 @@ function splitDescription(description: string | null) {
   };
 }
 
+function publicConceptMessage(message: string | undefined) {
+  if (!message) {
+    return null;
+  }
+
+  const lower = message.toLowerCase();
+  if (
+    lower.includes("catalogue-grounded concept generation") ||
+    lower.includes("top catalogue candidate") ||
+    lower.includes("requested style cue") ||
+    lower.includes("requested material cue") ||
+    lower.includes("requested shape cue") ||
+    lower.includes("attribute score")
+  ) {
+    return "We are refining the catalogue match for this room direction. Try again in a moment.";
+  }
+
+  return message;
+}
+
 export default async function ConceptsPage({
   params,
   searchParams
@@ -43,6 +63,7 @@ export default async function ConceptsPage({
 }) {
   const { projectId, roomId } = await params;
   const { autogenerate, message } = await searchParams;
+  const displayMessage = publicConceptMessage(message);
   const supabase = await createClient();
   const {
     data: { user }
@@ -180,9 +201,9 @@ export default async function ConceptsPage({
           ) : null}
         </div>
 
-        {message ? (
+        {displayMessage ? (
           <p className="mt-8 border border-line bg-surface px-4 py-3 font-display text-body-m italic text-ink-secondary">
-            {message}
+            {displayMessage}
           </p>
         ) : null}
 

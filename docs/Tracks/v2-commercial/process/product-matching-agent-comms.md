@@ -1,23 +1,43 @@
 # Product Matching Engine Agent Comms
 
 ## Current PR
-None. PR #217 (<https://github.com/Trueflutter/ritzy-studio/pull/217>) merged the approved catalogue-grounded concept-generation implementation.
+PR #219 (<https://github.com/Trueflutter/ritzy-studio/pull/219>) is open for strict review after Sam's 2026-05-27 founder override made the exact local/dev investor-demo rescue boundary visible.
 
 ## Current stage
 DUAL_TRACK:
-- `PM001_CATALOGUE_GROUNDED_CONCEPT_IMPLEMENTATION_MERGED_WAITING_FOR_VALIDATION_BOUNDARY`
+- `PM001_CATALOGUE_GROUNDED_INVESTOR_DEMO_RESCUE_PR219_REVIEW_REQUESTED`
 - `PM001_NARRATIVE_READINESS_RECOMMENDATION_READY_FOR_REVIEW`
 - `PM001_COFFEE_TABLE_QUALITY_FIX_MERGED_BLOCKED_WAITING_FOR_SAM_CHIEF_DECISION`
 - `CONTROLLED_PREVIEW_EXPANSION_BLOCKED_WAITING_FOR_SAM_CHIEF_DECISION` remains the runtime gate outside the approved local/dev current test boundary
 
 ## Blockers
-PR #217 merged the repository implementation that grounds initial concept generation in selected catalogue anchors and carries those anchors into downstream product grounding. A separate Sam/Chief boundary is still required before any Product Matching execution, controlled preview, preview QA, app action, write path, or local/dev validation run.
+PR #219 is awaiting strict review on the current head. Sam confirmed founder override in-thread on 2026-05-27 after the initial rejection for missing visible boundary, instructing the Chief Architect to either update the document or confirm founder override. The exact local/dev boundary is now recorded in `active-agent-control-board.md` under PM-001 and in the PR #219 evidence artifact.
 
 PM-001 coffee-table blocker has a narrow fix and one approved local/dev retest. Retest `ai_jobs` row `182e8d5b-2386-4f1a-a139-5d905e67d2fe` passes QA stop rules with 0 blockers; Chief/Sam review is still required before customer-facing reuse or any further execution.
 
 Product Matching Engine V1 is still not approved for production deploys, production flags, broad/runtime allowlist expansion, app actions, draft shopping-list/catalog writes, live catalog writes, DB/schema changes, generated DB types, runtime/UI redesign/prompt changes, payment/checkout changes, default-on activation, production rollout, selection/scoring changes, Catalog-First runtime coupling, new preview targets, or broader execution without a new approval.
 
 ## Chief architect routing
+CHIEF_ARCHITECT_REPLY:
+Founder override confirmed for PR #219 local/dev investor-demo rescue.
+
+Approval source:
+- Sam's in-thread instruction on 2026-05-27 after PR #219 was rejected for missing a visible PM-001 boundary: "i dont understand. is that a documentation issue? if so either update the document or confirm founder override"
+- Chief interpretation: yes, the rejection is a visible-boundary/documentation issue rather than a failed check or code-correctness blocker; this entry and the control-board update make the founder override explicit.
+
+Exact approved boundary:
+- Project id: `b91598f1-1c48-4e4d-9257-73d52ec6b71e`
+- Room id: `11c3449b-62d6-4db5-8e0d-51d9235b4f92`
+- User id: `87c551bf-8288-49df-99c4-a58b530f32ce`
+- User email: `sam.olatoye@gmail.com`
+- Environment: local/dev only, `http://localhost:3001`
+- App path: existing user flow from room/photo/brief through concepts, product matching, and shopping-list
+- Read boundary: existing local/dev catalogue data, room assets, concepts, products, and job summaries needed for this investor-demo room
+- Write boundary: local/dev concept/job/shopping-list rows needed to prove the investor-demo flow only for the project/room/user above
+- Evidence artifact: `docs/Tracks/v2-commercial/product-matching-evals/manual-qa/2026-05-27-catalogue-grounded-demo-rescue.md`
+- Expiration: PR #219 review/merge decision; any further execution after PR #219 needs a fresh Sam/Chief boundary
+- Stop rules: stop before production deploys/flags, live catalog writes/ingestion, schema/generated types, payment/checkout changes, controlled-preview expansion, runtime allowlist expansion, floor-plan work, Catalog-First coupling, or unrelated quality changes
+
 ARCHITECT_NOTE: PR #217 merged at `e75a40067a8c0dc1fc2b6d5b2318610ec41b5548` after explicit Chief boundary approval and strict review. It implements catalogue-grounded initial concept generation, anchor persistence in concept job summaries, downstream anchor enforcement/preselection during product grounding, bounded remote product-image fetches, cue evidence tightening, and revision stop behavior for catalogue-grounded concepts. Verification before merge included `git diff --check origin/main...HEAD`, `pnpm --filter @ritzy-studio/ai test`, `pnpm --filter @ritzy-studio/domain test`, `pnpm --filter @ritzy-studio/web typecheck`, and `pnpm --filter @ritzy-studio/web lint`. No Product Matching execution, controlled preview, preview QA, app actions, shopping-list/catalog writes, live writes, deploys/flags, allowlist expansion, DB/schema/generated type changes, UI/payment/checkout work, floor-plan work, broad scoring rewrites, or Catalog-First coupling was performed.
 
 ARCHITECT_NOTE: PR #216 prepared the PM-001 catalogue-grounding investigation on branch `codex/product-match-catalogue-grounding-investigation`. It inspects the concept-generation flow, Product Matching selected-products path, catalogue candidate metadata, image evidence/preflight path, and shopping-list/product-sourcing path. Current failure mode: initial concept images are generated before catalogue product selection exists; Product Matching starts only after concept selection through `groundProductsAction`, so recommendations are downstream of a generic concept image. Proposed next boundary: separately approved local/dev catalogue-grounded concept-generation spike for the current investor-demo project/room/user only. No Product Matching execution, controlled preview, app actions, draft shopping-list/catalog writes, live writes, allowlist expansion, DB/schema/generated type changes, UI/payment/checkout changes, production flags/deploys, prompt/runtime/image-generation behavior changes, code implementation, broad scoring rewrite, floor-plan work, or Catalog-First coupling was performed.
