@@ -2566,11 +2566,52 @@ export async function groundProductsAction(formData: FormData) {
     });
 
   if (missingCatalogueAnchors.length > 0) {
+    const missingAnchorLabels = missingCatalogueAnchors.map((anchor) => anchor.roleLabel || anchor.category);
+    const { data: currentSourcingJob } = await serviceSupabase
+      .from("ai_jobs")
+      .select("output_summary")
+      .eq("id", sourcingJob.id)
+      .maybeSingle();
+    const currentSourcingSummary = isRecord(currentSourcingJob?.output_summary)
+      ? currentSourcingJob.output_summary
+      : {};
+
     await serviceSupabase
       .from("ai_jobs")
       .update({
+        status: "failed",
+        completed_at: new Date().toISOString(),
+        error_message: `Required catalogue anchors were missing from product options: ${missingAnchorLabels.join(", ")}.`,
         output_summary: {
+          ...currentSourcingSummary,
+          promptKey: sourcingResult.promptKey,
+          needCount: sourcingResult.needs.length,
+          selectedProductCount: sourcingResult.selectedProducts.length,
+          missingRoleCount: sourcingResult.missingRoles.length,
+          missingRoles: sourcingResult.missingRoles,
           productMatchingEngineEnabled,
+          productSourcingAiPayload: productSourcingAiPayloadSummary(),
+          productSourcingTextFallbackUsed,
+          productSourcingTextFallbackReason,
+          productImagePreflight: initialImagePreflight.summary,
+          productImagePreflightGate: initialImageGate,
+          retryProductImagePreflight: retryProductImagePreflightSummary,
+          retryProductImagePreflightGate,
+          retryProductSourcingTimedOut,
+          retryProviderImageDownloadFailure,
+          roleCandidateCounts: productMatchingEngineEnabled
+            ? roleCandidateCountSummary(latestConfidencePools)
+            : undefined,
+          roleStatuses: productMatchingEngineEnabled ? roleStatusSummary(sourcingResult.roleResults) : undefined,
+          ...(productMatchingEngineEnabled
+            ? roleConfidenceOutputFields(
+                latestConfidencePools,
+                sourcingResult.roleResults,
+                productMatchingLoggedAtMs,
+                productMatchingRoomMeasurements
+              )
+            : {}),
+          usable: false,
           catalogueAnchorDivergence: {
             missingRequiredAnchorCount: missingCatalogueAnchors.length,
             missingRequiredAnchors: missingCatalogueAnchors.map((anchor) => ({
