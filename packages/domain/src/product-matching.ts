@@ -5,6 +5,7 @@ export const productMatchCandidateSchema = z.object({
   name: z.string().min(1),
   retailerName: z.string().min(1),
   canonicalUrl: z.url(),
+  description: z.string().nullable().optional(),
   categoryNormalized: z.string().nullable(),
   priceAed: z.number().nonnegative().nullable(),
   salePriceAed: z.number().nonnegative().nullable(),
@@ -98,6 +99,7 @@ const materialFamilies: Record<string, string[]> = {
   linen: ["linen"],
   marble: ["marble", "stone", "travertine"],
   metal: ["metal", "steel", "iron"],
+  plaster: ["plaster"],
   velvet: ["velvet", "velour"],
   wood: ["wood", "walnut", "oak", "ash", "teak"]
 };
@@ -601,6 +603,7 @@ function enhancedRoomRoleKey(roomType: string) {
 function allTags(candidate: ProductMatchCandidate) {
   return [
     candidate.categoryNormalized,
+    candidate.description,
     candidate.color,
     candidate.material,
     ...candidate.styleTags,
@@ -1321,8 +1324,11 @@ function attributeCueText(role: RoomProductRoleSpec, conceptText: string) {
 function silhouetteAttributeScore(roleTokens: Set<string>, candidateTokens: Set<string>) {
   const silhouetteFamilies: Record<string, string[]> = {
     bulky: ["bulky", "oversized", "chunky", "deep"],
+    fluted: ["fluted", "ribbed"],
     low: ["low", "lowline", "lowprofile"],
+    rectangular: ["rectangular", "square"],
     round: ["round", "curved", "oval"],
+    sculptural: ["sculptural"],
     slim: ["slim", "slender", "thin", "narrow"],
     tall: ["tall", "high", "bookcase", "shelving"],
     upholstered: ["upholstered", "padded", "tufted"]
@@ -1353,6 +1359,7 @@ function candidateSearchTokens(candidate: ProductMatchCandidate) {
   return tokensFor(
     [
       candidate.name,
+      candidate.description,
       candidate.categoryNormalized,
       candidate.color,
       candidate.material,

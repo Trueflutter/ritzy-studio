@@ -105,6 +105,23 @@ export type GenerateInitialConceptInput = {
   roomPhotoUrl: string;
   roomPhotoBytes: Buffer;
   roomPhotoMimeType: string;
+  catalogueProducts?: Array<{
+    name: string;
+    retailerName: string;
+    category: string | null;
+    roleLabel: string;
+    selectionReason: string;
+    description?: string | null;
+    color?: string | null;
+    material?: string | null;
+    styleTags?: string[];
+    colorTags?: string[];
+    materialTags?: string[];
+    dimensions?: string | null;
+    primaryImageUrl?: string | null;
+    imageBytes?: Buffer | null;
+    imageMimeType?: string | null;
+  }>;
   inspirationImageUrls?: string[];
   styleSlugs?: string[];
   styleNotes?: string | null;
@@ -200,6 +217,7 @@ export type GenerateFinalGroundedRenderInput = {
     category: string;
     roleLabel?: string | null;
     visualMatchReason?: string | null;
+    description?: string | null;
     priceAed?: number | null;
     dimensions?: string | null;
     imageBytes?: Buffer | null;
@@ -224,6 +242,7 @@ export type ConceptProductSourcingCandidate = {
   name: string;
   retailerName: string;
   category: string | null;
+  description?: string | null;
   priceAed?: number | null;
   salePriceAed?: number | null;
   availability?: string | null;
@@ -357,12 +376,14 @@ export function buildInitialConceptImagePrompt({
   generationPrompt,
   roomType,
   hasInspirationImages,
+  catalogueProductSummary,
   styleSlugs = [],
   useInteriorPromptV2 = false
 }: {
   generationPrompt: string;
   roomType: string;
   hasInspirationImages?: boolean;
+  catalogueProductSummary?: string | null;
   styleSlugs?: string[];
   useInteriorPromptV2?: boolean;
 }) {
@@ -377,6 +398,13 @@ export function buildInitialConceptImagePrompt({
       "Preserve visible architecture, walls, windows, doors, ceiling details, AC vents, sockets, built-ins, and fixed bathroom fixtures where present.",
       roomBlueprintDefaultsLanguage(roomType),
       enhancedRitzyInteriorStylingLanguage({ mode: "initial-concept" }),
+      catalogueProductSummary
+        ? [
+            "Catalogue-grounded concept references:",
+            catalogueProductSummary,
+            "Compose the movable furniture, rugs, lighting, art, and decor from these selected catalogue references first. Preserve their room role, silhouette or shape language, color family, material, scale, and distinctive visible features wherever possible. Do not invent alternate anchor furniture when a selected catalogue reference exists for that role."
+          ].join("\n")
+        : null,
       "Redesign movable furniture, lighting, textiles, accessories, and decor according to the concept direction.",
       "Output must look like a photorealistic editorial interior photograph, not an illustration, 3D showroom render, sketch, or mood board.",
       "Use physically plausible scale, natural shadows, realistic upholstery grain, wood texture, rug fibers, wall finish, and lighting falloff.",
@@ -399,6 +427,13 @@ export function buildInitialConceptImagePrompt({
     styleDesignLanguage(styleSlugs),
     globalPhotorealismLanguage(),
     enhancedRitzyInteriorStylingLanguage({ mode: "initial-concept" }),
+    catalogueProductSummary
+      ? [
+          "Catalogue-grounded concept references:",
+          catalogueProductSummary,
+          "Compose the movable furniture, rugs, lighting, art, and decor from these selected catalogue references first. Preserve their room role, silhouette or shape language, color family, material, scale, and distinctive visible features wherever possible. Do not invent alternate anchor furniture when a selected catalogue reference exists for that role."
+        ].join("\n")
+      : null,
     "Redesign movable furniture, lighting, textiles, accessories, and decor according to the concept direction.",
     "Keep the source-photo camera perspective and lens feel. Do not add text labels, prices, product names, retailer claims, or fake product labels."
   ]
@@ -803,6 +838,7 @@ export async function sourceProductsFromConcept(
         `name: ${candidate.name}`,
         `retailer: ${candidate.retailerName}`,
         `category: ${candidate.category ?? "unknown"}`,
+        candidate.description ? `description: ${candidate.description}` : null,
         candidate.salePriceAed ?? candidate.priceAed
           ? `price: AED ${candidate.salePriceAed ?? candidate.priceAed}`
           : null,
@@ -1212,6 +1248,63 @@ function sourcingRoleKey(category: string, roleLabel: string) {
   return `${category}::${roleLabel}`.toLowerCase().replace(/[^a-z0-9:]+/g, "_");
 }
 
+function catalogueProductSummary(
+  products: NonNullable<GenerateInitialConceptInput["catalogueProducts"]>
+) {
+  return products
+    .map((product, index) =>
+      [
+        `${index + 1}. ${product.roleLabel}: ${product.name}`,
+        product.category ? `category: ${product.category}` : null,
+        `retailer: ${product.retailerName}`,
+        product.description ? `description: ${product.description}` : null,
+        product.color ? `color: ${product.color}` : null,
+        product.material ? `material: ${product.material}` : null,
+        product.styleTags?.length ? `style: ${product.styleTags.join(", ")}` : null,
+        product.colorTags?.length ? `color tags: ${product.colorTags.join(", ")}` : null,
+        product.materialTags?.length ? `material tags: ${product.materialTags.join(", ")}` : null,
+        product.dimensions ? `dimensions: ${product.dimensions}` : null,
+        `why selected: ${product.selectionReason}`
+      ]
+        .filter(Boolean)
+        .join("; ")
+    )
+    .join("\n");
+}
+
+function catalogueProductDirectionContent(
+  products: NonNullable<GenerateInitialConceptInput["catalogueProducts"]>
+) {
+  const summary = catalogueProductSummary(products);
+
+  if (!summary) {
+    return [];
+  }
+
+  return [
+    {
+      type: "input_text" as const,
+      text: [
+        "Selected catalogue products for this concept. Use these as the source of truth for movable anchor pieces before writing the image-generation direction.",
+        summary
+      ].join("\n")
+    },
+    ...products
+      .filter((product) => product.primaryImageUrl)
+      .flatMap((product, index) => [
+        {
+          type: "input_text" as const,
+          text: `Catalogue product reference ${index + 1} for role ${product.roleLabel}: ${product.name}`
+        },
+        {
+          type: "input_image" as const,
+          image_url: product.primaryImageUrl as string,
+          detail: "low" as const
+        }
+      ])
+  ];
+}
+
 export async function generateInitialConcept(
   input: GenerateInitialConceptInput
 ): Promise<GenerateInitialConceptResult> {
@@ -1255,6 +1348,7 @@ export async function generateInitialConcept(
             image_url: input.roomPhotoUrl,
             detail: "high"
           },
+          ...catalogueProductDirectionContent(input.catalogueProducts ?? []),
           ...(input.inspirationImageUrls ?? []).flatMap((imageUrl, index) => [
             {
               type: "input_text" as const,
@@ -1284,9 +1378,20 @@ export async function generateInitialConcept(
     generationPrompt: direction.concept.generationPrompt,
     roomType: input.roomType,
     hasInspirationImages: Boolean(input.inspirationImageUrls?.length),
+    catalogueProductSummary: input.catalogueProducts?.length
+      ? catalogueProductSummary(input.catalogueProducts)
+      : null,
     styleSlugs: input.styleSlugs,
     useInteriorPromptV2
   });
+  const catalogueReferences = (input.catalogueProducts ?? [])
+    .filter((product) => product.imageBytes && product.imageMimeType)
+    .slice(0, 8)
+    .map((product, index) => ({
+      bytes: product.imageBytes as Buffer,
+      mimeType: product.imageMimeType as string,
+      name: `catalogue-product-${index}`
+    }));
 
   const imageResult = await generateImageWithConfiguredProvider({
     client,
@@ -1296,7 +1401,8 @@ export async function generateInitialConcept(
         bytes: input.roomPhotoBytes,
         mimeType: input.roomPhotoMimeType,
         name: "room"
-      }
+      },
+      ...catalogueReferences
     ],
     noImageErrorMessage: "OpenAI image generation returned no image data."
   });
@@ -1620,6 +1726,7 @@ export async function generateFinalGroundedRender(
         `${index + 1}. ${product.category}: ${product.name}`,
         product.roleLabel ? `room role: ${product.roleLabel}` : null,
         `retailer: ${product.retailerName}`,
+        product.description ? `description: ${product.description}` : null,
         product.priceAed ? `price: AED ${product.priceAed}` : null,
         product.dimensions ? `dimensions: ${product.dimensions}` : null,
         product.visualMatchReason ? `why selected: ${product.visualMatchReason}` : null
