@@ -1,17 +1,17 @@
 # Product Matching Engine Agent Comms
 
 ## Current PR
-No open PM-001 PR. PR #219 merged into `main` at `78ec1b3b668ddd03277f254ca081b5991214d994`. Current work is on branch `codex/pm001-aesthetic-taste-gate`.
+No open PM-001 implementation PR. PR #220 merged into `main` at `abf2e517db19d8e1fd7cd2adcc6f11a01c82405b`.
 
 ## Current stage
 DUAL_TRACK:
-- `PM001_AESTHETIC_TASTE_GATE_LOCAL_DEV_IN_PROGRESS`
+- `PM001_AESTHETIC_TASTE_GATE_MERGED_PENDING_MAIN_VALIDATION`
 - `PM001_NARRATIVE_READINESS_RECOMMENDATION_READY_FOR_REVIEW`
 - `PM001_COFFEE_TABLE_QUALITY_FIX_MERGED_BLOCKED_WAITING_FOR_SAM_CHIEF_DECISION`
 - `CONTROLLED_PREVIEW_EXPANSION_BLOCKED_WAITING_FOR_SAM_CHIEF_DECISION` remains the runtime gate outside the approved local/dev current test boundary
 
 ## Blockers
-No current blocker. Sam approved a new local/dev PM-001 aesthetic-quality rescue in-thread on 2026-05-27 after a catalogue-grounded test render produced an unsuitable black/brown pedestal shell chair and a noisy striped coffee table. The new boundary is local/dev only and is recorded in `active-agent-control-board.md`.
+No current implementation blocker. Sam approved a local/dev PM-001 aesthetic-quality rescue in-thread on 2026-05-27 after a catalogue-grounded test render produced an unsuitable black/brown pedestal shell chair and a noisy striped coffee table. PR #220 implemented and merged the local/dev-only taste gate, strict source-room preservation prompt layer, durable validation artifact, and shopping-list anchor preservation evidence. Completion still requires post-merge validation from latest `main`; no production deploys/flags or execution outside the recorded local/dev evidence boundary is approved.
 
 PM-001 coffee-table blocker has a narrow fix and one approved local/dev retest. Retest `ai_jobs` row `182e8d5b-2386-4f1a-a139-5d905e67d2fe` passes QA stop rules with 0 blockers; Chief/Sam review is still required before customer-facing reuse or any further execution.
 
@@ -19,7 +19,7 @@ Product Matching Engine V1 is still not approved for production deploys, product
 
 ## Chief architect routing
 CHIEF_ARCHITECT_REPLY:
-Founder/local-dev boundary confirmed for PM-001 aesthetic-quality rescue.
+Founder/local-dev boundary confirmed for PM-001 aesthetic-quality rescue. PR #220 merged the approved local/dev implementation.
 
 Approval source:
 - Sam's in-thread goal on 2026-05-27: deliver an investor-demo-quality catalogue-grounded living-room flow with actual SKUs, target aesthetic score 9/10 or better, no visibly unsuitable hero items, and no office/task/dining/shell/pedestal chair unless explicitly requested.
@@ -34,6 +34,8 @@ Exact approved boundary:
 - Evidence artifact: `docs/Tracks/v2-commercial/product-matching-evals/manual-qa/2026-05-27-aesthetic-taste-gate.md`
 - Expiration: PR review/merge decision for the aesthetic-quality rescue; further execution after that requires a fresh Sam/Chief boundary
 - Stop rules: stop before production deploys/flags, live catalog writes/ingestion, schema/generated types, payment/checkout changes, controlled-preview expansion, runtime allowlist expansion, floor-plan work, Catalog-First coupling, production activation, or unrelated quality changes
+
+ARCHITECT_NOTE: PR #220 merged into `main` at `abf2e517db19d8e1fd7cd2adcc6f11a01c82405b`. It adds a local/dev-only aesthetic taste gate behind `RITZY_AESTHETIC_TASTE_GATE=1` and `NODE_ENV !== "production"`, living-room chair suitability rules, coffee-table/rug visual-noise checks, widened local/demo role pools, source-room preservation prompt language for initial and final renders, `image/jpg` MIME normalization, and shopping-list anchor preservation/optional recommendation polish. Durable evidence is in `docs/Tracks/v2-commercial/product-matching-evals/manual-qa/2026-05-27-aesthetic-taste-gate.md` with screenshot asset `docs/Tracks/v2-commercial/product-matching-evals/manual-qa/assets/2026-05-27-aesthetic-taste-gate.png`. Verification before merge included `git diff --check`, `pnpm --filter @ritzy-studio/domain test`, `pnpm --filter @ritzy-studio/ai test`, `pnpm --filter @ritzy-studio/web typecheck`, `pnpm --filter @ritzy-studio/web lint`, and adversarial review. No production deploys/flags, live catalog writes/ingestion, schema/generated type changes, payment/checkout changes, floor-plan work, Catalog-First coupling, controlled-preview expansion, or production activation were performed.
 
 ARCHITECT_NOTE: PR #217 merged at `e75a40067a8c0dc1fc2b6d5b2318610ec41b5548` after explicit Chief boundary approval and strict review. It implements catalogue-grounded initial concept generation, anchor persistence in concept job summaries, downstream anchor enforcement/preselection during product grounding, bounded remote product-image fetches, cue evidence tightening, and revision stop behavior for catalogue-grounded concepts. Verification before merge included `git diff --check origin/main...HEAD`, `pnpm --filter @ritzy-studio/ai test`, `pnpm --filter @ritzy-studio/domain test`, `pnpm --filter @ritzy-studio/web typecheck`, and `pnpm --filter @ritzy-studio/web lint`. No Product Matching execution, controlled preview, preview QA, app actions, shopping-list/catalog writes, live writes, deploys/flags, allowlist expansion, DB/schema/generated type changes, UI/payment/checkout work, floor-plan work, broad scoring rewrites, or Catalog-First coupling was performed.
 
@@ -60,6 +62,8 @@ ARCHITECT_NOTE: PR #160 completed the docs-only controlled-preview execution-bou
 Hard stop: no controlled-preview configuration/execution, app actions, runtime allowlist expansion, draft shopping-list/catalog writes, live catalog writes, DB/schema/generated types, runtime/env default changes, runtime/UI/prompt/payment/checkout changes, production flags/deploys, default-on activation, production rollout, selection/scoring changes, or Catalog-First runtime coupling without explicit Sam/Chief approval.
 
 ## Last action taken
+PR #220 merged the local/dev PM-001 aesthetic taste gate for catalogue-grounded investor-demo concepts and shopping-list anchor preservation. Evidence and screenshot are committed under `docs/Tracks/v2-commercial/product-matching-evals/manual-qa/`.
+
 PR #217 merged the approved catalogue-grounded concept-generation implementation. The merged code path is ready for a separately approved local/dev validation boundary on the investor-demo project/room/user. No Product Matching execution, controlled preview, preview QA, app action, draft shopping-list row create/refresh, catalogue write, DB/schema/generated type change, live write, UI/payment/checkout change, production flag/deploy, broad/runtime allowlist expansion, default-on activation, production rollout, broad scoring rewrite, floor-plan work, or Catalog-First runtime coupling was performed.
 
 Prepared `docs/Tracks/v2-commercial/product-matching-evals/2026-05-27-pm001-catalogue-grounding-investigation.md`, a docs-only/read-only PM-001 catalogue-grounding investigation and next-boundary recommendation. PR #212 merged at `12cc0e4b42ba1966d55116c41501774a7187c516`. No Product Matching execution, controlled preview, app action, draft shopping-list row create/refresh, catalogue write, DB/schema/generated type change, live write, UI/prompt/payment/checkout change, production flag/deploy, broad/runtime allowlist expansion, default-on activation, production rollout, broad scoring rewrite, prompt/runtime/image-generation behavior change, code implementation, unrelated quality change, floor-plan work, or Catalog-First runtime coupling was performed.
@@ -85,7 +89,7 @@ PR #160 completed the docs-only controlled-preview execution-boundary package af
 PR #170 merged to clean stale mailbox state after PR #160 merged. This was docs/mailbox only.
 
 ## Next intended action
-Chief/Sam: approve or deny the next exact local/dev validation boundary for the merged catalogue-grounded concept-generation path. The boundary must name project id, room id, user/email, environment, app or harness path, read boundary, write boundary, stop rules, rollback, evidence artifact path, and expiration. Do not start Product Matching execution, controlled preview, app actions, writes, broad/runtime allowlist changes, production activity, broad scoring rewrites, unrelated quality changes, floor-plan work, or Catalog-First coupling without that new explicit boundary.
+Chief Architect: complete a post-merge validation audit from latest `main` for PR #220 evidence and document any remaining investor-demo caveats. Do not start additional Product Matching execution, controlled preview, app actions, writes, broad/runtime allowlist changes, production activity, broad scoring rewrites, unrelated quality changes, floor-plan work, or Catalog-First coupling without a new explicit Sam/Chief boundary.
 
 Keep the Product Matching lane heartbeat active. It must not be deleted after merges. The heartbeat should run every 10 minutes and monitor:
 
