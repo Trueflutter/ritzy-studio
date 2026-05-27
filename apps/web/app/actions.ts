@@ -4266,7 +4266,7 @@ function catalogueGroundingRoleKey(category: string, label: string) {
 }
 
 function localAestheticTasteGateEnabled() {
-  return process.env.NODE_ENV !== "production" && process.env.RITZY_AESTHETIC_TASTE_GATE === "1";
+  return process.env.RITZY_AESTHETIC_TASTE_GATE === "1";
 }
 
 function rerankRolePoolForAestheticFit(
