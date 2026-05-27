@@ -25,6 +25,7 @@ import {
   productMatchRequiredRoleDescriptor,
   productRolesForRoom,
   rankProductMatches,
+  renderReferencePriorityForProduct,
   selectedItemsTotalAed,
   setUserModeSchema,
   sortProductsForRenderReferences,
@@ -74,6 +75,9 @@ const PRODUCT_SOURCING_AI_CONCEPT_IMAGE_DETAIL = "low" as const;
 const PRODUCT_SOURCING_AI_CANDIDATE_IMAGE_LIMIT = 0;
 const PRODUCT_SOURCING_AI_CANDIDATE_IMAGE_DETAIL = "low" as const;
 const PRODUCT_SOURCING_AI_PRODUCT_IMAGES_ENABLED = PRODUCT_SOURCING_AI_CANDIDATE_IMAGE_LIMIT > 0;
+const CATALOGUE_GROUNDED_CONCEPT_ANCHOR_LIMIT = 6;
+const CATALOGUE_GROUNDED_CONCEPT_MIN_ATTRIBUTE_TOTAL = 35;
+const CATALOGUE_GROUNDED_CONCEPT_IMAGE_FETCH_TIMEOUT_MS = 2_500;
 
 function productReferenceOrderingV2Enabled() {
   return process.env.RITZY_PRODUCT_REFERENCE_ORDERING_V2_ENABLED === "true";
@@ -1550,6 +1554,16 @@ export async function generateInitialConceptAction(formData: FormData) {
     redirect("/");
   }
 
+  const { data: project } = await supabase
+    .from("projects")
+    .select("id, budget_max_aed")
+    .eq("id", projectId)
+    .single();
+
+  if (!project) {
+    redirect("/");
+  }
+
   await requireDesignerFreeRoomAccess(user.id, roomId, redirectPath);
 
   const { data: designBrief } = await supabase
@@ -1664,6 +1678,61 @@ export async function generateInitialConceptAction(formData: FormData) {
     .order("created_at", { ascending: true })
     .order("id", { ascending: true });
 
+  const catalogueGroundingPlan = await buildCatalogueGroundedConceptPlan({
+    serviceSupabase,
+    roomType: room.room_type,
+    budgetMaxAed: project.budget_max_aed,
+    roomMeasurements: measurements
+      ? {
+          wallLengthCm: measurements.wall_length_cm,
+          roomDepthCm: measurements.room_depth_cm
+        }
+      : null,
+    designBrief,
+    answeredQuestions: answeredQuestions ?? []
+  });
+
+  if (catalogueGroundingPlan.blockers.length > 0) {
+    redirect(
+      `${redirectPath}?message=${encodeURIComponent(catalogueGroundingBlockMessage(catalogueGroundingPlan.blockers))}`
+    );
+  }
+
+  const catalogueProducts = await Promise.all(
+    catalogueGroundingPlan.products.map(async ({ match, role }) => {
+      const image = match.primaryImageUrl ? await fetchRemoteImage(match.primaryImageUrl) : null;
+
+      return {
+        name: match.name,
+        retailerName: match.retailerName,
+        category: match.categoryNormalized,
+        roleLabel: role.label,
+        selectionReason: match.selectionReason,
+        description: match.description,
+        color: match.color,
+        material: match.material,
+        styleTags: match.styleTags,
+        colorTags: match.colorTags,
+        materialTags: match.materialTags,
+        dimensions: match.dimensions?.sourceText ?? null,
+        primaryImageUrl: match.primaryImageUrl,
+        imageBytes: image?.bytes ?? null,
+        imageMimeType: image?.mimeType ?? null
+      };
+    })
+  );
+  const missingCatalogueReferenceImages = catalogueProducts
+    .filter((product) => !product.imageBytes || !product.imageMimeType)
+    .map((product) => product.roleLabel);
+
+  if (missingCatalogueReferenceImages.length > 0) {
+    redirect(
+      `${redirectPath}?message=${encodeURIComponent(
+        `Catalogue-grounded concept generation needs usable product reference images. Missing: ${missingCatalogueReferenceImages.join(", ")}.`
+      )}`
+    );
+  }
+
   const { data: job, error: jobError } = await serviceSupabase
     .from("ai_jobs")
     .insert({
@@ -1682,6 +1751,7 @@ export async function generateInitialConceptAction(formData: FormData) {
         roomId,
         designBriefId: designBrief.id,
         roomPhotoAssetId: roomPhoto.id,
+        catalogueGrounding: catalogueGroundingPlan.summary,
         inspirationAssetCount: signedInspirationUrls.length,
         answeredQuestionCount: answeredQuestions?.length ?? 0
       }
@@ -1700,6 +1770,7 @@ export async function generateInitialConceptAction(formData: FormData) {
       roomPhotoUrl: signedPhoto.signedUrl,
       roomPhotoBytes: photoBytes,
       roomPhotoMimeType: roomPhoto.mime_type,
+      catalogueProducts,
       inspirationImageUrls: signedInspirationUrls,
       styleSlugs: likedStyleSlugsFromStructuredBrief(designBrief.structured_json),
       styleNotes: designBrief.style_notes,
@@ -1735,6 +1806,7 @@ export async function generateInitialConceptAction(formData: FormData) {
         output_summary: {
           promptKey: result.promptKey,
           title: result.concept.title,
+          catalogueGrounding: catalogueGroundingPlan.summary,
           uncertaintyNotes: result.analysis.uncertaintyNotes,
           revisedPrompt: result.revisedPrompt ?? null,
           imageProvider: result.imageProvider,
@@ -1875,7 +1947,7 @@ export async function groundProductsAction(formData: FormData) {
 
   const { data: concept } = await supabase
     .from("concepts")
-    .select("id, title, description, status, primary_image_asset:room_assets(*)")
+    .select("id, title, description, status, generation_job_id, primary_image_asset:room_assets(*)")
     .eq("id", conceptId)
     .eq("room_id", roomId)
     .single();
@@ -2418,6 +2490,16 @@ export async function groundProductsAction(formData: FormData) {
   const sourceSelectionsById = new Map(
     sourcingResult.selectedProducts.map((selection) => [selection.productId, selection])
   );
+  const catalogueGroundingAnchors = await catalogueGroundingAnchorsForConcept({
+    serviceSupabase,
+    generationJobId: concept.generation_job_id
+  });
+  const catalogueAnchorIdsByCategory = new Map(
+    catalogueGroundingAnchors.map((anchor) => [
+      normalizeSourcingCategory(anchor.category, anchor.roleLabel),
+      anchor.productId
+    ])
+  );
   const sourceRoleResultsByCategory = productMatchingEngineEnabled
     ? new Map(
         sourcingResult.roleResults.map((result) => [
@@ -2456,6 +2538,23 @@ export async function groundProductsAction(formData: FormData) {
     // replacement instantly with no catalog round-trip.
     optionsPerRole: 6
   });
+  const missingCatalogueAnchors = catalogueGroundingAnchors
+    .filter((anchor) => anchor.priority === "required")
+    .filter((anchor) => {
+      const category = normalizeSourcingCategory(anchor.category, anchor.roleLabel);
+      const role = roleOptions.find((option) => option.category === category);
+      return !role?.options.some((option) => option.id === anchor.productId);
+    });
+
+  if (missingCatalogueAnchors.length > 0) {
+    redirect(
+      `${redirectPath}?message=${encodeURIComponent(
+        `Product grounding diverged from the catalogue-grounded concept anchors. Missing: ${missingCatalogueAnchors
+          .map((anchor) => anchor.roleLabel)
+          .join(", ")}.`
+      )}`
+    );
+  }
 
   const coveredCategories = new Set(roleOptions.map((role) => role.category));
   const missingRequiredRoles = roles
@@ -2501,6 +2600,12 @@ export async function groundProductsAction(formData: FormData) {
   // one, fall back to the top-ranked option so every role starts chosen.
   const selectedProductIdByRole = new Map<string, string>();
   for (const role of roleOptions) {
+    const catalogueAnchorId = catalogueAnchorIdsByCategory.get(role.category);
+    if (catalogueAnchorId && role.options.some((option) => option.id === catalogueAnchorId)) {
+      selectedProductIdByRole.set(role.category, catalogueAnchorId);
+      continue;
+    }
+
     const roleResult = sourceRoleResultsByCategory.get(role.category);
     if (roleResult?.productId && role.options.some((option) => option.id === roleResult.productId)) {
       selectedProductIdByRole.set(role.category, roleResult.productId);
@@ -3340,6 +3445,7 @@ export async function generateFinalRenderAction(formData: FormData) {
             category: item.category,
             roleLabel: roleLabelFromSelectionReason(item.selection_reason) ?? item.category,
             visualMatchReason: item.selection_reason,
+            description: product.description,
             priceAed: item.unit_price_aed,
             dimensions,
             imageBytes: image?.bytes ?? null,
@@ -3466,6 +3572,22 @@ export async function reviseConceptAction(formData: FormData) {
 
   if (!room || !concept) {
     redirect("/");
+  }
+
+  if (concept.generation_job_id) {
+    const serviceSupabase = createServiceClient();
+    const anchors = await catalogueGroundingAnchorsForConcept({
+      serviceSupabase,
+      generationJobId: concept.generation_job_id
+    });
+
+    if (anchors.length > 0) {
+      redirect(
+        `${redirectPath}?message=${encodeURIComponent(
+          "Catalogue-grounded concept revisions are paused until revision generation can preserve the selected catalogue anchors."
+        )}`
+      );
+    }
   }
 
   const { data: designBrief } = await supabase
@@ -3703,6 +3825,400 @@ type ProductRow = Database["public"]["Tables"]["products"]["Row"] & {
       }>
     | null;
 };
+type DesignBriefRow = Database["public"]["Tables"]["design_briefs"]["Row"];
+type AnsweredQuestionRow = {
+  question: string;
+  answer: string | null;
+};
+type CatalogueGroundingProduct = {
+  role: RoomProductRoleSpec;
+  match: RankedProductMatch & {
+    attributeScore: {
+      total: number;
+      color: number;
+      material: number;
+      style: number;
+      silhouette: number;
+      weaknessReasons: string[];
+    };
+  };
+};
+type CatalogueGroundingAnchor = {
+  productId: string;
+  category: string;
+  roleLabel: string;
+  priority: "required" | "supporting";
+  selectionReason: string;
+};
+type CatalogueCueRequirements = {
+  color: boolean;
+  material: boolean;
+  shape: boolean;
+  style: boolean;
+};
+
+async function buildCatalogueGroundedConceptPlan({
+  serviceSupabase,
+  roomType,
+  budgetMaxAed,
+  roomMeasurements,
+  designBrief,
+  answeredQuestions
+}: {
+  serviceSupabase: ReturnType<typeof createServiceClient>;
+  roomType: string;
+  budgetMaxAed: number | null;
+  roomMeasurements: {
+    wallLengthCm: number | null;
+    roomDepthCm: number | null;
+  } | null;
+  designBrief: DesignBriefRow;
+  answeredQuestions: AnsweredQuestionRow[];
+}) {
+  const { data: products = [], error: productsError } = await serviceSupabase
+    .from("products")
+    .select(
+      `
+      *,
+      retailer:retailers(name, status),
+      dimensions:product_dimensions(width_cm, depth_cm, height_cm, source_text)
+    `
+    )
+    .not("price_aed", "is", null)
+    .not("primary_image_url", "is", null)
+    .order("last_checked_at", { ascending: false, nullsFirst: false })
+    .limit(PRODUCT_MATCHING_CATALOG_LIMIT);
+
+  if (productsError) {
+    throw new Error(productsError.message);
+  }
+
+  const candidates = (products ?? [])
+    .map((product) => productToMatchCandidate(product as ProductRow))
+    .filter((candidate): candidate is ProductMatchCandidate => Boolean(candidate));
+
+  if (candidates.length === 0) {
+    return {
+      products: [],
+      blockers: [catalogUnavailableMessage(products as ProductRow[])],
+      summary: {
+        enabled: true,
+        selectedProductCount: 0,
+        blockerCount: 1,
+        roles: []
+      }
+    };
+  }
+
+  const cueText = catalogueGroundingCueText({ designBrief, answeredQuestions });
+  const cueRequirements = catalogueCueRequirements(cueText);
+  const anchorRoles = enhancedProductRolesForRoom(roomType)
+    .filter((role) => role.importance === "anchor" || role.required)
+    .map((role): RoomProductRoleSpec => ({
+      category: role.category,
+      label: role.label,
+      visualBrief: [role.visualBrief ?? role.label, cueText ? `User-selected cues: ${cueText}` : null]
+        .filter(Boolean)
+        .join(". "),
+      quantity: role.quantity,
+      priority: role.required || role.includeWhen === "always" ? "required" : "supporting"
+    }));
+  const conceptText = [cueText, designBrief.style_notes, designBrief.color_notes, designBrief.functional_requirements]
+    .filter(Boolean)
+    .join("\n");
+  const plan = buildProductSourcingRuntimePlan({
+    engineEnabled: true,
+    roomType,
+    conceptText,
+    roles: anchorRoles,
+    candidates,
+    budgetMaxAed,
+    roomMeasurements,
+    candidatesPerRole: 6,
+    flatCandidateLimit: 24
+  });
+  const selected: CatalogueGroundingProduct[] = [];
+  const blockers: string[] = [];
+
+  for (const pool of plan.roleScopedPools) {
+    const topCandidate = pool.candidates[0];
+
+    if (!topCandidate) {
+      if (pool.role.priority === "required") {
+        blockers.push(`${pool.role.label}: no eligible catalogue candidate.`);
+      }
+      continue;
+    }
+
+    const weaknessReasons = catalogueGroundingWeaknessReasons(topCandidate.attributeScore, cueRequirements);
+    const isAcceptable = weaknessReasons.length === 0;
+
+    if (!isAcceptable) {
+      if (pool.role.priority === "required") {
+        blockers.push(
+          `${pool.role.label}: top catalogue candidate is weak (${[
+            `score ${topCandidate.attributeScore.total}`,
+            ...weaknessReasons
+          ].join("; ")}).`
+        );
+      }
+      continue;
+    }
+
+    selected.push({
+      role: pool.role,
+      match: topCandidate
+    });
+  }
+
+  const productsForConcept = selected
+    .sort(
+      (left, right) =>
+        renderReferencePriorityForProduct(
+          {
+            category: left.match.categoryNormalized,
+            roleLabel: left.role.label,
+            selectionReason: left.match.selectionReason
+          },
+          roomType
+        ) -
+        renderReferencePriorityForProduct(
+          {
+            category: right.match.categoryNormalized,
+            roleLabel: right.role.label,
+            selectionReason: right.match.selectionReason
+          },
+          roomType
+        )
+    )
+    .slice(0, CATALOGUE_GROUNDED_CONCEPT_ANCHOR_LIMIT);
+
+  return {
+    products: productsForConcept,
+    blockers,
+    summary: {
+      enabled: true,
+      selectedProductCount: productsForConcept.length,
+      blockerCount: blockers.length,
+      cueRequirements,
+      selectedAnchors: productsForConcept.map(({ role, match }) => ({
+        productId: match.id,
+        category: role.category,
+        roleLabel: role.label,
+        priority: role.priority,
+        selectionReason: match.selectionReason,
+        attributeScore: {
+          total: match.attributeScore.total,
+          color: match.attributeScore.color,
+          material: match.attributeScore.material,
+          style: match.attributeScore.style,
+          silhouette: match.attributeScore.silhouette,
+          weaknessReasons: match.attributeScore.weaknessReasons
+        }
+      })),
+      roles: plan.roleScopedPools.map((pool) => ({
+        category: pool.role.category,
+        roleLabel: pool.role.label,
+        candidateCount: pool.candidateCount,
+        selectedProductId: pool.candidates[0]?.id ?? null,
+        topAttributeTotal: pool.candidates[0]?.attributeScore.total ?? null
+      }))
+    }
+  };
+}
+
+function catalogueGroundingCueText({
+  designBrief,
+  answeredQuestions
+}: {
+  designBrief: DesignBriefRow;
+  answeredQuestions: AnsweredQuestionRow[];
+}) {
+  return [
+    visualStyleSummary(likedStyleSlugsFromStructuredBrief(designBrief.structured_json)),
+    designBrief.style_notes,
+    designBrief.color_notes,
+    designBrief.functional_requirements,
+    designBrief.inspiration_notes,
+    ...answeredQuestions
+      .filter((question) => question.answer)
+      .map((question) => `${question.question}: ${question.answer}`)
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+function catalogueCueRequirements(cueText: string): CatalogueCueRequirements {
+  const tokens = catalogueCueTokens(cueText);
+
+  return {
+    color: hasAnyCatalogueCue(tokens, [
+      "beige",
+      "black",
+      "blue",
+      "brown",
+      "charcoal",
+      "cream",
+      "ecru",
+      "green",
+      "grey",
+      "gray",
+      "ivory",
+      "navy",
+      "oatmeal",
+      "red",
+      "sand",
+      "sage",
+      "tan",
+      "taupe",
+      "terracotta",
+      "white"
+    ]),
+    material: hasAnyCatalogueCue(tokens, [
+      "boucle",
+      "brass",
+      "fabric",
+      "glass",
+      "leather",
+      "linen",
+      "marble",
+      "metal",
+      "oak",
+      "plaster",
+      "stone",
+      "travertine",
+      "velvet",
+      "walnut",
+      "wood"
+    ]),
+    shape: hasAnyCatalogueCue(tokens, [
+      "curved",
+      "fluted",
+      "low",
+      "lowline",
+      "oval",
+      "rectangular",
+      "ribbed",
+      "round",
+      "sculptural",
+      "slender",
+      "slim",
+      "square",
+      "tall",
+      "tufted",
+      "upholstered"
+    ]),
+    style: hasAnyCatalogueCue(tokens, [
+      "bohemian",
+      "classic",
+      "coastal",
+      "contemporary",
+      "gallery",
+      "industrial",
+      "mid",
+      "midcentury",
+      "minimal",
+      "modern",
+      "scandinavian",
+      "traditional"
+    ])
+  };
+}
+
+function catalogueGroundingWeaknessReasons(
+  attributeScore: CatalogueGroundingProduct["match"]["attributeScore"],
+  cueRequirements: CatalogueCueRequirements
+) {
+  const reasons = [...attributeScore.weaknessReasons];
+
+  if (attributeScore.total < CATALOGUE_GROUNDED_CONCEPT_MIN_ATTRIBUTE_TOTAL) {
+    reasons.push("top candidate attribute score is weak");
+  }
+  if (cueRequirements.color && attributeScore.color <= 0) {
+    reasons.push("requested colour cue lacks positive catalogue evidence");
+  }
+  if (cueRequirements.material && attributeScore.material <= 0) {
+    reasons.push("requested material cue lacks positive catalogue evidence");
+  }
+  if (cueRequirements.shape && attributeScore.silhouette <= 0) {
+    reasons.push("requested shape cue lacks positive catalogue evidence");
+  }
+  if (cueRequirements.style && attributeScore.style <= 0) {
+    reasons.push("requested style cue lacks positive catalogue evidence");
+  }
+
+  return Array.from(new Set(reasons));
+}
+
+function catalogueCueTokens(value: string) {
+  return new Set(
+    value
+      .toLowerCase()
+      .split(/[^a-z0-9]+/)
+      .map((token) => token.trim())
+      .filter(Boolean)
+  );
+}
+
+function hasAnyCatalogueCue(tokens: Set<string>, cues: string[]) {
+  return cues.some((cue) => tokens.has(cue));
+}
+
+async function catalogueGroundingAnchorsForConcept({
+  serviceSupabase,
+  generationJobId
+}: {
+  serviceSupabase: ReturnType<typeof createServiceClient>;
+  generationJobId: string | null;
+}): Promise<CatalogueGroundingAnchor[]> {
+  if (!generationJobId) {
+    return [];
+  }
+
+  const { data: generationJob } = await serviceSupabase
+    .from("ai_jobs")
+    .select("output_summary")
+    .eq("id", generationJobId)
+    .maybeSingle();
+  const outputSummary = generationJob?.output_summary;
+  if (!isRecord(outputSummary)) {
+    return [];
+  }
+
+  const catalogueGrounding = outputSummary.catalogueGrounding;
+  if (!isRecord(catalogueGrounding) || !Array.isArray(catalogueGrounding.selectedAnchors)) {
+    return [];
+  }
+
+  return catalogueGrounding.selectedAnchors.filter(isCatalogueGroundingAnchor);
+}
+
+function isCatalogueGroundingAnchor(value: unknown): value is CatalogueGroundingAnchor {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  return (
+    typeof value.productId === "string" &&
+    typeof value.category === "string" &&
+    typeof value.roleLabel === "string" &&
+    (value.priority === "required" || value.priority === "supporting") &&
+    typeof value.selectionReason === "string"
+  );
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value));
+}
+
+function catalogueGroundingBlockMessage(blockers: string[]) {
+  return [
+    "Catalogue-grounded concept generation needs better catalogue matches before it is usable.",
+    blockers.slice(0, 4).join(" ")
+  ]
+    .filter(Boolean)
+    .join(" ");
+}
 
 function productToMatchCandidate(product: ProductRow): ProductMatchCandidate | null {
   if (!product.primary_image_url) {
@@ -3727,6 +4243,7 @@ function productToMatchCandidate(product: ProductRow): ProductMatchCandidate | n
     name: product.name,
     retailerName: product.retailer?.name ?? "Retailer",
     canonicalUrl: product.canonical_url,
+    description: product.description,
     categoryNormalized: product.category_normalized,
     priceAed: product.price_aed,
     salePriceAed: product.sale_price_aed,
@@ -3900,6 +4417,7 @@ function matchToSourcingCandidate(match: RankedProductMatch) {
     name: match.name,
     retailerName: match.retailerName,
     category: match.categoryNormalized,
+    description: match.description,
     priceAed: match.priceAed,
     salePriceAed: match.salePriceAed,
     availability: match.availability,
@@ -3934,8 +4452,12 @@ function formatAedValue(value: number) {
 }
 
 async function fetchRemoteImage(url: string) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), CATALOGUE_GROUNDED_CONCEPT_IMAGE_FETCH_TIMEOUT_MS);
+
   try {
     const response = await fetch(url, {
+      signal: controller.signal,
       headers: {
         "user-agent": "RitzyStudioBot/0.1 (+https://ritzy-studio.local; final render references)"
       }
@@ -3950,11 +4472,54 @@ async function fetchRemoteImage(url: string) {
       return null;
     }
 
+    const contentLength = Number(response.headers.get("content-length"));
+    if (Number.isFinite(contentLength) && contentLength > PRODUCT_SOURCING_MAX_IMAGE_BYTES) {
+      return null;
+    }
+
+    const bytes = await readResponseBytesWithLimit(response, PRODUCT_SOURCING_MAX_IMAGE_BYTES);
+    if (!bytes) {
+      return null;
+    }
+
     return {
-      bytes: Buffer.from(await response.arrayBuffer()),
+      bytes,
       mimeType
     };
   } catch {
     return null;
+  } finally {
+    clearTimeout(timeout);
   }
+}
+
+async function readResponseBytesWithLimit(response: Response, maxBytes: number) {
+  const reader = response.body?.getReader();
+  if (!reader) {
+    return null;
+  }
+
+  const chunks: Uint8Array[] = [];
+  let totalBytes = 0;
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) {
+      break;
+    }
+
+    if (!value) {
+      continue;
+    }
+
+    totalBytes += value.byteLength;
+    if (totalBytes > maxBytes) {
+      await reader.cancel();
+      return null;
+    }
+
+    chunks.push(value);
+  }
+
+  return Buffer.concat(chunks, totalBytes);
 }

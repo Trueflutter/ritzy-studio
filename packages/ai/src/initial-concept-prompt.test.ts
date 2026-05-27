@@ -36,6 +36,8 @@ const baseImagePrompt = buildInitialConceptImagePrompt({
   generationPrompt: "Create a warm living room concept.",
   roomType: "living room",
   hasInspirationImages: true,
+  catalogueProductSummary:
+    "1. sofa: ivory boucle sofa; color: ivory; material: boucle; why selected: color family matches role brief",
   styleSlugs: ["modern"],
   useInteriorPromptV2: false
 });
@@ -50,6 +52,9 @@ assert.match(baseImagePrompt, /wall art, mirrors, paneling, shelves/);
 assert.match(baseImagePrompt, /correctly scaled rugs/);
 assert.match(baseImagePrompt, /TV\/media focal wall and media console by default/);
 assert.match(baseImagePrompt, /Preserve source-room architecture exactly/);
+assert.match(baseImagePrompt, /Catalogue-grounded concept references/);
+assert.match(baseImagePrompt, /ivory boucle sofa/);
+assert.match(baseImagePrompt, /Do not invent alternate anchor furniture/);
 
 const v2ImagePrompt = buildInitialConceptImagePrompt({
   generationPrompt: "Create a warm living room concept.",
