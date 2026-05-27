@@ -1,4 +1,5 @@
 import { ButtonLink } from "@ritzy-studio/ui";
+import Image from "next/image";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
@@ -6,6 +7,7 @@ import { groupShoppingItemsByRole, selectedItemsTotalAed } from "@ritzy-studio/d
 
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
+import { PrintButton } from "./print-button";
 import type { ProductCardItem } from "./product-card";
 import { ShoppingListGrid, type CategoryGroup } from "./shopping-list-grid";
 
@@ -77,6 +79,24 @@ export default async function ShoppingListPage({
   });
   const commerceUnlocked = Boolean(canAccessCommerce);
   const retailerGroups = groupSelectedItemsByRetailer(listItems);
+
+  const { data: latestRenderAsset } = commerceUnlocked
+    ? await serviceSupabase
+        .from("room_assets")
+        .select("storage_path")
+        .eq("room_id", roomId)
+        .eq("asset_type", "final_render")
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle()
+    : { data: null };
+  const finalRenderUrl = latestRenderAsset?.storage_path
+    ? (
+        await serviceSupabase.storage
+          .from("generated-renders")
+          .createSignedUrl(latestRenderAsset.storage_path, 60 * 60)
+      ).data?.signedUrl
+    : null;
   const cardItems: ProductCardItem[] = listItems.map((item) => {
     const product = item.product;
     const dimensions = product?.dimensions?.[0];
@@ -121,8 +141,8 @@ export default async function ShoppingListPage({
   }));
 
   return (
-    <main className="min-h-dvh bg-page text-ink">
-      <header className="flex min-h-20 items-center justify-between border-b border-line bg-surface px-5 md:px-8 lg:px-12 xl:px-16">
+    <main className="min-h-dvh bg-page text-ink print:bg-surface">
+      <header className="flex min-h-20 items-center justify-between border-b border-line bg-surface px-5 md:px-8 lg:px-12 xl:px-16 print:hidden">
         <Link className="font-display text-[28px] font-light text-ink" href="/">
           Ri <span className="font-body text-caption font-medium uppercase text-ink-muted">Ritzy Studio</span>
         </Link>
@@ -146,13 +166,25 @@ export default async function ShoppingListPage({
             trailing="→"
             variant="primary"
           >
-            Presentation
+            Room Preview
           </ButtonLink>
+          {commerceUnlocked ? <PrintButton /> : null}
         </div>
       </header>
 
-      <section className="mx-auto max-w-[1280px] px-5 py-12 md:px-8 lg:px-12 xl:px-16">
-        <div className="grid gap-10 lg:grid-cols-[minmax(0,1fr)_360px]">
+      <section className="mx-auto max-w-[1280px] px-5 py-12 md:px-8 lg:px-12 xl:px-16 print:max-w-none print:px-0 print:py-0">
+        {commerceUnlocked ? (
+          <div className="hidden print:mb-8 print:block">
+            <h1 className="font-display text-display-m font-light leading-[1.05] tracking-[-0.015em] text-ink">
+              {project.client_name ?? project.name}
+            </h1>
+            <p className="mt-3 font-body text-body-s text-ink-secondary">
+              {room.name} · {room.room_type} · {project.location ?? "Dubai / UAE"}
+            </p>
+          </div>
+        ) : null}
+
+        <div className="grid gap-10 lg:grid-cols-[minmax(0,1fr)_360px] print:hidden">
           <div>
             <p className="font-body text-caption font-medium uppercase tracking-[0.32em] text-ink-muted">
               Shopping list
@@ -184,19 +216,37 @@ export default async function ShoppingListPage({
           </aside>
         </div>
 
-        <section className="mt-12">
+        {commerceUnlocked && finalRenderUrl ? (
+          <section className="mt-12 print:mt-0">
+            <div className="aspect-[3/2] border border-line bg-page">
+              <Image
+                alt="Final room render"
+                className="h-full w-full object-cover"
+                height={1024}
+                src={finalRenderUrl}
+                unoptimized
+                width={1536}
+              />
+            </div>
+          </section>
+        ) : null}
+
+        <section className="mt-12 print:mt-8">
           {shoppingList && roleGroups.length > 0 ? (
             <>
-              <ShoppingListGrid
-                canAccessCommerce={commerceUnlocked}
-                conceptId={shoppingList.concept_id ?? null}
-                clientName={project.client_name}
-                groups={roleGroups}
-                projectId={projectId}
-                roomType={room.room_type}
-                roomId={roomId}
-                shoppingListId={shoppingList.id}
-              />
+              <div className="print:hidden">
+                <ShoppingListGrid
+                  canAccessCommerce={commerceUnlocked}
+                  conceptId={shoppingList.concept_id ?? null}
+                  clientName={project.client_name}
+                  groups={roleGroups}
+                  projectId={projectId}
+                  roomType={room.room_type}
+                  roomId={roomId}
+                  shoppingListId={shoppingList.id}
+                  showRenderCta={!commerceUnlocked}
+                />
+              </div>
               {commerceUnlocked ? <RetailerGroups groups={retailerGroups} /> : null}
             </>
           ) : (

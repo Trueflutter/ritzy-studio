@@ -9,13 +9,11 @@ import { createHomeownerRoomUnlockCheckoutAction } from "@/app/actions";
 type UnlockShoppingListCtaProps = {
   projectId: string;
   roomId: string;
-  returnTo: string;
 };
 
 export function UnlockShoppingListCta({
   projectId,
-  roomId,
-  returnTo
+  roomId
 }: UnlockShoppingListCtaProps) {
   const [open, setOpen] = useState(false);
 
@@ -36,7 +34,7 @@ export function UnlockShoppingListCta({
   return (
     <>
       <Button onClick={() => setOpen(true)} type="button">
-        Generate shopping list
+        Unlock Shopping List
       </Button>
 
       {open && typeof document !== "undefined"
@@ -75,7 +73,6 @@ export function UnlockShoppingListCta({
                     <form action={createHomeownerRoomUnlockCheckoutAction}>
                       <input name="projectId" type="hidden" value={projectId} />
                       <input name="roomId" type="hidden" value={roomId} />
-                      <input name="returnTo" type="hidden" value={returnTo} />
                       <SubmitButton
                         className="w-full sm:w-auto"
                         pendingLabel="Opening secure checkout..."

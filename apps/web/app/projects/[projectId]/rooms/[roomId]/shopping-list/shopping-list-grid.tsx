@@ -30,6 +30,7 @@ type ShoppingListGridProps = {
   canAccessCommerce: boolean;
   clientName: string | null;
   roomType: string | null;
+  showRenderCta?: boolean;
 };
 
 const VISIBLE_PER_ROLE = 3;
@@ -42,7 +43,8 @@ export function ShoppingListGrid({
   groups,
   canAccessCommerce,
   clientName,
-  roomType
+  roomType,
+  showRenderCta = true
 }: ShoppingListGridProps) {
   // Optimistic picks for instant feedback; every change persists in the
   // background, so the server stays the source of truth on reload.
@@ -199,7 +201,9 @@ export function ShoppingListGrid({
         </p>
       </div>
 
-      <RenderCta className="mt-6" placement="top" {...renderCtaProps} />
+      {showRenderCta ? (
+        <RenderCta className="mt-6" placement="top" {...renderCtaProps} />
+      ) : null}
 
       <div className="mt-12 space-y-14">
         {groups.map((group) => {
@@ -283,7 +287,9 @@ export function ShoppingListGrid({
         })}
       </div>
 
-      <RenderCta className="mt-14 border-t border-line pt-10" placement="bottom" {...renderCtaProps} />
+      {showRenderCta ? (
+        <RenderCta className="mt-14 border-t border-line pt-10" placement="bottom" {...renderCtaProps} />
+      ) : null}
 
       <DetailDrawer
         canAccessCommerce={canAccessCommerce}
