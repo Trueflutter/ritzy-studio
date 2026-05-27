@@ -1,7 +1,7 @@
 # Active Agent Control Board
 
 Status: active coordination source of truth
-Last updated: 2026-05-26
+Last updated: 2026-05-27
 
 This board replaces ad hoc routing through chat-only prompts and stale mailbox prose for active Ritzy Studio implementation lanes. Mailbox files still hold lane history and architectural notes, but this file is the first place agents and heartbeats must read when deciding whether work is parked, routed, blocked, stale, or ready for review.
 
@@ -109,16 +109,16 @@ Docs-only, test-only, domain-only, and dry-run-only work may proceed only when t
 ### Ticket PM-001
 
 Owner: Product Matching Agent
-Status: BLOCKED
-Branch: none
-Allowed scope: Coordination/docs-only while waiting for the next exact validation boundary. PR #217 merged the catalogue-grounded concept-generation implementation, but Product Matching execution, preview QA, app actions, and write paths remain closed until separately approved.
-Forbidden scope: No production deploy, production flags, broad/runtime allowlist expansion, live catalog writes, DB/schema/generated type changes, payment/checkout/UI changes, Catalog-First runtime coupling, default-on activation, production rollout, Product Matching execution, controlled-preview execution, preview QA, app actions, draft shopping-list/catalog writes, prompt/runtime/image-generation behavior changes, code implementation PRs, broad scoring rewrites, floor-plan work, or unrelated quality changes.
-Expected next artifact: Exact local/dev validation boundary for the merged catalogue-grounded concept-generation implementation, including project id, room id, user/email, environment, app or harness path, read boundary, write boundary, stop rules, rollback, evidence artifact path, and expiration.
-SLA: Blocked until the next exact validation boundary is visible. Chief Architect heartbeat should escalate rather than repeat quiet checks if no validation route is posted.
-Last architect instruction: PR #217 merged at `e75a40067a8c0dc1fc2b6d5b2318610ec41b5548` after explicit Chief boundary approval and strict review. It grounds initial concept generation in selected catalogue anchors and keeps downstream recommendations tied to those anchors. Do not run Product Matching execution, controlled preview, preview QA, app actions, writes, allowlist expansion, schema/types, UI/payment/checkout, production flags/deploys, floor-plan work, or Catalog-First coupling until the next exact validation boundary is approved.
-Agent ack: Product Matching Agent completed the read-only investigation in PR #216; Implementation/Chief Architect completed the approved code boundary in PR #217.
-Current PR: none; #217 merged (<https://github.com/Trueflutter/ritzy-studio/pull/217>)
-Blocker: The implementation is on `main`, but there is not yet a visible exact local/dev validation boundary for running the investor-demo room through the merged path and capturing evidence.
+Status: REVIEW_REQUESTED
+Branch: `codex/pm001-demo-rescue`
+Allowed scope: Founder-approved local/dev investor-demo rescue in PR #219 only. Scope includes code and UI changes needed to make the current local/dev flow run from user room/photo/brief input to catalogue-grounded concept render to matched shopping recommendations/links without internal diagnostics leaking; local/dev Product Matching execution and shopping-list write-path validation only for project `b91598f1-1c48-4e4d-9257-73d52ec6b71e`, room `11c3449b-62d6-4db5-8e0d-51d9235b4f92`, user `87c551bf-8288-49df-99c4-a58b530f32ce`, email `sam.olatoye@gmail.com`, on local server `http://localhost:3001`.
+Forbidden scope: No production deploy, production flags, broad/runtime allowlist expansion, live catalog writes, live ingestion, DB/schema/generated type changes, payment/checkout changes, Catalog-First runtime coupling, default-on activation, production rollout, controlled-preview expansion, production Product Matching execution, runtime allowlist expansion, floor-plan work, or unrelated quality changes. No further local/dev execution beyond the PR #219 validation evidence unless Sam/Chief explicitly approves a new boundary.
+Expected next artifact: PR #219 strict review and merge decision, with local/dev validation evidence at `docs/Tracks/v2-commercial/product-matching-evals/manual-qa/2026-05-27-catalogue-grounded-demo-rescue.md`.
+SLA: PR #219 should receive strict review status on the current head. If rejected for implementation issues, fix only within this approved rescue boundary or ask Sam/Chief before expanding scope.
+Last architect instruction: Sam issued founder override in this thread on 2026-05-27 after PR #219 was rejected for missing visible boundary: "if so either update the document or confirm founder override". This board update records that founder override and exact local/dev boundary. PR #219 remains local/dev only and does not authorize production deploys/flags, live catalog work, schema/types, payment/checkout, controlled-preview expansion, or Catalog-First coupling.
+Agent ack: Ritzy Chief Architect implemented PR #219, ran adversarial plan/code review, completed local/dev validation, and updated this visible boundary artifact.
+Current PR: #219 (<https://github.com/Trueflutter/ritzy-studio/pull/219>)
+Blocker: Awaiting strict PR review on PR #219 after the visible founder-override boundary update.
 
 ### Ticket MI-001
 

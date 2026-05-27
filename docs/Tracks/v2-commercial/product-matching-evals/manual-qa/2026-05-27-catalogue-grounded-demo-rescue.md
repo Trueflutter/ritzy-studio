@@ -7,10 +7,25 @@ Status: local/dev validation passed for the investor-demo rescue flow.
 - Local server: `http://localhost:3001`
 - Project: `b91598f1-1c48-4e4d-9257-73d52ec6b71e`
 - Room: `11c3449b-62d6-4db5-8e0d-51d9235b4f92`
+- User: `87c551bf-8288-49df-99c4-a58b530f32ce`
+- Email: `sam.olatoye@gmail.com`
 - Concept: `3d8e6f32-5f21-4c77-817f-046e056ca7a7`
 - Concept generation job: `e9626596-59d0-45f9-b87b-8d091352e91b`
 - Product sourcing job: `143f964b-3e25-42c5-88d8-83a640ed7118`
 - Shopping list: `78a99b5b-e5bc-4c60-b57c-c0d28b3f5b63`
+
+## Founder Override Boundary
+
+Sam confirmed founder override in-thread on 2026-05-27 after PR #219 was rejected for missing a visible PM-001 boundary, instructing the Chief Architect to update the document or confirm founder override. This document records that exact approval boundary.
+
+- Approved scope: local/dev investor-demo rescue from room/photo/brief input to catalogue-grounded concept render to matched shopping recommendations/links, with high-taste output and no internal diagnostics leaking to users.
+- Environment: local/dev only, `http://localhost:3001`.
+- App path: existing Ritzy Studio project/room flow through concepts, Product Matching, and Shopping List.
+- Read boundary: existing local/dev room, concept, catalogue product, product image, and job-summary data needed for the project/room/user above.
+- Write boundary: local/dev concept/job/shopping-list rows required to validate the project/room/user above.
+- Evidence path: this file.
+- Expiration: PR #219 review/merge decision; any later execution requires a fresh Sam/Chief boundary.
+- Stop rules: no production deploys, production flags, live catalog writes/ingestion, DB/schema/generated type changes, payment/checkout changes, controlled-preview expansion, runtime allowlist expansion, floor-plan work, Catalog-First coupling, or unrelated quality work.
 
 ## Provider
 
