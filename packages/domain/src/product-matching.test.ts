@@ -4,6 +4,7 @@ import {
   buildRoleScopedCandidatePools,
   buildProductSourcingRuntimePlan,
   buildShoppingListItemRows,
+  assessAestheticFitForRole,
   composeRoomProductOptions,
   composeRoomProductSet,
   enhancedProductRolesForRoom,
@@ -701,6 +702,192 @@ assert.deepEqual(
 );
 assert.equal(coffeeTablePool.pools[0].rejectionReasons.coffee_table_role_mismatch, 3);
 assert.ok(coffeeTablePool.pools[0].candidates[0].attributeScore.roleFit > 0);
+
+const badLivingRoomChairAesthetic = assessAestheticFitForRole({
+  candidate: {
+    ...base,
+    id: "00000000-0000-4000-8000-000000000563",
+    name: "Club 54 Swivel Armchair, Walnut",
+    description:
+      "A casual swivel chair with a retro touch, black polyurethane cover, walnut veneer and statement urban lounge atmosphere.",
+    categoryNormalized: "armchairs",
+    availability: "in stock",
+    primaryImageUrl: "https://example.com/club-54-swivel-armchair.jpg",
+    color: "Black",
+    material: "Textile Polyurethane-Coated",
+    materialTags: []
+  },
+  role: {
+    category: "armchairs",
+    label: "secondary seating",
+    visualBrief: "soft upholstered accent chairs for a timeless sage and beige living room",
+    quantity: 2,
+    priority: "supporting"
+  },
+  roomType: "living room",
+  conceptText: "timeless elegant soft transitional living room with sage walls and beige upholstery"
+});
+assert.equal(badLivingRoomChairAesthetic.unsuitableHero, true);
+assert.ok(badLivingRoomChairAesthetic.scoreAdjustment <= -180);
+assert.ok(
+  badLivingRoomChairAesthetic.weaknessReasons.includes(
+    "living-room accent chair reads as office, shell, swivel, dining, or pedestal seating"
+  )
+);
+
+const goodLivingRoomChairAesthetic = assessAestheticFitForRole({
+  candidate: {
+    ...base,
+    id: "00000000-0000-4000-8000-000000000564",
+    name: "Cream Boucle Upholstered Accent Chair",
+    description: "Soft upholstered lounge chair for relaxed living room seating.",
+    categoryNormalized: "armchairs",
+    availability: "in stock",
+    primaryImageUrl: "https://example.com/cream-boucle-accent-chair.jpg",
+    colorTags: ["cream"],
+    materialTags: ["boucle", "upholstered"]
+  },
+  role: {
+    category: "armchairs",
+    label: "secondary seating",
+    visualBrief: "soft upholstered accent chairs for a timeless sage and beige living room",
+    quantity: 2,
+    priority: "supporting"
+  },
+  roomType: "living room",
+  conceptText: "timeless elegant soft transitional living room with sage walls and beige upholstery"
+});
+assert.equal(goodLivingRoomChairAesthetic.unsuitableHero, false);
+assert.ok(goodLivingRoomChairAesthetic.scoreAdjustment >= 60);
+
+const incidentalDiningQuestionChairAesthetic = assessAestheticFitForRole({
+  candidate: {
+    ...base,
+    id: "00000000-0000-4000-8000-000000000568",
+    name: "Crimson 1-Seater Fabric Recliner Sofa-Off-White",
+    description: "Off-white fabric recliner sofa.",
+    categoryNormalized: "armchairs",
+    availability: "in stock",
+    primaryImageUrl: "https://example.com/crimson-recliner.jpg",
+    color: "White",
+    material: "Fabric"
+  },
+  role: {
+    category: "armchairs",
+    label: "secondary seating",
+    visualBrief: "soft upholstered accent chairs for a timeless sage and beige living room",
+    quantity: 2,
+    priority: "supporting"
+  },
+  roomType: "living room",
+  conceptText:
+    "Will this living room be used mainly for formal entertaining, daily family TV/lounge, or multi-use (work/kids/occasional dining)?: multi-use\nTraditional sage living room with warm oak and ivory upholstery."
+});
+assert.equal(incidentalDiningQuestionChairAesthetic.unsuitableHero, true);
+assert.ok(
+  incidentalDiningQuestionChairAesthetic.weaknessReasons.includes(
+    "living-room accent chair reads as office, shell, swivel, dining, or pedestal seating"
+  )
+);
+
+const ornateGoldChairAesthetic = assessAestheticFitForRole({
+  candidate: {
+    ...base,
+    id: "00000000-0000-4000-8000-000000000567",
+    name: "Malek Fabric Armchair",
+    description: "Beige fabric armchair with ornate carved gold detailing.",
+    categoryNormalized: "armchairs",
+    availability: "in stock",
+    primaryImageUrl: "https://example.com/malek-fabric-armchair.jpg",
+    color: "Beige/Gold",
+    materialTags: ["fabric"]
+  },
+  role: {
+    category: "armchairs",
+    label: "secondary seating",
+    visualBrief: "soft upholstered accent chairs for a timeless sage and beige living room",
+    quantity: 2,
+    priority: "supporting"
+  },
+  roomType: "living room",
+  conceptText: "timeless elegant soft transitional living room with sage walls and beige upholstery"
+});
+assert.equal(ornateGoldChairAesthetic.unsuitableHero, true);
+assert.ok(
+  ornateGoldChairAesthetic.weaknessReasons.includes(
+    "ornate or gold-accented chair overpowers a soft transitional living-room scheme"
+  )
+);
+
+const outdoorWireChairAesthetic = assessAestheticFitForRole({
+  candidate: {
+    ...base,
+    id: "00000000-0000-4000-8000-000000000569",
+    name: "Green Steel Acapulco Armchair",
+    description: "Medium steel wire chair for relaxed indoor-outdoor seating.",
+    categoryNormalized: "armchairs",
+    availability: "in stock",
+    primaryImageUrl: "https://example.com/acapulco-armchair.jpg",
+    color: "Green",
+    material: "Steel"
+  },
+  role: {
+    category: "armchairs",
+    label: "secondary seating",
+    visualBrief: "soft upholstered accent chairs for a timeless sage and beige living room",
+    quantity: 2,
+    priority: "supporting"
+  },
+  roomType: "living room",
+  conceptText: "timeless elegant soft transitional living room with sage walls and beige upholstery"
+});
+assert.equal(outdoorWireChairAesthetic.unsuitableHero, true);
+assert.ok(
+  outdoorWireChairAesthetic.weaknessReasons.includes(
+    "living-room accent chair reads as outdoor, wire, or hard-frame seating"
+  )
+);
+
+const noisyCoffeeTableAesthetic = assessAestheticFitForRole({
+  candidate: {
+    ...base,
+    id: "00000000-0000-4000-8000-000000000565",
+    name: "Electra Coffee Table, 75Cm",
+    description:
+      "Round coffee table in black and white with intricate inlay work. The attention-getter is a unique statement piece.",
+    categoryNormalized: "coffee_tables",
+    availability: "in stock",
+    primaryImageUrl: "https://example.com/electra-striped-coffee-table.jpg",
+    color: "White",
+    materialTags: ["wood"]
+  },
+  role: {
+    category: "coffee_tables",
+    label: "coffee table",
+    visualBrief: "quiet round coffee table for a timeless living room",
+    quantity: 1,
+    priority: "required"
+  },
+  roomType: "living room",
+  conceptText: "timeless elegant living room with a patterned traditional rug",
+  companionCandidates: [
+    {
+      ...base,
+      id: "00000000-0000-4000-8000-000000000566",
+      name: "Elenor Looselay Rug Green & Multicolor",
+      description: "Green multicolor patterned rug.",
+      categoryNormalized: "rugs",
+      availability: "in stock",
+      primaryImageUrl: "https://example.com/green-multicolor-rug.jpg"
+    }
+  ]
+});
+assert.equal(noisyCoffeeTableAesthetic.unsuitableHero, true);
+assert.ok(
+  noisyCoffeeTableAesthetic.weaknessReasons.includes(
+    "noisy coffee table clashes with a patterned or multicolor rug"
+  )
+);
 
 const diningOverTableLightingPool = buildRoleScopedCandidatePools({
   roomType: "dining room",

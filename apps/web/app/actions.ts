@@ -14,6 +14,7 @@ import {
   createProjectSchema,
   createRoomSchema,
   designBriefSchema,
+  assessAestheticFitForRole,
   buildProductSourcingRuntimePlan,
   buildShoppingListItemRows,
   composeRoomProductOptions,
@@ -2544,7 +2545,7 @@ export async function groundProductsAction(formData: FormData) {
       : staticRoles.filter((role) => !visualMissingRoleCategories.has(role.category));
 
   const visualRankedById = new Map(visualRanked.map((match) => [match.id, match]));
-  const roleOptions = preserveCatalogueAnchorRoleOptions({
+  const roleOptions = polishRoleOptionsForAestheticDemo({
     roleOptions: composeRoomProductOptions({
       ranked: visualRanked,
       roles,
@@ -2555,6 +2556,7 @@ export async function groundProductsAction(formData: FormData) {
     ranked: visualRanked,
     rankedById: visualRankedById,
     catalogueGroundingAnchors,
+    conceptText: visualConceptText,
     optionsPerRole: 6
   });
   const missingCatalogueAnchors = catalogueGroundingAnchors
@@ -4080,6 +4082,7 @@ async function buildCatalogueGroundedConceptPlan({
   const conceptText = [cueText, designBrief.style_notes, designBrief.color_notes, designBrief.functional_requirements]
     .filter(Boolean)
     .join("\n");
+  const aestheticGateEnabled = localAestheticTasteGateEnabled();
   const plan = buildProductSourcingRuntimePlan({
     engineEnabled: true,
     roomType,
@@ -4088,14 +4091,17 @@ async function buildCatalogueGroundedConceptPlan({
     candidates,
     budgetMaxAed,
     roomMeasurements,
-    candidatesPerRole: CATALOGUE_GROUNDED_CONCEPT_CANDIDATES_PER_ROLE,
-    flatCandidateLimit: CATALOGUE_GROUNDED_CONCEPT_FLAT_CANDIDATE_LIMIT
+    candidatesPerRole: aestheticGateEnabled ? 36 : CATALOGUE_GROUNDED_CONCEPT_CANDIDATES_PER_ROLE,
+    flatCandidateLimit: aestheticGateEnabled ? 96 : CATALOGUE_GROUNDED_CONCEPT_FLAT_CANDIDATE_LIMIT
   });
+  const roleScopedPools = aestheticGateEnabled
+    ? plan.roleScopedPools.map((pool) => rerankRolePoolForAestheticFit(pool, roomType, conceptText))
+    : plan.roleScopedPools;
   const selected: CatalogueGroundingProduct[] = [];
   const blockers: string[] = [];
   const warnings: string[] = [];
 
-  for (const pool of plan.roleScopedPools) {
+  for (const pool of roleScopedPools) {
     let selectedCandidate: (typeof pool.candidates)[number] | null = null;
     let selectedReferenceImage: CatalogueReferenceImage | null = null;
     let accessibleFallback:
@@ -4106,8 +4112,24 @@ async function buildCatalogueGroundedConceptPlan({
       | null = null;
 
     for (const candidate of pool.candidates) {
+      let aestheticScoreAdjustment = 0;
       if (hasHardCatalogueGroundingContradiction(candidate.attributeScore.weaknessReasons)) {
         continue;
+      }
+
+      if (aestheticGateEnabled) {
+        const aestheticFit = assessAestheticFitForRole({
+          candidate,
+          role: pool.role,
+          roomType,
+          conceptText,
+          companionCandidates: selected.map(({ match }) => match)
+        });
+        aestheticScoreAdjustment = aestheticFit.scoreAdjustment;
+        if (aestheticFit.unsuitableHero) {
+          warnings.push(`${pool.role.label}: skipped aesthetically unsuitable catalogue candidate (${candidate.name}).`);
+          continue;
+        }
       }
 
       const referenceImage = candidate.primaryImageUrl ? await fetchRemoteImage(candidate.primaryImageUrl) : null;
@@ -4116,7 +4138,7 @@ async function buildCatalogueGroundedConceptPlan({
         continue;
       }
 
-      if (isEntryPriceCatalogueGroundingAnchor(candidate, pool.role)) {
+      if (isEntryPriceCatalogueGroundingAnchor(candidate, pool.role) && aestheticScoreAdjustment < 40) {
         accessibleFallback ??= {
           candidate,
           referenceImage
@@ -4160,6 +4182,15 @@ async function buildCatalogueGroundedConceptPlan({
       role: pool.role,
       match: selectedCandidate,
       referenceImage: selectedReferenceImage
+    });
+  }
+  if (aestheticGateEnabled) {
+    await refineSelectedCatalogueProductsForAestheticFit({
+      selected,
+      pools: roleScopedPools,
+      roomType,
+      conceptText,
+      warnings
     });
   }
 
@@ -4217,7 +4248,8 @@ async function buildCatalogueGroundedConceptPlan({
           weaknessReasons: match.attributeScore.weaknessReasons
         }
       })),
-      roles: plan.roleScopedPools.map((pool) => ({
+      aestheticTasteGateEnabled: aestheticGateEnabled,
+      roles: roleScopedPools.map((pool) => ({
         category: pool.role.category,
         roleLabel: pool.role.label,
         candidateCount: pool.candidateCount,
@@ -4231,6 +4263,124 @@ async function buildCatalogueGroundedConceptPlan({
 
 function catalogueGroundingRoleKey(category: string, label: string) {
   return `${category}::${label}`.toLowerCase();
+}
+
+function localAestheticTasteGateEnabled() {
+  return process.env.NODE_ENV !== "production" && process.env.RITZY_AESTHETIC_TASTE_GATE === "1";
+}
+
+function rerankRolePoolForAestheticFit(
+  pool: RoleScopedCandidatePool,
+  roomType: string,
+  conceptText: string,
+  companionCandidates: ProductMatchCandidate[] = []
+): RoleScopedCandidatePool {
+  return {
+    ...pool,
+    candidates: [...pool.candidates]
+      .map((candidate) => {
+        const assessment = assessAestheticFitForRole({
+          candidate,
+          role: pool.role,
+          roomType,
+          conceptText,
+          companionCandidates
+        });
+        return {
+          ...candidate,
+          score: Number((candidate.score + assessment.scoreAdjustment).toFixed(3)),
+          selectionReason: [
+            candidate.selectionReason,
+            ...assessment.reasons.map((reason) => `aesthetic fit: ${reason}`)
+          ].join("; "),
+          warnings: [...candidate.warnings, ...assessment.weaknessReasons],
+          attributeScore: {
+            ...candidate.attributeScore,
+            total: candidate.attributeScore.total + assessment.scoreAdjustment,
+            reasons: [...candidate.attributeScore.reasons, ...assessment.reasons],
+            weaknessReasons: Array.from(
+              new Set([...candidate.attributeScore.weaknessReasons, ...assessment.weaknessReasons])
+            )
+          }
+        };
+      })
+      .sort((left, right) => right.score - left.score)
+  };
+}
+
+async function refineSelectedCatalogueProductsForAestheticFit({
+  selected,
+  pools,
+  roomType,
+  conceptText,
+  warnings
+}: {
+  selected: CatalogueGroundingProduct[];
+  pools: RoleScopedCandidatePool[];
+  roomType: string;
+  conceptText: string;
+  warnings: string[];
+}) {
+  const selectedRug = selected.find(({ role }) => normalizeSourcingCategory(role.category, role.label) === "rugs");
+  const selectedCoffeeTableIndex = selected.findIndex(
+    ({ role }) => normalizeSourcingCategory(role.category, role.label) === "coffee_tables"
+  );
+  if (!selectedRug || selectedCoffeeTableIndex < 0) {
+    return;
+  }
+
+  const selectedCoffeeTable = selected[selectedCoffeeTableIndex];
+  const currentAssessment = assessAestheticFitForRole({
+    candidate: selectedCoffeeTable.match,
+    role: selectedCoffeeTable.role,
+    roomType,
+    conceptText,
+    companionCandidates: [selectedRug.match]
+  });
+  if (!currentAssessment.unsuitableHero) {
+    return;
+  }
+
+  const coffeeTablePool = pools.find(
+    (pool) => normalizeSourcingCategory(pool.role.category, pool.role.label) === "coffee_tables"
+  );
+  for (const alternative of coffeeTablePool?.candidates ?? []) {
+    if (alternative.id === selectedCoffeeTable.match.id) {
+      continue;
+    }
+
+    const alternativeAssessment = assessAestheticFitForRole({
+      candidate: alternative,
+      role: selectedCoffeeTable.role,
+      roomType,
+      conceptText,
+      companionCandidates: [selectedRug.match]
+    });
+    if (alternativeAssessment.unsuitableHero) {
+      continue;
+    }
+
+    const referenceImage = alternative.primaryImageUrl ? await fetchRemoteImage(alternative.primaryImageUrl) : null;
+    if (!referenceImage) {
+      continue;
+    }
+
+    selected[selectedCoffeeTableIndex] = {
+      role: selectedCoffeeTable.role,
+      match: {
+        ...alternative,
+        selectionReason: [
+          alternative.selectionReason,
+          "aesthetic fit: replaced noisy coffee table to harmonize with patterned rug"
+        ].join("; ")
+      },
+      referenceImage
+    };
+    warnings.push(
+      `${selectedCoffeeTable.role.label}: replaced noisy catalogue anchor (${selectedCoffeeTable.match.name}) with quieter option (${alternative.name}).`
+    );
+    return;
+  }
 }
 
 function hasHardCatalogueGroundingContradiction(weaknessReasons: string[]) {
@@ -4571,27 +4721,8 @@ function bestThemeAlignedOptionForRole({
     return null;
   }
 
-  const conceptTokens = catalogueCueTokens(conceptText);
-  const preferredTokens = new Set(
-    [
-      "beige",
-      "cream",
-      "ivory",
-      "grey",
-      "gray",
-      "gold",
-      "brass",
-      "bronze",
-      "oak",
-      "wood",
-      "sage",
-      "green",
-      "travertine",
-      "stone",
-      "ceramic"
-    ].filter((token) => conceptTokens.has(token))
-  );
-  const conflictingColors = ["orange", "teal", "pink", "blue", "red", "purple"];
+  const preferredTokens = preferredCatalogueTokens(conceptText);
+  const conflictingColors = catalogueConflictColors();
 
   const rankedOptions = [...options].sort((left, right) => {
     const leftScore = themeAlignedOptionScore(left, role, preferredTokens, conflictingColors);
@@ -4614,6 +4745,33 @@ function bestThemeAlignedOptionForRole({
     return bestOption;
   }
   return bestScore - currentScore >= 40 ? bestOption : currentPick;
+}
+
+function preferredCatalogueTokens(conceptText: string) {
+  const conceptTokens = catalogueCueTokens(conceptText);
+  return new Set(
+    [
+      "beige",
+      "cream",
+      "ivory",
+      "grey",
+      "gray",
+      "gold",
+      "brass",
+      "bronze",
+      "oak",
+      "wood",
+      "sage",
+      "green",
+      "travertine",
+      "stone",
+      "ceramic"
+    ].filter((token) => conceptTokens.has(token))
+  );
+}
+
+function catalogueConflictColors() {
+  return ["orange", "teal", "pink", "blue", "red", "purple"];
 }
 
 function themeAlignedOptionScore(
@@ -4650,11 +4808,68 @@ function themeAlignedOptionScore(
   }
 
   const roleText = `${role.category} ${role.label}`.toLowerCase();
-  if (role.category === "decor" && haystack.has("bench") && !roleText.includes("bench")) {
-    score -= 45;
+
+  if (!localAestheticTasteGateEnabled()) {
+    if (role.category === "decor" && haystack.has("bench") && !roleText.includes("bench")) {
+      score -= 45;
+    }
+    if (role.category === "wall_art" && (haystack.has("mirror") || haystack.has("panel"))) {
+      score += 12;
+    }
+    if (role.category === "lighting" && option.priceAed !== null && option.priceAed < 250) {
+      score -= 35;
+    }
+    if (option.priceAed === 0 || option.salePriceAed === 0) {
+      score -= 30;
+    }
+    return score;
   }
-  if (role.category === "wall_art" && (haystack.has("mirror") || haystack.has("panel"))) {
-    score += 12;
+
+  if (role.category === "decor" && haystack.has("bench") && !roleText.includes("bench")) {
+    score -= 180;
+  }
+  if (role.category === "side_tables") {
+    if (hasAnyCatalogueCue(haystack, ["bedside", "nightstand"])) {
+      score -= 110;
+    }
+    if (hasAnyCatalogueCue(haystack, ["accent", "end", "side"])) {
+      score += 36;
+    }
+  }
+  if (role.category === "wall_art") {
+    if (hasAnyCatalogueCue(haystack, ["panel", "panels", "shelf", "shelves"])) {
+      score -= 95;
+    }
+    if (hasAnyCatalogueCue(haystack, ["art", "artwork", "canvas", "framed", "painting", "print"])) {
+      score += 28;
+    }
+    if (haystack.has("mirror")) {
+      score -= 20;
+    }
+  }
+  if (role.category === "lighting") {
+    if (hasAnyCatalogueCue(haystack, ["spiral", "twisted", "dna", "led", "chrome", "office"])) {
+      score -= 70;
+    }
+    if (hasAnyCatalogueCue(haystack, ["brass", "bronze", "gold", "shade", "linen"])) {
+      score += 28;
+    }
+  }
+  if (role.category === "storage") {
+    if (hasAnyCatalogueCue(haystack, ["shelf", "shelves", "bookcase", "rack"])) {
+      score -= 95;
+    }
+    if (hasAnyCatalogueCue(haystack, ["console", "credenza", "media", "sideboard", "tv"])) {
+      score += 42;
+    }
+  }
+  if (role.category === "decor") {
+    if (hasAnyCatalogueCue(haystack, ["bench", "stool", "table"])) {
+      score -= 90;
+    }
+    if (hasAnyCatalogueCue(haystack, ["bowl", "ceramic", "planter", "tray", "vase", "vessel"])) {
+      score += 32;
+    }
   }
   if (role.category === "lighting" && option.priceAed !== null && option.priceAed < 250) {
     score -= 35;
@@ -4678,6 +4893,97 @@ function hasThemeColorClash(
   );
 
   return conflictingColors.some((color) => haystack.has(color) && !preferredTokens.has(color));
+}
+
+function isCredibleAestheticDemoOption(
+  option: RankedProductMatch,
+  role: RoleProductOptions,
+  conceptText: string
+) {
+  const haystack = catalogueCueTokens(
+    [
+      option.name,
+      option.color,
+      option.material,
+      option.description,
+      option.styleTags.join(" "),
+      option.colorTags.join(" "),
+      option.materialTags.join(" ")
+    ]
+      .filter(Boolean)
+      .join(" ")
+  );
+  const score = themeAlignedOptionScore(option, role, preferredCatalogueTokens(conceptText), catalogueConflictColors());
+
+  if (role.category === "side_tables") {
+    return score >= 20 && hasAnyCatalogueCue(haystack, ["accent", "end", "side"]);
+  }
+  if (role.category === "sofas") {
+    return score >= 20 && hasAnyCatalogueCue(haystack, ["chaise", "sectional", "sofa"]);
+  }
+  if (role.category === "armchairs" || role.category === "chairs") {
+    return (
+      score >= 20 &&
+      hasAnyCatalogueCue(haystack, ["accent", "armchair", "fabric", "lounge", "upholstered"]) &&
+      !hasAnyCatalogueCue(haystack, [
+        "acapulco",
+        "dining",
+        "office",
+        "outdoor",
+        "pedestal",
+        "recliner",
+        "shell",
+        "steel",
+        "swing",
+        "swivel",
+        "vintage",
+        "wire"
+      ])
+    );
+  }
+  if (role.category === "coffee_tables") {
+    return (
+      score >= 20 &&
+      hasAnyCatalogueCue(haystack, ["coffee", "table"]) &&
+      !hasAnyCatalogueCue(haystack, [
+        "attention",
+        "bar",
+        "bench",
+        "electra",
+        "inlay",
+        "recamiere",
+        "side",
+        "statement",
+        "striped",
+        "unique"
+      ])
+    );
+  }
+  if (role.category === "rugs") {
+    return score >= 20 && haystack.has("rug");
+  }
+  if (role.category === "lighting") {
+    return score >= 20 && !hasAnyCatalogueCue(haystack, ["spiral", "twisted", "dna", "office"]);
+  }
+  if (role.category === "wall_art") {
+    return (
+      score >= 20 &&
+      hasAnyCatalogueCue(haystack, ["art", "artwork", "canvas", "framed", "painting", "print"]) &&
+      !hasAnyCatalogueCue(haystack, ["holder", "hook", "mail", "panel", "panels", "rack", "shelf", "shelves"])
+    );
+  }
+  if (role.category === "storage") {
+    return score >= 20 && hasAnyCatalogueCue(haystack, ["console", "credenza", "media", "sideboard", "tv"]);
+  }
+  if (role.category === "decor") {
+    return (
+      score >= 20 &&
+      hasAnyCatalogueCue(haystack, ["bowl", "ceramic", "planter", "tray", "vase", "vessel"]) &&
+      !hasAnyCatalogueCue(haystack, ["bench", "stool", "table"])
+    );
+  }
+
+  return score >= 20;
 }
 
 function preserveCatalogueAnchorRoleOptions({
@@ -4747,6 +5053,77 @@ function preserveCatalogueAnchorRoleOptions({
   }
 
   return ordered;
+}
+
+function polishRoleOptionsForAestheticDemo({
+  roleOptions,
+  ranked,
+  rankedById,
+  catalogueGroundingAnchors,
+  conceptText,
+  optionsPerRole
+}: {
+  roleOptions: RoleProductOptions[];
+  ranked: RankedProductMatch[];
+  rankedById: Map<string, RankedProductMatch>;
+  catalogueGroundingAnchors: CatalogueGroundingAnchor[];
+  conceptText: string;
+  optionsPerRole: number;
+}) {
+  const preserved = preserveCatalogueAnchorRoleOptions({
+    roleOptions,
+    ranked,
+    rankedById,
+    catalogueGroundingAnchors,
+    optionsPerRole
+  });
+
+  if (!localAestheticTasteGateEnabled()) {
+    return preserved;
+  }
+
+  const anchorIdsByCategory = new Map<string, Set<string>>();
+  for (const anchor of catalogueGroundingAnchors) {
+    const category = normalizeSourcingCategory(anchor.category, anchor.roleLabel);
+    const anchorIds = anchorIdsByCategory.get(category) ?? new Set<string>();
+    anchorIds.add(anchor.productId);
+    anchorIdsByCategory.set(category, anchorIds);
+  }
+
+  return preserved
+    .map((role) => {
+      const anchorIds = anchorIdsByCategory.get(role.category) ?? new Set<string>();
+      const sortedOptions = [...role.options].sort((left, right) => {
+        const leftIsAnchor = anchorIds.has(left.id);
+        const rightIsAnchor = anchorIds.has(right.id);
+        if (leftIsAnchor && !rightIsAnchor) {
+          return -1;
+        }
+        if (!leftIsAnchor && rightIsAnchor) {
+          return 1;
+        }
+        return (
+          themeAlignedOptionScore(right, role, preferredCatalogueTokens(conceptText), catalogueConflictColors()) -
+            themeAlignedOptionScore(left, role, preferredCatalogueTokens(conceptText), catalogueConflictColors()) ||
+          right.score - left.score
+        );
+      });
+      const anchorOptions = sortedOptions.filter((option) => anchorIds.has(option.id));
+      const credibleOptions = sortedOptions.filter(
+        (option) => !anchorIds.has(option.id) && isCredibleAestheticDemoOption(option, role, conceptText)
+      );
+      const polishedOptions = anchorOptions.length > 0
+        ? [...anchorOptions, ...credibleOptions]
+        : role.priority === "required"
+          ? sortedOptions
+          : credibleOptions;
+
+      return {
+        ...role,
+        options: polishedOptions.slice(0, Math.max(1, optionsPerRole))
+      };
+    })
+    .filter((role) => role.options.length > 0);
 }
 
 function mergeRoomRoles(primary: RoomProductRoleSpec[], secondary: RoomProductRoleSpec[]) {
