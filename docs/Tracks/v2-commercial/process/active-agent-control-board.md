@@ -109,16 +109,16 @@ Docs-only, test-only, domain-only, and dry-run-only work may proceed only when t
 ### Ticket PM-001
 
 Owner: Product Matching Agent
-Status: REVIEW_REQUESTED
-Branch: codex/product-match-catalogue-grounding-investigation
-Allowed scope: Docs/artifacts/mailbox-only and read-only/domain-only investigation of the current concept-generation flow, Product Matching selected-products output, catalogue candidate metadata, image evidence/preflight path, and shopping-list/product-sourcing path. No Product Matching execution or implementation is allowed without a new explicit Sam/Chief boundary.
+Status: BLOCKED
+Branch: none
+Allowed scope: Coordination/docs-only while waiting for the next exact validation boundary. PR #217 merged the catalogue-grounded concept-generation implementation, but Product Matching execution, preview QA, app actions, and write paths remain closed until separately approved.
 Forbidden scope: No production deploy, production flags, broad/runtime allowlist expansion, live catalog writes, DB/schema/generated type changes, payment/checkout/UI changes, Catalog-First runtime coupling, default-on activation, production rollout, Product Matching execution, controlled-preview execution, preview QA, app actions, draft shopping-list/catalog writes, prompt/runtime/image-generation behavior changes, code implementation PRs, broad scoring rewrites, floor-plan work, or unrelated quality changes.
-Expected next artifact: Chief/Sam review of the PM-001 catalogue-grounding investigation and decision on the proposed exact local/dev catalogue-grounded concept-generation boundary.
-SLA: Review requested on the docs-only investigation PR; no execution or implementation while awaiting review.
-Last architect instruction: PR #212 merged, and the 2026-05-27 morning route moved PM-001 from narrative readiness to investor-demo catalogue grounding. Product Matching Agent should identify why concept images/recommendations are not grounded in ingested catalogue products and propose the shortest safe next boundary. Do not run Product Matching, controlled preview, app actions, writes, allowlist expansion, schema/types, UI/payment/checkout, production flags/deploys, prompt/runtime/image-generation behavior changes, code implementation, floor-plan work, or Catalog-First coupling without a new exact approval.
-Agent ack: Product Matching Agent opened the docs-only catalogue-grounding investigation branch and summarized files inspected, current failure mode, gating points, catalogue metadata state, and the proposed next exact boundary.
-Current PR: #216 (<https://github.com/Trueflutter/ritzy-studio/pull/216>)
-Blocker: Concept generation currently runs before catalogue-backed product selection exists; Product Matching recommendations are downstream of the generic concept image. Any local/dev implementation, prompt/runtime/image-generation behavior change, Product Matching execution, app action, or write path remains blocked until Sam/Chief explicitly approves the exact boundary.
+Expected next artifact: Exact local/dev validation boundary for the merged catalogue-grounded concept-generation implementation, including project id, room id, user/email, environment, app or harness path, read boundary, write boundary, stop rules, rollback, evidence artifact path, and expiration.
+SLA: Blocked until the next exact validation boundary is visible. Chief Architect heartbeat should escalate rather than repeat quiet checks if no validation route is posted.
+Last architect instruction: PR #217 merged at `e75a40067a8c0dc1fc2b6d5b2318610ec41b5548` after explicit Chief boundary approval and strict review. It grounds initial concept generation in selected catalogue anchors and keeps downstream recommendations tied to those anchors. Do not run Product Matching execution, controlled preview, preview QA, app actions, writes, allowlist expansion, schema/types, UI/payment/checkout, production flags/deploys, floor-plan work, or Catalog-First coupling until the next exact validation boundary is approved.
+Agent ack: Product Matching Agent completed the read-only investigation in PR #216; Implementation/Chief Architect completed the approved code boundary in PR #217.
+Current PR: none; #217 merged (<https://github.com/Trueflutter/ritzy-studio/pull/217>)
+Blocker: The implementation is on `main`, but there is not yet a visible exact local/dev validation boundary for running the investor-demo room through the merged path and capturing evidence.
 
 ### Ticket MI-001
 
