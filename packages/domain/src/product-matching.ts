@@ -673,6 +673,10 @@ function tokensFor(value: string) {
   );
 }
 
+function normalizePhraseText(value: string) {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, " ").replace(/\s+/g, " ").trim();
+}
+
 function dimensionNote(candidate: ProductMatchCandidate, request: ProductMatchRequest) {
   if (!candidate.dimensions?.widthCm && !candidate.dimensions?.depthCm) {
     return "Dimensions missing; fit is assumed until checked.";
@@ -767,6 +771,14 @@ export type ProductSourcingRuntimePlan = {
   engineEnabled: boolean;
   candidates: RankedProductMatch[] | RoleScopedRankedProductMatch[];
   roleScopedPools: RoleScopedCandidatePool[];
+};
+
+export type AestheticFitAssessment = {
+  scoreAdjustment: number;
+  reasons: string[];
+  weaknessReasons: string[];
+  visualNoise: "quiet" | "balanced" | "statement" | "noisy";
+  unsuitableHero: boolean;
 };
 
 export type ShoppingListItemStatus = "option" | "selected" | "rejected";
@@ -1330,6 +1342,188 @@ export function scoreProductCandidateForRole({
   };
 }
 
+export function assessAestheticFitForRole({
+  candidate,
+  role,
+  roomType,
+  conceptText,
+  companionCandidates = []
+}: {
+  candidate: ProductMatchCandidate;
+  role: RoomProductRoleSpec;
+  roomType: string;
+  conceptText: string;
+  companionCandidates?: ProductMatchCandidate[];
+}): AestheticFitAssessment {
+  const roomTokens = tokensFor(`${roomType} ${conceptText}`);
+  const roleTokens = tokensFor(`${role.category} ${role.label} ${role.visualBrief ?? ""}`);
+  const candidateTokens = candidateSearchTokens(candidate);
+  const reasons: string[] = [];
+  const weaknessReasons: string[] = [];
+  const visualNoise = productVisualNoise(candidate);
+  let scoreAdjustment = 0;
+  let unsuitableHero = false;
+
+  if (!roomTokens.has("living")) {
+    return { scoreAdjustment, reasons, weaknessReasons, visualNoise, unsuitableHero };
+  }
+
+  const explicitStatementRequest = hasAnyToken(roomTokens, [
+    "bold",
+    "eclectic",
+    "maximalist",
+    "mid-century",
+    "midcentury",
+    "playful",
+    "retro",
+    "statement"
+  ]);
+  const quietLivingRoom = hasAnyToken(roomTokens, [
+    "calm",
+    "classic",
+    "elegant",
+    "refined",
+    "sage",
+    "soft",
+    "sophisticated",
+    "timeless",
+    "traditional",
+    "transitional",
+    "warm"
+  ]);
+
+  if (role.category === "armchairs" || role.category === "chairs") {
+    const explicitChairText = normalizePhraseText(
+      `${roomType} ${conceptText} ${role.category} ${role.label} ${role.visualBrief ?? ""}`
+    );
+    const explicitlyRequestedSpecialChair =
+      explicitChairText.includes("desk chair") ||
+      explicitChairText.includes("dining chair") ||
+      explicitChairText.includes("office chair") ||
+      explicitChairText.includes("pedestal chair") ||
+      explicitChairText.includes("recliner") ||
+      explicitChairText.includes("reclining chair") ||
+      explicitChairText.includes("shell chair") ||
+      explicitChairText.includes("swivel chair");
+    const livingRoomChairContradiction = hasAnyToken(candidateTokens, [
+      "acapulco",
+      "desk",
+      "dining",
+      "executive",
+      "chipboard",
+      "cup",
+      "gaming",
+      "holder",
+      "led",
+      "office",
+      "pedestal",
+      "plywood",
+      "polyurethane",
+      "recliner",
+      "shell",
+      "swivel",
+      "task",
+      "visitor"
+    ]);
+    const outdoorOrHardFrameChair = hasAnyToken(candidateTokens, [
+      "acapulco",
+      "garden",
+      "mesh",
+      "outdoor",
+      "patio",
+      "plastic",
+      "polypropylene",
+      "rattan",
+      "rope",
+      "steel",
+      "wire"
+    ]);
+
+    if (livingRoomChairContradiction && !explicitlyRequestedSpecialChair) {
+      scoreAdjustment -= 180;
+      unsuitableHero = true;
+      weaknessReasons.push("living-room accent chair reads as office, shell, swivel, dining, or pedestal seating");
+    }
+
+    if (outdoorOrHardFrameChair && quietLivingRoom && !explicitlyRequestedSpecialChair) {
+      scoreAdjustment -= 150;
+      unsuitableHero = true;
+      weaknessReasons.push("living-room accent chair reads as outdoor, wire, or hard-frame seating");
+    }
+
+    if (hasAnyToken(candidateTokens, ["accent", "boucle", "fabric", "linen", "lounge", "upholstered"])) {
+      scoreAdjustment += 24;
+      reasons.push("soft upholstered accent-chair language supports living-room use");
+    }
+
+    if (
+      quietLivingRoom &&
+      hasAnyToken(candidateTokens, ["beige", "boucle", "chenille", "cream", "fabric", "ivory", "linen", "oatmeal"])
+    ) {
+      scoreAdjustment += 38;
+      reasons.push("soft neutral fabric chair harmonizes with a quiet living-room palette");
+    }
+
+    if (quietLivingRoom && !explicitStatementRequest && hasAnyToken(candidateTokens, ["cognac", "leather"])) {
+      scoreAdjustment -= 38;
+      weaknessReasons.push("leather accent chair is less aligned than soft fabric seating for this quiet palette");
+    }
+
+    if (quietLivingRoom && hasAnyToken(candidateTokens, ["black", "retro", "statement", "urban"])) {
+      scoreAdjustment -= 45;
+      weaknessReasons.push("high-contrast statement chair is too assertive for a quiet living-room palette");
+    }
+
+    if (
+      quietLivingRoom &&
+      !explicitStatementRequest &&
+      hasAnyToken(candidateTokens, ["baroque", "carved", "gold", "ornate", "rococo", "royal"])
+    ) {
+      scoreAdjustment -= 110;
+      unsuitableHero = true;
+      weaknessReasons.push("ornate or gold-accented chair overpowers a soft transitional living-room scheme");
+    }
+  }
+
+  if (role.category === "coffee_tables") {
+    const pairedWithPatternedRug = companionCandidates.some(
+      (companion) => companion.categoryNormalized === "rugs" && productVisualNoise(companion) !== "quiet"
+    );
+
+    if (visualNoise === "noisy" || visualNoise === "statement") {
+      const penalty = pairedWithPatternedRug ? 170 : quietLivingRoom && !explicitStatementRequest ? 110 : 55;
+      scoreAdjustment -= penalty;
+      weaknessReasons.push(
+        pairedWithPatternedRug
+          ? "noisy coffee table clashes with a patterned or multicolor rug"
+          : "statement coffee table is too visually loud for this living-room direction"
+      );
+      unsuitableHero = pairedWithPatternedRug || (quietLivingRoom && !explicitStatementRequest);
+    }
+
+    if (
+      hasAnyToken(candidateTokens, ["marble", "oak", "plain", "simple", "stone", "travertine", "walnut", "wood"]) &&
+      visualNoise !== "noisy"
+    ) {
+      scoreAdjustment += 20;
+      reasons.push("quiet coffee-table material supports the room composition");
+    }
+  }
+
+  if (role.category === "rugs" && visualNoise !== "quiet" && quietLivingRoom) {
+    scoreAdjustment -= 20;
+    weaknessReasons.push("patterned rug needs quiet companion furniture");
+  }
+
+  return {
+    scoreAdjustment,
+    reasons,
+    weaknessReasons: Array.from(new Set(weaknessReasons)),
+    visualNoise,
+    unsuitableHero
+  };
+}
+
 function roleSpecificKeywordScore(
   role: RoomProductRoleSpec,
   candidateTokens: Set<string>,
@@ -1482,6 +1676,35 @@ function candidateSearchTokens(candidate: ProductMatchCandidate) {
 
 function candidateNameTokens(candidate: ProductMatchCandidate) {
   return tokensFor(candidate.name);
+}
+
+function productVisualNoise(candidate: ProductMatchCandidate): AestheticFitAssessment["visualNoise"] {
+  const tokens = candidateSearchTokens(candidate);
+  let noise = 0;
+
+  if (hasAnyToken(tokens, ["multicolor", "multi", "colourful", "colorful", "striped", "stripe", "stripes"])) {
+    noise += 3;
+  }
+  if (hasAnyToken(tokens, ["pattern", "patterned", "inlay", "intricate", "artistic", "attention", "attention-getter"])) {
+    noise += 2;
+  }
+  if (hasAnyToken(tokens, ["black"]) && hasAnyToken(tokens, ["white"])) {
+    noise += 3;
+  }
+  if (hasAnyToken(tokens, ["unique", "exceptional", "statement", "sculptural", "retro"])) {
+    noise += 1;
+  }
+
+  if (noise >= 5) {
+    return "noisy";
+  }
+  if (noise >= 3) {
+    return "statement";
+  }
+  if (noise >= 1) {
+    return "balanced";
+  }
+  return "quiet";
 }
 
 function hasAnyToken(tokens: Set<string>, values: string[]) {

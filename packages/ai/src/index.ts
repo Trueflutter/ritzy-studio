@@ -321,6 +321,21 @@ export type ValidatedConceptProductSourcingResult = Pick<
 const INITIAL_CONCEPT_PROMPT_V2_VERSION = "2026-05-21.2";
 const FINAL_GROUNDED_RENDER_PROMPT_V2_VERSION = "2026-05-21.2";
 const ENHANCED_RITZY_IMAGE_STYLING_VERSION = "enhanced-ritzy-styling-2026-05-21.1";
+const STRICT_SOURCE_ROOM_PRESERVATION_VERSION = "strict-source-room-preservation-2026-05-27.1";
+
+function localStrictSourceRoomPreservationEnabled() {
+  return process.env.NODE_ENV !== "production" && process.env.RITZY_AESTHETIC_TASTE_GATE === "1";
+}
+
+function strictSourceRoomPreservationLanguage() {
+  return [
+    `Strict source-room preservation layer (${STRICT_SOURCE_ROOM_PRESERVATION_VERSION}):`,
+    "Treat the uploaded room photo as an editable photograph, not a loose layout reference.",
+    "Do not close, fill, remove, or invent wall openings, pass-throughs, room-to-room views, doorways, windows, stairs, half walls, columns, ceiling planes, soffits, or built-in architectural boundaries.",
+    "If an opening or adjacent room is visible behind furniture in the source photo, keep that opening and sightline visible in the generated image.",
+    "Only change movable furnishings, rugs, lighting fixtures, styling, textiles, art, and non-structural decor."
+  ].join("\n");
+}
 
 function enhancedRitzyInteriorStylingLanguage({
   mode
@@ -378,7 +393,8 @@ export function buildInitialConceptImagePrompt({
   hasInspirationImages,
   catalogueProductSummary,
   styleSlugs = [],
-  useInteriorPromptV2 = false
+  useInteriorPromptV2 = false,
+  strictSourceRoomPreservation = false
 }: {
   generationPrompt: string;
   roomType: string;
@@ -386,6 +402,7 @@ export function buildInitialConceptImagePrompt({
   catalogueProductSummary?: string | null;
   styleSlugs?: string[];
   useInteriorPromptV2?: boolean;
+  strictSourceRoomPreservation?: boolean;
 }) {
   if (!useInteriorPromptV2) {
     return [
@@ -396,6 +413,7 @@ export function buildInitialConceptImagePrompt({
         ? "Use the uploaded inspiration images as style references for palette, materials, atmosphere, and composition. Do not reproduce them exactly."
         : null,
       "Preserve visible architecture, walls, windows, doors, ceiling details, AC vents, sockets, built-ins, and fixed bathroom fixtures where present.",
+      strictSourceRoomPreservation ? strictSourceRoomPreservationLanguage() : null,
       roomBlueprintDefaultsLanguage(roomType),
       enhancedRitzyInteriorStylingLanguage({ mode: "initial-concept" }),
       catalogueProductSummary
@@ -422,6 +440,7 @@ export function buildInitialConceptImagePrompt({
       ? "Use the uploaded inspiration images as style references for palette, materials, atmosphere, and composition. Do not reproduce them exactly."
       : null,
     sourceRoomPreservationLanguage(roomType),
+    strictSourceRoomPreservation ? strictSourceRoomPreservationLanguage() : null,
     roomDesignLanguage(roomType),
     roomBlueprintDefaultsLanguage(roomType),
     styleDesignLanguage(styleSlugs),
@@ -447,7 +466,8 @@ export function buildFinalGroundedRenderPrompt({
   conceptDescription,
   hasConceptImage,
   productSummary,
-  useFinalRenderPromptV2 = false
+  useFinalRenderPromptV2 = false,
+  strictSourceRoomPreservation = false
 }: {
   roomType: string;
   conceptTitle: string;
@@ -455,11 +475,14 @@ export function buildFinalGroundedRenderPrompt({
   hasConceptImage?: boolean;
   productSummary: string;
   useFinalRenderPromptV2?: boolean;
+  strictSourceRoomPreservation?: boolean;
 }) {
   if (!useFinalRenderPromptV2) {
     return [
       finalGroundedRenderPrompt.system,
       "",
+      sourceRoomPreservationLanguage(roomType),
+      strictSourceRoomPreservation ? strictSourceRoomPreservationLanguage() : null,
       `Selected concept: ${conceptTitle}`,
       conceptDescription ? `Concept notes: ${conceptDescription}` : null,
       hasConceptImage
@@ -486,6 +509,7 @@ export function buildFinalGroundedRenderPrompt({
     "",
     "Ritzy final render language v2:",
     sourceRoomPreservationLanguage(roomType),
+    strictSourceRoomPreservation ? strictSourceRoomPreservationLanguage() : null,
     roomDesignLanguage(roomType),
     globalPhotorealismLanguage(),
     finalRenderProductFidelityLanguage(),
@@ -576,11 +600,12 @@ async function generateOpenAiImage({
 }): Promise<ImageGenerationAttempt> {
   const startedAt = Date.now();
   const files = await Promise.all(
-    references.map((reference) =>
-      toFile(reference.bytes, `${reference.name}.${extensionForMime(reference.mimeType)}`, {
-        type: reference.mimeType
-      })
-    )
+    references.map((reference) => {
+      const mimeType = normalizeImageMimeType(reference.mimeType);
+      return toFile(reference.bytes, `${reference.name}.${extensionForMime(mimeType)}`, {
+        type: mimeType
+      });
+    })
   );
   const imageResponse = await client.images.edit({
     model,
@@ -1382,7 +1407,8 @@ export async function generateInitialConcept(
       ? catalogueProductSummary(input.catalogueProducts)
       : null,
     styleSlugs: input.styleSlugs,
-    useInteriorPromptV2
+    useInteriorPromptV2,
+    strictSourceRoomPreservation: localStrictSourceRoomPreservationEnabled()
   });
   const catalogueReferences = (input.catalogueProducts ?? [])
     .filter((product) => product.imageBytes && product.imageMimeType)
@@ -1520,15 +1546,20 @@ export async function generateConceptRevision(
 }
 
 function extensionForMime(mimeType: string) {
-  if (mimeType === "image/png") {
+  const normalizedMimeType = normalizeImageMimeType(mimeType);
+  if (normalizedMimeType === "image/png") {
     return "png";
   }
 
-  if (mimeType === "image/webp") {
+  if (normalizedMimeType === "image/webp") {
     return "webp";
   }
 
   return "jpg";
+}
+
+function normalizeImageMimeType(mimeType: string) {
+  return mimeType.toLowerCase() === "image/jpg" ? "image/jpeg" : mimeType;
 }
 
 export async function generateProductEnrichment(
@@ -1741,7 +1772,8 @@ export async function generateFinalGroundedRender(
     conceptDescription: input.conceptDescription,
     hasConceptImage,
     productSummary,
-    useFinalRenderPromptV2
+    useFinalRenderPromptV2,
+    strictSourceRoomPreservation: localStrictSourceRoomPreservationEnabled()
   });
 
   const imageResult = await generateImageWithConfiguredProvider({

@@ -56,6 +56,16 @@ assert.match(baseImagePrompt, /Catalogue-grounded concept references/);
 assert.match(baseImagePrompt, /ivory boucle sofa/);
 assert.match(baseImagePrompt, /Do not invent alternate anchor furniture/);
 
+const strictPreservationImagePrompt = buildInitialConceptImagePrompt({
+  generationPrompt: "Create a warm living room concept.",
+  roomType: "living room",
+  strictSourceRoomPreservation: true
+});
+
+assert.match(strictPreservationImagePrompt, /Strict source-room preservation layer/);
+assert.match(strictPreservationImagePrompt, /Do not close, fill, remove, or invent wall openings/);
+assert.match(strictPreservationImagePrompt, /keep that opening and sightline visible/);
+
 const v2ImagePrompt = buildInitialConceptImagePrompt({
   generationPrompt: "Create a warm living room concept.",
   roomType: "living room",

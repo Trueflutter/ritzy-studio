@@ -27,6 +27,17 @@ assert.match(basePrompt, /correctly scaled rugs/);
 assert.match(basePrompt, /preserve selected catalog product silhouette, color family, material, scale/);
 assert.equal(basePrompt.includes("Ritzy final render language v2"), false);
 
+const strictPreservationPrompt = buildFinalGroundedRenderPrompt({
+  roomType: "living room",
+  conceptTitle: "Quiet Gallery Lounge",
+  productSummary,
+  strictSourceRoomPreservation: true
+});
+
+assert.match(strictPreservationPrompt, /Strict source-room preservation layer/);
+assert.match(strictPreservationPrompt, /Do not close, fill, remove, or invent wall openings/);
+assert.match(strictPreservationPrompt, /keep that opening and sightline visible/);
+
 const v2Prompt = buildFinalGroundedRenderPrompt({
   roomType: "living room",
   conceptTitle: "Quiet Gallery Lounge",

@@ -109,16 +109,16 @@ Docs-only, test-only, domain-only, and dry-run-only work may proceed only when t
 ### Ticket PM-001
 
 Owner: Product Matching Agent
-Status: REVIEW_REQUESTED
-Branch: `codex/pm001-demo-rescue`
-Allowed scope: Founder-approved local/dev investor-demo rescue in PR #219 only. Scope includes code and UI changes needed to make the current local/dev flow run from user room/photo/brief input to catalogue-grounded concept render to matched shopping recommendations/links without internal diagnostics leaking; local/dev Product Matching execution and shopping-list write-path validation only for project `b91598f1-1c48-4e4d-9257-73d52ec6b71e`, room `11c3449b-62d6-4db5-8e0d-51d9235b4f92`, user `87c551bf-8288-49df-99c4-a58b530f32ce`, email `sam.olatoye@gmail.com`, on local server `http://localhost:3001`.
-Forbidden scope: No production deploy, production flags, broad/runtime allowlist expansion, live catalog writes, live ingestion, DB/schema/generated type changes, payment/checkout changes, Catalog-First runtime coupling, default-on activation, production rollout, controlled-preview expansion, production Product Matching execution, runtime allowlist expansion, floor-plan work, or unrelated quality changes. No further local/dev execution beyond the PR #219 validation evidence unless Sam/Chief explicitly approves a new boundary.
-Expected next artifact: PR #219 strict review and merge decision, with local/dev validation evidence at `docs/Tracks/v2-commercial/product-matching-evals/manual-qa/2026-05-27-catalogue-grounded-demo-rescue.md`.
-SLA: PR #219 should receive strict review status on the current head. If rejected for implementation issues, fix only within this approved rescue boundary or ask Sam/Chief before expanding scope.
-Last architect instruction: Sam issued founder override in this thread on 2026-05-27 after PR #219 was rejected for missing visible boundary: "if so either update the document or confirm founder override". This board update records that founder override and exact local/dev boundary. PR #219 remains local/dev only and does not authorize production deploys/flags, live catalog work, schema/types, payment/checkout, controlled-preview expansion, or Catalog-First coupling.
-Agent ack: Ritzy Chief Architect implemented PR #219, ran adversarial plan/code review, completed local/dev validation, and updated this visible boundary artifact.
-Current PR: #219 (<https://github.com/Trueflutter/ritzy-studio/pull/219>)
-Blocker: Awaiting strict PR review on PR #219 after the visible founder-override boundary update.
+Status: IN_PROGRESS
+Branch: `codex/pm001-aesthetic-taste-gate`
+Allowed scope: Founder-approved local/dev PM-001 aesthetic-quality rescue. Scope includes docs, focused domain/app selection logic, tests, and local/dev validation needed to make catalogue-grounded living-room concept renders and shopping recommendations use actual ingested SKUs with investor-demo taste quality. The narrow implementation may add a local/dev-only taste-arbitration gate for living-room chair suitability, coffee-table/rug visual-noise conflicts, and sofa/chair/table/rug harmony. Local/dev execution is limited to existing test/demo project and room data on `http://localhost:3001` using existing catalogue rows only.
+Forbidden scope: No production deploy, production flags, live catalog writes, live ingestion, DB/schema/generated type changes, payment/checkout changes, floor-plan work, Catalog-First runtime coupling, controlled-preview expansion, production Product Matching execution, runtime allowlist expansion, default-on production activation, unrelated UI redesign, or broad catalogue rewrites. Do not mutate catalogue/product rows. Do not make production selection behavior change unless a future Sam/Chief boundary explicitly approves rollout.
+Expected next artifact: Focused PR with boundary docs, regression tests, local/dev-only aesthetic gate, validation evidence with selected SKUs/render screenshot, and strict adversarial review.
+SLA: Branch, commits, PR, or explicit blocker within 30 minutes. If the local/dev gate cannot reach 9/10 quality with existing SKUs, stop with evidence and propose the smallest next architecture slice.
+Last architect instruction: Sam set the active goal in-thread on 2026-05-27: deliver an investor-demo-quality catalogue-grounded living-room flow with actual SKUs, target aesthetic score 9/10 or better, no unsuitable hero items, and no office/task/dining/shell/pedestal chair unless explicitly requested. Sam called the current black/brown pedestal shell chair and noisy striped coffee table unacceptable for investors.
+Agent ack: Ritzy Chief Architect accepted the goal, created branch `codex/pm001-aesthetic-taste-gate`, ran adversarial plan review, and is keeping behavior local/dev gated before validation.
+Current PR: #220 (<https://github.com/Trueflutter/ritzy-studio/pull/220>) on branch `codex/pm001-aesthetic-taste-gate`; use GitHub PR head as authoritative because review fixes may amend the branch.
+Blocker: Awaiting strict PR re-review after docs/evidence corrections; implementation must remain inside the local/dev aesthetic-quality boundary and pass strict review before merge.
 
 ### Ticket MI-001
 
