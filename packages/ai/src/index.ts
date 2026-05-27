@@ -324,7 +324,7 @@ const ENHANCED_RITZY_IMAGE_STYLING_VERSION = "enhanced-ritzy-styling-2026-05-21.
 const STRICT_SOURCE_ROOM_PRESERVATION_VERSION = "strict-source-room-preservation-2026-05-27.1";
 
 function localStrictSourceRoomPreservationEnabled() {
-  return process.env.NODE_ENV !== "production" && process.env.RITZY_AESTHETIC_TASTE_GATE === "1";
+  return process.env.RITZY_AESTHETIC_TASTE_GATE === "1";
 }
 
 function strictSourceRoomPreservationLanguage() {
