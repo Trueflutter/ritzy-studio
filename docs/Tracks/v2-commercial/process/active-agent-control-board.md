@@ -69,6 +69,8 @@ No work is considered routed until it appears here or in a GitHub PR comment tha
 - If an item misses either SLA, mark it `STALE` and notify Sam with the exact owner and next prompt.
 - If the same item is `STALE` for two checks, Chief Architect must either reassign it, narrow it, park it with a hard blocker, or open a docs-only board update. Do not keep sending the same kick prompt.
 - If a ticket is `BLOCKED`, the blocker must name the exact decision needed. "Waiting" is not enough.
+- If every ticket is `PARKED` or `BLOCKED` and no PR is open, Chief Architect must not treat that as progress for more than one heartbeat when a safe docs-only, artifacts-only, test-only, domain-only, or dry-run-only next boundary is available.
+- After one quiet all-parked/all-blocked check, the next heartbeat must either route one exact safe next boundary, ask Sam for the exact decision needed, or open a docs-only board update explaining why no safe next artifact exists. Do not repeat `DONT_NOTIFY` indefinitely.
 
 ## Review And Merge Rules
 
@@ -196,7 +198,8 @@ Chief Architect heartbeat must:
 2. Check open PRs and GitHub comments for tickets in `PR_OPEN`, `REVIEW_REQUESTED`, or `APPROVED`.
 3. Check mailbox files only for evidence that updates a ticket.
 4. Notify when a `ROUTED`, `ACKED`, or `IN_PROGRESS` ticket misses SLA.
-5. Stay quiet only when every ticket is either actively progressing within SLA, intentionally `PARKED`, or hard `BLOCKED` with a named blocker.
+5. Stay quiet only when every ticket is either actively progressing within SLA, intentionally `PARKED`, or hard `BLOCKED` with a named blocker, and this is not the second consecutive all-quiet heartbeat while a safe next boundary exists.
+6. When all lanes are parked/blocked for two consecutive checks but a safe next boundary exists, provide the exact owner and copy/paste route prompt, or open a docs-only board update that routes it.
 
 Implementation agents must:
 
