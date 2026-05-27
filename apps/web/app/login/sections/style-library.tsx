@@ -25,26 +25,26 @@ const STYLES: Style[] = [
   {
     name: "Contemporary",
     body: "Current design language. Mixed textures, curved forms, evolving palette.",
-    image: AURA_ASSETS.conceptEditorial,
+    image: AURA_ASSETS.styleContemporary,
     popular: true,
     variant: "large"
   },
   {
     name: "Modern",
     body: "Clean lines, neutral palette, intentional simplicity.",
-    image: AURA_ASSETS.conceptSoftMinimal,
+    image: AURA_ASSETS.styleModern,
     variant: "large"
   },
   {
     name: "Scandinavian",
     body: "Light wood, soft neutrals. Cosy and quietly functional.",
-    image: AURA_ASSETS.conceptWarmContemporary,
+    image: AURA_ASSETS.styleScandinavian,
     variant: "compact"
   },
   {
     name: "Bohemian",
     body: "Layered patterns, plants, collected pieces from many places.",
-    image: AURA_ASSETS.conceptEditorialSm,
+    image: AURA_ASSETS.styleBohemian,
     variant: "compact"
   }
 ];

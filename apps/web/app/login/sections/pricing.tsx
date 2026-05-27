@@ -19,7 +19,7 @@ const TIERS = {
   homeowner: {
     label: "Home",
     body: "Per room. Pay only when you unlock the shopping list.",
-    image: AURA_ASSETS.conceptSoftMinimal,
+    image: AURA_ASSETS.styleModern,
     price: "AED 99",
     unit: "per room",
     fineprint: "Free to design. Pay only to unlock the retailer links.",
@@ -36,7 +36,7 @@ const TIERS = {
   designer: {
     label: "Studio",
     body: "Monthly subscription for designers running multiple projects.",
-    image: AURA_ASSETS.conceptEditorialSm,
+    image: AURA_ASSETS.styleContemporary,
     price: "AED 199",
     unit: "per month",
     fineprint: "Cancel anytime. Generous fair-use limits, monitored not capped.",

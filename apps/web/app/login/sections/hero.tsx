@@ -7,13 +7,10 @@ import {
 
 import { AURA_ASSETS } from "./assets";
 import {
-  ArrowRightIcon,
   BadgeCheckIcon,
-  CheckIcon,
   PlayIcon,
   ShieldCheckIcon,
   ShoppingBagIcon,
-  SparklesIcon,
   UploadIcon
 } from "./icons";
 
@@ -115,37 +112,6 @@ export function Hero() {
                 </span>
               </div>
             </MarketingPanel>
-
-            {/* Style picker — right overlay */}
-            <MarketingPanel
-              elevation="float"
-              as="aside"
-              className="absolute right-3 top-[14%] hidden w-[238px] p-3.5 sm:right-5 sm:block sm:w-[252px]"
-            >
-              <div className="mb-3 flex items-center justify-between">
-                <p className="font-body text-caption font-semibold uppercase tracking-[0.16em] text-ink">
-                  Style direction
-                </p>
-                <span className="inline-flex h-7 w-7 items-center justify-center border border-line bg-surface-subtle text-[var(--rs-accent-deep)]">
-                  <SparklesIcon className="h-3.5 w-3.5" />
-                </span>
-              </div>
-
-              <ul className="space-y-2">
-                <StyleOption label="Contemporary" image={AURA_ASSETS.conceptEditorialSm} selected />
-                <StyleOption label="Modern" image={AURA_ASSETS.conceptSoftMinimal} />
-                <StyleOption label="Scandinavian" image={AURA_ASSETS.conceptSoftMinimal} dimmed />
-                <StyleOption label="Bohemian" image={AURA_ASSETS.conceptWarmContemporary} dimmed />
-              </ul>
-
-              <a
-                href="#styles"
-                className="mt-4 flex items-center justify-between border-t border-line pt-3 font-body text-caption font-semibold uppercase tracking-[0.16em] text-ink-muted transition-colors duration-micro ease-standard hover:text-ink"
-              >
-                View all styles
-                <ArrowRightIcon className="h-3.5 w-3.5" />
-              </a>
-            </MarketingPanel>
           </Reveal>
         </div>
       </div>
@@ -172,41 +138,5 @@ function HeroMetric({
         <p className="mt-1.5 font-body text-body-m font-semibold text-ink">{value}</p>
       </div>
     </div>
-  );
-}
-
-function StyleOption({
-  label,
-  image,
-  selected = false,
-  dimmed = false
-}: {
-  label: string;
-  image: string;
-  selected?: boolean;
-  dimmed?: boolean;
-}) {
-  return (
-    <li
-      className={`flex items-center gap-2.5 border p-2 transition-colors duration-micro ease-standard ${
-        selected
-          ? "border-[var(--rs-accent-deep)] bg-surface"
-          : "border-line bg-surface"
-      } ${dimmed ? "opacity-72" : ""}`}
-    >
-      <div className="relative h-[52px] w-[58px] shrink-0 overflow-hidden border border-line">
-        <Image src={image} alt="" fill sizes="60px" className="object-cover object-center" />
-      </div>
-      <span className="min-w-0 flex-1 font-body text-caption font-semibold uppercase tracking-[0.12em] text-ink">
-        {label}
-      </span>
-      {selected ? (
-        <span className="inline-flex h-5 w-5 shrink-0 items-center justify-center border border-[var(--rs-accent-deep)] text-[var(--rs-accent-deep)]">
-          <CheckIcon className="h-3 w-3" />
-        </span>
-      ) : (
-        <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-line-strong" aria-hidden />
-      )}
-    </li>
   );
 }

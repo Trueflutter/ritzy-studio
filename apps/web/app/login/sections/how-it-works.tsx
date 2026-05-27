@@ -167,10 +167,10 @@ function UploadMock() {
 
 function StylePickerMock() {
   const styles = [
-    { name: "Contemporary", image: AURA_ASSETS.conceptEditorialSm, selected: true },
-    { name: "Modern", image: AURA_ASSETS.conceptSoftMinimal },
-    { name: "Scandinavian", image: AURA_ASSETS.conceptWarmContemporary },
-    { name: "Bohemian", image: AURA_ASSETS.conceptEditorialSm }
+    { name: "Contemporary", image: AURA_ASSETS.styleContemporaryThumb, selected: true },
+    { name: "Modern", image: AURA_ASSETS.styleModernThumb },
+    { name: "Scandinavian", image: AURA_ASSETS.styleScandinavianThumb },
+    { name: "Bohemian", image: AURA_ASSETS.styleBohemianThumb }
   ];
   return (
     <div className="flex h-full flex-col p-3">
@@ -206,7 +206,7 @@ function ConceptsMock() {
   return (
     <div className="relative h-full overflow-hidden">
       <Image
-        src={AURA_ASSETS.conceptEditorial}
+        src={AURA_ASSETS.heroPoster}
         alt=""
         fill
         sizes="(min-width: 1024px) 20vw, 50vw"
@@ -231,7 +231,7 @@ function RefineMock() {
   return (
     <div className="relative h-full">
       <Image
-        src={AURA_ASSETS.conceptEditorial}
+        src={AURA_ASSETS.heroPoster}
         alt=""
         fill
         sizes="(min-width: 1024px) 20vw, 50vw"

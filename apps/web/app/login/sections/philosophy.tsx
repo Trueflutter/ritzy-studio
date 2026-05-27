@@ -68,8 +68,8 @@ export function Philosophy() {
             {/* Main image */}
             <div className="absolute left-0 top-12 z-10 h-[460px] w-full overflow-hidden border border-line bg-surface-subtle sm:h-[520px] sm:w-[78%] lg:left-0 lg:w-[80%]">
               <Image
-                src={AURA_ASSETS.conceptEditorial}
-                alt="Editorial-direction interior concept"
+                src={AURA_ASSETS.sourceTheRoom}
+                alt="Sourced dining room concept"
                 fill
                 sizes="(min-width: 1024px) 50vw, 100vw"
                 className="object-cover object-center"

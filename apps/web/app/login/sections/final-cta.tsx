@@ -20,7 +20,7 @@ export function FinalCta() {
       {/* Full-bleed background */}
       <div className="absolute inset-0 z-0">
         <Image
-          src={AURA_ASSETS.heroPoster}
+          src={AURA_ASSETS.finalCta}
           alt=""
           fill
           sizes="100vw"
