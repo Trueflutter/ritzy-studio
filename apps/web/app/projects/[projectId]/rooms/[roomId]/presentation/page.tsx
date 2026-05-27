@@ -1,4 +1,11 @@
-import { AnimatedStatus, ButtonLink, SubmitButton } from "@ritzy-studio/ui";
+import {
+  AnimatedStatus,
+  ButtonLink,
+  DecorativeRule,
+  MarketingPanel,
+  SectionEyebrow,
+  SubmitButton
+} from "@ritzy-studio/ui";
 import Image from "next/image";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
@@ -192,13 +199,14 @@ export default async function PresentationPage({
       <section className="mx-auto max-w-[1180px] px-5 py-12 md:px-8 lg:px-12 xl:px-16 print:px-0 print:py-0">
         <div className="grid gap-10 lg:grid-cols-[minmax(0,1fr)_320px] print:block">
           <div>
-            <p className="font-body text-caption font-medium uppercase text-ink-muted">
-              {commerceUnlocked ? "Ritzy Studio Presentation" : "The reveal"}
-            </p>
-            <div className="mt-3 h-px w-32 bg-ink" />
-            <h1 className="mt-10 font-display text-display-l font-light leading-none tracking-[-0.015em] text-ink print:text-display-m">
+            <SectionEyebrow>N° 11 — Presentation</SectionEyebrow>
+            <DecorativeRule className="mt-5" />
+            <h1 className="mt-7 font-display text-display-l font-light leading-none tracking-[-0.015em] text-ink print:text-display-m">
               {commerceUnlocked ? (project.client_name ?? project.name) : roomLabel}
             </h1>
+            <p className="mt-4 font-body text-caption font-medium uppercase tracking-[0.18em] text-ink-muted">
+              {commerceUnlocked ? "Ritzy Studio Presentation" : "The reveal"}
+            </p>
             <p className="mt-5 max-w-[680px] font-body text-body-m text-ink-secondary">
               {commerceUnlocked
                 ? `${room.name} · ${room.room_type} · ${project.location ?? "Dubai / UAE"}`
@@ -206,11 +214,11 @@ export default async function PresentationPage({
             </p>
           </div>
 
-          <aside className="border border-line bg-page p-5 print:mt-8">
+          <MarketingPanel as="aside" tone="paper" className="p-5 print:mt-8 print:shadow-none">
             <p className="font-body text-caption font-medium uppercase text-ink-muted">
               Estimated furniture total
             </p>
-            <p className="mt-5 font-display text-display-xs font-light italic text-ink">
+            <p className="mt-5 font-display text-display-xs font-light tracking-[-0.01em] text-ink">
               {formatAed(currentEstimateAed)}
             </p>
             <p className="mt-4 font-body text-body-s text-ink-secondary">
@@ -229,14 +237,14 @@ export default async function PresentationPage({
                   roomId={roomId}
                 />
                 <Link
-                  className="mt-4 inline-flex font-display text-button-quiet italic text-ink transition-colors duration-micro ease-standard hover:text-accent-deep"
+                  className="mt-4 inline-flex font-body text-body-s text-ink-muted transition-colors duration-micro ease-standard hover:text-accent-deep"
                   href={`/projects/${projectId}/rooms/${roomId}/shopping-list`}
                 >
                   Change selected pieces →
                 </Link>
               </div>
             ) : null}
-          </aside>
+          </MarketingPanel>
         </div>
 
         <section className="mt-10 print:mt-8">
@@ -266,7 +274,7 @@ export default async function PresentationPage({
                   <p className="font-body text-caption font-medium uppercase tracking-[0.32em] text-ink-muted">
                     Final render
                   </p>
-                  <h2 className="mt-6 font-display text-display-xs font-light italic text-ink">
+                  <h2 className="mt-6 font-display text-display-xs font-light tracking-[-0.01em] text-ink">
                     {renderJobStatus === "failed" ? "The render needs another try." : "Ready to generate your room."}
                   </h2>
                   <p className="mx-auto mt-4 max-w-[440px] font-body text-body-s text-ink-secondary">
@@ -291,10 +299,9 @@ export default async function PresentationPage({
 
         <section className="mt-12 grid gap-8 lg:grid-cols-[360px_minmax(0,1fr)] print:block">
           <div>
-            <p className="font-body text-caption font-medium uppercase text-ink-muted">
-              Design Direction
-            </p>
-            <h2 className="mt-4 font-display text-display-s font-light italic text-ink">
+            <SectionEyebrow>Design Direction</SectionEyebrow>
+            <DecorativeRule className="mt-5" />
+            <h2 className="mt-6 max-w-[420px] font-display text-display-s font-light tracking-[-0.015em] text-ink">
               {selectedConcept?.title ?? "Selected concept pending"}
             </h2>
           </div>
@@ -308,7 +315,7 @@ export default async function PresentationPage({
           <RetailerPurchaseGroups groups={retailerGroups} />
         ) : null}
 
-        <section className="mt-10 border border-line bg-page p-5">
+        <MarketingPanel as="section" tone="paper" className="mt-10 p-5 print:shadow-none">
           <p className="font-body text-caption font-medium uppercase text-ink-muted">
             Notes
           </p>
@@ -317,7 +324,7 @@ export default async function PresentationPage({
               ? "Product names, prices, availability, dimensions, images, and retailer links come from catalog records and should be rechecked before purchasing. The render is a best-effort visual composition and may not exactly reproduce every selected SKU."
               : "The render is a best-effort visual composition based on your selected pieces. Generate the shopping list to reveal retailer links and product details."}
           </p>
-        </section>
+        </MarketingPanel>
       </section>
     </main>
   );
@@ -387,11 +394,11 @@ type RetailerPurchaseGroup = {
 function RetailerPurchaseGroups({ groups }: { groups: RetailerPurchaseGroup[] }) {
   if (groups.length === 0) {
     return (
-      <section className="mt-12 border border-line bg-page p-6">
-        <p className="font-display text-display-xs font-light italic text-ink">
+      <MarketingPanel as="section" tone="paper" className="mt-12 p-6 print:shadow-none">
+        <p className="font-display text-display-xs font-light tracking-[-0.01em] text-ink">
           Shopping list pending.
         </p>
-      </section>
+      </MarketingPanel>
     );
   }
 
@@ -399,10 +406,9 @@ function RetailerPurchaseGroups({ groups }: { groups: RetailerPurchaseGroup[] })
     <section className="mt-12 print:mt-8">
       <div className="grid gap-8 lg:grid-cols-[360px_minmax(0,1fr)] print:block">
         <div>
-          <p className="font-body text-caption font-medium uppercase text-ink-muted">
-            Shopping List
-          </p>
-          <h2 className="mt-4 font-display text-display-s font-light italic text-ink">
+          <SectionEyebrow>Shopping List</SectionEyebrow>
+          <DecorativeRule className="mt-5" />
+          <h2 className="mt-6 max-w-[420px] font-display text-display-s font-light tracking-[-0.015em] text-ink">
             Purchase by retailer.
           </h2>
         </div>
@@ -415,13 +421,18 @@ function RetailerPurchaseGroups({ groups }: { groups: RetailerPurchaseGroup[] })
 
       <div className="mt-8 grid gap-6">
         {groups.map((group) => (
-          <article className="border border-line bg-page" key={group.name}>
+          <MarketingPanel
+            as="article"
+            tone="paper"
+            className="overflow-hidden print:shadow-none"
+            key={group.name}
+          >
             <div className="grid gap-4 border-b border-line p-5 md:grid-cols-[minmax(0,1fr)_220px] md:items-start">
               <div>
                 <p className="font-body text-caption font-medium uppercase tracking-[0.32em] text-ink-muted">
                   {group.itemCount} item{group.itemCount === 1 ? "" : "s"}
                 </p>
-                <h3 className="mt-3 font-display text-display-xs font-light italic text-ink">
+                <h3 className="mt-3 font-display text-display-xs font-light tracking-[-0.01em] text-ink">
                   {group.name}
                 </h3>
                 <p className="mt-3 font-body text-body-s text-ink-secondary">
@@ -432,7 +443,7 @@ function RetailerPurchaseGroups({ groups }: { groups: RetailerPurchaseGroup[] })
                 <p className="font-body text-caption font-medium uppercase tracking-[0.32em] text-ink-muted">
                   Retailer subtotal
                 </p>
-                <p className="mt-3 font-display text-display-xs font-light italic text-ink">
+                <p className="mt-3 font-display text-display-xs font-light tracking-[-0.01em] text-ink">
                   {formatAed(group.subtotalAed)}
                 </p>
                 {group.domain ? (
@@ -467,7 +478,7 @@ function RetailerPurchaseGroups({ groups }: { groups: RetailerPurchaseGroup[] })
                     ) : null}
                   </div>
                   <div>
-                    <p className="font-display text-body-l font-light italic leading-snug text-ink">
+                    <p className="font-body text-body-l text-ink">
                       {item.name}
                     </p>
                     <p className="mt-2 font-body text-body-s text-ink-secondary">
@@ -489,7 +500,7 @@ function RetailerPurchaseGroups({ groups }: { groups: RetailerPurchaseGroup[] })
                   <div className="md:text-right print:hidden">
                     {item.retailerUrl ? (
                       <a
-                        className="font-display text-button-quiet italic text-ink transition-colors duration-micro ease-standard hover:text-accent-deep"
+                        className="font-body text-body-s text-ink-muted transition-colors duration-micro ease-standard hover:text-accent-deep"
                         href={item.retailerUrl}
                         rel="noreferrer"
                         target="_blank"
@@ -505,7 +516,7 @@ function RetailerPurchaseGroups({ groups }: { groups: RetailerPurchaseGroup[] })
                 </article>
               ))}
             </div>
-          </article>
+          </MarketingPanel>
         ))}
       </div>
     </section>
