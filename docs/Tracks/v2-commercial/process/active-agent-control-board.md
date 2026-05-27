@@ -109,15 +109,15 @@ Docs-only, test-only, domain-only, and dry-run-only work may proceed only when t
 ### Ticket PM-001
 
 Owner: Product Matching Agent
-Status: BLOCKED
-Branch: none
-Allowed scope: Docs/artifacts/mailbox-only synthesis from the merged PM-001 local/dev evidence and coffee-table quality fix. No further Product Matching execution is allowed without a new explicit Sam/Chief boundary.
+Status: REVIEW_REQUESTED
+Branch: codex/product-match-narrative-readiness
+Allowed scope: Docs/artifacts/mailbox-only narrative-readiness synthesis from the merged PM-001 local/dev evidence and coffee-table quality fix. No further Product Matching execution is allowed without a new explicit Sam/Chief boundary.
 Forbidden scope: No production deploy, production flags, broad allowlist expansion, live catalog writes, DB/schema/generated type changes, payment/checkout/UI changes, Catalog-First runtime coupling, default-on activation, production rollout, Product Matching execution outside the approved local/dev current test boundary, app actions, draft shopping-list/catalog writes outside the existing successful local sourcing path, broad scoring rewrites, or quality changes unrelated to the coffee-table required-role blocker.
-Expected next artifact: Chief/Sam decision on whether the passing PM-001 coffee-table fix/retest is sufficient for narrative-only reuse, or whether to route another exact docs/domain/local-dev boundary.
-SLA: Stay parked until Chief/Sam routes the next explicit action.
-Last architect instruction: PR #204 merged and documented the approved PM-001 local/dev Product Matching V1 preview. The preview completed without forbidden writes/deploys, but QA stop rules did not pass because required role `coffee table` returned `closest_available`. Route a narrow quality-fix investigation/PR for that blocker only; keep all production, write, schema, UI, Catalog-First, and broad scoring gates closed.
-Agent ack: Product Matching Agent completed the narrow coffee-table fix and PR #207 merged it. Focused domain tests passed, and the one approved local/dev retest persisted `ai_jobs` row `182e8d5b-2386-4f1a-a139-5d905e67d2fe`.
-Current PR: none; #209 merged (<https://github.com/Trueflutter/ritzy-studio/pull/209>)
+Expected next artifact: Chief/Sam review of the PM-001 narrative-readiness package and its recommended next exact execution boundary.
+SLA: Review requested on the docs-only PR; no execution while awaiting review.
+Last architect instruction: Approved next boundary for PM-001 is narrative-readiness and next-step recommendation only. Use merged PM-001 evidence from PR #204, PR #207, and this control board; do not run Product Matching again, invoke app actions, write shopping-list/catalog rows, expand allowlists, change runtime config, schema/types, UI, prompts, production flags, or Catalog-First coupling.
+Agent ack: Product Matching Agent opened the docs-only narrative-readiness branch and summarized what is safe to claim, what remains blocked, and the exact recommended future execution boundary.
+Current PR: #212 (<https://github.com/Trueflutter/ritzy-studio/pull/212>)
 Blocker: PR #207 merged and the retest passed QA stop rules with 0 blockers, moving required coffee-table from `closest_available` to `acceptable_match`; Product Matching remains blocked pending Chief/Sam decision before customer-facing reuse, further execution, app actions, shopping-list/catalog writes, production deploy/flags, broad allowlist expansion, DB/schema/generated type changes, UI/payment/checkout changes, broad scoring rewrites, unrelated quality changes, or Catalog-First runtime coupling.
 
 ### Ticket MI-001
