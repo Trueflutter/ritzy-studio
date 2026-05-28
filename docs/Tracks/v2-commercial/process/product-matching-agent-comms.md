@@ -1,7 +1,7 @@
 # Product Matching Engine Agent Comms
 
 ## Current PR
-PR #228 (<https://github.com/Trueflutter/ritzy-studio/pull/228>) on branch `codex/product-match-post-227-hygiene`. This is docs/mailbox-only after PR #227 merged.
+No open PM-001 PR. PR #228 merged into `main` at `cc1e9916aa32c691033c1b87de9979fabaa3c19f`.
 
 ## Current stage
 DUAL_TRACK:
@@ -66,6 +66,8 @@ ARCHITECT_NOTE: PR #160 completed the docs-only controlled-preview execution-bou
 Hard stop: no controlled-preview configuration/execution, app actions, runtime allowlist expansion, draft shopping-list/catalog writes, live catalog writes, DB/schema/generated types, runtime/env default changes, runtime/UI/prompt/payment/checkout changes, production flags/deploys, default-on activation, production rollout, selection/scoring changes, or Catalog-First runtime coupling without explicit Sam/Chief approval.
 
 ## Last action taken
+PR #228 merged the docs/mailbox-only PM-001 post-#227 stale-pointer cleanup. No Product Matching execution, controlled preview, preview QA, app action, draft shopping-list row create/refresh, catalogue write, DB/schema/generated type change, live write, UI/prompt/payment/checkout change, production flag/deploy, broad/runtime allowlist expansion, default-on activation, production rollout, broad scoring rewrite, prompt/runtime/image-generation behavior change, code implementation, unrelated quality change, floor-plan work, or Catalog-First runtime coupling was performed.
+
 PR #227 merged the docs/mailbox-only PM-001 post-#226 handoff. No Product Matching execution, controlled preview, preview QA, app action, draft shopping-list row create/refresh, catalogue write, DB/schema/generated type change, live write, UI/prompt/payment/checkout change, production flag/deploy, broad/runtime allowlist expansion, default-on activation, production rollout, broad scoring rewrite, prompt/runtime/image-generation behavior change, code implementation, unrelated quality change, floor-plan work, or Catalog-First runtime coupling was performed.
 
 PR #226 merged the local/dev PM-001 SKU-fidelity/support-role improvement after approval at head `bef303aa2e298bc5f6c1541c74d353a773`. No production deploys/flags, live catalogue writes/ingestion, schema/generated type changes, payment/checkout changes, floor-plan work, Catalog-First runtime coupling, controlled-preview expansion, production activation, runtime allowlist expansion, or catalogue/product row mutations were performed.
