@@ -1,7 +1,7 @@
 # Product Matching Engine Agent Comms
 
 ## Current PR
-No open PM-001 implementation PR. Product Matching Agent acknowledged the post-#240/#241 stale-recovery route on 2026-05-29 with branch `codex/pm-001-validation-20260529` and is preparing the single approved bounded local/dev validation pass.
+PR #242 (<https://github.com/Trueflutter/ritzy-studio/pull/242>) is open and ready for review. It is a docs/evidence-only PM-001 validation PR on branch `codex/pm-001-validation-20260529`.
 
 ## Current stage
 DUAL_TRACK:
