@@ -1,7 +1,11 @@
 # Product Matching Engine Agent Comms
 
 ## Current PR
-No open PM-001 PR. Product Matching Agent is routed for post-#232 local/dev validation and failure isolation.
+PR #235: <https://github.com/Trueflutter/ritzy-studio/pull/235>
+
+Branch: `codex/pm001-post-232-validation`
+
+Scope: docs/evidence-only PM-001 post-#232 local/dev validation and failure isolation. It records selected SKUs, repeated-sofa behavior, missing role analysis, render/list fidelity limits, recommendation similarity, visual-sourcing timeout evidence, and the next narrow code boundary recommendation.
 
 ## Current stage
 DUAL_TRACK:
@@ -74,6 +78,8 @@ ARCHITECT_NOTE: PR #160 completed the docs-only controlled-preview execution-bou
 Hard stop: no controlled-preview configuration/execution, app actions, runtime allowlist expansion, draft shopping-list/catalog writes, live catalog writes, DB/schema/generated types, runtime/env default changes, runtime/UI/prompt/payment/checkout changes, production flags/deploys, default-on activation, production rollout, selection/scoring changes, or Catalog-First runtime coupling without explicit Sam/Chief approval.
 
 ## Last action taken
+PR #235 opened the PM-001 post-#232 validation note after Product Matching Agent acknowledged the PR #234 route. Evidence came from merged PR notes, existing local validation artifacts, and read-only local/dev Supabase row inspection for project `4207ade6-2604-4e15-9b05-ffa77531d3d2`, room `75e18e73-cf69-4b2e-b192-009fbc135b38`, jobs `515c8a09-ec4c-4cc2-be00-47f348f5e6c3`, `5473e873-ca82-44ad-a0e1-3ae6981e47f8`, and `34d6c3d2-c6c8-45f8-9f61-f31119dc1cd5`. The validation finds improved persisted support-role selections, repeatable visual-sourcing timeout fallback, missing curtains/textiles, remaining required-role QA blockers, intermittent repeated sofa-family regression, and an audit gap where `ai_jobs.output_summary.roleStatuses` can differ from persisted shopping-list rows after post-processing. No fresh Product Matching run, browser-click app action, shopping-list refresh, catalogue write, catalogue ingestion, schema/type change, production flag, deploy, allowlist change, prompt/runtime behavior change, payment/checkout change, floor-plan work, broad scoring rewrite, or Catalog-First coupling was performed.
+
 PR #232 merged the deterministic local/dev PM-001 refresh-history diversity and soft-neutral support-role filtering slice after approval. The merged evidence demonstrates refresh history can move selection to a credible same-role alternative when available and that selected support rows no longer include the black/off-theme vase/mirror in the validated local/dev path. No further execution or rollout is approved by the merge.
 
 PR #230 merged the PM-001 support-role quality and visual-sourcing timeout-diagnosis slice after approval. The merged evidence records cleaner support-role alternatives for the current demo catalogue readback and documents missing curtains/textiles rather than faking them. No further execution or rollout is approved by the merge.

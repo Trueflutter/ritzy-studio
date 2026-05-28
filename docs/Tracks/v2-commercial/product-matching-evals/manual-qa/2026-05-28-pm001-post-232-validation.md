@@ -84,7 +84,7 @@ The latest three product visual sourcing jobs for room `75e18e73-cf69-4b2e-b192-
 
 The timeout diagnostic metadata added by PR #230 is working: each latest row records `productSourcingTimeoutDiagnostics` with `timedOut: true`, `fallbackUsed: true`, `conceptImageDetail: "low"`, `candidateImageLimit: 0`, and `productCandidateImagesEnabled: false`.
 
-This isolates the current visual-sourcing issue from product-image preflight: candidate product images are not being sent (`candidateImageLimit: 0`), so the timeout is occurring on concept-image plus structured candidate context rather than a large product-image payload.
+This isolates the current visual-sourcing issue from product-image preflight: candidate product images are not being sent (`candidateImageLimit: 0`), so candidate-image payload size is not the current cause. Remaining suspects are concept-image processing, structured candidate context, model latency, or the 45 second timeout cap.
 
 ### 2. Repeated Hero SKU Selection
 
