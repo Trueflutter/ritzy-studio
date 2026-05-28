@@ -1743,9 +1743,11 @@ export async function generateFinalGroundedRender(
   const client = new OpenAI({ apiKey: env.OPENAI_API_KEY });
   const useFinalRenderPromptV2 = env.RITZY_FINAL_RENDER_PROMPT_V2_ENABLED;
   const hasConceptImage = Boolean(input.conceptImageBytes && input.conceptImageMimeType);
+  const maxProductReferences =
+    process.env.RITZY_AESTHETIC_TASTE_GATE === "1" && process.env.NODE_ENV !== "production" ? 12 : 8;
   const productReferences = input.products
     .filter((product) => product.imageBytes && product.imageMimeType)
-    .slice(0, 8)
+    .slice(0, maxProductReferences)
     .map((product, index) => ({
       bytes: product.imageBytes as Buffer,
       mimeType: product.imageMimeType as string,

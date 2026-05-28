@@ -1485,6 +1485,66 @@ export function assessAestheticFitForRole({
     }
   }
 
+  if (role.category === "sofas") {
+    const roleText = normalizePhraseText(`${role.category} ${role.label} ${role.visualBrief ?? ""}`);
+    const explicitSectionalRequest =
+      roleText.includes("chaise") ||
+      roleText.includes("corner") ||
+      roleText.includes("sectional") ||
+      roleText.includes("modular") ||
+      roleText.includes("l shaped") ||
+      roleText.includes("l-shaped") ||
+      conceptText.toLowerCase().includes("sectional") ||
+      conceptText.toLowerCase().includes("l-shaped");
+    const generousAnchorRequest = hasAnyToken(roomTokens, ["family", "five", "generous", "large", "lounge", "spacious"]);
+    const largestHorizontalDimension =
+      candidate.dimensions?.widthCm || candidate.dimensions?.depthCm
+        ? Math.max(candidate.dimensions?.widthCm ?? 0, candidate.dimensions?.depthCm ?? 0)
+        : null;
+    const shortSofa =
+      hasAnyToken(candidateTokens, ["loveseat", "single"]) ||
+      /(?:1|2|one|two)[-\s.]*seater/i.test(candidate.name) ||
+      (largestHorizontalDimension !== null && largestHorizontalDimension < (generousAnchorRequest ? 210 : 185));
+    const sectionalSofa = hasAnyToken(candidateTokens, ["chaise", "corner", "left", "right", "sectional", "modular"]);
+    const utilitySofa =
+      hasAnyToken(candidateTokens, ["office", "outdoor", "recliner"]) ||
+      /sofa\s*bed|sofabed|pull[-\s]?out/i.test(candidate.name);
+
+    if (shortSofa && generousAnchorRequest) {
+      scoreAdjustment -= 220;
+      unsuitableHero = true;
+      weaknessReasons.push("short sofa cannot satisfy a generous family anchor-seating role");
+    }
+
+    if (sectionalSofa && !explicitSectionalRequest) {
+      scoreAdjustment -= 190;
+      unsuitableHero = true;
+      weaknessReasons.push("sectional or corner sofa was not requested for this straight-sofa living-room composition");
+    }
+
+    if (quietLivingRoom && hasAnyToken(candidateTokens, ["black", "blue", "orange", "red", "yellow"])) {
+      scoreAdjustment -= 150;
+      unsuitableHero = true;
+      weaknessReasons.push("sofa colour conflicts with the soft neutral living-room palette");
+    }
+
+    if (utilitySofa && quietLivingRoom) {
+      scoreAdjustment -= 120;
+      weaknessReasons.push("utility sofa language is weak for a refined living-room anchor");
+    }
+
+    if (
+      quietLivingRoom &&
+      hasAnyToken(candidateTokens, ["beige", "boucle", "cream", "ecru", "fabric", "greige", "ivory", "linen", "oatmeal", "sand", "taupe", "white"]) &&
+      largestHorizontalDimension !== null &&
+      largestHorizontalDimension >= 210 &&
+      !sectionalSofa
+    ) {
+      scoreAdjustment += 90;
+      reasons.push("neutral full-size fabric sofa supports the soft living-room anchor role");
+    }
+  }
+
   if (role.category === "coffee_tables") {
     const pairedWithPatternedRug = companionCandidates.some(
       (companion) => companion.categoryNormalized === "rugs" && productVisualNoise(companion) !== "quiet"

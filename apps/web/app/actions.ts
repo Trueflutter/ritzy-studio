@@ -88,6 +88,8 @@ const CATALOGUE_GROUNDED_CONCEPT_USER_SAFE_BLOCK_MESSAGE =
   "We need a little more catalogue evidence before building this room direction. Try broadening the style or colour notes, then generate again.";
 const CATALOGUE_GROUNDED_CONCEPT_REFERENCE_IMAGE_BLOCK_MESSAGE =
   "We found catalogue pieces for this room, but their reference images are not ready yet. Try again in a moment.";
+const LOCAL_SKU_FIDELITY_CANDIDATES_PER_ROLE = 18;
+const LOCAL_SKU_FIDELITY_RENDER_REFERENCE_LIMIT = 12;
 
 function productReferenceOrderingV2Enabled() {
   return process.env.RITZY_PRODUCT_REFERENCE_ORDERING_V2_ENABLED === "true";
@@ -101,12 +103,14 @@ function productMatchingEngineV1EnabledForRequest({
   projectId,
   roomId,
   userId,
-  userEmail
+  userEmail,
+  roomType
 }: {
   projectId: string;
   roomId: string;
   userId: string;
   userEmail?: string | null;
+  roomType: string;
 }) {
   const engineFlagEnabled = productMatchingEngineV1Enabled();
   const previewGate = productMatchingControlledPreviewGate({
@@ -118,7 +122,9 @@ function productMatchingEngineV1EnabledForRequest({
   });
 
   return {
-    enabled: engineFlagEnabled && (!previewGate.configured || previewGate.allowed),
+    enabled:
+      (engineFlagEnabled && (!previewGate.configured || previewGate.allowed)) ||
+      localSkuFidelityModeEnabled(roomType),
     gate: previewGate
   };
 }
@@ -1972,6 +1978,16 @@ export async function groundProductsAction(formData: FormData) {
     .limit(1)
     .maybeSingle();
 
+  const baseConceptText = `${concept.title}\n${concept.description ?? ""}`;
+  const blueprintRoles: RoomProductRoleSpec[] = enhancedProductRolesForRoom(room.room_type).map((role) => ({
+    category: role.category,
+    label: role.label,
+    visualBrief: role.visualBrief ?? null,
+    quantity: role.quantity,
+    priority: role.required ? "required" : "supporting"
+  }));
+  const localSkuFidelityMode = localSkuFidelityModeEnabled(room.room_type);
+
   const { data: products = [], error: productsError } = await serviceSupabase
     .from("products")
     .select(
@@ -1993,6 +2009,14 @@ export async function groundProductsAction(formData: FormData) {
   const candidates = (products ?? [])
     .map(productToMatchCandidate)
     .filter((candidate): candidate is ProductMatchCandidate => Boolean(candidate));
+  const localRoleWindowCandidates = localSkuFidelityMode
+    ? await fetchLocalSkuFidelityRoleWindowCandidates({
+        serviceSupabase,
+        roomType: room.room_type,
+        roles: blueprintRoles,
+        conceptText: baseConceptText
+      })
+    : [];
 
   if (candidates.length === 0) {
     const message = catalogUnavailableMessage(products ?? []);
@@ -2016,9 +2040,11 @@ export async function groundProductsAction(formData: FormData) {
   const catalogueAnchorCandidates = catalogueAnchorProducts
     .map(productToMatchCandidate)
     .filter((candidate): candidate is ProductMatchCandidate => Boolean(candidate));
-  const matchingCandidates = mergeProductMatchCandidates(candidates, catalogueAnchorCandidates);
+  const matchingCandidates = mergeProductMatchCandidates(
+    mergeProductMatchCandidates(candidates, localRoleWindowCandidates),
+    catalogueAnchorCandidates
+  );
 
-  const baseConceptText = `${concept.title}\n${concept.description ?? ""}`;
   const conceptImageAsset = Array.isArray(concept.primary_image_asset)
     ? concept.primary_image_asset[0]
     : concept.primary_image_asset;
@@ -2027,13 +2053,6 @@ export async function groundProductsAction(formData: FormData) {
         .from("generated-renders")
         .createSignedUrl(conceptImageAsset.storage_path, 60 * 30)
     : { data: null };
-  const blueprintRoles: RoomProductRoleSpec[] = enhancedProductRolesForRoom(room.room_type).map((role) => ({
-    category: role.category,
-    label: role.label,
-    visualBrief: role.visualBrief ?? null,
-    quantity: role.quantity,
-    priority: role.required ? "required" : "supporting"
-  }));
   if (!conceptSignedImage?.signedUrl) {
     redirect(
       `${redirectPath}?message=${encodeURIComponent(
@@ -2046,9 +2065,14 @@ export async function groundProductsAction(formData: FormData) {
     projectId,
     roomId,
     userId: user.id,
-    userEmail: user.email
+    userEmail: user.email,
+    roomType: room.room_type
   });
   const productMatchingEngineEnabled = productMatchingPreview.enabled;
+  const candidatesPerRole = localSkuFidelityMode ? LOCAL_SKU_FIDELITY_CANDIDATES_PER_ROLE : 6;
+  const flatCandidateLimit = localSkuFidelityMode
+    ? Math.max(72, blueprintRoles.length * candidatesPerRole)
+    : 36;
   const sourcingPlan = buildProductSourcingRuntimePlan({
     engineEnabled: productMatchingEngineEnabled,
     roomType: room.room_type,
@@ -2062,11 +2086,17 @@ export async function groundProductsAction(formData: FormData) {
           roomDepthCm: measurements.room_depth_cm
         }
       : null,
-    candidatesPerRole: 6,
-    flatCandidateLimit: 36
+    candidatesPerRole,
+    flatCandidateLimit
   });
-  const sourcingPools = sourcingPlan.roleScopedPools;
-  const sourcingCandidates = sourcingPlan.candidates;
+  const sourcingPools = localSkuFidelityMode
+    ? sourcingPlan.roleScopedPools.map((pool) =>
+        rerankRolePoolForAestheticFit(pool, room.room_type, baseConceptText)
+      )
+    : sourcingPlan.roleScopedPools;
+  const sourcingCandidates = localSkuFidelityMode
+    ? roleScopedCandidatesForLocalSkuFidelityPlan(sourcingPools, flatCandidateLimit)
+    : sourcingPlan.candidates;
   const legacyRequiredRoles: RoomProductRoleSpec[] = productRolesForRoom(room.room_type)
     .filter((role) => role.required)
     .map((role) => ({
@@ -2115,6 +2145,7 @@ export async function groundProductsAction(formData: FormData) {
         roomId,
         conceptId: concept.id,
         productMatchingEngineEnabled,
+        localSkuFidelityMode,
         productMatchingPreviewGate: {
           configured: productMatchingPreview.gate.configured,
           enabled: productMatchingPreview.gate.enabled,
@@ -2154,6 +2185,7 @@ export async function groundProductsAction(formData: FormData) {
         error_message: "Product visual sourcing did not have enough AI-usable product images.",
         output_summary: {
           productMatchingEngineEnabled,
+          localSkuFidelityMode,
           productSourcingAiPayload: productSourcingAiPayloadSummary(),
           productImagePreflight: initialImagePreflight.summary,
           productImagePreflightGate: initialImageGate,
@@ -2200,6 +2232,7 @@ export async function groundProductsAction(formData: FormData) {
           missingRoleCount: sourcingResult.missingRoles.length,
           missingRoles: sourcingResult.missingRoles,
           productMatchingEngineEnabled,
+          localSkuFidelityMode,
           productSourcingAiPayload: productSourcingAiPayloadSummary(),
           productSourcingTextFallbackUsed,
           productSourcingTextFallbackReason,
@@ -2247,6 +2280,7 @@ export async function groundProductsAction(formData: FormData) {
               missingRoleCount: sourcingResult.missingRoles.length,
               missingRoles: sourcingResult.missingRoles,
               productMatchingEngineEnabled,
+              localSkuFidelityMode,
               productSourcingAiPayload: productSourcingAiPayloadSummary(),
               productSourcingTimedOut,
               productSourcingTextFallbackUsed,
@@ -2275,6 +2309,7 @@ export async function groundProductsAction(formData: FormData) {
             error_message: "Product visual sourcing timed out and text fallback found no usable products.",
             output_summary: {
               productMatchingEngineEnabled,
+              localSkuFidelityMode,
               productSourcingAiPayload: productSourcingAiPayloadSummary(),
               productImagePreflight: initialImagePreflight.summary,
               productImagePreflightGate: initialImageGate,
@@ -2297,6 +2332,7 @@ export async function groundProductsAction(formData: FormData) {
           error_message: error instanceof Error ? error.message : "Product visual sourcing failed.",
           output_summary: {
             productMatchingEngineEnabled,
+            localSkuFidelityMode,
             productSourcingAiPayload: productSourcingAiPayloadSummary(),
             productImagePreflight: initialImagePreflight.summary,
             productImagePreflightGate: initialImageGate,
@@ -2326,7 +2362,31 @@ export async function groundProductsAction(formData: FormData) {
       (need) => `${need.roleLabel}: ${need.visualBrief}`
     ) ?? [])
   ].join("\n");
-  const visualRanked = rankProductMatches({
+  let visualMissingRoleCategories = new Set(
+    sourcingResult.missingRoles.map((role) => normalizeSourcingCategory(role, role))
+  );
+  // The AI's read of the concept defines the room's roles; fall back to the
+  // static room roles, and append any required static role the AI didn't name.
+  const aiRoles: RoomProductRoleSpec[] = sourcingResult.needs.map((need) => ({
+    category: normalizeSourcingCategory(need.category, need.roleLabel),
+    label: need.roleLabel,
+    visualBrief: need.visualBrief,
+    quantity: Math.max(1, need.quantity),
+    priority: need.priority === "required" ? "required" : "supporting"
+  }));
+  const usableAiRoles = aiRoles.filter((role) => !visualMissingRoleCategories.has(role.category));
+  const aiRoleCategories = new Set(usableAiRoles.map((role) => role.category));
+  const roles =
+    usableAiRoles.length > 0
+      ? [
+          ...usableAiRoles,
+          ...staticRoles.filter(
+            (role) => !aiRoleCategories.has(role.category) && !visualMissingRoleCategories.has(role.category)
+          )
+        ]
+      : staticRoles.filter((role) => !visualMissingRoleCategories.has(role.category));
+
+  const baseVisualRanked = rankProductMatches({
     roomType: room.room_type,
     conceptText: visualConceptText,
     budgetMaxAed: project.budget_max_aed,
@@ -2338,9 +2398,20 @@ export async function groundProductsAction(formData: FormData) {
       : null,
     candidates: matchingCandidates
   });
-  let visualMissingRoleCategories = new Set(
-    sourcingResult.missingRoles.map((role) => normalizeSourcingCategory(role, role))
-  );
+  const visualRanked = localSkuFidelityMode
+    ? rankMatchesForLocalSkuFidelity({
+        ranked: baseVisualRanked,
+        roles,
+        roomType: room.room_type,
+        conceptText: visualConceptText,
+        roomMeasurements: measurements
+          ? {
+              wallLengthCm: measurements.wall_length_cm,
+              roomDepthCm: measurements.room_depth_cm
+            }
+          : null
+      })
+    : baseVisualRanked;
   let missingRequiredVisualRoles = staticRoles.filter(
     (role) => role.priority === "required" && visualMissingRoleCategories.has(role.category)
   );
@@ -2364,8 +2435,10 @@ export async function groundProductsAction(formData: FormData) {
             roomDepthCm: measurements.room_depth_cm
           }
         : null,
-      candidatesPerRole: 8,
-      flatCandidateLimit: 36
+      candidatesPerRole: localSkuFidelityMode ? LOCAL_SKU_FIDELITY_CANDIDATES_PER_ROLE : 8,
+      flatCandidateLimit: localSkuFidelityMode
+        ? Math.max(72, retryRoles.length * LOCAL_SKU_FIDELITY_CANDIDATES_PER_ROLE)
+        : 36
     });
     const retryPools = retryPlan.roleScopedPools;
     const retryCandidates = retryPlan.candidates;
@@ -2433,6 +2506,7 @@ export async function groundProductsAction(formData: FormData) {
             missingRoleCount: sourcingResult.missingRoles.length,
             missingRoles: sourcingResult.missingRoles,
             productMatchingEngineEnabled,
+            localSkuFidelityMode,
             productSourcingAiPayload: productSourcingAiPayloadSummary(),
             productSourcingTextFallbackUsed,
             productSourcingTextFallbackReason,
@@ -2473,6 +2547,7 @@ export async function groundProductsAction(formData: FormData) {
           missingRoleCount: sourcingResult.missingRoles.length,
           missingRoles: sourcingResult.missingRoles,
           productMatchingEngineEnabled,
+          localSkuFidelityMode,
           productSourcingAiPayload: productSourcingAiPayloadSummary(),
           productSourcingTextFallbackUsed,
           productSourcingTextFallbackReason,
@@ -2522,42 +2597,28 @@ export async function groundProductsAction(formData: FormData) {
       )
     : new Map<string, (typeof sourcingResult.roleResults)[number]>();
 
-  // The AI's read of the concept defines the room's roles; fall back to the
-  // static room roles, and append any required static role the AI didn't name.
-  const aiRoles: RoomProductRoleSpec[] = sourcingResult.needs.map((need) => ({
-    category: normalizeSourcingCategory(need.category, need.roleLabel),
-    label: need.roleLabel,
-    visualBrief: need.visualBrief,
-    quantity: Math.max(1, need.quantity),
-    priority: need.priority === "required" ? "required" : "supporting"
-  }));
-
-  const usableAiRoles = aiRoles.filter((role) => !visualMissingRoleCategories.has(role.category));
-  const aiRoleCategories = new Set(usableAiRoles.map((role) => role.category));
-  const roles =
-    usableAiRoles.length > 0
-      ? [
-          ...usableAiRoles,
-          ...staticRoles.filter(
-            (role) => !aiRoleCategories.has(role.category) && !visualMissingRoleCategories.has(role.category)
-          )
-        ]
-      : staticRoles.filter((role) => !visualMissingRoleCategories.has(role.category));
-
   const visualRankedById = new Map(visualRanked.map((match) => [match.id, match]));
-  const roleOptions = polishRoleOptionsForAestheticDemo({
-    roleOptions: composeRoomProductOptions({
+  const optionsPerRole = localSkuFidelityMode ? LOCAL_SKU_FIDELITY_CANDIDATES_PER_ROLE : 6;
+  const roleOptions = ensureLocalSkuFidelitySupportOptions({
+    roleOptions: polishRoleOptionsForAestheticDemo({
+      roleOptions: composeRoomProductOptions({
+        ranked: visualRanked,
+        roles,
+        // Store a reserve beyond the three shown, so rejecting an option reveals a
+        // replacement instantly with no catalog round-trip.
+        optionsPerRole
+      }),
       ranked: visualRanked,
-      roles,
-      // Store a reserve beyond the three shown, so rejecting an option reveals a
-      // replacement instantly with no catalog round-trip.
+      rankedById: visualRankedById,
+      catalogueGroundingAnchors,
+      conceptText: visualConceptText,
+      localSkuFidelityMode,
       optionsPerRole: 6
     }),
+    roles,
     ranked: visualRanked,
-    rankedById: visualRankedById,
-    catalogueGroundingAnchors,
     conceptText: visualConceptText,
-    optionsPerRole: 6
+    localSkuFidelityMode
   });
   const missingCatalogueAnchors = catalogueGroundingAnchors
     .filter((anchor) => anchor.priority === "required")
@@ -2567,7 +2628,7 @@ export async function groundProductsAction(formData: FormData) {
       return !role?.options.some((option) => option.id === anchor.productId);
     });
 
-  if (missingCatalogueAnchors.length > 0) {
+  if (missingCatalogueAnchors.length > 0 && !localSkuFidelityMode) {
     const missingAnchorLabels = missingCatalogueAnchors.map((anchor) => anchor.roleLabel || anchor.category);
     const { data: currentSourcingJob } = await serviceSupabase
       .from("ai_jobs")
@@ -2592,6 +2653,7 @@ export async function groundProductsAction(formData: FormData) {
           missingRoleCount: sourcingResult.missingRoles.length,
           missingRoles: sourcingResult.missingRoles,
           productMatchingEngineEnabled,
+          localSkuFidelityMode,
           productSourcingAiPayload: productSourcingAiPayloadSummary(),
           productSourcingTextFallbackUsed,
           productSourcingTextFallbackReason,
@@ -2632,6 +2694,34 @@ export async function groundProductsAction(formData: FormData) {
       )}`
     );
   }
+  if (missingCatalogueAnchors.length > 0 && localSkuFidelityMode) {
+    const { data: currentSourcingJob } = await serviceSupabase
+      .from("ai_jobs")
+      .select("output_summary")
+      .eq("id", sourcingJob.id)
+      .maybeSingle();
+    const currentSourcingSummary = isRecord(currentSourcingJob?.output_summary)
+      ? currentSourcingJob.output_summary
+      : {};
+
+    await serviceSupabase
+      .from("ai_jobs")
+      .update({
+        output_summary: {
+          ...currentSourcingSummary,
+          catalogueAnchorDivergence: {
+            localReplacementAllowed: true,
+            missingRequiredAnchorCount: missingCatalogueAnchors.length,
+            missingRequiredAnchors: missingCatalogueAnchors.map((anchor) => ({
+              category: normalizeSourcingCategory(anchor.category, anchor.roleLabel),
+              roleLabel: anchor.roleLabel,
+              productId: anchor.productId
+            }))
+          }
+        }
+      })
+      .eq("id", sourcingJob.id);
+  }
 
   const coveredCategories = new Set(roleOptions.map((role) => role.category));
   const missingRequiredRoles = roles
@@ -2639,6 +2729,29 @@ export async function groundProductsAction(formData: FormData) {
     .map((role) => role.label);
 
   if (missingRequiredRoles.length > 0) {
+    const { data: currentSourcingJob } = await serviceSupabase
+      .from("ai_jobs")
+      .select("output_summary")
+      .eq("id", sourcingJob.id)
+      .maybeSingle();
+    const currentSourcingSummary = isRecord(currentSourcingJob?.output_summary)
+      ? currentSourcingJob.output_summary
+      : {};
+
+    await serviceSupabase
+      .from("ai_jobs")
+      .update({
+        status: "failed",
+        completed_at: new Date().toISOString(),
+        error_message: `Required product roles were missing from product options: ${missingRequiredRoles.join(", ")}.`,
+        output_summary: {
+          ...currentSourcingSummary,
+          missingRequiredRoles,
+          usable: false
+        }
+      })
+      .eq("id", sourcingJob.id);
+
     redirect(
       `${redirectPath}?message=${encodeURIComponent(
         "We need one more catalogue pass before this shopping list is ready. Please try sourcing again."
@@ -2677,8 +2790,13 @@ export async function groundProductsAction(formData: FormData) {
   // one, fall back to the top-ranked option so every role starts chosen.
   const selectedProductIdByRole = new Map<string, string>();
   for (const role of roleOptions) {
+    if (localSkuFidelityMode && role.options[0]) {
+      selectedProductIdByRole.set(role.category, role.options[0].id);
+      continue;
+    }
+
     const catalogueAnchorId = catalogueAnchorIdsByCategory.get(role.category);
-    if (catalogueAnchorId && role.options.some((option) => option.id === catalogueAnchorId)) {
+    if (!localSkuFidelityMode && catalogueAnchorId && role.options.some((option) => option.id === catalogueAnchorId)) {
       selectedProductIdByRole.set(role.category, catalogueAnchorId);
       continue;
     }
@@ -2697,7 +2815,8 @@ export async function groundProductsAction(formData: FormData) {
       role,
       options: role.options,
       conceptText: visualConceptText,
-      currentPick: roleResultOption ?? aiPickOption
+      currentPick: roleResultOption ?? aiPickOption,
+      localSkuFidelityMode
     });
     if (themeAlignedPick && themeAlignedPick.id !== (roleResultOption ?? aiPickOption)?.id) {
       selectedProductIdByRole.set(role.category, themeAlignedPick.id);
@@ -2717,7 +2836,8 @@ export async function groundProductsAction(formData: FormData) {
           role,
           options: role.options,
           conceptText: visualConceptText,
-          currentPick: role.options[0]
+          currentPick: role.options[0],
+          localSkuFidelityMode
         }) ?? role.options[0];
       selectedProductIdByRole.set(role.category, fallbackPick.id);
     }
@@ -3440,6 +3560,20 @@ export async function generateFinalRenderAction(formData: FormData) {
     redirect(`${redirectPath}?message=${encodeURIComponent("Match products before final rendering.")}`);
   }
 
+  if (localSkuFidelityModeEnabled(room.room_type)) {
+    const missingRenderSupportRoles = missingLocalSkuFidelityRenderRoles({
+      roomType: room.room_type,
+      selectedCategories: selectedProducts.map((item) => item.category)
+    });
+    if (missingRenderSupportRoles.length > 0) {
+      redirect(
+        `${redirectPath}?message=${encodeURIComponent(
+          `Complete product sourcing before final rendering. Missing: ${missingRenderSupportRoles.join(", ")}.`
+        )}`
+      );
+    }
+  }
+
   const invalidProducts = selectedProducts.filter((item) => !productToMatchCandidate(item.product as ProductRow));
   if (invalidProducts.length > 0) {
     redirect(
@@ -3530,19 +3664,22 @@ export async function generateFinalRenderAction(formData: FormData) {
       const productReferencesForRender = productReferenceOrderingV2Enabled()
         ? sortProductsForRenderReferences(selectedProducts, room.room_type)
         : selectedProducts;
+      const renderReferenceLimit = localSkuFidelityModeEnabled(room.room_type)
+        ? LOCAL_SKU_FIDELITY_RENDER_REFERENCE_LIMIT
+        : 8;
       const productsForRender = await Promise.all(
-        productReferencesForRender.slice(0, 8).map(async (item) => {
+        productReferencesForRender.slice(0, renderReferenceLimit).map(async (item) => {
           const product = item.product!;
           const image = product.primary_image_url
             ? await fetchRemoteImage(product.primary_image_url)
             : null;
-          const dimensions = product.dimensions?.[0]?.source_text ?? null;
+          const dimensions = formatProductDimensionsForRender(product.dimensions?.[0] ?? null);
 
           return {
             name: product.name,
             retailerName: product.retailer?.name ?? "Retailer",
             category: item.category,
-            roleLabel: roleLabelFromSelectionReason(item.selection_reason) ?? item.category,
+            roleLabel: item.role_label ?? roleLabelFromSelectionReason(item.selection_reason) ?? item.category,
             visualMatchReason: item.selection_reason,
             description: product.description,
             priceAed: item.unit_price_aed,
@@ -4028,6 +4165,68 @@ async function fetchProductsById({
   return (products ?? []) as ProductRow[];
 }
 
+async function fetchLocalSkuFidelityRoleWindowCandidates({
+  serviceSupabase,
+  roomType,
+  roles,
+  conceptText
+}: {
+  serviceSupabase: ReturnType<typeof createServiceClient>;
+  roomType: string;
+  roles: RoomProductRoleSpec[];
+  conceptText: string;
+}) {
+  const productsById = new Map<string, ProductRow>();
+
+  for (const role of roles) {
+    const category = normalizeSourcingCategory(role.category, role.label);
+    const { data: categoryProducts = [], error } = await serviceSupabase
+      .from("products")
+      .select(
+        `
+        *,
+        retailer:retailers(name, status),
+        dimensions:product_dimensions(width_cm, depth_cm, height_cm, source_text)
+      `
+      )
+      .eq("category_normalized", category)
+      .not("price_aed", "is", null)
+      .not("primary_image_url", "is", null)
+      .order("last_checked_at", { ascending: false, nullsFirst: false })
+      .limit(250);
+
+    if (error) {
+      throw new Error(error.message);
+    }
+
+    const candidates = (categoryProducts ?? [])
+      .map(productToMatchCandidate)
+      .filter((candidate): candidate is ProductMatchCandidate => Boolean(candidate));
+    const ranked = rankMatchesForLocalSkuFidelity({
+      ranked: rankProductMatches({
+        roomType,
+        conceptText,
+        candidates
+      }),
+      roles: [role],
+      roomType,
+      conceptText,
+      roomMeasurements: null
+    });
+
+    for (const match of ranked.slice(0, 60)) {
+      const product = categoryProducts?.find((candidate) => candidate.id === match.id);
+      if (product) {
+        productsById.set(product.id, product as ProductRow);
+      }
+    }
+  }
+
+  return Array.from(productsById.values())
+    .map(productToMatchCandidate)
+    .filter((candidate): candidate is ProductMatchCandidate => Boolean(candidate));
+}
+
 async function buildCatalogueGroundedConceptPlan({
   serviceSupabase,
   roomType,
@@ -4082,7 +4281,7 @@ async function buildCatalogueGroundedConceptPlan({
   const conceptText = [cueText, designBrief.style_notes, designBrief.color_notes, designBrief.functional_requirements]
     .filter(Boolean)
     .join("\n");
-  const aestheticGateEnabled = localAestheticTasteGateEnabled();
+  const aestheticGateEnabled = localSkuFidelityModeEnabled(roomType);
   const plan = buildProductSourcingRuntimePlan({
     engineEnabled: true,
     roomType,
@@ -4269,6 +4468,14 @@ function localAestheticTasteGateEnabled() {
   return process.env.RITZY_AESTHETIC_TASTE_GATE === "1";
 }
 
+function localSkuFidelityModeEnabled(roomType: string) {
+  return (
+    localAestheticTasteGateEnabled() &&
+    process.env.NODE_ENV !== "production" &&
+    roomType.toLowerCase().includes("living")
+  );
+}
+
 function rerankRolePoolForAestheticFit(
   pool: RoleScopedCandidatePool,
   roomType: string,
@@ -4306,6 +4513,71 @@ function rerankRolePoolForAestheticFit(
       })
       .sort((left, right) => right.score - left.score)
   };
+}
+
+function roleScopedCandidatesForLocalSkuFidelityPlan(pools: RoleScopedCandidatePool[], limit: number) {
+  const selectedIds = new Set<string>();
+  const selected: RankedProductMatch[] = [];
+
+  for (const pool of pools) {
+    for (const candidate of pool.candidates) {
+      if (selectedIds.has(candidate.id)) {
+        continue;
+      }
+      selected.push(candidate);
+      selectedIds.add(candidate.id);
+    }
+  }
+
+  return selected.slice(0, limit);
+}
+
+function rankMatchesForLocalSkuFidelity({
+  ranked,
+  roles,
+  roomType,
+  conceptText,
+  roomMeasurements
+}: {
+  ranked: RankedProductMatch[];
+  roles: RoomProductRoleSpec[];
+  roomType: string;
+  conceptText: string;
+  roomMeasurements: {
+    wallLengthCm: number | null;
+    roomDepthCm: number | null;
+  } | null;
+}) {
+  const rolesByCategory = new Map(roles.map((role) => [normalizeSourcingCategory(role.category, role.label), role]));
+
+  return ranked
+    .map((match) => {
+      const category = match.categoryNormalized ?? "uncategorized";
+      const role = rolesByCategory.get(category);
+      if (!role) {
+        return match;
+      }
+
+      const assessment = assessAestheticFitForRole({
+        candidate: match,
+        role,
+        roomType,
+        conceptText
+      });
+      const localAdjustment = localSkuFidelityScoreAdjustment(match, role, conceptText, roomMeasurements);
+
+      return {
+        ...match,
+        score: Number((match.score + assessment.scoreAdjustment + localAdjustment.scoreAdjustment).toFixed(3)),
+        selectionReason: [
+          match.selectionReason,
+          ...assessment.reasons.map((reason) => `aesthetic fit: ${reason}`),
+          ...localAdjustment.reasons.map((reason) => `sku fidelity: ${reason}`)
+        ].join("; "),
+        warnings: [...match.warnings, ...assessment.weaknessReasons, ...localAdjustment.weaknessReasons]
+      };
+    })
+    .sort((left, right) => right.score - left.score);
 }
 
 async function refineSelectedCatalogueProductsForAestheticFit({
@@ -4710,12 +4982,14 @@ function bestThemeAlignedOptionForRole({
   role,
   options,
   conceptText,
-  currentPick
+  currentPick,
+  localSkuFidelityMode = false
 }: {
   role: RoleProductOptions;
   options: RankedProductMatch[];
   conceptText: string;
   currentPick: RankedProductMatch | undefined;
+  localSkuFidelityMode?: boolean;
 }) {
   if (options.length === 0 || !currentPick) {
     return null;
@@ -4725,17 +4999,17 @@ function bestThemeAlignedOptionForRole({
   const conflictingColors = catalogueConflictColors();
 
   const rankedOptions = [...options].sort((left, right) => {
-    const leftScore = themeAlignedOptionScore(left, role, preferredTokens, conflictingColors);
-    const rightScore = themeAlignedOptionScore(right, role, preferredTokens, conflictingColors);
+    const leftScore = themeAlignedOptionScore(left, role, preferredTokens, conflictingColors, localSkuFidelityMode);
+    const rightScore = themeAlignedOptionScore(right, role, preferredTokens, conflictingColors, localSkuFidelityMode);
     return rightScore - leftScore || right.score - left.score;
   });
   const bestOption = rankedOptions[0];
-  const currentScore = themeAlignedOptionScore(currentPick, role, preferredTokens, conflictingColors);
-  const bestScore = themeAlignedOptionScore(bestOption, role, preferredTokens, conflictingColors);
-  const currentHasColorClash = hasThemeColorClash(currentPick, preferredTokens, conflictingColors);
-  const bestHasColorClash = hasThemeColorClash(bestOption, preferredTokens, conflictingColors);
+  const currentScore = themeAlignedOptionScore(currentPick, role, preferredTokens, conflictingColors, localSkuFidelityMode);
+  const bestScore = themeAlignedOptionScore(bestOption, role, preferredTokens, conflictingColors, localSkuFidelityMode);
+  const currentHasColorClash = hasThemeColorClash(currentPick, preferredTokens, conflictingColors, conceptText);
+  const bestHasColorClash = hasThemeColorClash(bestOption, preferredTokens, conflictingColors, conceptText);
   const bestNonClashingOption = rankedOptions.find(
-    (option) => !hasThemeColorClash(option, preferredTokens, conflictingColors)
+    (option) => !hasThemeColorClash(option, preferredTokens, conflictingColors, conceptText)
   );
 
   if (currentHasColorClash && bestNonClashingOption) {
@@ -4752,6 +5026,10 @@ function preferredCatalogueTokens(conceptText: string) {
   return new Set(
     [
       "beige",
+      "black",
+      "blue",
+      "brown",
+      "cognac",
       "cream",
       "ivory",
       "grey",
@@ -4761,11 +5039,15 @@ function preferredCatalogueTokens(conceptText: string) {
       "bronze",
       "oak",
       "wood",
+      "orange",
+      "red",
       "sage",
       "green",
+      "taupe",
       "travertine",
       "stone",
-      "ceramic"
+      "ceramic",
+      "yellow"
     ].filter((token) => conceptTokens.has(token))
   );
 }
@@ -4778,7 +5060,8 @@ function themeAlignedOptionScore(
   option: RankedProductMatch,
   role: RoleProductOptions,
   preferredTokens: Set<string>,
-  conflictingColors: string[]
+  conflictingColors: string[],
+  localSkuFidelityMode = false
 ) {
   const haystack = catalogueCueTokens(
     [
@@ -4809,7 +5092,7 @@ function themeAlignedOptionScore(
 
   const roleText = `${role.category} ${role.label}`.toLowerCase();
 
-  if (!localAestheticTasteGateEnabled()) {
+  if (!localSkuFidelityMode) {
     if (role.category === "decor" && haystack.has("bench") && !roleText.includes("bench")) {
       score -= 45;
     }
@@ -4839,6 +5122,12 @@ function themeAlignedOptionScore(
   if (role.category === "wall_art") {
     if (hasAnyCatalogueCue(haystack, ["panel", "panels", "shelf", "shelves"])) {
       score -= 95;
+    }
+    if (
+      haystack.has("black") &&
+      ["beige", "cream", "greige", "ivory", "taupe", "white"].some((token) => preferredTokens.has(token))
+    ) {
+      score -= 90;
     }
     if (hasAnyCatalogueCue(haystack, ["art", "artwork", "canvas", "framed", "painting", "print"])) {
       score += 28;
@@ -4884,7 +5173,8 @@ function themeAlignedOptionScore(
 function hasThemeColorClash(
   option: RankedProductMatch,
   preferredTokens: Set<string>,
-  conflictingColors: string[]
+  conflictingColors: string[],
+  conceptText: string
 ) {
   const haystack = catalogueCueTokens(
     [option.name, option.color, option.description, option.colorTags.join(" ")]
@@ -4892,13 +5182,16 @@ function hasThemeColorClash(
       .join(" ")
   );
 
-  return conflictingColors.some((color) => haystack.has(color) && !preferredTokens.has(color));
+  return conflictingColors.some(
+    (color) => haystack.has(color) && !preferredTokens.has(color) && !conceptAllowsSeatingCue(conceptText, [color])
+  );
 }
 
 function isCredibleAestheticDemoOption(
   option: RankedProductMatch,
   role: RoleProductOptions,
-  conceptText: string
+  conceptText: string,
+  localSkuFidelityMode = false
 ) {
   const haystack = catalogueCueTokens(
     [
@@ -4913,20 +5206,33 @@ function isCredibleAestheticDemoOption(
       .filter(Boolean)
       .join(" ")
   );
-  const score = themeAlignedOptionScore(option, role, preferredCatalogueTokens(conceptText), catalogueConflictColors());
+  const score = themeAlignedOptionScore(
+    option,
+    role,
+    preferredCatalogueTokens(conceptText),
+    catalogueConflictColors(),
+    localSkuFidelityMode
+  );
 
   if (role.category === "side_tables") {
     return score >= 20 && hasAnyCatalogueCue(haystack, ["accent", "end", "side"]);
   }
   if (role.category === "sofas") {
-    return score >= 20 && hasAnyCatalogueCue(haystack, ["chaise", "sectional", "sofa"]);
-  }
-  if (role.category === "armchairs" || role.category === "chairs") {
     return (
       score >= 20 &&
+      hasAnyCatalogueCue(haystack, ["chaise", "sectional", "sofa"]) &&
+      !hasHardLocalSofaFidelityMismatch(option, conceptText)
+    );
+  }
+  if (role.category === "armchairs" || role.category === "chairs") {
+    const isPaletteCompatible = chairPaletteMatchesConcept(option, conceptText);
+    return (
+      (score >= 20 || (localSkuFidelityMode && isPaletteCompatible)) &&
       hasAnyCatalogueCue(haystack, ["accent", "armchair", "fabric", "lounge", "upholstered"]) &&
+      (!localSkuFidelityMode || isPaletteCompatible) &&
       !hasAnyCatalogueCue(haystack, [
         "acapulco",
+        "chipboard",
         "dining",
         "office",
         "outdoor",
@@ -4938,7 +5244,10 @@ function isCredibleAestheticDemoOption(
         "swivel",
         "vintage",
         "wire"
-      ])
+      ]) &&
+      (!conceptRequestsSoftNeutralUpholstery(conceptText) ||
+        !hasAnyCatalogueCue(haystack, ["cognac", "leather", "suede"]) ||
+        conceptAllowsSeatingCue(conceptText, ["cognac", "leather", "suede"]))
     );
   }
   if (role.category === "coffee_tables") {
@@ -4949,10 +5258,15 @@ function isCredibleAestheticDemoOption(
         "attention",
         "bar",
         "bench",
+        "black",
+        "desk",
         "electra",
+        "glass",
         "inlay",
+        "office",
         "recamiere",
         "side",
+        "steel",
         "statement",
         "striped",
         "unique"
@@ -4963,13 +5277,37 @@ function isCredibleAestheticDemoOption(
     return score >= 20 && haystack.has("rug");
   }
   if (role.category === "lighting") {
-    return score >= 20 && !hasAnyCatalogueCue(haystack, ["spiral", "twisted", "dna", "office"]);
+    return (
+      (score >= 20 || (localSkuFidelityMode && hasAnyCatalogueCue(haystack, ["floor", "lamp", "linen", "shade", "table"]))) &&
+      !hasAnyCatalogueCue(haystack, ["dna", "kids", "moon", "night", "office", "projector", "spiral", "star", "starlight", "twisted"])
+    );
   }
   if (role.category === "wall_art") {
     return (
       score >= 20 &&
       hasAnyCatalogueCue(haystack, ["art", "artwork", "canvas", "framed", "painting", "print"]) &&
-      !hasAnyCatalogueCue(haystack, ["holder", "hook", "mail", "panel", "panels", "rack", "shelf", "shelves"])
+      !hasAnyCatalogueCue(haystack, [
+        "anime",
+        "arsenal",
+        "barcelona",
+        "fantasy",
+        "ferrari",
+        "football",
+        "holder",
+        "hook",
+        "mail",
+        "messi",
+        "naruto",
+        "office",
+        "panel",
+        "panels",
+        "poster",
+        "rack",
+        "schumacher",
+        "shelf",
+        "shelves",
+        "sports"
+      ])
     );
   }
   if (role.category === "storage") {
@@ -4984,6 +5322,500 @@ function isCredibleAestheticDemoOption(
   }
 
   return score >= 20;
+}
+
+function productFamilyTokens(option: RankedProductMatch) {
+  return catalogueCueTokens(
+    [
+      option.name,
+      option.color,
+      option.material,
+      option.description,
+      option.styleTags.join(" "),
+      option.colorTags.join(" "),
+      option.materialTags.join(" ")
+    ]
+      .filter(Boolean)
+      .join(" ")
+  );
+}
+
+function largestHorizontalDimensionCm(option: Pick<RankedProductMatch, "dimensions">) {
+  const width = option.dimensions?.widthCm ?? null;
+  const depth = option.dimensions?.depthCm ?? null;
+  if (width === null && depth === null) {
+    return null;
+  }
+
+  return Math.max(width ?? 0, depth ?? 0);
+}
+
+function explicitSectionalSofaRequested(conceptText: string) {
+  const tokens = catalogueCueTokens(conceptText);
+  const normalized = conceptText.toLowerCase();
+  return (
+    hasAnyCatalogueCue(tokens, ["chaise", "corner", "sectional", "modular"]) ||
+    normalized.includes("l-shaped") ||
+    normalized.includes("l shaped")
+  );
+}
+
+function generousAnchorSofaRequested(conceptText: string) {
+  const tokens = catalogueCueTokens(conceptText);
+  return hasAnyCatalogueCue(tokens, ["family", "five", "generous", "large", "lounge", "spacious"]);
+}
+
+function hasHardLocalSofaFidelityMismatch(option: RankedProductMatch, conceptText: string) {
+  const tokens = productFamilyTokens(option);
+  const colorTokens = catalogueCueTokens([option.color, option.colorTags.join(" ")].filter(Boolean).join(" "));
+  const largestHorizontal = largestHorizontalDimensionCm(option);
+  const explicitSectional = explicitSectionalSofaRequested(conceptText);
+  const generousAnchor = generousAnchorSofaRequested(conceptText);
+  const softNeutralConcept = conceptRequestsSoftNeutralUpholstery(conceptText);
+  const isShortSofa =
+    hasAnyFamilyCue(tokens, ["1", "one", "single", "two", "2", "loveseat"]) ||
+    /(?:1|2|one|two)[-\s.]*seater/i.test(option.name) ||
+    (largestHorizontal !== null && largestHorizontal < (generousAnchor ? 210 : 185));
+  const isSectional = hasAnyFamilyCue(tokens, ["chaise", "corner", "left", "right", "sectional", "modular"]);
+  const clashesWithPalette = hasAnyFamilyCue(tokens, ["black", "blue", "orange", "red", "yellow"]);
+  const requestedClashColor = ["black", "blue", "orange", "red", "yellow"].some((cue) =>
+    tokens.has(cue) && conceptAllowsSeatingCue(conceptText, [cue])
+  );
+  const isCommercialOrUtility =
+    hasAnyFamilyCue(tokens, ["bed", "office", "outdoor", "recliner"]) ||
+    /sofa\s*bed|sofabed|pull[-\s]?out/i.test(option.name);
+  const isHardLeatherOrDarkBrown =
+    hasAnyFamilyCue(tokens, ["cognac", "leather", "suede"]) ||
+    hasAnyFamilyCue(colorTokens, ["brown", "cognac"]);
+  const requestedLeatherOrBrown = conceptAllowsSeatingCue(conceptText, ["brown", "cognac", "leather", "suede"]);
+
+  return (
+    !hasUsablePrice(option) ||
+    (isShortSofa && generousAnchor) ||
+    (isSectional && !explicitSectional) ||
+    (softNeutralConcept && clashesWithPalette && !requestedClashColor) ||
+    (softNeutralConcept && isHardLeatherOrDarkBrown && !requestedLeatherOrBrown) ||
+    (softNeutralConcept && !hasNeutralUpholsteryCue(tokens)) ||
+    isCommercialOrUtility
+  );
+}
+
+function conceptRequestsSoftNeutralUpholstery(conceptText: string) {
+  const tokens = catalogueCueTokens(conceptText);
+  return (
+    hasAnyFamilyCue(tokens, [
+      "beige",
+      "boucle",
+      "cream",
+      "ecru",
+      "greige",
+      "ivory",
+      "linen",
+      "oatmeal",
+      "sand",
+      "soft",
+      "taupe",
+      "transitional",
+      "warm",
+      "white"
+    ]) &&
+    !conceptAllowsSeatingCue(conceptText, ["black", "blue", "brown", "cognac", "leather", "orange", "red", "yellow"])
+  );
+}
+
+function conceptAllowsSeatingCue(conceptText: string, cues: string[]) {
+  const tokens = catalogueCueTokens(conceptText);
+  if (!hasAnyFamilyCue(tokens, cues)) {
+    return false;
+  }
+
+  const normalized = conceptText.toLowerCase();
+  return cues.some((cue) => {
+    const escapedCue = cue.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    return (
+      new RegExp(`(?:${escapedCue}).{0,48}(?:armchair|chair|seat|seating|sofa|upholster)`, "i").test(normalized) ||
+      new RegExp(`(?:armchair|chair|seat|seating|sofa|upholster).{0,48}(?:${escapedCue})`, "i").test(normalized)
+    );
+  });
+}
+
+function chairPaletteMatchesConcept(option: RankedProductMatch, conceptText: string) {
+  const tokens = productFamilyTokens(option);
+  const colorTokens = catalogueCueTokens([option.color, option.colorTags.join(" ")].filter(Boolean).join(" "));
+  const materialTokens = catalogueCueTokens([option.material, option.materialTags.join(" ")].filter(Boolean).join(" "));
+  const softNeutralConcept = conceptRequestsSoftNeutralUpholstery(conceptText);
+  const neutralSeatingCues = [
+    "beige",
+    "cream",
+    "ecru",
+    "gray",
+    "grey",
+    "greige",
+    "ivory",
+    "linen",
+    "oatmeal",
+    "sand",
+    "stone",
+    "taupe",
+    "white"
+  ];
+  const upholsteredCues = ["boucle", "chenille", "fabric", "linen", "textile", "upholstered"];
+
+  if (softNeutralConcept) {
+    return (
+      hasAnyFamilyCue(colorTokens, neutralSeatingCues) &&
+      (hasAnyFamilyCue(tokens, upholsteredCues) || hasAnyFamilyCue(materialTokens, upholsteredCues))
+    );
+  }
+
+  const explicitColorFamilies = [
+    "beige",
+    "black",
+    "blue",
+    "brown",
+    "cream",
+    "cognac",
+    "gray",
+    "grey",
+    "green",
+    "greige",
+    "ivory",
+    "orange",
+    "red",
+    "sage",
+    "taupe",
+    "white",
+    "yellow"
+  ].filter((cue) => conceptAllowsSeatingCue(conceptText, [cue]));
+  const explicitMaterialFamilies = ["boucle", "chenille", "fabric", "leather", "linen", "suede", "textile", "upholstered"].filter(
+    (cue) => conceptAllowsSeatingCue(conceptText, [cue])
+  );
+
+  if (explicitColorFamilies.length === 0 && explicitMaterialFamilies.length === 0) {
+    return !hasAnyFamilyCue(tokens, ["office", "outdoor", "pedestal", "shell", "swivel"]);
+  }
+
+  return (
+    explicitColorFamilies.some((cue) => colorTokens.has(cue) || tokens.has(cue)) ||
+    explicitMaterialFamilies.some((cue) => materialTokens.has(cue) || tokens.has(cue))
+  );
+}
+
+function localSkuFidelityScoreAdjustment(
+  option: RankedProductMatch,
+  role: RoomProductRoleSpec | RoleProductOptions,
+  conceptText: string,
+  roomMeasurements: {
+    wallLengthCm: number | null;
+    roomDepthCm: number | null;
+  } | null = null
+) {
+  const tokens = productFamilyTokens(option);
+  const colorTokens = catalogueCueTokens([option.color, option.colorTags.join(" ")].filter(Boolean).join(" "));
+  const reasons: string[] = [];
+  const weaknessReasons: string[] = [];
+  let scoreAdjustment = 0;
+
+  if (role.category !== "sofas") {
+    if (role.category === "armchairs" || role.category === "chairs") {
+      const softNeutralConcept = conceptRequestsSoftNeutralUpholstery(conceptText);
+      const paletteCompatible = chairPaletteMatchesConcept(option, conceptText);
+      if (paletteCompatible) {
+        scoreAdjustment += softNeutralConcept ? 220 : 140;
+        reasons.push("chair palette and material match the approved seating family");
+      }
+      if (
+        hasAnyFamilyCue(tokens, ["chipboard", "chrome", "shell", "swivel"]) ||
+        (softNeutralConcept &&
+          !conceptAllowsSeatingCue(conceptText, ["black", "blue", "brown", "cognac", "leather", "orange", "red"]) &&
+          (hasAnyFamilyCue(tokens, ["black", "blue", "cognac", "leather", "orange", "red"]) ||
+            hasAnyFamilyCue(colorTokens, ["brown", "black", "blue", "orange", "red"])))
+      ) {
+        scoreAdjustment -= 420;
+        weaknessReasons.push("chair colour, material, or silhouette conflicts with the approved seating palette");
+      }
+      if (softNeutralConcept && !paletteCompatible) {
+        scoreAdjustment -= 90;
+        weaknessReasons.push("chair lacks same-family soft neutral upholstery evidence");
+      }
+    }
+    if (role.category === "lighting") {
+      if (hasAnyFamilyCue(tokens, ["kids", "moon", "multicolor", "night", "projector", "rocket", "space", "star", "starlight"])) {
+        scoreAdjustment -= 420;
+        weaknessReasons.push("novelty projector lighting conflicts with the refined living-room palette");
+      }
+      if (hasAnyFamilyCue(tokens, ["brass", "bronze", "ceramic", "floor", "gold", "linen", "shade", "table"])) {
+        scoreAdjustment += 140;
+        reasons.push("warm table/floor/shaded lighting supports the living-room scheme");
+      }
+    }
+    if (role.category === "wall_art") {
+      if (hasAnyFamilyCue(tokens, ["anime", "arsenal", "barcelona", "black", "fantasy", "ferrari", "football", "messi", "naruto", "navy", "office", "poster", "schumacher", "sports"])) {
+        scoreAdjustment -= 420;
+        weaknessReasons.push("novelty, sports, office, or fan poster wall art conflicts with the approved room direction");
+      }
+      if (hasAnyFamilyCue(tokens, ["abstract", "beige", "brown", "canvas", "framed", "neutral", "painting", "white"])) {
+        scoreAdjustment += 90;
+        reasons.push("neutral framed or canvas wall art supports the room direction");
+      }
+    }
+    return { scoreAdjustment, reasons, weaknessReasons };
+  }
+
+  const largestHorizontal = largestHorizontalDimensionCm(option);
+  const sofaLengthRange = roomMeasurements?.wallLengthCm
+    ? {
+        minCm: Math.max(205, Math.round(roomMeasurements.wallLengthCm * 0.42)),
+        maxCm: Math.min(340, Math.round(roomMeasurements.wallLengthCm * 0.66))
+      }
+    : { minCm: 210, maxCm: 330 };
+  const explicitSectional = explicitSectionalSofaRequested(conceptText);
+  const generousAnchor = generousAnchorSofaRequested(conceptText);
+  const softNeutralConcept = conceptRequestsSoftNeutralUpholstery(conceptText);
+  const isSectional = hasAnyFamilyCue(tokens, ["chaise", "corner", "left", "right", "sectional", "modular"]);
+  const isShortSofa =
+    hasAnyFamilyCue(tokens, ["1", "one", "single", "two", "2", "loveseat"]) ||
+    /(?:1|2|one|two)[-\s.]*seater/i.test(option.name) ||
+    (largestHorizontal !== null && largestHorizontal < (generousAnchor ? 210 : 185));
+
+  if (!hasUsablePrice(option)) {
+    scoreAdjustment -= 500;
+    weaknessReasons.push("sofa has no usable catalogue price");
+  }
+  if (isShortSofa && generousAnchor) {
+    scoreAdjustment -= 650;
+    weaknessReasons.push("short sofa cannot satisfy a generous family anchor-seating role");
+  }
+  if (largestHorizontal !== null && !isSectional && largestHorizontal < sofaLengthRange.minCm) {
+    scoreAdjustment -= 360;
+    weaknessReasons.push(`sofa length is below the spatial target range (${sofaLengthRange.minCm}-${sofaLengthRange.maxCm} cm)`);
+  }
+  if (largestHorizontal !== null && !isSectional && largestHorizontal > sofaLengthRange.maxCm) {
+    scoreAdjustment -= 180;
+    weaknessReasons.push(`sofa length is above the spatial target range (${sofaLengthRange.minCm}-${sofaLengthRange.maxCm} cm)`);
+  }
+  if (isSectional && !explicitSectional) {
+    scoreAdjustment -= 520;
+    weaknessReasons.push("sectional or corner sofa was not requested for this straight-sofa composition");
+  }
+  if (
+    softNeutralConcept &&
+    hasAnyFamilyCue(tokens, ["black", "blue", "orange", "red", "yellow"]) &&
+    !["black", "blue", "orange", "red", "yellow"].some((cue) => tokens.has(cue) && conceptAllowsSeatingCue(conceptText, [cue]))
+  ) {
+    scoreAdjustment -= 360;
+    weaknessReasons.push("sofa colour conflicts with the soft neutral palette");
+  }
+  if (
+    softNeutralConcept &&
+    (hasAnyFamilyCue(tokens, ["cognac", "leather", "suede"]) ||
+      hasAnyFamilyCue(colorTokens, ["brown", "cognac"])) &&
+    !conceptAllowsSeatingCue(conceptText, ["brown", "cognac", "leather", "suede"])
+  ) {
+    scoreAdjustment -= 420;
+    weaknessReasons.push("brown or leather sofa upholstery is weak for the soft neutral fabric palette");
+  }
+  if (softNeutralConcept && !hasNeutralUpholsteryCue(tokens)) {
+    scoreAdjustment -= 260;
+    weaknessReasons.push("sofa lacks neutral upholstery evidence for this concept");
+  }
+  if (
+    hasAnyFamilyCue(tokens, ["bed", "office", "outdoor", "recliner"]) ||
+    /sofa\s*bed|sofabed|pull[-\s]?out/i.test(option.name)
+  ) {
+    scoreAdjustment -= 280;
+    weaknessReasons.push("utility sofa language is weak for the investor-demo living-room anchor");
+  }
+  if (
+    hasAnyFamilyCue(tokens, ["beige", "boucle", "cream", "ecru", "fabric", "greige", "ivory", "linen", "oatmeal", "sand", "taupe", "white"]) &&
+    largestHorizontal !== null &&
+    largestHorizontal >= sofaLengthRange.minCm &&
+    largestHorizontal <= sofaLengthRange.maxCm &&
+    !isSectional
+  ) {
+    scoreAdjustment += 320;
+    reasons.push(`neutral full-size fabric sofa fits the spatial target range (${sofaLengthRange.minCm}-${sofaLengthRange.maxCm} cm)`);
+  }
+  if (hasAnyFamilyCue(tokens, ["3", "4", "three", "four"]) || /(?:3|4|three|four)[-\s.]*seater/i.test(option.name)) {
+    scoreAdjustment += 80;
+    reasons.push("multi-seat sofa scale matches the living-room anchor role");
+  }
+
+  return { scoreAdjustment, reasons, weaknessReasons };
+}
+
+function hasSharedCue(left: Set<string>, right: Set<string>, cues: string[]) {
+  return cues.some((cue) => left.has(cue) && right.has(cue));
+}
+
+function hasAnyFamilyCue(tokens: Set<string>, cues: string[]) {
+  return cues.some((cue) => tokens.has(cue));
+}
+
+function hasConflictFamilyCue(tokens: Set<string>) {
+  return hasAnyFamilyCue(tokens, ["black", "blue", "chrome", "orange", "pink", "purple", "red", "teal"]);
+}
+
+function hasReferenceColorOrMaterialFamilyCue(tokens: Set<string>, referenceTokens: Set<string>) {
+  const seatingColorCues = [
+    "beige",
+    "black",
+    "blue",
+    "brown",
+    "cognac",
+    "cream",
+    "ecru",
+    "gray",
+    "grey",
+    "green",
+    "greige",
+    "ivory",
+    "oatmeal",
+    "orange",
+    "red",
+    "sage",
+    "sand",
+    "taupe",
+    "white",
+    "yellow"
+  ];
+  const seatingMaterialCues = ["boucle", "chenille", "fabric", "leather", "linen", "suede", "teddy", "textile", "upholstered"];
+
+  return (
+    hasSharedCue(tokens, referenceTokens, seatingColorCues) ||
+    hasSharedCue(tokens, referenceTokens, seatingMaterialCues)
+  );
+}
+
+function hasNeutralUpholsteryCue(tokens: Set<string>) {
+  return (
+    hasAnyFamilyCue(tokens, ["beige", "boucle", "cream", "ecru", "greige", "ivory", "linen", "oatmeal", "sand", "taupe", "white"]) ||
+    hasAnyFamilyCue(tokens, ["chenille", "fabric", "textile", "upholstered"])
+  );
+}
+
+function hasUsablePrice(option: RankedProductMatch) {
+  const price = option.salePriceAed ?? option.priceAed;
+  return price !== null && price > 0;
+}
+
+function isSameRecommendationFamily({
+  option,
+  reference,
+  role
+}: {
+  option: RankedProductMatch;
+  reference: RankedProductMatch;
+  role: RoleProductOptions;
+}) {
+  if (option.id === reference.id) {
+    return true;
+  }
+  if (option.categoryNormalized !== reference.categoryNormalized) {
+    return false;
+  }
+
+  const optionTokens = productFamilyTokens(option);
+  const referenceTokens = productFamilyTokens(reference);
+  const neutralCues = ["beige", "cream", "ecru", "greige", "ivory", "linen", "oatmeal", "sand", "taupe", "white"];
+  const warmWoodCues = ["brown", "oak", "walnut", "wood"];
+  const fabricCues = ["boucle", "chenille", "fabric", "linen", "teddy", "textile", "upholstered"];
+  const leatherCues = ["cognac", "leather", "suede"];
+  const stoneCues = ["ceramic", "marble", "stone", "travertine"];
+  const blackOrChromeCues = ["black", "chrome", "silver"];
+
+  if (
+    hasAnyFamilyCue(optionTokens, catalogueConflictColors()) &&
+    !hasSharedCue(optionTokens, referenceTokens, catalogueConflictColors())
+  ) {
+    return false;
+  }
+
+  if (role.category === "sofas" || role.category === "armchairs" || role.category === "chairs") {
+    if (!hasUsablePrice(option)) {
+      return false;
+    }
+    if (hasConflictFamilyCue(optionTokens) && !hasReferenceColorOrMaterialFamilyCue(optionTokens, referenceTokens)) {
+      return false;
+    }
+    if (
+      role.category === "sofas" &&
+      hasAnyFamilyCue(optionTokens, ["left", "right", "sectional", "corner", "chaise", "modular"]) !==
+        hasAnyFamilyCue(referenceTokens, ["left", "right", "sectional", "corner", "chaise", "modular"])
+    ) {
+      return false;
+    }
+    if (
+      hasAnyFamilyCue(optionTokens, blackOrChromeCues) &&
+      !hasSharedCue(optionTokens, referenceTokens, blackOrChromeCues) &&
+      !hasReferenceColorOrMaterialFamilyCue(optionTokens, referenceTokens)
+    ) {
+      return false;
+    }
+    if (
+      hasAnyFamilyCue(optionTokens, leatherCues) &&
+      !hasSharedCue(optionTokens, referenceTokens, leatherCues) &&
+      !hasReferenceColorOrMaterialFamilyCue(optionTokens, referenceTokens)
+    ) {
+      return false;
+    }
+    return (
+      hasSharedCue(optionTokens, referenceTokens, neutralCues) ||
+      hasSharedCue(optionTokens, referenceTokens, fabricCues) ||
+      hasSharedCue(optionTokens, referenceTokens, warmWoodCues) ||
+      hasReferenceColorOrMaterialFamilyCue(optionTokens, referenceTokens)
+    );
+  }
+
+  if (role.category === "coffee_tables") {
+    if (!hasUsablePrice(option)) {
+      return false;
+    }
+    if (hasAnyCatalogueCue(optionTokens, ["desk", "office", "side", "striped", "statement"])) {
+      return false;
+    }
+    return (
+      hasSharedCue(optionTokens, referenceTokens, warmWoodCues) ||
+      hasSharedCue(optionTokens, referenceTokens, stoneCues) ||
+      hasSharedCue(optionTokens, referenceTokens, ["round", "oval", "low"])
+    );
+  }
+
+  if (role.category === "rugs" || role.category === "curtains") {
+    if (!hasUsablePrice(option)) {
+      return false;
+    }
+    return (
+      hasSharedCue(optionTokens, referenceTokens, neutralCues) ||
+      hasSharedCue(optionTokens, referenceTokens, ["greige", "plain", "solid", "wool"])
+    );
+  }
+
+  if (role.category === "lighting") {
+    if (!hasUsablePrice(option)) {
+      return false;
+    }
+    return (
+      hasSharedCue(optionTokens, referenceTokens, ["brass", "bronze", "gold", "linen", "shade"]) ||
+      hasSharedCue(optionTokens, referenceTokens, ["floor", "lamp", "table"])
+    );
+  }
+
+  if (role.category === "storage" || role.category === "side_tables") {
+    if (!hasUsablePrice(option)) {
+      return false;
+    }
+    return (
+      hasSharedCue(optionTokens, referenceTokens, warmWoodCues) ||
+      hasSharedCue(optionTokens, referenceTokens, ["console", "media", "sideboard", "tv"])
+    );
+  }
+
+  if (role.category === "wall_art" || role.category === "mirrors" || role.category === "decor") {
+    return true;
+  }
+
+  return true;
 }
 
 function preserveCatalogueAnchorRoleOptions({
@@ -5061,6 +5893,7 @@ function polishRoleOptionsForAestheticDemo({
   rankedById,
   catalogueGroundingAnchors,
   conceptText,
+  localSkuFidelityMode,
   optionsPerRole
 }: {
   roleOptions: RoleProductOptions[];
@@ -5068,6 +5901,7 @@ function polishRoleOptionsForAestheticDemo({
   rankedById: Map<string, RankedProductMatch>;
   catalogueGroundingAnchors: CatalogueGroundingAnchor[];
   conceptText: string;
+  localSkuFidelityMode: boolean;
   optionsPerRole: number;
 }) {
   const preserved = preserveCatalogueAnchorRoleOptions({
@@ -5078,7 +5912,7 @@ function polishRoleOptionsForAestheticDemo({
     optionsPerRole
   });
 
-  if (!localAestheticTasteGateEnabled()) {
+  if (!localSkuFidelityMode) {
     return preserved;
   }
 
@@ -5096,27 +5930,58 @@ function polishRoleOptionsForAestheticDemo({
       const sortedOptions = [...role.options].sort((left, right) => {
         const leftIsAnchor = anchorIds.has(left.id);
         const rightIsAnchor = anchorIds.has(right.id);
-        if (leftIsAnchor && !rightIsAnchor) {
+        if (!localSkuFidelityMode && leftIsAnchor && !rightIsAnchor) {
           return -1;
         }
-        if (!leftIsAnchor && rightIsAnchor) {
+        if (!localSkuFidelityMode && !leftIsAnchor && rightIsAnchor) {
           return 1;
         }
         return (
-          themeAlignedOptionScore(right, role, preferredCatalogueTokens(conceptText), catalogueConflictColors()) -
-            themeAlignedOptionScore(left, role, preferredCatalogueTokens(conceptText), catalogueConflictColors()) ||
+          themeAlignedOptionScore(
+            right,
+            role,
+            preferredCatalogueTokens(conceptText),
+            catalogueConflictColors(),
+            localSkuFidelityMode
+          ) -
+            themeAlignedOptionScore(
+              left,
+              role,
+              preferredCatalogueTokens(conceptText),
+              catalogueConflictColors(),
+              localSkuFidelityMode
+            ) ||
           right.score - left.score
         );
       });
-      const anchorOptions = sortedOptions.filter((option) => anchorIds.has(option.id));
+      const anchorOptions = localSkuFidelityMode
+        ? sortedOptions.filter(
+            (option) => anchorIds.has(option.id) && isCredibleAestheticDemoOption(option, role, conceptText, localSkuFidelityMode)
+          )
+        : sortedOptions.filter((option) => anchorIds.has(option.id));
+      const referenceOption =
+        (localSkuFidelityMode
+          ? sortedOptions.find((option) => isCredibleAestheticDemoOption(option, role, conceptText, localSkuFidelityMode))
+          : anchorOptions[0]) ??
+        anchorOptions[0] ??
+        sortedOptions.find((option) => isCredibleAestheticDemoOption(option, role, conceptText, localSkuFidelityMode));
       const credibleOptions = sortedOptions.filter(
-        (option) => !anchorIds.has(option.id) && isCredibleAestheticDemoOption(option, role, conceptText)
+        (option) => !anchorIds.has(option.id) && isCredibleAestheticDemoOption(option, role, conceptText, localSkuFidelityMode)
       );
+      const familyOptions = referenceOption
+        ? credibleOptions.filter((option) =>
+            isSameRecommendationFamily({
+              option,
+              reference: referenceOption,
+              role
+            })
+          )
+        : credibleOptions;
       const polishedOptions = anchorOptions.length > 0
-        ? [...anchorOptions, ...credibleOptions]
-        : role.priority === "required"
-          ? sortedOptions
-          : credibleOptions;
+        ? [...anchorOptions, ...familyOptions]
+        : referenceOption
+          ? [referenceOption, ...familyOptions.filter((option) => option.id !== referenceOption.id)]
+          : familyOptions;
 
       return {
         ...role,
@@ -5124,6 +5989,65 @@ function polishRoleOptionsForAestheticDemo({
       };
     })
     .filter((role) => role.options.length > 0);
+}
+
+function ensureLocalSkuFidelitySupportOptions({
+  roleOptions,
+  roles,
+  ranked,
+  conceptText,
+  localSkuFidelityMode
+}: {
+  roleOptions: RoleProductOptions[];
+  roles: RoomProductRoleSpec[];
+  ranked: RankedProductMatch[];
+  conceptText: string;
+  localSkuFidelityMode: boolean;
+}) {
+  if (!localSkuFidelityMode) {
+    return roleOptions;
+  }
+
+  const roleOptionsByCategory = new Map(roleOptions.map((role) => [role.category, role]));
+  for (const role of roles) {
+    if (roleOptionsByCategory.has(role.category)) {
+      continue;
+    }
+
+    const options = ranked
+      .filter((option) => (option.categoryNormalized ?? "") === role.category)
+      .filter((option) =>
+        isCredibleAestheticDemoOption(
+          option,
+          {
+            category: role.category,
+            label: role.label,
+            visualBrief: role.visualBrief,
+            quantity: role.quantity,
+            priority: role.priority,
+            options: []
+          },
+          conceptText,
+          localSkuFidelityMode
+        )
+      )
+      .slice(0, 6);
+
+    if (options.length > 0) {
+      roleOptionsByCategory.set(role.category, {
+        category: role.category,
+        label: role.label,
+        visualBrief: role.visualBrief,
+        quantity: role.quantity,
+        priority: role.priority,
+        options
+      });
+    }
+  }
+
+  return roles
+    .map((role) => roleOptionsByCategory.get(role.category))
+    .filter((role): role is RoleProductOptions => Boolean(role));
 }
 
 function mergeRoomRoles(primary: RoomProductRoleSpec[], secondary: RoomProductRoleSpec[]) {
@@ -5256,6 +6180,57 @@ function normalizeSourcingCategory(category: string, roleLabel: string) {
 
 function roleLabelFromSelectionReason(selectionReason: string | null) {
   return selectionReason?.match(/room role: ([^;]+)/)?.[1]?.trim() ?? null;
+}
+
+function formatProductDimensionsForRender(
+  dimensions:
+    | {
+        width_cm: number | null;
+        depth_cm: number | null;
+        height_cm: number | null;
+        source_text: string | null;
+      }
+    | null
+) {
+  if (!dimensions) {
+    return null;
+  }
+
+  if (dimensions.source_text) {
+    return dimensions.source_text;
+  }
+
+  const parts = [
+    dimensions.width_cm ? `W ${dimensions.width_cm} cm` : null,
+    dimensions.depth_cm ? `D ${dimensions.depth_cm} cm` : null,
+    dimensions.height_cm ? `H ${dimensions.height_cm} cm` : null
+  ].filter(Boolean);
+
+  return parts.length > 0 ? parts.join(" x ") : null;
+}
+
+function missingLocalSkuFidelityRenderRoles({
+  roomType,
+  selectedCategories
+}: {
+  roomType: string;
+  selectedCategories: string[];
+}) {
+  if (!roomType.toLowerCase().includes("living")) {
+    return [];
+  }
+
+  const selected = new Set(selectedCategories.map((category) => normalizeSourcingCategory(category, category)));
+  const minimumVisibleSupportRoles = [
+    { category: "storage", label: "TV/media console" },
+    { category: "lighting", label: "lighting" },
+    { category: "side_tables", label: "side/end table" },
+    { category: "decor", label: "decor" }
+  ];
+
+  return minimumVisibleSupportRoles
+    .filter((role) => !selected.has(role.category))
+    .map((role) => role.label);
 }
 
 function formatAedValue(value: number) {
