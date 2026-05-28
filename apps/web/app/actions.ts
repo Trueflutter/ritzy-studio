@@ -17,6 +17,7 @@ import {
   assessAestheticFitForRole,
   buildProductSourcingRuntimePlan,
   buildShoppingListItemRows,
+  buildPersistedSelectionSnapshot,
   composeRoomProductOptions,
   filterSubstitutionCandidates,
   enhancedProductRolesForRoom,
@@ -2920,6 +2921,44 @@ export async function groundProductsAction(formData: FormData) {
       updated_at: new Date().toISOString()
     })
     .eq("id", shoppingListId);
+  if (localSkuFidelityMode && productMatchingEngineEnabled) {
+    const sourceSelectedProductIdByCategory = new Map<string, string | null>();
+    for (const result of sourcingResult.roleResults) {
+      sourceSelectedProductIdByCategory.set(
+        normalizeSourcingCategory(result.category, result.roleLabel),
+        result.productId
+      );
+    }
+
+    const { data: currentSourcingJob } = await serviceSupabase
+      .from("ai_jobs")
+      .select("output_summary")
+      .eq("id", sourcingJob.id)
+      .maybeSingle();
+    const currentSourcingSummary = isRecord(currentSourcingJob?.output_summary)
+      ? currentSourcingJob.output_summary
+      : {};
+
+    const { error: persistedSelectionSnapshotError } = await serviceSupabase
+      .from("ai_jobs")
+      .update({
+        output_summary: {
+          ...currentSourcingSummary,
+          persistedSelectionSnapshot: buildPersistedSelectionSnapshot({
+            shoppingListId,
+            estimatedTotalAed: estimatedTotal,
+            sourcePath: productSourcingTextFallbackUsed ? "text_fallback" : "visual",
+            roleOptions,
+            itemRows,
+            sourceSelectedProductIdByCategory
+          })
+        }
+      })
+      .eq("id", sourcingJob.id);
+    if (persistedSelectionSnapshotError) {
+      throw new Error(persistedSelectionSnapshotError.message);
+    }
+  }
   await supabase.from("rooms").update({ status: "sourcing" }).eq("id", roomId);
 
   revalidatePath(redirectPath);

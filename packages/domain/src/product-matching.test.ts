@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   buildRoleScopedCandidatePools,
   buildProductSourcingRuntimePlan,
+  buildPersistedSelectionSnapshot,
   buildShoppingListItemRows,
   assessAestheticFitForRole,
   composeRoomProductOptions,
@@ -1487,6 +1488,28 @@ assert.equal(chairSelected.role_quantity, 2);
 assert.equal(chairSelected.line_total_aed, chairSelected.unit_price_aed * 2);
 assert.equal(selectedItemsTotalAed(chairRows), chairSelected.unit_price_aed * 2);
 
+const chairSnapshot = buildPersistedSelectionSnapshot({
+  shoppingListId: "shopping-list-1",
+  estimatedTotalAed: selectedItemsTotalAed(chairRows),
+  sourcePath: "text_fallback",
+  roleOptions: accentChairOptions,
+  itemRows: chairRows,
+  sourceSelectedProductIdByCategory: new Map([["armchairs", "source-picked-different-chair"]])
+});
+assert.equal(chairSnapshot.shoppingListId, "shopping-list-1");
+assert.equal(chairSnapshot.sourcePath, "text_fallback");
+assert.equal(chairSnapshot.roles[0].category, "armchairs");
+assert.equal(chairSnapshot.roles[0].selectedProductId, chairTopId);
+assert.equal(chairSnapshot.roles[0].selectedProductName, "Accent Chair 1");
+assert.equal(chairSnapshot.roles[0].sourceSelectedProductId, "source-picked-different-chair");
+assert.equal(chairSnapshot.roles[0].selectedOptionRank, 0);
+assert.equal(chairSnapshot.roles[0].optionCount, 2);
+assert.deepEqual(
+  chairSnapshot.roles[0].optionProductIds,
+  chairRows.map((row) => row.product_id)
+);
+assert.equal(chairSnapshot.roles[0].postProcessingReplacement, true);
+
 // existing one-row-per-product lists still group and render after migration
 const legacyGroups = groupShoppingItemsByRole([
   {
@@ -1710,5 +1733,87 @@ const thinRefreshSofaOptions = composeRoomProductOptions({
   ]
 });
 assert.equal(thinRefreshSofaOptions[0].options[0]?.name, "Cream Fabric Sofa");
+
+const repeatedSofaFamilyOptions = composeRoomProductOptions({
+  ranked: rankProductMatches({
+    roomType: "living room",
+    conceptText: "soft neutral living room with a warm greige fabric sofa",
+    budgetMaxAed: 30000,
+    candidates: [
+      {
+        ...base,
+        id: "00000000-0000-4000-8000-000000000408",
+        name: "Stone 4-Seater Sofa Grey White",
+        retailerName: "Chattels & More",
+        categoryNormalized: "sofas",
+        priceAed: 6000,
+        availability: "in stock",
+        primaryImageUrl: "https://example.com/stone-sofa.jpg",
+        colorTags: ["white"],
+        materialTags: ["fabric", "wood"]
+      },
+      {
+        ...base,
+        id: "00000000-0000-4000-8000-000000000409",
+        name: "Rio 4-Seater Sofa Beige",
+        retailerName: "Chattels & More",
+        categoryNormalized: "sofas",
+        priceAed: 6200,
+        availability: "in stock",
+        primaryImageUrl: "https://example.com/rio-sofa.jpg",
+        colorTags: ["beige"],
+        materialTags: ["fabric", "wood"]
+      },
+      {
+        ...base,
+        id: "00000000-0000-4000-8000-000000000410",
+        name: "Lance 3-Seater Sofa Sand Linen",
+        retailerName: "Home Centre",
+        categoryNormalized: "sofas",
+        priceAed: 6400,
+        availability: "in stock",
+        primaryImageUrl: "https://example.com/lance-sofa.jpg",
+        colorTags: ["sand", "linen"],
+        materialTags: ["fabric", "linen", "wood"]
+      },
+      {
+        ...base,
+        id: "00000000-0000-4000-8000-000000000411",
+        name: "Black Leather Recliner Sofa",
+        retailerName: "Home Centre",
+        categoryNormalized: "sofas",
+        priceAed: 6300,
+        availability: "in stock",
+        primaryImageUrl: "https://example.com/black-recliner-sofa.jpg",
+        colorTags: ["black"],
+        materialTags: ["leather"]
+      }
+    ]
+  }),
+  roles: [{ category: "sofas", label: "anchor seating", visualBrief: null, quantity: 1, priority: "required" }],
+  optionsPerRole: 3,
+  refreshDiversityHistory: [
+    {
+      productId: "00000000-0000-4000-8000-000000000408",
+      productName: "Stone 4-Seater Sofa Grey White",
+      category: "sofas",
+      roleLabel: "anchor seating",
+      retailerName: "Chattels & More"
+    },
+    {
+      productId: "00000000-0000-4000-8000-000000000409",
+      productName: "Rio 4-Seater Sofa Beige",
+      category: "sofas",
+      roleLabel: "anchor seating",
+      retailerName: "Chattels & More"
+    }
+  ]
+});
+assert.equal(repeatedSofaFamilyOptions[0].options[0]?.name, "Lance 3-Seater Sofa Sand Linen");
+assert.ok(
+  repeatedSofaFamilyOptions[0].options
+    .slice(1)
+    .some((option) => ["Stone 4-Seater Sofa Grey White", "Rio 4-Seater Sofa Beige"].includes(option.name))
+);
 
 console.log("product matching tests passed");

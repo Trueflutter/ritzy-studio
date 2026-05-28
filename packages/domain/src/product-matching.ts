@@ -808,6 +808,25 @@ export type ShoppingListItemDraft = {
   sort_order: number;
 };
 
+export type PersistedSelectionSnapshot = {
+  shoppingListId: string;
+  estimatedTotalAed: number;
+  sourcePath: "visual" | "text_fallback";
+  roles: Array<{
+    category: string;
+    roleLabel: string;
+    priority: "required" | "supporting";
+    selectedProductId: string | null;
+    selectedProductName: string | null;
+    sourceSelectedProductId: string | null;
+    selectedOptionRank: number | null;
+    selectedStatus: ShoppingListItemStatus | null;
+    optionCount: number;
+    optionProductIds: string[];
+    postProcessingReplacement: boolean;
+  }>;
+};
+
 export type ShoppingItemRoleFields = {
   id: string;
   status: string;
@@ -2253,6 +2272,63 @@ export function selectedItemsTotalAed(
   return items
     .filter((item) => item.status === "selected")
     .reduce((total, item) => total + (item.unit_price_aed ?? 0) * (item.quantity ?? 1), 0);
+}
+
+export function buildPersistedSelectionSnapshot({
+  shoppingListId,
+  estimatedTotalAed,
+  sourcePath,
+  roleOptions,
+  itemRows,
+  sourceSelectedProductIdByCategory = new Map()
+}: {
+  shoppingListId: string;
+  estimatedTotalAed: number;
+  sourcePath: "visual" | "text_fallback";
+  roleOptions: RoleProductOptions[];
+  itemRows: ShoppingListItemDraft[];
+  sourceSelectedProductIdByCategory?: Map<string, string | null>;
+}): PersistedSelectionSnapshot {
+  const itemRowsByCategory = new Map<string, ShoppingListItemDraft[]>();
+  for (const row of itemRows) {
+    const rows = itemRowsByCategory.get(row.category) ?? [];
+    rows.push(row);
+    itemRowsByCategory.set(row.category, rows);
+  }
+
+  return {
+    shoppingListId,
+    estimatedTotalAed,
+    sourcePath,
+    roles: roleOptions.map((role) => {
+      const rows = (itemRowsByCategory.get(role.category) ?? [])
+        .slice()
+        .sort((left, right) => left.option_rank - right.option_rank);
+      const selectedRow = rows.find((row) => row.status === "selected") ?? null;
+      const selectedOption = selectedRow
+        ? role.options.find((option) => option.id === selectedRow.product_id) ?? null
+        : null;
+      const sourceSelectedProductId = sourceSelectedProductIdByCategory.get(role.category) ?? null;
+
+      return {
+        category: role.category,
+        roleLabel: role.label,
+        priority: role.priority,
+        selectedProductId: selectedRow?.product_id ?? null,
+        selectedProductName: selectedOption?.name ?? null,
+        sourceSelectedProductId,
+        selectedOptionRank: selectedRow?.option_rank ?? null,
+        selectedStatus: selectedRow?.status ?? null,
+        optionCount: rows.length,
+        optionProductIds: rows.map((row) => row.product_id),
+        postProcessingReplacement: Boolean(
+          sourceSelectedProductId &&
+            selectedRow?.product_id &&
+            sourceSelectedProductId !== selectedRow.product_id
+        )
+      };
+    })
+  };
 }
 
 // Group sourced items back into role groups for the picker. Rejected items are
