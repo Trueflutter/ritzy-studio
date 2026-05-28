@@ -98,6 +98,13 @@ const roles: RoomProductRoleSpec[] = [
     priority: "supporting"
   },
   {
+    category: "storage",
+    label: "TV media console",
+    visualBrief: "light oak or white TV media console for a soft neutral room",
+    quantity: 1,
+    priority: "supporting"
+  },
+  {
     category: "curtains",
     label: "curtains or textile layer",
     visualBrief: "ivory linen sheer curtains",
@@ -221,6 +228,24 @@ const fallback = buildProductSourcingTextFallbackResult({
       description: "Warm brass arched mirror."
     }),
     rankedProduct({
+      id: "abababab-9999-4999-8999-999999999999",
+      name: "Black Metal TV Rack",
+      categoryNormalized: "storage",
+      score: 124,
+      color: "black",
+      material: "metal",
+      description: "Black metal TV rack shelf."
+    }),
+    rankedProduct({
+      id: "acacacac-9999-4999-8999-999999999999",
+      name: "Light Oak TV Media Console",
+      categoryNormalized: "storage",
+      score: 74,
+      color: "oak",
+      material: "wood",
+      description: "Light oak TV media console with closed storage."
+    }),
+    rankedProduct({
       id: "bbbbbbbb-9999-4999-8999-999999999999",
       name: "Black Vinyl Shower Curtain",
       categoryNormalized: "curtains",
@@ -255,6 +280,7 @@ assert.deepEqual(
     "decor:restrained decor:supporting",
     "lighting:floor or table lighting:supporting",
     "mirrors:mirror:supporting",
+    "storage:TV media console:supporting",
     "curtains:curtains or textile layer:supporting"
   ]
 );
@@ -268,6 +294,7 @@ assert.deepEqual(
     "decor:6b6b6b6b-6666-4666-8666-666666666666:closest_available",
     "lighting:88888888-8888-4888-8888-888888888888:closest_available",
     "mirrors:aaaaaaaa-9999-4999-8999-999999999999:closest_available",
+    "storage:acacacac-9999-4999-8999-999999999999:closest_available",
     "curtains:cccccccc-9999-4999-8999-999999999999:closest_available"
   ]
 );
@@ -281,6 +308,7 @@ assert.deepEqual(
     "decor:closest_available:6b6b6b6b-6666-4666-8666-666666666666",
     "lighting:closest_available:88888888-8888-4888-8888-888888888888",
     "mirrors:closest_available:aaaaaaaa-9999-4999-8999-999999999999",
+    "storage:closest_available:acacacac-9999-4999-8999-999999999999",
     "curtains:closest_available:cccccccc-9999-4999-8999-999999999999"
   ]
 );
