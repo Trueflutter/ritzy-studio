@@ -27,7 +27,7 @@ Forbidden scope remained production deploys/flags, rollout, live app actions, ca
 - Action: submitted the existing Product Matching `Refresh matches` form once for selected concept `d9cc2f82-6d8f-455c-8c8d-e08522e0938c`
 - Result: server action returned `303` to `/projects/4207ade6-2604-4e15-9b05-ffa77531d3d2/rooms/75e18e73-cf69-4b2e-b192-009fbc135b38/shopping-list`
 
-One earlier malformed POST did not include the server-action field because the shell expanded the `$ACTION_ID...` form key before Node saw it. It failed immediately with HTTP 500 before Product Matching execution and did not create a `product_visual_sourcing` row. The corrected form submission above is the single valid validation pass.
+Two earlier malformed POST attempts failed with HTTP 500 before Product Matching execution and did not create a `product_visual_sourcing` row. One omitted the server-action field because the shell expanded the `$ACTION_ID...` form key before Node saw it; the other used a stale/invalid server-action submission shape. The corrected form submission above is the single valid validation pass.
 
 ## Rows Created Or Refreshed
 
