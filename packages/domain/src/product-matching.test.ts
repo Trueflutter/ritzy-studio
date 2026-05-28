@@ -1150,6 +1150,139 @@ const mediaConsoleAttributeScore = scoreProductCandidateForRole({
 assert.ok(mediaConsoleAttributeScore.roleFit > 0);
 assert.ok(mediaConsoleAttributeScore.material > 0);
 
+const supportRoleFamilyPool = buildRoleScopedCandidatePools({
+  roomType: "living room",
+  conceptText: "soft warm neutral living room with ivory linen, warm brass, oak, and calm gallery styling",
+  roles: [
+    {
+      category: "mirrors",
+      label: "mirror",
+      visualBrief: "arched mirror",
+      quantity: 1,
+      priority: "supporting"
+    },
+    {
+      category: "lighting",
+      label: "floor or table lighting",
+      visualBrief: "floor lamp",
+      quantity: 1,
+      priority: "supporting"
+    },
+    {
+      category: "decor",
+      label: "restrained decor",
+      visualBrief: "ceramic tray or decor object",
+      quantity: 1,
+      priority: "supporting"
+    },
+    {
+      category: "curtains",
+      label: "curtains or textile layer",
+      visualBrief: "linen sheer curtains",
+      quantity: 1,
+      priority: "supporting"
+    }
+  ],
+  candidates: [
+    {
+      ...base,
+      id: "00000000-0000-4000-8000-000000000573",
+      name: "Black Metal Floor Mirror",
+      categoryNormalized: "mirrors",
+      availability: "in stock",
+      primaryImageUrl: "https://example.com/black-metal-mirror.jpg",
+      colorTags: ["black"],
+      materialTags: ["metal"]
+    },
+    {
+      ...base,
+      id: "00000000-0000-4000-8000-000000000574",
+      name: "Warm Brass Arched Mirror",
+      categoryNormalized: "mirrors",
+      availability: "in stock",
+      primaryImageUrl: "https://example.com/warm-brass-mirror.jpg",
+      colorTags: ["gold"],
+      materialTags: ["brass"]
+    },
+    {
+      ...base,
+      id: "00000000-0000-4000-8000-000000000575",
+      name: "Black Chrome Spiral LED Floor Lamp",
+      categoryNormalized: "lighting",
+      availability: "in stock",
+      primaryImageUrl: "https://example.com/black-chrome-led-lamp.jpg",
+      colorTags: ["black"],
+      materialTags: ["chrome", "metal"]
+    },
+    {
+      ...base,
+      id: "00000000-0000-4000-8000-000000000576",
+      name: "Aged Brass Table Lamp With Linen Shade",
+      categoryNormalized: "lighting",
+      availability: "in stock",
+      primaryImageUrl: "https://example.com/brass-linen-lamp.jpg",
+      colorTags: ["brass"],
+      materialTags: ["brass", "linen"]
+    },
+    {
+      ...base,
+      id: "00000000-0000-4000-8000-000000000577",
+      name: "Black Decor Object",
+      categoryNormalized: "decor",
+      availability: "in stock",
+      primaryImageUrl: "https://example.com/black-decor-object.jpg",
+      colorTags: ["black"],
+      materialTags: ["metal"]
+    },
+    {
+      ...base,
+      id: "00000000-0000-4000-8000-000000000578",
+      name: "Ivory Ceramic Tray",
+      categoryNormalized: "decor",
+      availability: "in stock",
+      primaryImageUrl: "https://example.com/ivory-ceramic-tray.jpg",
+      colorTags: ["ivory"],
+      materialTags: ["ceramic"]
+    },
+    {
+      ...base,
+      id: "00000000-0000-4000-8000-000000000579",
+      name: "Black Vinyl Shower Curtain",
+      categoryNormalized: "curtains",
+      availability: "in stock",
+      primaryImageUrl: "https://example.com/black-shower-curtain.jpg",
+      colorTags: ["black"],
+      materialTags: ["vinyl"]
+    },
+    {
+      ...base,
+      id: "00000000-0000-4000-8000-000000000580",
+      name: "Ivory Linen Sheer Curtains",
+      categoryNormalized: "curtains",
+      availability: "in stock",
+      primaryImageUrl: "https://example.com/ivory-linen-curtains.jpg",
+      colorTags: ["ivory"],
+      materialTags: ["linen"]
+    }
+  ],
+  candidatesPerRole: 2
+});
+assert.equal(supportRoleFamilyPool.pools.find((pool) => pool.role.category === "mirrors")?.candidates[0]?.name, "Warm Brass Arched Mirror");
+assert.equal(
+  supportRoleFamilyPool.pools.find((pool) => pool.role.category === "lighting")?.candidates[0]?.name,
+  "Aged Brass Table Lamp With Linen Shade"
+);
+assert.equal(supportRoleFamilyPool.pools.find((pool) => pool.role.category === "decor")?.candidates[0]?.name, "Ivory Ceramic Tray");
+assert.equal(
+  supportRoleFamilyPool.pools.find((pool) => pool.role.category === "curtains")?.candidates[0]?.name,
+  "Ivory Linen Sheer Curtains"
+);
+assert.ok(
+  supportRoleFamilyPool.pools
+    .find((pool) => pool.role.category === "decor")
+    ?.weaknessReasons.includes("dark decor is weak for a soft-neutral room palette")
+);
+
 const evalResults = productMatchingEvalScenarios.map((scenario) => runProductMatchingEvalScenario(scenario));
 for (const result of evalResults) {
   assert.deepEqual(result.failures, [], result.scenarioName);

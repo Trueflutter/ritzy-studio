@@ -1,7 +1,7 @@
 # Active Agent Control Board
 
 Status: active coordination source of truth
-Last updated: 2026-05-27
+Last updated: 2026-05-28
 
 This board replaces ad hoc routing through chat-only prompts and stale mailbox prose for active Ritzy Studio implementation lanes. Mailbox files still hold lane history and architectural notes, but this file is the first place agents and heartbeats must read when deciding whether work is parked, routed, blocked, stale, or ready for review.
 
@@ -109,16 +109,16 @@ Docs-only, test-only, domain-only, and dry-run-only work may proceed only when t
 ### Ticket PM-001
 
 Owner: Product Matching Agent
-Status: POST_MERGE_VALIDATED_LOCAL_DEV
-Branch: `main` includes PR #226 at `ccf1faa1b721ea847cf158793c9b618179bcde5e`
+Status: REVIEW_REQUESTED
+Branch: `codex/pm001-support-role-timeout-diagnosis`
 Allowed scope: Founder-approved local/dev PM-001 aesthetic-quality rescue. Scope includes docs, focused domain/app selection logic, tests, and local/dev validation needed to make catalogue-grounded living-room concept renders and shopping recommendations use actual ingested SKUs with investor-demo taste quality. The narrow implementation may add a local/dev-only taste-arbitration gate for living-room chair suitability, coffee-table/rug visual-noise conflicts, and sofa/chair/table/rug harmony. Local/dev execution is limited to existing test/demo project and room data on `http://localhost:3001` using existing catalogue rows only.
 Forbidden scope: No production deploy, production flags, live catalog writes, live ingestion, DB/schema/generated type changes, payment/checkout changes, floor-plan work, Catalog-First runtime coupling, controlled-preview expansion, production Product Matching execution, runtime allowlist expansion, default-on production activation, unrelated UI redesign, or broad catalogue rewrites. Do not mutate catalogue/product rows. Do not make production selection behavior change unless a future Sam/Chief boundary explicitly approves rollout.
-Expected next artifact: None for the approved local/dev aesthetic-quality rescue; further execution or rollout requires a fresh Sam/Chief boundary.
+Expected next artifact: Review PR #230 for the focused support-role quality and visual-sourcing timeout-diagnosis slice.
 SLA: Branch, commits, PR, or explicit blocker within 30 minutes. If the local/dev gate cannot reach 9/10 quality with existing SKUs, stop with evidence and propose the smallest next architecture slice.
 Last architect instruction: Sam set the active goal in-thread on 2026-05-27: deliver an investor-demo-quality catalogue-grounded living-room flow with actual SKUs, target aesthetic score 9/10 or better, no unsuitable hero items, and no office/task/dining/shell/pedestal chair unless explicitly requested. Sam called the current black/brown pedestal shell chair and noisy striped coffee table unacceptable for investors.
-Agent ack: PR #220 merged the local/dev aesthetic taste gate; PR #222 added post-merge validation; PR #226 merged the follow-up local/dev SKU-fidelity/support-role improvements after approval and green checks.
-Current PR: none; #228 merged into `main` at `cc1e9916aa32c691033c1b87de9979fabaa3c19f`.
-Blocker: No implementation blocker currently for the approved local/dev investor-demo evidence path after PR #226. No production deploys/flags or new execution outside the recorded local/dev evidence boundary.
+Agent ack: PR #220 merged the local/dev aesthetic taste gate; PR #222 added post-merge validation; PR #226 merged the follow-up local/dev SKU-fidelity/support-role improvements after approval and green checks. PR #230 is the focused PM-001 support-role quality and visual-sourcing timeout-diagnosis PR.
+Current PR: #230 (<https://github.com/Trueflutter/ritzy-studio/pull/230>)
+Blocker: Waiting for Chief Architect / strict PR review on PR #230. No production deploys/flags or new execution outside the recorded local/dev evidence boundary.
 
 ### Ticket MI-001
 

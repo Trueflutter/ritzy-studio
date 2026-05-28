@@ -1,7 +1,7 @@
 # Product Matching Engine Agent Comms
 
 ## Current PR
-No open PM-001 PR. PR #228 merged into `main` at `cc1e9916aa32c691033c1b87de9979fabaa3c19f`.
+PR #230 is open for PM-001 support-role quality and visual-sourcing timeout diagnosis: <https://github.com/Trueflutter/ritzy-studio/pull/230>
 
 ## Current stage
 DUAL_TRACK:
@@ -18,6 +18,8 @@ PM-001 coffee-table blocker has a narrow fix and one approved local/dev retest. 
 Product Matching Engine V1 is still not approved for production deploys, production flags, broad/runtime allowlist expansion, app actions, draft shopping-list/catalog writes, live catalog writes, DB/schema changes, generated DB types, runtime/UI redesign/prompt changes, payment/checkout changes, default-on activation, production rollout, selection/scoring changes, Catalog-First runtime coupling, new preview targets, or broader execution without a new approval.
 
 ## Chief architect routing
+ARCHITECT_NOTE: PR #230 is open on branch `codex/pm001-support-role-timeout-diagnosis`. Scope: focused PM-001 support-role ranking, deterministic fallback-family filtering, timeout diagnostic metadata, and durable local/dev readback evidence after PR #226, PR #227, PR #228, and PR #229. It does not run another Product Matching preview, invoke app actions, write shopping-list/catalog rows, change production flags, expand allowlists, change schema/generated types, change payment/checkout/UI, perform floor-plan work, activate default-on behavior, or add Catalog-First runtime coupling. Review should focus on the support-role/fallback/diagnostic slice only.
+
 ARCHITECT_NOTE: PR #226 merged into `main` at `ccf1faa1b721ea847cf158793c9b618179bcde5e`. It improves local/dev living-room SKU fidelity for the investor demo with role-window candidate widening, catalogue-anchor divergence handling, support-role render guard, sofa aesthetic scoring, final-render product fidelity prompt language, and render reference expansion. Review verification included `git diff --check`, `pnpm install --offline --frozen-lockfile`, `pnpm --filter @ritzy-studio/web typecheck`, `pnpm --filter @ritzy-studio/web lint`, `pnpm --filter @ritzy-studio/domain test`, `pnpm --filter @ritzy-studio/domain typecheck`, `pnpm --filter @ritzy-studio/ai test`, `pnpm --filter @ritzy-studio/ai typecheck`, and `pnpm --filter @ritzy-studio/prompts typecheck`. The unrelated `@ritzy-studio/prompts` test baseline failure on `origin/main` was noted by review. No production deploys/flags, live catalog writes/ingestion, schema/generated type changes, payment/checkout changes, floor-plan work, Catalog-First coupling, controlled-preview expansion, production activation, runtime allowlist expansion, or catalogue/product row mutations were performed.
 
 CHIEF_ARCHITECT_REPLY:
@@ -66,6 +68,8 @@ ARCHITECT_NOTE: PR #160 completed the docs-only controlled-preview execution-bou
 Hard stop: no controlled-preview configuration/execution, app actions, runtime allowlist expansion, draft shopping-list/catalog writes, live catalog writes, DB/schema/generated types, runtime/env default changes, runtime/UI/prompt/payment/checkout changes, production flags/deploys, default-on activation, production rollout, selection/scoring changes, or Catalog-First runtime coupling without explicit Sam/Chief approval.
 
 ## Last action taken
+PR #230 opened the PM-001 support-role quality and visual-sourcing timeout-diagnosis slice. It tightens soft-neutral support-role ranking, improves deterministic text fallback family scoring for support roles, adds timeout diagnostic fields to product-sourcing job summaries, and records read-only local/dev evidence at `docs/Tracks/v2-commercial/product-matching-evals/manual-qa/2026-05-28-pm001-support-role-timeout-diagnosis.md`. No Product Matching execution, controlled preview, preview QA, app action, draft shopping-list row create/refresh, catalogue write, DB/schema/generated type change, live write, UI/prompt/payment/checkout change, production flag/deploy, broad/runtime allowlist expansion, default-on activation, production rollout, broad scoring rewrite, prompt/runtime/image-generation behavior change, unrelated quality change, floor-plan work, or Catalog-First runtime coupling was performed.
+
 PR #228 merged the docs/mailbox-only PM-001 post-#227 stale-pointer cleanup. No Product Matching execution, controlled preview, preview QA, app action, draft shopping-list row create/refresh, catalogue write, DB/schema/generated type change, live write, UI/prompt/payment/checkout change, production flag/deploy, broad/runtime allowlist expansion, default-on activation, production rollout, broad scoring rewrite, prompt/runtime/image-generation behavior change, code implementation, unrelated quality change, floor-plan work, or Catalog-First runtime coupling was performed.
 
 PR #227 merged the docs/mailbox-only PM-001 post-#226 handoff. No Product Matching execution, controlled preview, preview QA, app action, draft shopping-list row create/refresh, catalogue write, DB/schema/generated type change, live write, UI/prompt/payment/checkout change, production flag/deploy, broad/runtime allowlist expansion, default-on activation, production rollout, broad scoring rewrite, prompt/runtime/image-generation behavior change, code implementation, unrelated quality change, floor-plan work, or Catalog-First runtime coupling was performed.
@@ -99,7 +103,7 @@ PR #160 completed the docs-only controlled-preview execution-boundary package af
 PR #170 merged to clean stale mailbox state after PR #160 merged. This was docs/mailbox only.
 
 ## Next intended action
-Chief/Sam: decide whether to activate a new bounded browser-click local/dev validation pass or any rollout path. Do not start additional Product Matching execution, controlled preview, app actions, writes, broad/runtime allowlist changes, production activity, broad scoring rewrites, unrelated quality changes, floor-plan work, or Catalog-First coupling without a new explicit Sam/Chief boundary.
+Chief Architect / PR Review Agent: review PR #230. Do not start additional Product Matching execution, controlled preview, app actions, writes, broad/runtime allowlist changes, production activity, broad scoring rewrites, unrelated quality changes, floor-plan work, or Catalog-First coupling without a new explicit Sam/Chief boundary.
 
 Keep the Product Matching lane heartbeat active. It must not be deleted after merges. The heartbeat should run every 10 minutes and monitor:
 

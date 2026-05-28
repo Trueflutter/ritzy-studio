@@ -1259,6 +1259,7 @@ export function scoreProductCandidateForRole({
   conceptText?: string;
 }): ProductRoleAttributeScore {
   const roleTokens = tokensFor(attributeCueText(role, conceptText));
+  const roomCueTokens = tokensFor([conceptText, role.label, role.visualBrief].filter(Boolean).join(" "));
   const candidateTokens = candidateSearchTokens(candidate);
   const nameTokens = candidateNameTokens(candidate);
   const reasons: string[] = [];
@@ -1318,7 +1319,7 @@ export function scoreProductCandidateForRole({
   reasons.push(...silhouetteScore.reasons);
   weaknessReasons.push(...silhouetteScore.weaknessReasons);
 
-  const roleKeywordScore = roleSpecificKeywordScore(role, candidateTokens, roleTokens, nameTokens);
+  const roleKeywordScore = roleSpecificKeywordScore(role, candidateTokens, roleTokens, nameTokens, roomCueTokens);
   roleFit = roleKeywordScore.score;
   reasons.push(...roleKeywordScore.reasons);
   weaknessReasons.push(...roleKeywordScore.weaknessReasons);
@@ -1588,7 +1589,8 @@ function roleSpecificKeywordScore(
   role: RoomProductRoleSpec,
   candidateTokens: Set<string>,
   roleCueTokens: Set<string>,
-  candidateNameTokenSet: Set<string> = candidateTokens
+  candidateNameTokenSet: Set<string> = candidateTokens,
+  roomCueTokens: Set<string> = roleCueTokens
 ) {
   const roleText = `${role.category} ${role.label} ${role.visualBrief ?? ""}`.toLowerCase();
   const roleTokens = tokensFor(roleText);
@@ -1596,6 +1598,10 @@ function roleSpecificKeywordScore(
   const reasons: string[] = [];
   let score = 0;
   const weaknessReasons: string[] = [];
+  const softNeutralCue = hasSoftNeutralCue(roomCueTokens);
+  const explicitRoleCueTokens = tokensFor([role.label, role.visualBrief].filter(Boolean).join(" "));
+  const requestedDarkCue =
+    Boolean(role.visualBrief) && hasAnyToken(explicitRoleCueTokens, ["black", "charcoal", "dark", "graphite", "onyx"]);
 
   if (role.category === "chairs" && roleText.includes("dining")) {
     if (hasAnyToken(candidateTokens, ["dining", "chair", "chairs"])) {
@@ -1652,6 +1658,98 @@ function roleSpecificKeywordScore(
     }
   }
 
+  if (role.category === "side_tables") {
+    if (hasAnyToken(candidateTokens, ["accent", "end", "side"]) && candidateTokens.has("table")) {
+      score += 24;
+      reasons.push("side-table language matches role");
+    }
+
+    if (hasAnyToken(candidateTokens, ["bedside", "nightstand"])) {
+      score -= 26;
+      weaknessReasons.push("bedside or nightstand language is weak for living-room side table role");
+    }
+  }
+
+  if (role.category === "wall_art") {
+    if (hasAnyToken(candidateTokens, ["art", "artwork", "canvas", "framed", "painting", "print"])) {
+      score += 26;
+      reasons.push("wall art language matches role");
+    }
+
+    if (hasAnyToken(candidateTokens, ["hook", "holder", "mail", "rack", "shelf", "shelves"])) {
+      score -= 30;
+      weaknessReasons.push("utility wall item is weak for wall art role");
+    }
+
+    if (softNeutralCue && !requestedDarkCue && hasAnyToken(candidateTokens, ["black", "charcoal", "graphite"])) {
+      score -= 32;
+      weaknessReasons.push("dark wall art is weak for a soft-neutral room palette");
+    }
+  }
+
+  if (role.category === "mirrors") {
+    if (hasAnyToken(candidateTokens, ["mirror", "mirrors"])) {
+      score += 24;
+      reasons.push("mirror language matches role");
+    }
+
+    if (hasAnyToken(candidateTokens, ["gold", "brass", "bronze", "wood", "oak", "walnut"])) {
+      score += 14;
+      reasons.push("warm mirror finish supports the room palette");
+    }
+
+    if (softNeutralCue && !requestedDarkCue && hasAnyToken(candidateTokens, ["black", "charcoal", "graphite"])) {
+      score -= 34;
+      weaknessReasons.push("dark mirror finish is weak for a soft-neutral room palette");
+    }
+  }
+
+  if (role.category === "lighting") {
+    const overTableRole =
+      roleText.includes("over-table") ||
+      roleText.includes("over table") ||
+      hasAnyToken(roleTokens, ["pendant", "chandelier", "ceiling"]);
+
+    if (!overTableRole) {
+      if (hasAnyToken(candidateTokens, ["lamp", "lighting", "shade", "sconce"])) {
+        score += 18;
+        reasons.push("lamp or layered-lighting language matches role");
+      }
+
+      if (hasAnyToken(candidateTokens, ["brass", "bronze", "gold", "linen", "shade", "wood"])) {
+        score += 18;
+        reasons.push("warm lighting finish supports the room palette");
+      }
+
+      if (hasAnyToken(candidateTokens, ["chrome", "dna", "led", "novelty", "office", "spiral", "twisted"])) {
+        score -= 34;
+        weaknessReasons.push("novelty, office, or chrome lighting is weak for a warm residential support role");
+      }
+
+      if (softNeutralCue && !requestedDarkCue && hasAnyToken(candidateTokens, ["black", "charcoal", "graphite"])) {
+        score -= 24;
+        weaknessReasons.push("dark lighting finish is weak for a soft-neutral room palette");
+      }
+    }
+  }
+
+  if (role.category === "curtains" || role.category === "bedding" || roleText.includes("textile")) {
+    if (hasAnyToken(candidateTokens, ["curtain", "curtains", "drape", "drapes", "linen", "sheer", "textile", "voile"])) {
+      score += 26;
+      reasons.push("curtain or textile language matches role");
+    }
+
+    if (hasAnyToken(candidateTokens, ["shower", "vinyl"])) {
+      score -= 36;
+      weaknessReasons.push("utility textile is weak for residential curtain or textile role");
+    }
+
+    if (softNeutralCue && !requestedDarkCue && hasAnyToken(candidateTokens, ["black", "charcoal", "graphite"])) {
+      score -= 28;
+      weaknessReasons.push("dark textile is weak for a soft-neutral room palette");
+    }
+  }
+
   if (role.category === "storage" && hasAnyToken(roleTokens, ["media", "console", "credenza", "sideboard", "shelving"])) {
     if (hasAnyToken(roleTokens, ["media", "console", "television"]) || roleText.includes("tv")) {
       if (hasAnyToken(candidateTokens, ["media", "console", "television"]) || candidateTokens.has("tv")) {
@@ -1672,9 +1770,51 @@ function roleSpecificKeywordScore(
         reasons.push("office storage language matches role");
       }
     }
+
+    if (softNeutralCue && !requestedDarkCue && hasAnyToken(candidateTokens, ["black", "charcoal", "graphite"])) {
+      score -= 28;
+      weaknessReasons.push("dark storage finish is weak for a soft-neutral room palette");
+    }
+  }
+
+  if (role.category === "decor") {
+    if (hasAnyToken(candidateTokens, ["bowl", "ceramic", "object", "planter", "tray", "vase", "vessel"])) {
+      score += 26;
+      reasons.push("decor-object language matches role");
+    }
+
+    if (hasAnyToken(candidateTokens, ["bench", "chair", "stool", "table"])) {
+      score -= 38;
+      weaknessReasons.push("furniture item is weak for decor accent role");
+    }
+
+    if (softNeutralCue && !requestedDarkCue && hasAnyToken(candidateTokens, ["black", "charcoal", "graphite"])) {
+      score -= 34;
+      weaknessReasons.push("dark decor is weak for a soft-neutral room palette");
+    }
   }
 
   return { score, reasons, weaknessReasons };
+}
+
+function hasSoftNeutralCue(tokens: Set<string>) {
+  return hasAnyToken(tokens, [
+    "beige",
+    "calm",
+    "cream",
+    "ecru",
+    "greige",
+    "ivory",
+    "linen",
+    "neutral",
+    "oatmeal",
+    "quiet",
+    "sand",
+    "soft",
+    "taupe",
+    "warm",
+    "white"
+  ]);
 }
 
 function attributeCueText(role: RoomProductRoleSpec, conceptText: string) {
