@@ -732,6 +732,14 @@ export type RoleProductOptions = RoomProductRoleSpec & {
   options: RankedProductMatch[];
 };
 
+export type ProductRefreshDiversityHistory = {
+  productId: string;
+  productName?: string | null;
+  category?: string | null;
+  roleLabel?: string | null;
+  retailerName?: string | null;
+};
+
 export type ProductRoleAttributeScore = {
   category: number;
   color: number;
@@ -824,11 +832,13 @@ export type ShoppingRoleGroup<T> = {
 export function composeRoomProductOptions({
   ranked,
   roles,
-  optionsPerRole = 3
+  optionsPerRole = 3,
+  refreshDiversityHistory = []
 }: {
   ranked: RankedProductMatch[];
   roles: RoomProductRoleSpec[];
   optionsPerRole?: number;
+  refreshDiversityHistory?: ProductRefreshDiversityHistory[];
 }): RoleProductOptions[] {
   const perRole = Math.max(1, optionsPerRole);
   const used = new Set<string>();
@@ -851,8 +861,14 @@ export function composeRoomProductOptions({
           right.match.score + right.affinity - (left.match.score + left.affinity) ||
           left.index - right.index
       );
+    const diversifiedMatches = applyRefreshDiversityToRoleMatches({
+      matches: categoryMatches,
+      role,
+      acceptedCategories,
+      refreshDiversityHistory
+    });
 
-    for (const { affinity, match } of diverseRoleMatches(categoryMatches, perRole)) {
+    for (const { affinity, match } of diverseRoleMatches(diversifiedMatches, perRole)) {
       if (used.has(match.id) || !match.categoryNormalized || !acceptedCategories.has(match.categoryNormalized)) {
         continue;
       }
@@ -881,6 +897,140 @@ export function composeRoomProductOptions({
   }
 
   return result;
+}
+
+function applyRefreshDiversityToRoleMatches({
+  matches,
+  role,
+  acceptedCategories,
+  refreshDiversityHistory
+}: {
+  matches: Array<{ match: RankedProductMatch; index: number; affinity: number }>;
+  role: RoomProductRoleSpec;
+  acceptedCategories: Set<string>;
+  refreshDiversityHistory: ProductRefreshDiversityHistory[];
+}) {
+  if (matches.length < 2 || refreshDiversityHistory.length === 0) {
+    return matches;
+  }
+
+  const roleLabel = role.label.toLowerCase();
+  const roleText = `${role.category} ${role.label}`.toLowerCase();
+  const relevantHistory = refreshDiversityHistory.filter((entry) => {
+    const category = entry.category ? normalizeRefreshHistoryCategory(entry.category) : null;
+    const label = entry.roleLabel?.toLowerCase() ?? "";
+    return (
+      (category !== null && acceptedCategories.has(category)) ||
+      (label.length > 0 && (roleText.includes(label) || label.includes(roleLabel)))
+    );
+  });
+
+  if (relevantHistory.length === 0) {
+    return matches;
+  }
+
+  const previousIds = new Set(relevantHistory.map((entry) => entry.productId));
+  const previousFamilies = new Set(
+    relevantHistory
+      .map((entry) =>
+        refreshDiversitySignature({
+          name: entry.productName ?? "",
+          retailerName: entry.retailerName ?? null
+        })
+      )
+      .filter(Boolean)
+  );
+  const scored = matches.map((candidate) => ({
+    ...candidate,
+    baseScore: candidate.match.score + candidate.affinity
+  }));
+  const closeBand = role.priority === "required" ? 115 : 140;
+  const exactPenalty = role.priority === "required" ? 90 : 110;
+  const familyPenalty = role.priority === "required" ? 55 : 70;
+
+  return scored
+    .map((candidate) => {
+      const candidateFamily = refreshDiversitySignature(candidate.match);
+      const exactRepeat = previousIds.has(candidate.match.id);
+      const familyRepeat = candidateFamily.length > 0 && previousFamilies.has(candidateFamily);
+      const hasCloseFreshAlternative = scored.some((alternative) => {
+        if (alternative.match.id === candidate.match.id) {
+          return false;
+        }
+        const alternativeFamily = refreshDiversitySignature(alternative.match);
+        return (
+          !previousIds.has(alternative.match.id) &&
+          (alternativeFamily.length === 0 || !previousFamilies.has(alternativeFamily)) &&
+          sharesRefreshPaletteOrMaterial(candidate.match, alternative.match) &&
+          candidate.baseScore - alternative.baseScore <= closeBand
+        );
+      });
+      const penalty = hasCloseFreshAlternative ? (exactRepeat ? exactPenalty : familyRepeat ? familyPenalty : 0) : 0;
+
+      return {
+        match:
+          penalty === 0
+            ? candidate.match
+            : {
+                ...candidate.match,
+                score: Number((candidate.match.score - penalty).toFixed(3)),
+                selectionReason: [
+                  candidate.match.selectionReason,
+                  exactRepeat
+                    ? "refresh diversity: previously shown for this role"
+                    : "refresh diversity: similar family was previously shown for this role"
+                ].join("; ")
+              },
+        index: candidate.index,
+        affinity: candidate.affinity
+      };
+    })
+    .sort(
+      (left, right) =>
+        right.match.score + right.affinity - (left.match.score + left.affinity) ||
+        left.index - right.index
+    );
+}
+
+function normalizeRefreshHistoryCategory(category: string) {
+  return category
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, "_");
+}
+
+function sharesRefreshPaletteOrMaterial(left: RankedProductMatch, right: RankedProductMatch) {
+  const leftTokens = refreshComparisonTokens(left);
+  const rightTokens = refreshComparisonTokens(right);
+  const neutralTokens = ["beige", "cream", "ecru", "greige", "ivory", "linen", "oatmeal", "sand", "taupe", "white"];
+  const upholsteredTokens = ["boucle", "fabric", "linen", "textile", "upholstered"];
+
+  return (
+    neutralTokens.some((token) => leftTokens.has(token)) &&
+      neutralTokens.some((token) => rightTokens.has(token)) ||
+    upholsteredTokens.some((token) => leftTokens.has(token) && rightTokens.has(token)) ||
+    ["oak", "walnut", "wood", "travertine", "stone", "ceramic", "brass", "bronze"].some(
+      (token) => leftTokens.has(token) && rightTokens.has(token)
+    )
+  );
+}
+
+function refreshComparisonTokens(match: RankedProductMatch) {
+  return new Set(
+    [
+      match.name,
+      match.color,
+      match.material,
+      match.colorTags.join(" "),
+      match.materialTags.join(" "),
+      match.styleTags.join(" ")
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase()
+      .split(/[^a-z0-9]+/i)
+      .filter(Boolean)
+  );
 }
 
 export function buildRoleScopedCandidatePools({
@@ -1961,6 +2111,50 @@ function diversitySignature(match: RankedProductMatch) {
   const material = match.materialTags[0] ?? match.material ?? "unknown-material";
 
   return `${match.categoryNormalized ?? "uncategorized"}:${priceBand}:${color}:${material}`;
+}
+
+function refreshDiversitySignature({
+  name,
+  retailerName
+}: Pick<RankedProductMatch, "name" | "retailerName"> | { name: string; retailerName?: string | null }) {
+  const tokens = name
+    .toLowerCase()
+    .replace(/\([^)]*\)/g, " ")
+    .replace(/(?:\d+(?:\.\d+)?\s*(?:cm|cmt|mm|m|x|seater|seaters|seat)|\b\d+\b)/g, " ")
+    .split(/[^a-z0-9]+/i)
+    .filter(
+      (token) =>
+        token.length > 2 &&
+        ![
+          "accent",
+          "beige",
+          "black",
+          "blue",
+          "brown",
+          "chair",
+          "cream",
+          "fabric",
+          "grey",
+          "gray",
+          "ivory",
+          "left",
+          "living",
+          "modular",
+          "natural",
+          "right",
+          "set",
+          "sofa",
+          "table",
+          "white",
+          "with"
+        ].includes(token)
+    );
+
+  if (tokens.length === 0) {
+    return "";
+  }
+
+  return `${(retailerName ?? "").toLowerCase()}:${tokens.slice(0, 2).join("-")}`;
 }
 
 function categoriesForRole(category: string) {

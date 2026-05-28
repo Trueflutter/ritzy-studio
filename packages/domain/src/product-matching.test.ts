@@ -1615,4 +1615,100 @@ assert.deepEqual(
   ["Cream Fabric Sofa 1", "Green Velvet Sofa", "Cream Fabric Sofa 2"]
 );
 
+const refreshDiverseSofaOptions = composeRoomProductOptions({
+  ranked: rankProductMatches({
+    roomType: "living room",
+    conceptText: "warm cream living room with a soft fabric sofa",
+    budgetMaxAed: 10000,
+    candidates: [
+      {
+        ...base,
+        id: "00000000-0000-4000-8000-000000000404",
+        name: "Cream Fabric Sofa 1",
+        retailerName: "Same Retailer",
+        categoryNormalized: "sofas",
+        priceAed: 2500,
+        availability: "in stock",
+        primaryImageUrl: "https://example.com/cream-sofa-1.jpg",
+        colorTags: ["cream"],
+        materialTags: ["fabric"]
+      },
+      {
+        ...base,
+        id: "00000000-0000-4000-8000-000000000405",
+        name: "Ivory Fabric Sofa 2",
+        retailerName: "Same Retailer",
+        categoryNormalized: "sofas",
+        priceAed: 2700,
+        availability: "in stock",
+        primaryImageUrl: "https://example.com/ivory-sofa-2.jpg",
+        colorTags: ["ivory"],
+        materialTags: ["fabric"]
+      }
+    ]
+  }),
+  roles: [{ category: "sofas", label: "anchor seating", visualBrief: null, quantity: 1, priority: "required" }],
+  optionsPerRole: 2,
+  refreshDiversityHistory: [
+    {
+      productId: "00000000-0000-4000-8000-000000000404",
+      productName: "Cream Fabric Sofa 1",
+      category: "sofas",
+      roleLabel: "anchor seating",
+      retailerName: "Same Retailer"
+    }
+  ]
+});
+assert.deepEqual(
+  refreshDiverseSofaOptions[0].options.map((option) => option.name),
+  ["Ivory Fabric Sofa 2", "Cream Fabric Sofa 1"]
+);
+
+const thinRefreshSofaOptions = composeRoomProductOptions({
+  ranked: rankProductMatches({
+    roomType: "living room",
+    conceptText: "warm cream living room with a soft fabric sofa",
+    budgetMaxAed: 10000,
+    candidates: [
+      {
+        ...base,
+        id: "00000000-0000-4000-8000-000000000406",
+        name: "Cream Fabric Sofa",
+        retailerName: "Same Retailer",
+        categoryNormalized: "sofas",
+        priceAed: 2500,
+        availability: "in stock",
+        primaryImageUrl: "https://example.com/cream-sofa.jpg",
+        colorTags: ["cream"],
+        materialTags: ["fabric"]
+      },
+      {
+        ...base,
+        id: "00000000-0000-4000-8000-000000000407",
+        name: "Orange Outdoor Sofa Bed",
+        retailerName: "Different Retailer",
+        categoryNormalized: "sofas",
+        priceAed: 9100,
+        availability: "in stock",
+        primaryImageUrl: "https://example.com/orange-outdoor-sofa-bed.jpg",
+        colorTags: ["orange"],
+        materialTags: ["vinyl"],
+        roomTags: ["outdoor"]
+      }
+    ]
+  }),
+  roles: [{ category: "sofas", label: "anchor seating", visualBrief: null, quantity: 1, priority: "required" }],
+  optionsPerRole: 2,
+  refreshDiversityHistory: [
+    {
+      productId: "00000000-0000-4000-8000-000000000406",
+      productName: "Cream Fabric Sofa",
+      category: "sofas",
+      roleLabel: "anchor seating",
+      retailerName: "Same Retailer"
+    }
+  ]
+});
+assert.equal(thinRefreshSofaOptions[0].options[0]?.name, "Cream Fabric Sofa");
+
 console.log("product matching tests passed");
