@@ -39,6 +39,7 @@ import {
   visualStyleSummary,
   type RankedProductMatch,
   type ProductMatchCandidate,
+  type ProductRefreshDiversityHistory,
   type RoleProductOptions,
   type RoleScopedCandidatePool,
   type RoomProductRoleSpec
@@ -2632,6 +2633,13 @@ export async function groundProductsAction(formData: FormData) {
         ])
       )
     : new Map<string, (typeof sourcingResult.roleResults)[number]>();
+  const refreshDiversityHistory = localSkuFidelityMode
+    ? await previousShoppingListRefreshHistory({
+        serviceSupabase,
+        roomId,
+        conceptId
+      })
+    : [];
 
   const visualRankedById = new Map(visualRanked.map((match) => [match.id, match]));
   const optionsPerRole = localSkuFidelityMode ? LOCAL_SKU_FIDELITY_CANDIDATES_PER_ROLE : 6;
@@ -2642,7 +2650,8 @@ export async function groundProductsAction(formData: FormData) {
         roles,
         // Store a reserve beyond the three shown, so rejecting an option reveals a
         // replacement instantly with no catalog round-trip.
-        optionsPerRole
+        optionsPerRole,
+        refreshDiversityHistory: localSkuFidelityMode ? refreshDiversityHistory : []
       }),
       ranked: visualRanked,
       rankedById: visualRankedById,
@@ -4512,6 +4521,48 @@ function localSkuFidelityModeEnabled(roomType: string) {
   );
 }
 
+async function previousShoppingListRefreshHistory({
+  serviceSupabase,
+  roomId,
+  conceptId
+}: {
+  serviceSupabase: ReturnType<typeof createServiceClient>;
+  roomId: string;
+  conceptId: string;
+}): Promise<ProductRefreshDiversityHistory[]> {
+  const { data: existingList } = await serviceSupabase
+    .from("shopping_lists")
+    .select("id")
+    .eq("room_id", roomId)
+    .eq("concept_id", conceptId)
+    .limit(1)
+    .maybeSingle();
+
+  if (!existingList?.id) {
+    return [];
+  }
+
+  const { data: rows } = await serviceSupabase
+    .from("shopping_list_items")
+    .select("product_id, category, role_label, product:products(name, retailer:retailers(name))")
+    .eq("shopping_list_id", existingList.id)
+    .in("status", ["selected", "option"]);
+
+  return (rows ?? []).map((row) => {
+    const product = Array.isArray(row.product) ? row.product[0] : row.product;
+    const retailer = product?.retailer;
+    const retailerName = Array.isArray(retailer) ? retailer[0]?.name : retailer?.name;
+
+    return {
+      productId: row.product_id,
+      productName: product?.name ?? null,
+      category: row.category,
+      roleLabel: row.role_label,
+      retailerName: retailerName ?? null
+    };
+  });
+}
+
 function rerankRolePoolForAestheticFit(
   pool: RoleScopedCandidatePool,
   roomType: string,
@@ -5278,6 +5329,19 @@ function isCredibleAestheticDemoOption(
     catalogueConflictColors(),
     localSkuFidelityMode
   );
+  const softNeutralConcept = conceptRequestsSoftNeutralUpholstery(conceptText);
+  const hasUnrequestedDarkFinish =
+    softNeutralConcept &&
+    hasAnyCatalogueCue(haystack, ["black", "charcoal", "graphite"]) &&
+    !conceptAllowsSeatingCue(conceptText, ["black", "charcoal", "graphite"]);
+
+  if (
+    localSkuFidelityMode &&
+    hasUnrequestedDarkFinish &&
+    ["decor", "lighting", "mirrors", "side_tables", "storage", "wall_art"].includes(role.category)
+  ) {
+    return false;
+  }
 
   if (role.category === "side_tables") {
     return score >= 20 && hasAnyCatalogueCue(haystack, ["accent", "end", "side"]);
