@@ -188,6 +188,9 @@ export function finalRenderProductFidelityLanguage() {
     "Treat selected product images as commerce-critical visual references, not mood-board inspiration.",
     "Product order indicates priority; preserve anchor products most strictly by silhouette, color family, material, proportions, and visible distinctive features.",
     "Do not substitute, recolor, merge, or restyle selected products into nicer invented alternatives.",
+    "Every visible purchasable furniture, lighting, rug, mirror, art, curtain, textile, storage, or decor object should correspond to a selected product reference when that role is listed.",
+    "Do not add purchasable-looking lamps, media consoles, ottomans, side tables, mirrors, wall art, plants, cushions, trays, or decor unless they are explicitly represented in the selected product list; if a support role is missing, leave the composition simpler instead of inventing it.",
+    "When dimensions are provided, respect the product's approximate width, depth, height, seat count, and room role; do not stretch a compact two-seater into a sectional or turn one lounge chair SKU into a different chair silhouette.",
     "Adapt the room around the products, keep selected products distinct, and allow only natural perspective, shadows, and room lighting to change their appearance.",
     "If exact SKU reproduction is not reliable, create a representative room render and do not imply exact product accuracy."
   ].join(" ");

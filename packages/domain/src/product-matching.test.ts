@@ -760,6 +760,85 @@ const goodLivingRoomChairAesthetic = assessAestheticFitForRole({
 assert.equal(goodLivingRoomChairAesthetic.unsuitableHero, false);
 assert.ok(goodLivingRoomChairAesthetic.scoreAdjustment >= 60);
 
+const shortSofaAesthetic = assessAestheticFitForRole({
+  candidate: {
+    ...base,
+    id: "00000000-0000-4000-8000-000000000570",
+    name: "Victor 2 Seater Sofa – Beige",
+    categoryNormalized: "sofas",
+    availability: "in stock",
+    primaryImageUrl: "https://example.com/victor-2-seater.jpg",
+    color: "Beige",
+    material: "Fabric",
+    dimensions: { widthCm: 178, depthCm: 86, heightCm: 93, sourceText: "W 178 x D 86 x H 93 cm" }
+  },
+  role: {
+    category: "sofas",
+    label: "anchor seating",
+    visualBrief: "generous beige fabric sofa for family seating",
+    quantity: 1,
+    priority: "required"
+  },
+  roomType: "living room",
+  conceptText: "soft transitional living room with seating for five and warm neutral fabric"
+});
+assert.equal(shortSofaAesthetic.unsuitableHero, true);
+assert.ok(shortSofaAesthetic.weaknessReasons.includes("short sofa cannot satisfy a generous family anchor-seating role"));
+
+const neutralFullSizeSofaAesthetic = assessAestheticFitForRole({
+  candidate: {
+    ...base,
+    id: "00000000-0000-4000-8000-000000000571",
+    name: "Allecia 4-Seater Fabric Sofa",
+    categoryNormalized: "sofas",
+    availability: "in stock",
+    primaryImageUrl: "https://example.com/allecia-4-seater.jpg",
+    color: "Beige",
+    material: "Fabric",
+    dimensions: { widthCm: 268, depthCm: 103, heightCm: 85, sourceText: "W 268 x D 103 x H 85 cm" }
+  },
+  role: {
+    category: "sofas",
+    label: "anchor seating",
+    visualBrief: "generous beige fabric sofa for family seating",
+    quantity: 1,
+    priority: "required"
+  },
+  roomType: "living room",
+  conceptText: "soft transitional living room with seating for five and warm neutral fabric"
+});
+assert.equal(neutralFullSizeSofaAesthetic.unsuitableHero, false);
+assert.ok(neutralFullSizeSofaAesthetic.scoreAdjustment >= 90);
+
+const unrequestedSectionalSofaAesthetic = assessAestheticFitForRole({
+  candidate: {
+    ...base,
+    id: "00000000-0000-4000-8000-000000000572",
+    name: "Corner Sofa Gigi Left",
+    categoryNormalized: "sofas",
+    availability: "in stock",
+    primaryImageUrl: "https://example.com/gigi-left-corner.jpg",
+    color: "Brown",
+    material: "Fabric",
+    dimensions: { widthCm: null, depthCm: 293, heightCm: 73, sourceText: "D 293 x H 73 cm" }
+  },
+  role: {
+    category: "sofas",
+    label: "anchor seating",
+    visualBrief: "straight beige fabric sofa for a soft transitional room",
+    quantity: 1,
+    priority: "required"
+  },
+  roomType: "living room",
+  conceptText: "soft transitional living room with a straight sofa, warm whites, and walnut"
+});
+assert.equal(unrequestedSectionalSofaAesthetic.unsuitableHero, true);
+assert.ok(
+  unrequestedSectionalSofaAesthetic.weaknessReasons.includes(
+    "sectional or corner sofa was not requested for this straight-sofa living-room composition"
+  )
+);
+
 const incidentalDiningQuestionChairAesthetic = assessAestheticFitForRole({
   candidate: {
     ...base,
