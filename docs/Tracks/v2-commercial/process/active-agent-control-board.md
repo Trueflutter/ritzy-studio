@@ -110,15 +110,15 @@ Docs-only, test-only, domain-only, and dry-run-only work may proceed only when t
 
 Owner: Product Matching Agent
 Status: MERGED
-Branch: `main` includes PR #230 at `bdd20f314890de95cd11d3b02060c4933b0dbd19`
+Branch: `main` includes PR #232 at `61dee4fe12e6e668903f60d16e8d1e168aaa7ac1`
 Allowed scope: Founder-approved local/dev PM-001 aesthetic-quality rescue. Scope includes docs, focused domain/app selection logic, tests, and local/dev validation needed to make catalogue-grounded living-room concept renders and shopping recommendations use actual ingested SKUs with investor-demo taste quality. The narrow implementation may add a local/dev-only taste-arbitration gate for living-room chair suitability, coffee-table/rug visual-noise conflicts, and sofa/chair/table/rug harmony. Local/dev execution is limited to existing test/demo project and room data on `http://localhost:3001` using existing catalogue rows only.
 Forbidden scope: No production deploy, production flags, live catalog writes, live ingestion, DB/schema/generated type changes, payment/checkout changes, floor-plan work, Catalog-First runtime coupling, controlled-preview expansion, production Product Matching execution, runtime allowlist expansion, default-on production activation, unrelated UI redesign, or broad catalogue rewrites. Do not mutate catalogue/product rows. Do not make production selection behavior change unless a future Sam/Chief boundary explicitly approves rollout.
-Expected next artifact: None for the merged support-role quality and visual-sourcing timeout-diagnosis slice; further execution or rollout requires a fresh Sam/Chief boundary.
+Expected next artifact: None for the merged refresh-diversity and support-role quality slices; further execution or rollout requires a fresh Sam/Chief boundary.
 SLA: Branch, commits, PR, or explicit blocker within 30 minutes. If the local/dev gate cannot reach 9/10 quality with existing SKUs, stop with evidence and propose the smallest next architecture slice.
 Last architect instruction: Sam set the active goal in-thread on 2026-05-27: deliver an investor-demo-quality catalogue-grounded living-room flow with actual SKUs, target aesthetic score 9/10 or better, no unsuitable hero items, and no office/task/dining/shell/pedestal chair unless explicitly requested. Sam called the current black/brown pedestal shell chair and noisy striped coffee table unacceptable for investors.
-Agent ack: PR #220 merged the local/dev aesthetic taste gate; PR #222 added post-merge validation; PR #226 merged the follow-up local/dev SKU-fidelity/support-role improvements after approval and green checks. PR #230 merged the focused PM-001 support-role quality and visual-sourcing timeout-diagnosis slice after approval and green checks.
-Current PR: none; #230 merged into `main` at `bdd20f314890de95cd11d3b02060c4933b0dbd19`.
-Blocker: No current implementation blocker for the merged support-role quality and timeout-diagnostics slice. No production deploys/flags, new execution, rollout, app actions, writes, or broader Product Matching scope outside the recorded local/dev evidence boundary.
+Agent ack: PR #220 merged the local/dev aesthetic taste gate; PR #222 added post-merge validation; PR #226 merged the follow-up local/dev SKU-fidelity/support-role improvements after approval and green checks; PR #230 merged focused support-role quality and timeout diagnostics; PR #232 merged deterministic local/dev refresh-history diversity and soft-neutral support-role filtering after approval and green checks.
+Current PR: none; #232 merged into `main` at `61dee4fe12e6e668903f60d16e8d1e168aaa7ac1`.
+Blocker: No current implementation blocker for the merged refresh-diversity, support-role quality, and timeout-diagnostics slices. No production deploys/flags, new execution, rollout, app actions, writes, or broader Product Matching scope outside the recorded local/dev evidence boundary.
 
 ### Ticket MI-001
 
