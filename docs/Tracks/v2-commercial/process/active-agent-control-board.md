@@ -117,7 +117,7 @@ Expected next artifact: None for the approved local/dev aesthetic-quality rescue
 SLA: Branch, commits, PR, or explicit blocker within 30 minutes. If the local/dev gate cannot reach 9/10 quality with existing SKUs, stop with evidence and propose the smallest next architecture slice.
 Last architect instruction: Sam set the active goal in-thread on 2026-05-27: deliver an investor-demo-quality catalogue-grounded living-room flow with actual SKUs, target aesthetic score 9/10 or better, no unsuitable hero items, and no office/task/dining/shell/pedestal chair unless explicitly requested. Sam called the current black/brown pedestal shell chair and noisy striped coffee table unacceptable for investors.
 Agent ack: PR #220 merged the local/dev aesthetic taste gate; PR #222 added post-merge validation; PR #226 merged the follow-up local/dev SKU-fidelity/support-role improvements after approval and green checks.
-Current PR: #228 (<https://github.com/Trueflutter/ritzy-studio/pull/228>) for docs/mailbox-only post-#227 hygiene.
+Current PR: none; #228 merged into `main` at `cc1e9916aa32c691033c1b87de9979fabaa3c19f`.
 Blocker: No implementation blocker currently for the approved local/dev investor-demo evidence path after PR #226. No production deploys/flags or new execution outside the recorded local/dev evidence boundary.
 
 ### Ticket MI-001
