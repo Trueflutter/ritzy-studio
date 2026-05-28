@@ -7,7 +7,7 @@ import {
 } from "@ritzy-studio/domain";
 
 const TEXT_FALLBACK_PROMPT_KEY = "product_sourcing_text_fallback";
-const TEXT_FALLBACK_PROMPT_VERSION = "2026-05-27.1";
+const TEXT_FALLBACK_PROMPT_VERSION = "2026-05-28.1";
 const TEXT_FALLBACK_OPTIONS_PER_ROLE = 6;
 
 export function buildProductSourcingTextFallbackResult({
@@ -104,10 +104,16 @@ function bestFallbackOptionForRole(role: RoleProductOptions) {
     return role.options[0] ?? null;
   }
 
-  return (
-    role.options.find((option) => isCredibleSupportFallbackOption(option, role)) ??
-    null
-  );
+  const credibleOptions = role.options.filter((option) => isCredibleSupportFallbackOption(option, role));
+  if (credibleOptions.length === 0) {
+    return null;
+  }
+
+  return credibleOptions.sort(
+    (left, right) =>
+      supportFallbackFamilyScore(right, role) - supportFallbackFamilyScore(left, role) ||
+      right.score - left.score
+  )[0];
 }
 
 function isCredibleSupportFallbackOption(option: RankedProductMatch, role: RoleProductOptions) {
@@ -181,6 +187,49 @@ function isCredibleSupportFallbackOption(option: RankedProductMatch, role: RoleP
   }
 
   return true;
+}
+
+function supportFallbackFamilyScore(option: RankedProductMatch, role: RoleProductOptions) {
+  const tokens = catalogueTokens(
+    [
+      option.name,
+      option.color,
+      option.material,
+      option.description,
+      option.styleTags.join(" "),
+      option.colorTags.join(" "),
+      option.materialTags.join(" ")
+    ]
+      .filter(Boolean)
+      .join(" ")
+  );
+  let score = option.score;
+
+  if (hasAnyToken(tokens, ["beige", "brass", "bronze", "cream", "gold", "ivory", "linen", "oak", "stone", "taupe", "travertine", "walnut", "wood"])) {
+    score += 28;
+  }
+
+  if (hasAnyToken(tokens, ["black", "charcoal", "chrome", "graphite", "led", "office", "spiral", "twisted"])) {
+    score -= 45;
+  }
+
+  if (role.category === "mirrors" && hasAnyToken(tokens, ["brass", "bronze", "gold", "wood"])) {
+    score += 18;
+  }
+
+  if (role.category === "lighting" && hasAnyToken(tokens, ["brass", "bronze", "gold", "linen", "shade", "wood"])) {
+    score += 18;
+  }
+
+  if (role.category === "decor" && hasAnyToken(tokens, ["ceramic", "planter", "tray", "vase", "vessel"])) {
+    score += 18;
+  }
+
+  if (role.category === "curtains" && hasAnyToken(tokens, ["curtain", "drape", "linen", "sheer", "voile"])) {
+    score += 18;
+  }
+
+  return score;
 }
 
 function catalogueTokens(value: string) {

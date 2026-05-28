@@ -2201,6 +2201,8 @@ export async function groundProductsAction(formData: FormData) {
   let sourcingResult: Awaited<ReturnType<typeof sourceProductsFromConcept>>;
   let productSourcingTextFallbackUsed = false;
   let productSourcingTextFallbackReason: string | null = null;
+  const productSourcingInitialAttemptStartedAtMs = Date.now();
+  let productSourcingInitialAttemptDurationMs: number | null = null;
   try {
     sourcingResult = await withTimeout(
       sourceProductsFromConcept({
@@ -2217,6 +2219,7 @@ export async function groundProductsAction(formData: FormData) {
       PRODUCT_SOURCING_AI_TIMEOUT_MS,
       "Product visual sourcing timed out."
     );
+    productSourcingInitialAttemptDurationMs = Date.now() - productSourcingInitialAttemptStartedAtMs;
 
     await serviceSupabase
       .from("ai_jobs")
@@ -2234,6 +2237,14 @@ export async function groundProductsAction(formData: FormData) {
           productMatchingEngineEnabled,
           localSkuFidelityMode,
           productSourcingAiPayload: productSourcingAiPayloadSummary(),
+          productSourcingTimeoutDiagnostics: productSourcingTimeoutDiagnostics({
+            attemptDurationMs: productSourcingInitialAttemptDurationMs,
+            timedOut: false,
+            fallbackUsed: productSourcingTextFallbackUsed,
+            fallbackReason: productSourcingTextFallbackReason,
+            candidateCount: aiSourcingCandidates.length,
+            rolePoolCount: sourcingCandidatePools.length
+          }),
           productSourcingTextFallbackUsed,
           productSourcingTextFallbackReason,
           productImagePreflight: initialImagePreflight.summary,
@@ -2252,6 +2263,7 @@ export async function groundProductsAction(formData: FormData) {
       })
       .eq("id", sourcingJob.id);
   } catch (error) {
+    productSourcingInitialAttemptDurationMs = Date.now() - productSourcingInitialAttemptStartedAtMs;
     const productSourcingTimedOut = isProductSourcingTimeoutError(error);
     if (productSourcingTimedOut) {
       productSourcingTextFallbackUsed = true;
@@ -2282,6 +2294,14 @@ export async function groundProductsAction(formData: FormData) {
               productMatchingEngineEnabled,
               localSkuFidelityMode,
               productSourcingAiPayload: productSourcingAiPayloadSummary(),
+              productSourcingTimeoutDiagnostics: productSourcingTimeoutDiagnostics({
+                attemptDurationMs: productSourcingInitialAttemptDurationMs,
+                timedOut: productSourcingTimedOut,
+                fallbackUsed: productSourcingTextFallbackUsed,
+                fallbackReason: productSourcingTextFallbackReason,
+                candidateCount: aiSourcingCandidates.length,
+                rolePoolCount: sourcingCandidatePools.length
+              }),
               productSourcingTimedOut,
               productSourcingTextFallbackUsed,
               productSourcingTextFallbackReason,
@@ -2311,6 +2331,14 @@ export async function groundProductsAction(formData: FormData) {
               productMatchingEngineEnabled,
               localSkuFidelityMode,
               productSourcingAiPayload: productSourcingAiPayloadSummary(),
+              productSourcingTimeoutDiagnostics: productSourcingTimeoutDiagnostics({
+                attemptDurationMs: productSourcingInitialAttemptDurationMs,
+                timedOut: productSourcingTimedOut,
+                fallbackUsed: productSourcingTextFallbackUsed,
+                fallbackReason: productSourcingTextFallbackReason,
+                candidateCount: aiSourcingCandidates.length,
+                rolePoolCount: sourcingCandidatePools.length
+              }),
               productImagePreflight: initialImagePreflight.summary,
               productImagePreflightGate: initialImageGate,
               productSourcingTimedOut,
@@ -2334,6 +2362,14 @@ export async function groundProductsAction(formData: FormData) {
             productMatchingEngineEnabled,
             localSkuFidelityMode,
             productSourcingAiPayload: productSourcingAiPayloadSummary(),
+            productSourcingTimeoutDiagnostics: productSourcingTimeoutDiagnostics({
+              attemptDurationMs: productSourcingInitialAttemptDurationMs,
+              timedOut: productSourcingTimedOut,
+              fallbackUsed: productSourcingTextFallbackUsed,
+              fallbackReason: productSourcingTextFallbackReason,
+              candidateCount: aiSourcingCandidates.length,
+              rolePoolCount: sourcingCandidatePools.length
+            }),
             productImagePreflight: initialImagePreflight.summary,
             productImagePreflightGate: initialImageGate,
             productSourcingTimedOut,
@@ -4962,6 +4998,35 @@ function productSourcingAiPayloadSummary() {
     conceptImageDetail: PRODUCT_SOURCING_AI_CONCEPT_IMAGE_DETAIL,
     candidateImageLimit: PRODUCT_SOURCING_AI_CANDIDATE_IMAGE_LIMIT,
     candidateImageDetail: PRODUCT_SOURCING_AI_CANDIDATE_IMAGE_DETAIL,
+    productCandidateImagesEnabled: PRODUCT_SOURCING_AI_PRODUCT_IMAGES_ENABLED
+  };
+}
+
+function productSourcingTimeoutDiagnostics({
+  attemptDurationMs,
+  timedOut,
+  fallbackUsed,
+  fallbackReason,
+  candidateCount,
+  rolePoolCount
+}: {
+  attemptDurationMs: number | null;
+  timedOut: boolean;
+  fallbackUsed: boolean;
+  fallbackReason: string | null;
+  candidateCount: number;
+  rolePoolCount: number;
+}) {
+  return {
+    initialAttemptDurationMs: attemptDurationMs,
+    timeoutMs: PRODUCT_SOURCING_AI_TIMEOUT_MS,
+    timedOut,
+    fallbackUsed,
+    fallbackReason,
+    candidateCount,
+    rolePoolCount,
+    conceptImageDetail: PRODUCT_SOURCING_AI_CONCEPT_IMAGE_DETAIL,
+    candidateImageLimit: PRODUCT_SOURCING_AI_CANDIDATE_IMAGE_LIMIT,
     productCandidateImagesEnabled: PRODUCT_SOURCING_AI_PRODUCT_IMAGES_ENABLED
   };
 }
