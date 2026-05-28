@@ -80,21 +80,41 @@ export default async function ShoppingListPage({
   const commerceUnlocked = Boolean(canAccessCommerce);
   const retailerGroups = groupSelectedItemsByRetailer(listItems);
 
-  const { data: latestRenderAsset } = commerceUnlocked
-    ? await serviceSupabase
+  const selectedItemIds = listItems
+    .filter((item) => item.status === "selected")
+    .map((item) => item.id)
+    .sort();
+  const selectionKey = selectedItemIds.join(",");
+  const { data: matchingRenderJob } =
+    commerceUnlocked && shoppingList && shoppingList.concept_id
+      ? await serviceSupabase
+          .from("render_jobs")
+          .select("output_asset_ids")
+          .eq("room_id", roomId)
+          .eq("concept_id", shoppingList.concept_id)
+          .eq("shopping_list_id", shoppingList.id)
+          .contains("input_summary", { selectionKey })
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle()
+      : { data: null };
+  const matchingRenderAssetId = Array.isArray(matchingRenderJob?.output_asset_ids)
+    ? matchingRenderJob.output_asset_ids[0]
+    : null;
+  const { data: finalRenderAsset } = matchingRenderAssetId
+    ? await supabase
         .from("room_assets")
         .select("storage_path")
+        .eq("id", matchingRenderAssetId)
         .eq("room_id", roomId)
         .eq("asset_type", "final_render")
-        .order("created_at", { ascending: false })
-        .limit(1)
         .maybeSingle()
     : { data: null };
-  const finalRenderUrl = latestRenderAsset?.storage_path
+  const finalRenderUrl = finalRenderAsset?.storage_path
     ? (
         await serviceSupabase.storage
           .from("generated-renders")
-          .createSignedUrl(latestRenderAsset.storage_path, 60 * 60)
+          .createSignedUrl(finalRenderAsset.storage_path, 60 * 60)
       ).data?.signedUrl
     : null;
   const cardItems: ProductCardItem[] = listItems.map((item) => {
