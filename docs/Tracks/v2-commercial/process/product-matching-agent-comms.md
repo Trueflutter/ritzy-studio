@@ -1,7 +1,7 @@
 # Product Matching Engine Agent Comms
 
 ## Current PR
-No open PM-001 implementation PR. PR #220 merged into `main` at `abf2e517db19d8e1fd7cd2adcc6f11a01c82405b`.
+PR #227 (<https://github.com/Trueflutter/ritzy-studio/pull/227>) on branch `codex/product-match-post-226-handoff`. This is docs/mailbox-only after PR #226 merged.
 
 ## Current stage
 DUAL_TRACK:
@@ -18,6 +18,8 @@ PM-001 coffee-table blocker has a narrow fix and one approved local/dev retest. 
 Product Matching Engine V1 is still not approved for production deploys, production flags, broad/runtime allowlist expansion, app actions, draft shopping-list/catalog writes, live catalog writes, DB/schema changes, generated DB types, runtime/UI redesign/prompt changes, payment/checkout changes, default-on activation, production rollout, selection/scoring changes, Catalog-First runtime coupling, new preview targets, or broader execution without a new approval.
 
 ## Chief architect routing
+ARCHITECT_NOTE: PR #226 merged into `main` at `ccf1faa1b721ea847cf158793c9b618179bcde5e`. It improves local/dev living-room SKU fidelity for the investor demo with role-window candidate widening, catalogue-anchor divergence handling, support-role render guard, sofa aesthetic scoring, final-render product fidelity prompt language, and render reference expansion. Review verification included `git diff --check`, `pnpm install --offline --frozen-lockfile`, `pnpm --filter @ritzy-studio/web typecheck`, `pnpm --filter @ritzy-studio/web lint`, `pnpm --filter @ritzy-studio/domain test`, `pnpm --filter @ritzy-studio/domain typecheck`, `pnpm --filter @ritzy-studio/ai test`, `pnpm --filter @ritzy-studio/ai typecheck`, and `pnpm --filter @ritzy-studio/prompts typecheck`. The unrelated `@ritzy-studio/prompts` test baseline failure on `origin/main` was noted by review. No production deploys/flags, live catalog writes/ingestion, schema/generated type changes, payment/checkout changes, floor-plan work, Catalog-First coupling, controlled-preview expansion, production activation, runtime allowlist expansion, or catalogue/product row mutations were performed.
+
 CHIEF_ARCHITECT_REPLY:
 Founder/local-dev boundary confirmed for PM-001 aesthetic-quality rescue. PR #220 merged the approved local/dev implementation.
 
@@ -64,6 +66,8 @@ ARCHITECT_NOTE: PR #160 completed the docs-only controlled-preview execution-bou
 Hard stop: no controlled-preview configuration/execution, app actions, runtime allowlist expansion, draft shopping-list/catalog writes, live catalog writes, DB/schema/generated types, runtime/env default changes, runtime/UI/prompt/payment/checkout changes, production flags/deploys, default-on activation, production rollout, selection/scoring changes, or Catalog-First runtime coupling without explicit Sam/Chief approval.
 
 ## Last action taken
+PR #226 merged the local/dev PM-001 SKU-fidelity/support-role improvement after approval at head `bef303aa2e298bc5f6c1541c74d353a773`. No production deploys/flags, live catalogue writes/ingestion, schema/generated type changes, payment/checkout changes, floor-plan work, Catalog-First runtime coupling, controlled-preview expansion, production activation, runtime allowlist expansion, or catalogue/product row mutations were performed.
+
 PR #220 merged the local/dev PM-001 aesthetic taste gate for catalogue-grounded investor-demo concepts and shopping-list anchor preservation. PR #221 cleaned the post-merge board/mailbox state. Post-merge validation is committed at `docs/Tracks/v2-commercial/product-matching-evals/manual-qa/2026-05-27-aesthetic-taste-gate-post-merge-validation.md`.
 
 PR #217 merged the approved catalogue-grounded concept-generation implementation. The merged code path is ready for a separately approved local/dev validation boundary on the investor-demo project/room/user. No Product Matching execution, controlled preview, preview QA, app action, draft shopping-list row create/refresh, catalogue write, DB/schema/generated type change, live write, UI/payment/checkout change, production flag/deploy, broad/runtime allowlist expansion, default-on activation, production rollout, broad scoring rewrite, floor-plan work, or Catalog-First runtime coupling was performed.
