@@ -109,16 +109,16 @@ Docs-only, test-only, domain-only, and dry-run-only work may proceed only when t
 ### Ticket PM-001
 
 Owner: Product Matching Agent
-Status: BLOCKED
-Branch: none
-Allowed scope: Coordination only until Sam/Chief routes the next narrow local/dev PM-001 code boundary. PR #249 has merged and completed the thin/empty option-pool warning guard/test; no additional Product Matching execution or implementation is approved by this board state.
+Status: ROUTED
+Branch: pending Product Matching Agent ack
+Allowed scope: One narrow local/dev PM-001 fix boundary approved by Chief on 2026-05-29 after PR Review Agent approved and PR #250 merged: implement and test visual-sourcing timeout isolation evidence so PM-001 can distinguish visual sourcing timeout/text fallback from semantic matching quality. Scope is limited to code/tests/docs required to surface deterministic timeout/fallback evidence in existing local/dev Product Matching audit paths. No Product Matching execution or visual sourcing runtime call is approved by this route.
 Forbidden scope: No production deploy, production flags, live catalog writes, live ingestion, DB/schema/generated type changes, payment/checkout changes, floor-plan work, Catalog-First runtime coupling, controlled-preview expansion, production Product Matching execution, runtime allowlist expansion, default-on production activation, unrelated UI redesign, or broad catalogue rewrites. Do not mutate catalogue/product rows. Do not make production selection behavior change unless a future Sam/Chief boundary explicitly approves rollout.
-Expected next artifact: Sam/Chief route for the next exact safe PM-001 slice, or a Product Matching Agent `ARCHITECT_NOTE:` proposing the smallest safe boundary.
-SLA: None while blocked pending fresh Sam/Chief routing.
-Last architect instruction: 2026-05-29 PR #249 merged at `8f2591537ec884e65b79b5325c1d44f2972f6176` after PR Review Agent approval, completing the thin/empty option-pool warning guard/test. Do not start another PM-001 implementation slice until Sam/Chief explicitly routes the next exact local/dev boundary.
+Expected next artifact: Product Matching Agent ack with branch name and explicit stop-rule confirmation, then one focused PR for visual-sourcing timeout/fallback evidence. PR Review Agent must review that PR before merge.
+SLA: Product Matching Agent should ack within one heartbeat and open/fix/block within 45 minutes after ack.
+Last architect instruction: 2026-05-29 PR #250 merged at `6fad6c285ec0580658ff9bb8ddbe55075ab5602f`, completing the post-PR #249 handoff after PR Review Agent approval. Chief now routes the next exact local/dev PM-001 slice: visual-sourcing timeout isolation evidence, with PR Review Agent required before merge.
 Agent ack: Product Matching Agent acknowledged the thin/empty option-pool warning route on PR #248 with branch `codex/pm001-thin-pool-warning`, latest main at `a59e90f8c62d588c6582a9e4de7d5212e5fce16f`, accepted the narrow warning/stop-evidence scope, and confirmed all stop rules. PR #249 merged the implementation at `8f2591537ec884e65b79b5325c1d44f2972f6176`.
-Current PR: none
-Blocker: `NEXT_PM001_LOCAL_DEV_FIX_BOUNDARY_REQUIRED`
+Current PR: pending Product Matching Agent implementation PR
+Blocker: None for the routed visual-sourcing timeout isolation evidence slice. If the fix requires Product Matching execution, app actions, catalogue/product mutations, schema/generated type changes, runtime allowlist expansion, prompt/runtime image-generation changes, visual-sourcing runtime calls, broad scoring rewrites, floor-plan work, Catalog-First coupling, or production-facing behavior, stop and request a fresh boundary.
 
 ### Ticket MI-001
 
