@@ -109,16 +109,16 @@ Docs-only, test-only, domain-only, and dry-run-only work may proceed only when t
 ### Ticket PM-001
 
 Owner: Product Matching Agent
-Status: REVIEW_REQUESTED
-Branch: `codex/pm001-required-role-qa-hardening`
-Allowed scope: The PR #269-routed narrow local/dev required-role QA hardening/audit slice for the three remaining required blockers from PR #266 evidence: `sofas::anchor_seating`, `coffee_tables::coffee_table`, and `rugs::generous_rug` reporting `required_closest_available`. Current implementation takes the audit-hardening path: deterministic code/tests/docs that make stop-rule evidence explicit about which catalogue metadata/pool condition prevents acceptable required-role confidence.
+Status: BLOCKED
+Branch: none
+Allowed scope: None until Sam/Chief routes a fresh exact Product Matching boundary. PR #270 merged the PR #269-routed narrow local/dev required-role QA hardening/audit slice for `sofas::anchor_seating`, `coffee_tables::coffee_table`, and `rugs::generous_rug` by taking the audit-hardening path: deterministic code/tests/docs now make `required_closest_available` stop-rule evidence explicit about which catalogue metadata/pool condition prevents acceptable required-role confidence.
 Forbidden scope: No validation pass, blind validation, controlled preview, production deploy, production flag, live app action, live catalog write, live ingestion, DB/schema/generated type change, runtime allowlist expansion, payment/checkout change, floor-plan work, Catalog-First runtime coupling, production Product Matching execution, default-on production activation, unrelated UI redesign, broad catalogue rewrite, catalogue/product row mutation, broad scoring rewrite beyond the three required-role QA/audit slice, prompt/runtime image-generation behavior change, production selection behavior change, final-render execution, curtains/textiles candidate generation, thin-pool fixes, side-table/storage/media changes, lighting changes, or additional aesthetic-quality implementation outside the three required roles.
-Expected next artifact: PR Review Agent verdict on PR #270.
-SLA: PR Review Agent review or explicit blocker on PR #270.
-Last architect instruction: 2026-05-29 PR #266 merged at `1a908d0ecc61fd8ef8824f56f218b40ac50fd365`, recording the post-#263 validation evidence. PR #263 is validated for the intended lighting slice, but PM-001 remains below the investor-demo bar because the required sofa/coffee-table/rug roles still report `required_closest_available`. Chief now routes exactly one narrow local/dev required-role QA hardening/audit slice for those three roles only.
-Agent ack: Product Matching Agent acknowledged the PR #269 route on branch `codex/pm001-required-role-qa-hardening`, confirmed stop rules, and opened PR #270 with focused domain code/tests for richer required closest-available audit evidence.
-Current PR: #270 (<https://github.com/Trueflutter/ritzy-studio/pull/270>)
-Blocker: Waiting for PR Review Agent verdict on PR #270; no validation/execution or broader PM-001 implementation is approved.
+Expected next artifact: None until Sam/Chief routes a fresh exact Product Matching boundary.
+SLA: None while blocked.
+Last architect instruction: 2026-05-29 PR #270 merged at `3a8003c6b01d2cb74c686e8ba85e54bb34f5cac3` after PR Review Agent approval and explicit implementation-agent merge instruction. It completed the required-role QA audit-hardening slice by enriching `required_closest_available` blockers with candidate pool count, rejected candidates/top rejection reasons, weakness reasons, selected-product metadata gaps, and selected-product dimension evidence gaps without changing selection/scoring.
+Agent ack: Product Matching Agent acknowledged the PR #269 route on branch `codex/pm001-required-role-qa-hardening`, confirmed stop rules, opened PR #270, merged it after approval, and opened a docs/mailbox-only post-270 handoff.
+Current PR: none
+Blocker: PM-001 remains below the investor-demo bar and needs fresh Sam/Chief approval for any next implementation, validation pass, execution, or rollout boundary.
 
 ### Ticket MI-001
 
