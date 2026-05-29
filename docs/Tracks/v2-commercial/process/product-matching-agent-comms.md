@@ -88,6 +88,35 @@ ARCHITECT_NOTE: PR #160 completed the docs-only controlled-preview execution-bou
 Hard stop: no controlled-preview configuration/execution, app actions, runtime allowlist expansion, draft shopping-list/catalog writes, live catalog writes, DB/schema/generated types, runtime/env default changes, runtime/UI/prompt/payment/checkout changes, production flags/deploys, default-on activation, production rollout, selection/scoring changes, or Catalog-First runtime coupling without explicit Sam/Chief approval.
 
 ## Last action taken
+ARCHITECT_NOTE:
+PM-001 visual-sourcing timeout isolation evidence implementation is open on branch `codex/pm001-visual-timeout-evidence`.
+
+Exact scope:
+- Add deterministic visual-sourcing timeout/fallback evidence to existing Product Matching audit output.
+- Expose whether visual sourcing timed out, whether text fallback was used, the fallback reason, role/candidate counts, text-fallback role evidence count, and notes that separate provider visual-reasoning failure from semantic product matching quality.
+- Wire that evidence into the existing `ai_jobs.output_summary` role-confidence audit path without running Product Matching or making a runtime visual-sourcing call.
+
+Files changed:
+- `packages/domain/src/product-matching-confidence.ts`
+- `packages/domain/src/product-matching-confidence.test.ts`
+- `apps/web/app/actions.ts`
+- `apps/web/app/product-sourcing-timeout-diagnostics.ts`
+- `apps/web/app/product-sourcing-timeout-diagnostics.test.ts`
+- `docs/Tracks/v2-commercial/process/active-agent-control-board.md`
+- `docs/Tracks/v2-commercial/process/product-matching-agent-comms.md`
+
+Checks run:
+- `pnpm install --offline --frozen-lockfile`
+- `pnpm --filter @ritzy-studio/web exec tsx app/product-sourcing-timeout-diagnostics.test.ts`
+- `pnpm --filter @ritzy-studio/domain exec tsx src/product-matching-confidence.test.ts`
+- `pnpm --filter @ritzy-studio/domain test`
+- `pnpm --filter @ritzy-studio/domain typecheck`
+- `pnpm --filter @ritzy-studio/web typecheck`
+- `git diff --check`
+
+Forbidden scope confirmation:
+- No Product Matching execution, blind validation, visual-sourcing runtime call, app action, write-path validation, shopping-list/catalogue write, live ingestion/catalog write, catalogue/product mutation, DB/schema/generated type change, production deploy/flag/default-on activation, controlled-preview expansion, runtime allowlist change, prompt/runtime image-generation behavior change, broad scoring rewrite, payment/checkout, floor-plan work, or Catalog-First coupling was performed.
+
 CHIEF_ARCHITECT_REPLY:
 PM-001 is routed again after PR Review Agent approved the post-PR #249 handoff and PR #250 merged at `6fad6c285ec0580658ff9bb8ddbe55075ab5602f`.
 

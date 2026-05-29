@@ -4,6 +4,7 @@ import {
   buildProductMatchQaStopRuleStatus,
   buildProductMatchQaWarningReport,
   buildProductMatchConfidenceSummary,
+  buildProductMatchVisualSourcingEvidence,
   normalizeProductMatchRoleResultCategory,
   productMatchConfidenceOutputSummary,
   productMatchQaStopRuleOutputSummary,
@@ -939,5 +940,87 @@ assert.equal(
   pr142WarningReport.issues.find((issue) => issue.roleLabel === "restrained table decor")?.rolePriority,
   "supporting"
 );
+
+const visualTimeoutEvidence = buildProductMatchVisualSourcingEvidence({
+  diagnostics: {
+    initialAttemptDurationMs: 60003,
+    timeoutMs: 60000,
+    timedOut: true,
+    fallbackUsed: true,
+    fallbackReason: "initial_visual_sourcing_timeout",
+    candidateCount: 18,
+    rolePoolCount: 8,
+    productCandidateImagesEnabled: true
+  },
+  roleConfidence: [
+    {
+      category: "sofas",
+      roleLabel: "anchor seating",
+      roleKey: productMatchRoleKey("sofas", "anchor seating"),
+      status: "closest_available",
+      selectedProductId: "fallback-sofa",
+      candidateCount: 3,
+      rejectedCount: 0,
+      rejectionReasons: {},
+      confidenceTier: "weak",
+      reasons: ["visual status: Selected by deterministic text fallback after product visual sourcing timed out."],
+      weaknessReasons: [],
+      hasColorMismatch: false,
+      hasWeakMaterialMatch: false,
+      selectedProductDimensionFit: null,
+      selectedProductEvidenceCompleteness: null,
+      selectedProductFreshness: null
+    }
+  ]
+});
+assert.equal(visualTimeoutEvidence.status, "visual_sourcing_timeout_text_fallback");
+assert.equal(visualTimeoutEvidence.needsSemanticReview, true);
+assert.equal(visualTimeoutEvidence.textFallbackRoleCount, 1);
+assert.equal(visualTimeoutEvidence.fallbackReason, "initial_visual_sourcing_timeout");
+assert.ok(visualTimeoutEvidence.notes.some((note) => note.includes("semantic product matching separately")));
+
+const visualSuccessEvidence = buildProductMatchVisualSourcingEvidence({
+  diagnostics: {
+    isolationReason: "visual_sourcing_completed",
+    initialAttemptDurationMs: 3120,
+    timeoutMs: 60000,
+    timedOut: false,
+    fallbackUsed: false,
+    fallbackReason: null,
+    candidateCount: 18,
+    rolePoolCount: 8,
+    productCandidateImagesEnabled: true
+  }
+});
+assert.equal(visualSuccessEvidence.status, "visual_sourcing_succeeded");
+assert.equal(visualSuccessEvidence.needsSemanticReview, false);
+assert.equal(visualSuccessEvidence.textFallbackRoleCount, 0);
+
+const visualRetryTimeoutEvidence = buildProductMatchVisualSourcingEvidence({
+  diagnostics: {
+    isolationReason: "retry_visual_sourcing_timeout",
+    initialAttemptDurationMs: 3120,
+    timeoutMs: 60000,
+    timedOut: false,
+    fallbackUsed: false,
+    fallbackReason: null,
+    candidateCount: 18,
+    rolePoolCount: 8,
+    productCandidateImagesEnabled: true,
+    retry: {
+      attempted: true,
+      attemptDurationMs: 60012,
+      timedOut: true,
+      fallbackUsed: false,
+      fallbackReason: "retry_visual_sourcing_timeout",
+      providerImageDownloadFailure: false,
+      imageGateUsable: true
+    }
+  }
+});
+assert.equal(visualRetryTimeoutEvidence.status, "retry_visual_sourcing_timeout");
+assert.equal(visualRetryTimeoutEvidence.needsSemanticReview, true);
+assert.equal(visualRetryTimeoutEvidence.retry?.timedOut, true);
+assert.ok(visualRetryTimeoutEvidence.notes.some((note) => note.includes("retry visual sourcing timed out")));
 
 console.log("product matching confidence tests passed");

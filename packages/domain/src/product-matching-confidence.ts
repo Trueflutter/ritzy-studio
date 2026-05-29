@@ -159,6 +159,54 @@ export type ProductMatchQaWarningReport = {
   issues: ProductMatchQaWarningReportItem[];
 };
 
+export type ProductMatchVisualSourcingDiagnostics = {
+  isolationReason?:
+    | "visual_sourcing_completed"
+    | "visual_sourcing_timeout_text_fallback"
+    | "retry_visual_sourcing_timeout"
+    | "visual_sourcing_failed_without_timeout";
+  initialAttemptDurationMs: number | null;
+  timeoutMs: number | null;
+  timedOut: boolean;
+  fallbackUsed: boolean;
+  fallbackReason: string | null;
+  candidateCount: number;
+  rolePoolCount: number;
+  productCandidateImagesEnabled?: boolean;
+  retry?: {
+    attempted: boolean;
+    attemptDurationMs: number | null;
+    timedOut: boolean;
+    fallbackUsed: boolean;
+    fallbackReason: string | null;
+    providerImageDownloadFailure: boolean;
+    imageGateUsable: boolean | null;
+  };
+};
+
+export type ProductMatchVisualSourcingEvidenceStatus =
+  | "visual_sourcing_succeeded"
+  | "visual_sourcing_timeout_text_fallback"
+  | "retry_visual_sourcing_timeout"
+  | "visual_sourcing_timeout_no_fallback"
+  | "text_fallback_without_timeout"
+  | "visual_sourcing_not_attempted";
+
+export type ProductMatchVisualSourcingEvidence = {
+  status: ProductMatchVisualSourcingEvidenceStatus;
+  timedOut: boolean;
+  fallbackUsed: boolean;
+  fallbackReason: string | null;
+  initialAttemptDurationMs: number | null;
+  timeoutMs: number | null;
+  candidateCount: number;
+  rolePoolCount: number;
+  retry: ProductMatchVisualSourcingDiagnostics["retry"] | null;
+  textFallbackRoleCount: number;
+  needsSemanticReview: boolean;
+  notes: string[];
+};
+
 export function productMatchRoleKey(category: string, roleLabel: string) {
   return `${normalizeRoleKeyPart(category)}::${normalizeRoleKeyPart(roleLabel)}`;
 }
@@ -616,6 +664,50 @@ export function productMatchQaStopRuleOutputSummary({
   };
 }
 
+export function buildProductMatchVisualSourcingEvidence({
+  diagnostics,
+  roleConfidence = []
+}: {
+  diagnostics: ProductMatchVisualSourcingDiagnostics | null | undefined;
+  roleConfidence?: ProductMatchRoleConfidence[];
+}): ProductMatchVisualSourcingEvidence {
+  if (!diagnostics) {
+    return {
+      status: "visual_sourcing_not_attempted",
+      timedOut: false,
+      fallbackUsed: false,
+      fallbackReason: null,
+      initialAttemptDurationMs: null,
+      timeoutMs: null,
+      candidateCount: 0,
+      rolePoolCount: 0,
+      retry: null,
+      textFallbackRoleCount: 0,
+      needsSemanticReview: false,
+      notes: ["Visual sourcing diagnostics were not present in the audit summary."]
+    };
+  }
+
+  const textFallbackRoleCount = roleConfidence.filter(roleHasTextFallbackEvidence).length;
+  const status = visualSourcingEvidenceStatus(diagnostics);
+  const notes = visualSourcingEvidenceNotes({ diagnostics, status, textFallbackRoleCount });
+
+  return {
+    status,
+    timedOut: diagnostics.timedOut,
+    fallbackUsed: diagnostics.fallbackUsed,
+    fallbackReason: diagnostics.fallbackReason,
+    initialAttemptDurationMs: diagnostics.initialAttemptDurationMs,
+    timeoutMs: diagnostics.timeoutMs,
+    candidateCount: diagnostics.candidateCount,
+    rolePoolCount: diagnostics.rolePoolCount,
+    retry: diagnostics.retry ?? null,
+    textFallbackRoleCount,
+    needsSemanticReview: status !== "visual_sourcing_succeeded",
+    notes
+  };
+}
+
 export function buildProductMatchQaWarningReport({
   roleConfidence,
   requiredRoles
@@ -910,6 +1002,76 @@ function selectedCandidateForRole(pool: RoleScopedCandidatePool, productId: stri
   }
 
   return pool.candidates.find((candidate) => candidate.id === productId) ?? null;
+}
+
+function roleHasTextFallbackEvidence(role: ProductMatchRoleConfidence) {
+  return role.reasons.some((reason) => /text fallback|without provider visual reasoning/i.test(reason));
+}
+
+function visualSourcingEvidenceStatus(
+  diagnostics: ProductMatchVisualSourcingDiagnostics
+): ProductMatchVisualSourcingEvidenceStatus {
+  if (diagnostics.isolationReason === "retry_visual_sourcing_timeout" || diagnostics.retry?.timedOut) {
+    return "retry_visual_sourcing_timeout";
+  }
+
+  if (diagnostics.isolationReason === "visual_sourcing_timeout_text_fallback") {
+    return "visual_sourcing_timeout_text_fallback";
+  }
+
+  if (diagnostics.isolationReason === "visual_sourcing_failed_without_timeout") {
+    return "text_fallback_without_timeout";
+  }
+
+  if (diagnostics.timedOut && diagnostics.fallbackUsed) {
+    return "visual_sourcing_timeout_text_fallback";
+  }
+
+  if (diagnostics.timedOut) {
+    return "visual_sourcing_timeout_no_fallback";
+  }
+
+  if (diagnostics.fallbackUsed) {
+    return "text_fallback_without_timeout";
+  }
+
+  return "visual_sourcing_succeeded";
+}
+
+function visualSourcingEvidenceNotes({
+  diagnostics,
+  status,
+  textFallbackRoleCount
+}: {
+  diagnostics: ProductMatchVisualSourcingDiagnostics;
+  status: ProductMatchVisualSourcingEvidenceStatus;
+  textFallbackRoleCount: number;
+}) {
+  const notes: string[] = [];
+
+  if (status === "visual_sourcing_timeout_text_fallback") {
+    notes.push("Visual sourcing timed out and deterministic text fallback was used.");
+    notes.push("Review semantic product matching separately from provider visual reasoning.");
+  } else if (status === "retry_visual_sourcing_timeout") {
+    notes.push("Initial visual sourcing completed, but retry visual sourcing timed out.");
+    notes.push("Review retry timeout separately from semantic product matching quality.");
+  } else if (status === "visual_sourcing_timeout_no_fallback") {
+    notes.push("Visual sourcing timed out and no fallback selection was recorded.");
+  } else if (status === "text_fallback_without_timeout") {
+    notes.push("Text fallback was used without a recorded visual-sourcing timeout.");
+  } else {
+    notes.push("Visual sourcing completed without recorded timeout fallback.");
+  }
+
+  if (textFallbackRoleCount > 0) {
+    notes.push(`${textFallbackRoleCount} role result(s) carry text-fallback evidence.`);
+  }
+
+  if (diagnostics.productCandidateImagesEnabled === false) {
+    notes.push("Product candidate images were disabled for the visual sourcing attempt.");
+  }
+
+  return notes;
 }
 
 function confidenceTierFor({
