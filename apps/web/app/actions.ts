@@ -3046,6 +3046,16 @@ export async function groundProductsAction(formData: FormData) {
         result.productId
       );
     }
+    const conceptAnchorProductIdByCategory = new Map<string, string | null>();
+    for (const anchor of catalogueGroundingAnchors) {
+      if (anchor.priority !== "required") {
+        continue;
+      }
+      conceptAnchorProductIdByCategory.set(
+        normalizeSourcingCategory(anchor.category, anchor.roleLabel),
+        anchor.productId
+      );
+    }
 
     const { data: currentSourcingJob } = await serviceSupabase
       .from("ai_jobs")
@@ -3082,7 +3092,8 @@ export async function groundProductsAction(formData: FormData) {
             sourcePath: productSourcingTextFallbackUsed ? "text_fallback" : "visual",
             roleOptions,
             itemRows,
-            sourceSelectedProductIdByCategory
+            sourceSelectedProductIdByCategory,
+            conceptAnchorProductIdByCategory
           })
         }
       })

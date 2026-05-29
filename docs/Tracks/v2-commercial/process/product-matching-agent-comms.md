@@ -88,6 +88,33 @@ ARCHITECT_NOTE: PR #160 completed the docs-only controlled-preview execution-bou
 Hard stop: no controlled-preview configuration/execution, app actions, runtime allowlist expansion, draft shopping-list/catalog writes, live catalog writes, DB/schema/generated types, runtime/env default changes, runtime/UI/prompt/payment/checkout changes, production flags/deploys, default-on activation, production rollout, selection/scoring changes, or Catalog-First runtime coupling without explicit Sam/Chief approval.
 
 ## Last action taken
+PRODUCT_MATCHING_AGENT_ACK: 2026-05-29 — Product Matching Agent acknowledges the PM-001 concept-anchor-vs-persisted-selection audit assertion route on branch `codex/pm001-concept-anchor-audit`, based on latest `origin/main` at `74866231e0c9baac4480e09ea8b3dd9d50c505e7`. Scope accepted: deterministic audit evidence in existing local/dev Product Matching audit paths when a generated concept anchor is replaced in persisted shopping-list selection, focused local/dev tests, docs/mailbox updates, and one focused PR left for PR Review Agent review before merge. Stop rules accepted: no Product Matching execution or blind validation pass, visual-sourcing runtime calls, controlled preview, app actions, writes, live ingestion/catalog writes, catalogue/product mutations, DB/schema/generated type changes, prompt/runtime image-generation behavior changes, broad scoring rewrites, unrelated product-quality changes, production deploys/flags/default-on activation, payment/checkout, floor-plan work, or Catalog-First coupling.
+
+ARCHITECT_NOTE:
+PM-001 concept-anchor-vs-persisted-selection audit evidence implementation is open on branch `codex/pm001-concept-anchor-audit`.
+
+Exact scope:
+- Add deterministic concept-anchor replacement evidence to the existing persisted-selection snapshot in Product Matching audit output.
+- Expose the required concept-anchor product id per role and whether the persisted selected shopping-list item replaced that anchor.
+- Wire the evidence into the existing local/dev persisted-selection snapshot path without running Product Matching or refreshing shopping-list rows.
+
+Files changed:
+- `packages/domain/src/product-matching.ts`
+- `packages/domain/src/product-matching.test.ts`
+- `apps/web/app/actions.ts`
+- `docs/Tracks/v2-commercial/process/active-agent-control-board.md`
+- `docs/Tracks/v2-commercial/process/product-matching-agent-comms.md`
+
+Checks run:
+- `pnpm install --offline --frozen-lockfile`
+- `pnpm --filter @ritzy-studio/domain exec tsx src/product-matching.test.ts`
+- `pnpm --filter @ritzy-studio/domain typecheck`
+- `pnpm --filter @ritzy-studio/web typecheck`
+- `git diff --check`
+
+Forbidden scope confirmation:
+- No Product Matching execution, blind validation, visual-sourcing runtime call, app action, write-path validation, shopping-list/catalogue write, live ingestion/catalog write, catalogue/product mutation, DB/schema/generated type change, production deploy/flag/default-on activation, controlled-preview expansion, runtime allowlist change, prompt/runtime image-generation behavior change, broad scoring rewrite, payment/checkout, floor-plan work, or Catalog-First coupling was performed.
+
 ARCHITECT_NOTE:
 PR #252 merged at `034cc43564333438faffc356cb8e7cc1d0ba363f` after PR Review Agent approved updated head `a19646f49d27c5ec1d3da7a9a3205366c2b7d44b`. It completed the PM-001 visual-sourcing timeout isolation evidence slice: existing Product Matching audit output now surfaces deterministic visual-sourcing timeout/text-fallback evidence, including retry-timeout evidence, so review can separate provider visual-reasoning failure from semantic product matching quality. No Product Matching execution, blind validation, app actions, live writes, catalogue/product mutations, live ingestion/catalog writes, DB/schema/generated type changes, production deploys/flags, controlled-preview expansion, runtime allowlist expansion, prompt/runtime image-generation behavior changes, broad scoring rewrite, payment/checkout, floor-plan work, or Catalog-First coupling was performed.
 
@@ -321,7 +348,7 @@ PR #160 completed the docs-only controlled-preview execution-boundary package af
 PR #170 merged to clean stale mailbox state after PR #160 merged. This was docs/mailbox only.
 
 ## Next intended action
-PR Review Agent: review the docs-only concept-anchor route PR. If approved and merged, Product Matching Agent should acknowledge the concept-anchor-vs-persisted-selection audit assertion route, then open one focused implementation PR for PR Review Agent review before merge. Do not run additional Product Matching execution, visual-sourcing runtime calls, controlled preview, app actions, writes, broad/runtime allowlist changes, production activity, broad scoring rewrites, prompt/runtime image-generation behavior changes, unrelated quality changes, floor-plan work, or Catalog-First coupling without a new explicit Sam/Chief boundary.
+PR Review Agent: review the focused concept-anchor-vs-persisted-selection audit evidence PR. If approved with unchanged head and acceptable checks, merge it and return PM-001 to blocked pending the next exact boundary. Do not run additional Product Matching execution, visual-sourcing runtime calls, controlled preview, app actions, writes, broad/runtime allowlist changes, production activity, broad scoring rewrites, prompt/runtime image-generation behavior changes, unrelated quality changes, floor-plan work, or Catalog-First coupling without a new explicit Sam/Chief boundary.
 
 Keep the Product Matching lane heartbeat active. It must not be deleted after merges. The heartbeat should run every 10 minutes and monitor:
 

@@ -1552,7 +1552,8 @@ const chairSnapshot = buildPersistedSelectionSnapshot({
   sourcePath: "text_fallback",
   roleOptions: accentChairOptions,
   itemRows: chairRows,
-  sourceSelectedProductIdByCategory: new Map([["armchairs", "source-picked-different-chair"]])
+  sourceSelectedProductIdByCategory: new Map([["armchairs", "source-picked-different-chair"]]),
+  conceptAnchorProductIdByCategory: new Map([["armchairs", "concept-anchor-chair"]])
 });
 assert.equal(chairSnapshot.shoppingListId, "shopping-list-1");
 assert.equal(chairSnapshot.sourcePath, "text_fallback");
@@ -1560,6 +1561,7 @@ assert.equal(chairSnapshot.roles[0].category, "armchairs");
 assert.equal(chairSnapshot.roles[0].selectedProductId, chairTopId);
 assert.equal(chairSnapshot.roles[0].selectedProductName, "Accent Chair 1");
 assert.equal(chairSnapshot.roles[0].sourceSelectedProductId, "source-picked-different-chair");
+assert.equal(chairSnapshot.roles[0].conceptAnchorProductId, "concept-anchor-chair");
 assert.equal(chairSnapshot.roles[0].selectedOptionRank, 0);
 assert.equal(chairSnapshot.roles[0].optionCount, 2);
 assert.deepEqual(
@@ -1567,6 +1569,19 @@ assert.deepEqual(
   chairRows.map((row) => row.product_id)
 );
 assert.equal(chairSnapshot.roles[0].postProcessingReplacement, true);
+assert.equal(chairSnapshot.roles[0].conceptAnchorReplacement, true);
+
+const preservedAnchorSnapshot = buildPersistedSelectionSnapshot({
+  shoppingListId: "shopping-list-2",
+  estimatedTotalAed: selectedItemsTotalAed(chairRows),
+  sourcePath: "visual",
+  roleOptions: accentChairOptions,
+  itemRows: chairRows,
+  sourceSelectedProductIdByCategory: new Map([["armchairs", chairTopId]]),
+  conceptAnchorProductIdByCategory: new Map([["armchairs", chairTopId]])
+});
+assert.equal(preservedAnchorSnapshot.roles[0].postProcessingReplacement, false);
+assert.equal(preservedAnchorSnapshot.roles[0].conceptAnchorReplacement, false);
 
 // existing one-row-per-product lists still group and render after migration
 const legacyGroups = groupShoppingItemsByRole([
