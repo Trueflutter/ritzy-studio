@@ -109,16 +109,16 @@ Docs-only, test-only, domain-only, and dry-run-only work may proceed only when t
 ### Ticket PM-001
 
 Owner: Product Matching Agent
-Status: ROUTED
-Branch: pending Product Matching Agent acknowledgement
-Allowed scope: After this docs-only route merges, Product Matching Agent may implement exactly one narrow local/dev required-role QA hardening/audit slice for the three remaining required blockers from PR #266 evidence: `sofas::anchor_seating`, `coffee_tables::coffee_table`, and `rugs::generous_rug` reporting `required_closest_available`. The slice must either raise these required roles above `required_closest_available` using deterministic local/dev domain logic/tests, or make the stop-rule evidence explicit about which catalogue metadata/pool condition prevents acceptable required-role confidence.
+Status: REVIEW_REQUESTED
+Branch: `codex/pm001-required-role-qa-hardening`
+Allowed scope: The PR #269-routed narrow local/dev required-role QA hardening/audit slice for the three remaining required blockers from PR #266 evidence: `sofas::anchor_seating`, `coffee_tables::coffee_table`, and `rugs::generous_rug` reporting `required_closest_available`. Current implementation takes the audit-hardening path: deterministic code/tests/docs that make stop-rule evidence explicit about which catalogue metadata/pool condition prevents acceptable required-role confidence.
 Forbidden scope: No validation pass, blind validation, controlled preview, production deploy, production flag, live app action, live catalog write, live ingestion, DB/schema/generated type change, runtime allowlist expansion, payment/checkout change, floor-plan work, Catalog-First runtime coupling, production Product Matching execution, default-on production activation, unrelated UI redesign, broad catalogue rewrite, catalogue/product row mutation, broad scoring rewrite beyond the three required-role QA/audit slice, prompt/runtime image-generation behavior change, production selection behavior change, final-render execution, curtains/textiles candidate generation, thin-pool fixes, side-table/storage/media changes, lighting changes, or additional aesthetic-quality implementation outside the three required roles.
-Expected next artifact: Product Matching Agent acknowledgement with branch/scope/stop-rule confirmation, then one focused implementation PR with tests/evidence for the required-role QA hardening/audit slice.
-SLA: Product Matching Agent must acknowledge within one owner heartbeat after the route PR merges; after acknowledgement, it must show branch/PR/test evidence progress or an explicit blocker within 30 minutes.
+Expected next artifact: PR Review Agent verdict on PR #270.
+SLA: PR Review Agent review or explicit blocker on PR #270.
 Last architect instruction: 2026-05-29 PR #266 merged at `1a908d0ecc61fd8ef8824f56f218b40ac50fd365`, recording the post-#263 validation evidence. PR #263 is validated for the intended lighting slice, but PM-001 remains below the investor-demo bar because the required sofa/coffee-table/rug roles still report `required_closest_available`. Chief now routes exactly one narrow local/dev required-role QA hardening/audit slice for those three roles only.
-Agent ack: Product Matching Agent acknowledged the PR #265 validation route on branch `codex/pm001-post-263-validation-evidence`, then ran exactly one local/dev validation pass. Evidence PR #266 records job `9d9dff0a-7fcc-48d5-9ec5-93f6c8a3df02`, shopping list `99062356-7a63-4438-bd4b-461cc43c66ba`, lighting-role fixture-mismatch rejection evidence, selected SKUs, zero/thin pool status, QA blockers, and stop-rule confirmation.
-Current PR: none
-Blocker: Waiting for Product Matching Agent acknowledgement after this route merges.
+Agent ack: Product Matching Agent acknowledged the PR #269 route on branch `codex/pm001-required-role-qa-hardening`, confirmed stop rules, and opened PR #270 with focused domain code/tests for richer required closest-available audit evidence.
+Current PR: #270 (<https://github.com/Trueflutter/ritzy-studio/pull/270>)
+Blocker: Waiting for PR Review Agent verdict on PR #270; no validation/execution or broader PM-001 implementation is approved.
 
 ### Ticket MI-001
 

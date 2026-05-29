@@ -490,7 +490,7 @@ export function buildProductMatchQaStopRuleStatus({
           severity: "blocker",
           roleKey: role.roleKey,
           roleLabel: role.roleLabel,
-          message: "Required role is only closest available."
+          message: requiredClosestAvailableMessage(role)
         })
       );
     }
@@ -866,6 +866,33 @@ function supportingRoleWarningMessage(role: ProductMatchRoleConfidence) {
   }
 
   return "Supporting role needs manual QA review.";
+}
+
+function requiredClosestAvailableMessage(role: ProductMatchRoleConfidence) {
+  const details = [
+    `candidate pool has ${role.candidateCount} candidate${role.candidateCount === 1 ? "" : "s"}`,
+    role.rejectedCount > 0
+      ? `${role.rejectedCount} catalogue candidate${role.rejectedCount === 1 ? "" : "s"} rejected (${topRecordEntries(
+          role.rejectionReasons
+        ).join(", ")})`
+      : null,
+    role.weaknessReasons.length > 0 ? `weakness: ${role.weaknessReasons.slice(0, 3).join("; ")}` : null,
+    role.selectedProductEvidenceCompleteness?.warnings.length
+      ? `metadata gaps: ${role.selectedProductEvidenceCompleteness.warnings.slice(0, 3).join("; ")}`
+      : null,
+    role.selectedProductDimensionFit?.warnings.length
+      ? `dimension evidence: ${role.selectedProductDimensionFit.warnings.slice(0, 2).join("; ")}`
+      : null
+  ].filter((detail): detail is string => Boolean(detail));
+
+  return `Required role is only closest available; ${details.join("; ")}.`;
+}
+
+function topRecordEntries(record: Record<string, number>) {
+  return Object.entries(record)
+    .sort(([, left], [, right]) => right - left)
+    .slice(0, 3)
+    .map(([key, count]) => `${key}: ${count}`);
 }
 
 function hasSupportingIssue(role: ProductMatchRoleConfidence) {
