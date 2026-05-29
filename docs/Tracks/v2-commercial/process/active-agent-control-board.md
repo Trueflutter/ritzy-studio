@@ -111,14 +111,14 @@ Docs-only, test-only, domain-only, and dry-run-only work may proceed only when t
 Owner: Product Matching Agent
 Status: BLOCKED
 Branch: none
-Allowed scope: Coordination only until PR Review Agent reviews the post-merge state and Sam/Chief routes the next narrow local/dev PM-001 code boundary. PR #245 has merged and completed the lighting role-fit guard/test; no additional Product Matching execution or implementation is approved by this board state.
+Allowed scope: Coordination only until Sam/Chief routes the next narrow local/dev PM-001 code boundary. PR #245 has merged and completed the lighting role-fit guard/test, and PR #246 completed the post-merge review/process follow-through. No additional Product Matching execution or implementation is approved by this board state.
 Forbidden scope: No production deploy, production flags, live catalog writes, live ingestion, DB/schema/generated type changes, payment/checkout changes, floor-plan work, Catalog-First runtime coupling, controlled-preview expansion, production Product Matching execution, runtime allowlist expansion, default-on production activation, unrelated UI redesign, or broad catalogue rewrites. Do not mutate catalogue/product rows. Do not make production selection behavior change unless a future Sam/Chief boundary explicitly approves rollout.
-Expected next artifact: PR Review Agent review of the post-merge follow-through PR, then a Chief/Sam route for the next exact safe PM-001 slice if review passes.
-SLA: PR Review Agent review should be requested immediately and resolved through the normal PR review process.
-Last architect instruction: 2026-05-29 PR #245 merged at `3b385fb9cc9e849b4148c4644a264c8bf15e6d63`, completing the lighting role-fit guard/test. Chief Architect merged it without PR Review Agent approval, which violated the process; post-merge follow-through is now routed through PR Review Agent. Do not start another PM-001 implementation slice until review/process cleanup is complete.
+Expected next artifact: Sam/Chief route for the next exact safe PM-001 slice, or a Product Matching Agent `ARCHITECT_NOTE:` proposing the smallest safe boundary.
+SLA: None while blocked pending fresh Sam/Chief routing.
+Last architect instruction: 2026-05-29 PR #245 merged at `3b385fb9cc9e849b4148c4644a264c8bf15e6d63`, completing the lighting role-fit guard/test. PR #246 merged at `39d86c3b531af76ec9a76e4d797d36c1e75747ce`, completing post-merge review/process follow-through after PR Review Agent approval. Do not start another PM-001 implementation slice until Sam/Chief explicitly routes the next exact local/dev boundary.
 Agent ack: PR #245 body included `ARCHITECT_NOTE:` acknowledging branch `codex/pm001-lighting-role-guard`, latest main, scope, verification, and stop rules.
-Current PR: pending post-merge follow-through PR
-Blocker: `PR_REVIEW_AGENT_POST_MERGE_REVIEW_REQUIRED`
+Current PR: none
+Blocker: `NEXT_PM001_LOCAL_DEV_FIX_BOUNDARY_REQUIRED`
 
 ### Ticket MI-001
 

@@ -1,7 +1,7 @@
 # Product Matching Engine Agent Comms
 
 ## Current PR
-None. PR #242 (<https://github.com/Trueflutter/ritzy-studio/pull/242>) merged at `b9af25ec2104933174e7d0051c7d8691c6cc8f3c`.
+None. PR #246 (<https://github.com/Trueflutter/ritzy-studio/pull/246>) merged at `39d86c3b531af76ec9a76e4d797d36c1e75747ce` after PR Review Agent approval.
 
 ## Current stage
 DUAL_TRACK:
@@ -11,7 +11,7 @@ DUAL_TRACK:
 - `CONTROLLED_PREVIEW_EXPANSION_BLOCKED_WAITING_FOR_SAM_CHIEF_DECISION` remains the runtime gate outside the approved local/dev current test boundary
 
 ## Blockers
-PM-001 is blocked pending `NEXT_PM001_LOCAL_DEV_FIX_BOUNDARY_REQUIRED`. The PR #240 one-pass local/dev validation boundary expired when PR #242 merged, so no further Product Matching implementation or execution is approved right now. The next expected action is Sam/Chief approval for exactly one narrow local/dev fix boundary, or a Product Matching Agent `ARCHITECT_NOTE:` proposing the smallest safe slice. Sam approved the earlier local/dev PM-001 aesthetic-quality rescue in-thread on 2026-05-27 after a catalogue-grounded test render produced an unsuitable black/brown pedestal shell chair and a noisy striped coffee table; that prior boundary is not approval for additional execution or implementation after PR #242.
+PM-001 is blocked pending `NEXT_PM001_LOCAL_DEV_FIX_BOUNDARY_REQUIRED`. PR #245 completed the lighting role-fit guard/test and PR #246 completed the post-merge review/process follow-through, so no further Product Matching implementation or execution is approved right now. The next expected action is Sam/Chief approval for exactly one narrow local/dev fix boundary, or a Product Matching Agent `ARCHITECT_NOTE:` proposing the smallest safe slice. Sam approved the earlier local/dev PM-001 aesthetic-quality rescue in-thread on 2026-05-27 after a catalogue-grounded test render produced an unsuitable black/brown pedestal shell chair and a noisy striped coffee table; that prior boundary is not approval for additional execution or implementation after PR #246.
 
 PM-001 coffee-table blocker has a narrow fix and one approved local/dev retest. Retest `ai_jobs` row `182e8d5b-2386-4f1a-a139-5d905e67d2fe` passes QA stop rules with 0 blockers; Chief/Sam review is still required before customer-facing reuse or any further execution.
 
@@ -88,6 +88,9 @@ ARCHITECT_NOTE: PR #160 completed the docs-only controlled-preview execution-bou
 Hard stop: no controlled-preview configuration/execution, app actions, runtime allowlist expansion, draft shopping-list/catalog writes, live catalog writes, DB/schema/generated types, runtime/env default changes, runtime/UI/prompt/payment/checkout changes, production flags/deploys, default-on activation, production rollout, selection/scoring changes, or Catalog-First runtime coupling without explicit Sam/Chief approval.
 
 ## Last action taken
+ARCHITECT_NOTE:
+PR #246 merged at `39d86c3b531af76ec9a76e4d797d36c1e75747ce` after PR Review Agent approval. It completed the docs-only PM-001 post-PR #245 review/process follow-through, confirming the lighting role-fit guard/test is merged and that further Product Matching implementation/execution remains blocked until Sam/Chief routes the next exact local/dev boundary. No Product Matching execution, app actions, draft shopping-list writes, catalogue/product mutations, live ingestion/catalog writes, DB/schema/generated type changes, production deploys/flags, controlled-preview expansion, runtime allowlist expansion, prompt/runtime image-generation behavior changes, broad scoring rewrite, payment/checkout, floor-plan work, or Catalog-First coupling was performed.
+
 ARCHITECT_NOTE:
 PR #245 merged at `3b385fb9cc9e849b4148c4644a264c8bf15e6d63` and completed the PM-001 lighting role-fit guard/test. The merge happened after green checks but without PR Review Agent approval, which violated the normal review process. This follow-through exists to correct durable board/mailbox state and route the post-merge review/process cleanup through PR Review Agent.
 
