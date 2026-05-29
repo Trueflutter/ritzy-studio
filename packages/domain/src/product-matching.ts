@@ -1242,7 +1242,13 @@ function buildRolePool({
     });
   }
 
-  const candidates = diverseRoleCandidates(scored, candidatesPerRole)
+  const guardedScored = applyLightingRoleFitGuard(role, scored);
+  const guardedCount = scored.length - guardedScored.length;
+  if (guardedCount > 0) {
+    rejectionReasons.lighting_role_fixture_mismatch = (rejectionReasons.lighting_role_fixture_mismatch ?? 0) + guardedCount;
+  }
+
+  const candidates = diverseRoleCandidates(guardedScored, candidatesPerRole)
     .map(({ match }, index) => ({ ...match, score: Number((match.score - index * 0.001).toFixed(3)) }));
 
   return {
@@ -1253,6 +1259,60 @@ function buildRolePool({
     rejectionReasons,
     weaknessReasons: Array.from(new Set(scored.flatMap(({ weaknesses }) => weaknesses)))
   };
+}
+
+function applyLightingRoleFitGuard(role: RoomProductRoleSpec, scored: ScoredRoleCandidate[]) {
+  if (!isFloorOrTableLightingRole(role)) {
+    return scored;
+  }
+
+  const hasEligibleFloorOrTableLamp = scored.some(({ match }) => isFloorOrTableLampCandidate(match));
+  if (!hasEligibleFloorOrTableLamp) {
+    return scored;
+  }
+
+  return scored.filter(({ match }) => !isCeilingLightingFixtureCandidate(match));
+}
+
+function isFloorOrTableLightingRole(role: RoomProductRoleSpec) {
+  if (role.category !== "lighting") {
+    return false;
+  }
+
+  const roleText = `${role.label} ${role.visualBrief ?? ""}`.toLowerCase();
+  const roleTokens = tokensFor(roleText);
+  const overTableOrCeilingRole =
+    roleText.includes("over-table") ||
+    roleText.includes("over table") ||
+    hasAnyToken(roleTokens, ["pendant", "chandelier", "ceiling"]);
+
+  if (overTableOrCeilingRole) {
+    return false;
+  }
+
+  return (
+    roleText.includes("floor or table") ||
+    roleText.includes("floor/table") ||
+    roleText.includes("table or floor") ||
+    hasAnyToken(roleTokens, ["floor", "table", "desk", "task", "bedside"])
+  );
+}
+
+function isFloorOrTableLampCandidate(candidate: ProductMatchCandidate) {
+  if (candidate.categoryNormalized !== "lighting") {
+    return false;
+  }
+
+  const tokens = candidateSearchTokens(candidate);
+  return tokens.has("lamp") && hasAnyToken(tokens, ["floor", "table", "desk", "task", "bedside"]);
+}
+
+function isCeilingLightingFixtureCandidate(candidate: ProductMatchCandidate) {
+  if (candidate.categoryNormalized !== "lighting") {
+    return false;
+  }
+
+  return hasAnyToken(candidateSearchTokens(candidate), ["ceiling", "chandelier", "hanging", "pendant", "suspension"]);
 }
 
 function diverseRoleCandidates(scored: ScoredRoleCandidate[], candidatesPerRole: number) {
