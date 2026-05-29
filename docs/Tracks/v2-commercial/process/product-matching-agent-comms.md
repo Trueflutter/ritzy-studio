@@ -1,7 +1,7 @@
 # Product Matching Engine Agent Comms
 
 ## Current PR
-None. PR #242 (<https://github.com/Trueflutter/ritzy-studio/pull/242>) merged at `b9af25ec2104933174e7d0051c7d8691c6cc8f3c`.
+None. PR #249 (<https://github.com/Trueflutter/ritzy-studio/pull/249>) merged at `8f2591537ec884e65b79b5325c1d44f2972f6176` after PR Review Agent approval.
 
 ## Current stage
 DUAL_TRACK:
@@ -11,7 +11,7 @@ DUAL_TRACK:
 - `CONTROLLED_PREVIEW_EXPANSION_BLOCKED_WAITING_FOR_SAM_CHIEF_DECISION` remains the runtime gate outside the approved local/dev current test boundary
 
 ## Blockers
-PM-001 is blocked pending `NEXT_PM001_LOCAL_DEV_FIX_BOUNDARY_REQUIRED`. The PR #240 one-pass local/dev validation boundary expired when PR #242 merged, so no further Product Matching implementation or execution is approved right now. The next expected action is Sam/Chief approval for exactly one narrow local/dev fix boundary, or a Product Matching Agent `ARCHITECT_NOTE:` proposing the smallest safe slice. Sam approved the earlier local/dev PM-001 aesthetic-quality rescue in-thread on 2026-05-27 after a catalogue-grounded test render produced an unsuitable black/brown pedestal shell chair and a noisy striped coffee table; that prior boundary is not approval for additional execution or implementation after PR #242.
+PM-001 is blocked pending `NEXT_PM001_LOCAL_DEV_FIX_BOUNDARY_REQUIRED`. PR #249 completed the thin/empty option-pool warning guard/test, so no further Product Matching implementation or execution is approved right now. The next expected action is Sam/Chief approval for exactly one narrow local/dev fix boundary, or a Product Matching Agent `ARCHITECT_NOTE:` proposing the smallest safe slice. Sam approved the earlier local/dev PM-001 aesthetic-quality rescue in-thread on 2026-05-27 after a catalogue-grounded test render produced an unsuitable black/brown pedestal shell chair and a noisy striped coffee table; that prior boundary is not approval for additional execution or implementation after PR #249.
 
 PM-001 coffee-table blocker has a narrow fix and one approved local/dev retest. Retest `ai_jobs` row `182e8d5b-2386-4f1a-a139-5d905e67d2fe` passes QA stop rules with 0 blockers; Chief/Sam review is still required before customer-facing reuse or any further execution.
 
@@ -88,6 +88,9 @@ ARCHITECT_NOTE: PR #160 completed the docs-only controlled-preview execution-bou
 Hard stop: no controlled-preview configuration/execution, app actions, runtime allowlist expansion, draft shopping-list/catalog writes, live catalog writes, DB/schema/generated types, runtime/env default changes, runtime/UI/prompt/payment/checkout changes, production flags/deploys, default-on activation, production rollout, selection/scoring changes, or Catalog-First runtime coupling without explicit Sam/Chief approval.
 
 ## Last action taken
+ARCHITECT_NOTE:
+PR #249 merged at `8f2591537ec884e65b79b5325c1d44f2972f6176` after PR Review Agent approval. It completed the PM-001 thin/empty option-pool warning guard/test: `required_pool_thin` warning evidence is now present in existing Product Matching QA stop-rule output for one-candidate required pools, while `required_pool_empty` remains a blocker for zero-candidate required roles. No Product Matching execution, blind validation, app actions, shopping-list writes, catalogue/product mutations, live ingestion/catalog writes, DB/schema/generated type changes, production deploys/flags, controlled-preview expansion, runtime allowlist expansion, prompt/runtime image-generation behavior changes, broad scoring rewrite, payment/checkout, floor-plan work, or Catalog-First coupling was performed.
+
 PRODUCT_MATCHING_AGENT_ACK: 2026-05-29 — Product Matching Agent acknowledges the PM-001 thin/empty option-pool warning route on branch `codex/pm001-thin-pool-warning`, based on latest `origin/main` at `a59e90f8c62d588c6582a9e4de7d5212e5fce16f`. Scope accepted: deterministic warning/stop evidence for required roles with zero eligible candidates or materially thin option pools in existing Product Matching domain/audit paths, focused local/dev tests, and one focused PR left for PR Review Agent review before merge. Stop rules accepted: no Product Matching execution or blind validation pass, app actions, controlled preview, runtime allowlist changes, shopping-list/catalogue writes, live ingestion/catalog writes, catalogue/product mutations, DB/schema/generated type changes, prompt/runtime image-generation behavior changes, broad scoring rewrites, unrelated product-quality changes, production deploys/flags/default-on activation, payment/checkout, floor-plan work, or Catalog-First coupling.
 
 CHIEF_ARCHITECT_REPLY:
@@ -228,7 +231,7 @@ PR #160 completed the docs-only controlled-preview execution-boundary package af
 PR #170 merged to clean stale mailbox state after PR #160 merged. This was docs/mailbox only.
 
 ## Next intended action
-Product Matching Agent: acknowledge the thin/empty option-pool warning guard/test route, then open one focused implementation PR. PR Review Agent must review the PR before merge. Do not run additional Product Matching execution, controlled preview, app actions, writes, broad/runtime allowlist changes, production activity, broad scoring rewrites, prompt/runtime image-generation behavior changes, unrelated quality changes, floor-plan work, or Catalog-First coupling without a new explicit Sam/Chief boundary.
+Sam/Chief: route the next exact safe PM-001 local/dev slice, or Product Matching Agent may leave an `ARCHITECT_NOTE:` proposing the smallest safe boundary. PR #249 completed the thin/empty option-pool warning guard/test, so no further Product Matching implementation or execution is approved right now. Do not run additional Product Matching execution, controlled preview, app actions, writes, broad/runtime allowlist changes, production activity, broad scoring rewrites, prompt/runtime image-generation behavior changes, unrelated quality changes, floor-plan work, or Catalog-First coupling without a new explicit Sam/Chief boundary.
 
 Keep the Product Matching lane heartbeat active. It must not be deleted after merges. The heartbeat should run every 10 minutes and monitor:
 
