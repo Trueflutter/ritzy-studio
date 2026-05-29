@@ -117,8 +117,8 @@ Expected next artifact: Product Matching Agent acknowledgement after this route 
 SLA: Product Matching Agent acknowledgement within one owner heartbeat after route merge; branch, commit, PR, mailbox update, or explicit blocker within 30 minutes after acknowledgement.
 Last architect instruction: 2026-05-29 PR #256 merged at `59dc6b062216b341df9e7c4688b5e126ed5b333c`, leaving PM-001 blocked with evidence that visual sourcing still timed out after 45,064 ms and used deterministic text fallback. Sam previously authorized Chief to route narrow local/dev fix boundaries in his absence. Chief routes the next exact boundary as visual-sourcing timeout/retry/fallback evidence only.
 Agent ack: Pending. Product Matching Agent must acknowledge branch and stop rules before implementation.
-Current PR: docs-only visual-timeout follow-up route PR
-Blocker: PR Review Agent must review this docs-only route PR before it merges. If the timeout/retry/fallback fix requires Product Matching execution, app actions, controlled preview, catalogue/product writes, DB/schema/generated types, prompt/runtime image-generation behavior changes, broad scoring rewrites, runtime allowlists, production behavior, or any forbidden scope, stop and leave an `ARCHITECT_NOTE:` naming the smallest required boundary.
+Current PR: none after the visual-timeout route PR merges
+Blocker: Product Matching Agent acknowledgement and stop-rule confirmation required after route merge. If the timeout/retry/fallback fix requires Product Matching execution, app actions, controlled preview, catalogue/product writes, DB/schema/generated types, prompt/runtime image-generation behavior changes, broad scoring rewrites, runtime allowlists, production behavior, or any forbidden scope, stop and leave an `ARCHITECT_NOTE:` naming the smallest required boundary.
 
 ### Ticket MI-001
 
