@@ -270,6 +270,8 @@ const passingGate = buildProductMatchQaStopRuleStatus({
 assert.equal(passingGate.passesQaStopRules, true);
 assert.equal(passingGate.blockers.length, 0);
 assert.equal(passingGate.counts.blockerCount, 0);
+assert.ok(passingGate.warnings.some((issue) => issue.code === "required_pool_thin"));
+assert.equal(passingGate.counts.thinRequiredPoolCount, 1);
 
 const closestRequiredGate = buildProductMatchQaStopRuleStatus({
   roleConfidence: closestSummary,
@@ -288,6 +290,8 @@ const missingRequiredGate = buildProductMatchQaStopRuleStatus({
 assert.equal(missingRequiredGate.passesQaStopRules, false);
 assert.ok(missingRequiredGate.blockers.some((issue) => issue.code === "required_pool_empty"));
 assert.ok(missingRequiredGate.blockers.some((issue) => issue.code === "required_role_missing"));
+assert.equal(missingRequiredGate.counts.emptyRequiredPoolCount, 1);
+assert.equal(missingRequiredGate.counts.thinRequiredPoolCount, 0);
 
 const invalidSelectionGate = buildProductMatchQaStopRuleStatus({
   roleConfidence: invalidSelectionSummary,
@@ -397,6 +401,7 @@ const gateOutput = productMatchQaStopRuleOutputSummary({
 });
 assert.deepEqual(Object.keys(gateOutput).sort(), ["blockers", "counts", "passesQaStopRules", "warnings"].sort());
 assert.equal(gateOutput.passesQaStopRules, true);
+assert.ok(gateOutput.warnings.some((issue) => issue.code === "required_pool_thin"));
 
 const staleFreshnessSummary = buildProductMatchConfidenceSummary({
   pools: buildRoleScopedCandidatePools({

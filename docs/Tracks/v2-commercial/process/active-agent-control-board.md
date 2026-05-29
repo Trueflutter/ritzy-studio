@@ -109,14 +109,14 @@ Docs-only, test-only, domain-only, and dry-run-only work may proceed only when t
 ### Ticket PM-001
 
 Owner: Product Matching Agent
-Status: ROUTED
-Branch: pending Product Matching Agent ack
+Status: ACKED
+Branch: `codex/pm001-thin-pool-warning`
 Allowed scope: One narrow local/dev PM-001 fix boundary approved by Chief on 2026-05-29 after PR Review Agent approved and PR #246 merged: implement and test thin/empty option-pool warning behavior so PM-001 does not silently treat zero-candidate or materially thin required layers as investor-demo ready. Scope is limited to code/tests/docs required to surface deterministic warning/stop evidence for empty/thin pools in existing local/dev Product Matching audit paths. No additional Product Matching execution is approved by this route.
 Forbidden scope: No production deploy, production flags, live catalog writes, live ingestion, DB/schema/generated type changes, payment/checkout changes, floor-plan work, Catalog-First runtime coupling, controlled-preview expansion, production Product Matching execution, runtime allowlist expansion, default-on production activation, unrelated UI redesign, or broad catalogue rewrites. Do not mutate catalogue/product rows. Do not make production selection behavior change unless a future Sam/Chief boundary explicitly approves rollout.
 Expected next artifact: Product Matching Agent ack with branch name and explicit stop-rule confirmation, then one focused PR for the thin/empty option-pool warning guard/test. PR Review Agent must review that PR before merge.
 SLA: Product Matching Agent should ack within one heartbeat and open/fix/block within 45 minutes after ack.
 Last architect instruction: 2026-05-29 PR #246 merged at `39d86c3b531af76ec9a76e4d797d36c1e75747ce` after PR Review Agent posted `approved.` for the post-merge process cleanup. Chief now routes the next exact local/dev PM-001 slice: thin/empty option-pool warning behavior, with PR Review Agent required before merge.
-Agent ack: PR #245 body included `ARCHITECT_NOTE:` acknowledging branch `codex/pm001-lighting-role-guard`, latest main, scope, verification, and stop rules.
+Agent ack: Product Matching Agent acknowledged the thin/empty option-pool warning route on PR #248 with branch `codex/pm001-thin-pool-warning`, latest main at `a59e90f8c62d588c6582a9e4de7d5212e5fce16f`, accepted the narrow warning/stop-evidence scope, and confirmed all stop rules. PR #245 body also acknowledged the prior lighting role-fit branch `codex/pm001-lighting-role-guard`.
 Current PR: pending Product Matching Agent implementation PR
 Blocker: None for the routed thin/empty option-pool warning guard/test. If the fix requires Product Matching execution, app actions, catalogue/product mutations, schema/generated type changes, runtime allowlist expansion, prompt/runtime image-generation changes, broad scoring rewrites, visual-sourcing runtime changes, floor-plan work, Catalog-First coupling, or production-facing behavior, stop and request a fresh boundary.
 

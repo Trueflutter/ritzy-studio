@@ -55,6 +55,7 @@ export type ProductMatchRequiredRoleDescriptor = {
 export type ProductMatchQaStopRuleIssueCode =
   | "required_role_not_reported"
   | "required_pool_empty"
+  | "required_pool_thin"
   | "required_role_missing"
   | "required_closest_available"
   | "invalid_selection"
@@ -97,6 +98,7 @@ export type ProductMatchQaStopRuleStatus = {
     partialRequiredEvidenceCount: number;
     weakRequiredEvidenceCount: number;
     emptyRequiredPoolCount: number;
+    thinRequiredPoolCount: number;
   };
 };
 
@@ -405,6 +407,18 @@ export function buildProductMatchQaStopRuleStatus({
       );
     }
 
+    if (isRequired && role.candidateCount > 0 && role.candidateCount < 2) {
+      warnings.push(
+        stopRuleIssue({
+          code: "required_pool_thin",
+          severity: "warning",
+          roleKey: role.roleKey,
+          roleLabel: role.roleLabel,
+          message: `Required role has only ${role.candidateCount} candidate in its option pool.`
+        })
+      );
+    }
+
     if (isRequired && (role.confidenceTier === "missing" || role.status === "missing_required")) {
       blockers.push(
         stopRuleIssue({
@@ -579,7 +593,8 @@ export function buildProductMatchQaStopRuleStatus({
       missingRequiredDimensionCount: warnings.filter((issue) => issue.code === "required_dimension_missing").length,
       partialRequiredEvidenceCount: warnings.filter((issue) => issue.code === "required_evidence_partial").length,
       weakRequiredEvidenceCount: warnings.filter((issue) => issue.code === "required_evidence_weak").length,
-      emptyRequiredPoolCount: blockers.filter((issue) => issue.code === "required_pool_empty").length
+      emptyRequiredPoolCount: blockers.filter((issue) => issue.code === "required_pool_empty").length,
+      thinRequiredPoolCount: warnings.filter((issue) => issue.code === "required_pool_thin").length
     }
   };
 }
