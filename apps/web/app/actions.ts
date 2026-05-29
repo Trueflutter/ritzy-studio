@@ -73,6 +73,7 @@ import {
 } from "./product-sourcing-failure";
 import { buildProductSourcingTextFallbackResult } from "./product-sourcing-text-fallback";
 import { buildProductSourcingTimeoutDiagnostics } from "./product-sourcing-timeout-diagnostics";
+import { productSourcingVisualStrategy } from "./product-sourcing-visual-strategy";
 
 const PRODUCT_SOURCING_AI_TIMEOUT_MS = 45_000;
 const PRODUCT_MATCHING_CATALOG_LIMIT = 1500;
@@ -2206,25 +2207,44 @@ export async function groundProductsAction(formData: FormData) {
   let productSourcingTextFallbackUsed = false;
   let productSourcingTextFallbackReason: string | null = null;
   let productSourcingInitialTimedOut = false;
+  const productSourcingStrategy = productSourcingVisualStrategy({
+    productCandidateImagesEnabled: PRODUCT_SOURCING_AI_PRODUCT_IMAGES_ENABLED,
+    candidateImageLimit: PRODUCT_SOURCING_AI_CANDIDATE_IMAGE_LIMIT,
+    rolePoolCount: sourcingCandidatePools.length
+  });
   const productSourcingInitialAttemptStartedAtMs = Date.now();
   let productSourcingInitialAttemptDurationMs: number | null = null;
   try {
-    sourcingResult = await withTimeout(
-      sourceProductsFromConcept({
+    if (!productSourcingStrategy.shouldAttemptVisualSourcing) {
+      productSourcingTextFallbackUsed = true;
+      productSourcingTextFallbackReason = productSourcingStrategy.fallbackReason;
+      productSourcingInitialAttemptDurationMs = 0;
+      sourcingResult = buildProductSourcingTextFallbackResult({
         roomType: room.room_type,
         conceptTitle: concept.title,
         conceptDescription: concept.description,
-        conceptImageUrl: conceptSignedImage.signedUrl,
-        candidates: aiSourcingCandidates.map(matchToSourcingCandidate),
-        roleCandidatePools: productMatchingEngineEnabled ? sourcingCandidatePools : undefined,
-        conceptImageDetail: PRODUCT_SOURCING_AI_CONCEPT_IMAGE_DETAIL,
-        candidateImageLimit: PRODUCT_SOURCING_AI_CANDIDATE_IMAGE_LIMIT,
-        candidateImageDetail: PRODUCT_SOURCING_AI_CANDIDATE_IMAGE_DETAIL
-      }),
-      PRODUCT_SOURCING_AI_TIMEOUT_MS,
-      "Product visual sourcing timed out."
-    );
-    productSourcingInitialAttemptDurationMs = Date.now() - productSourcingInitialAttemptStartedAtMs;
+        roles: staticRoles,
+        rankedCandidates: sourcingCandidates,
+        model: process.env.OPENAI_TEXT_MODEL ?? "gpt-5-mini"
+      });
+    } else {
+      sourcingResult = await withTimeout(
+        sourceProductsFromConcept({
+          roomType: room.room_type,
+          conceptTitle: concept.title,
+          conceptDescription: concept.description,
+          conceptImageUrl: conceptSignedImage.signedUrl,
+          candidates: aiSourcingCandidates.map(matchToSourcingCandidate),
+          roleCandidatePools: productMatchingEngineEnabled ? sourcingCandidatePools : undefined,
+          conceptImageDetail: PRODUCT_SOURCING_AI_CONCEPT_IMAGE_DETAIL,
+          candidateImageLimit: PRODUCT_SOURCING_AI_CANDIDATE_IMAGE_LIMIT,
+          candidateImageDetail: PRODUCT_SOURCING_AI_CANDIDATE_IMAGE_DETAIL
+        }),
+        PRODUCT_SOURCING_AI_TIMEOUT_MS,
+        "Product visual sourcing timed out."
+      );
+      productSourcingInitialAttemptDurationMs = Date.now() - productSourcingInitialAttemptStartedAtMs;
+    }
 
     await serviceSupabase
       .from("ai_jobs")
@@ -2242,6 +2262,7 @@ export async function groundProductsAction(formData: FormData) {
           productMatchingEngineEnabled,
           localSkuFidelityMode,
           productSourcingAiPayload: productSourcingAiPayloadSummary(),
+          productSourcingVisualStrategy: productSourcingStrategy,
           productSourcingTimeoutDiagnostics: productSourcingTimeoutDiagnostics({
             attemptDurationMs: productSourcingInitialAttemptDurationMs,
             timedOut: false,
@@ -2308,6 +2329,7 @@ export async function groundProductsAction(formData: FormData) {
               productMatchingEngineEnabled,
               localSkuFidelityMode,
               productSourcingAiPayload: productSourcingAiPayloadSummary(),
+              productSourcingVisualStrategy: productSourcingStrategy,
               productSourcingTimeoutDiagnostics: productSourcingTimeoutDiagnostics({
                 attemptDurationMs: productSourcingInitialAttemptDurationMs,
                 timedOut: productSourcingTimedOut,
@@ -2353,6 +2375,7 @@ export async function groundProductsAction(formData: FormData) {
               productMatchingEngineEnabled,
               localSkuFidelityMode,
               productSourcingAiPayload: productSourcingAiPayloadSummary(),
+              productSourcingVisualStrategy: productSourcingStrategy,
               productSourcingTimeoutDiagnostics: productSourcingTimeoutDiagnostics({
                 attemptDurationMs: productSourcingInitialAttemptDurationMs,
                 timedOut: productSourcingTimedOut,
@@ -2384,6 +2407,7 @@ export async function groundProductsAction(formData: FormData) {
             productMatchingEngineEnabled,
             localSkuFidelityMode,
             productSourcingAiPayload: productSourcingAiPayloadSummary(),
+            productSourcingVisualStrategy: productSourcingStrategy,
             productSourcingTimeoutDiagnostics: productSourcingTimeoutDiagnostics({
               attemptDurationMs: productSourcingInitialAttemptDurationMs,
               timedOut: productSourcingTimedOut,
@@ -2572,6 +2596,7 @@ export async function groundProductsAction(formData: FormData) {
             productMatchingEngineEnabled,
             localSkuFidelityMode,
             productSourcingAiPayload: productSourcingAiPayloadSummary(),
+            productSourcingVisualStrategy: productSourcingStrategy,
             productSourcingTimeoutDiagnostics: productSourcingTimeoutDiagnostics({
               attemptDurationMs: productSourcingInitialAttemptDurationMs,
               timedOut: productSourcingInitialTimedOut,
@@ -2639,6 +2664,7 @@ export async function groundProductsAction(formData: FormData) {
           productMatchingEngineEnabled,
           localSkuFidelityMode,
           productSourcingAiPayload: productSourcingAiPayloadSummary(),
+          productSourcingVisualStrategy: productSourcingStrategy,
           productSourcingTimeoutDiagnostics: productSourcingTimeoutDiagnostics({
             attemptDurationMs: productSourcingInitialAttemptDurationMs,
             timedOut: productSourcingInitialTimedOut,
@@ -2779,6 +2805,7 @@ export async function groundProductsAction(formData: FormData) {
           productMatchingEngineEnabled,
           localSkuFidelityMode,
           productSourcingAiPayload: productSourcingAiPayloadSummary(),
+          productSourcingVisualStrategy: productSourcingStrategy,
           productSourcingTimeoutDiagnostics: productSourcingTimeoutDiagnostics({
             attemptDurationMs: productSourcingInitialAttemptDurationMs,
             timedOut: productSourcingInitialTimedOut,

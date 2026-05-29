@@ -163,6 +163,7 @@ export type ProductMatchVisualSourcingDiagnostics = {
   isolationReason?:
     | "visual_sourcing_completed"
     | "visual_sourcing_timeout_text_fallback"
+    | "visual_sourcing_skipped_product_images_disabled_text_fallback"
     | "retry_visual_sourcing_timeout"
     | "visual_sourcing_failed_without_timeout";
   initialAttemptDurationMs: number | null;
@@ -187,6 +188,7 @@ export type ProductMatchVisualSourcingDiagnostics = {
 export type ProductMatchVisualSourcingEvidenceStatus =
   | "visual_sourcing_succeeded"
   | "visual_sourcing_timeout_text_fallback"
+  | "visual_sourcing_skipped_text_fallback"
   | "retry_visual_sourcing_timeout"
   | "visual_sourcing_timeout_no_fallback"
   | "text_fallback_without_timeout"
@@ -1019,6 +1021,10 @@ function visualSourcingEvidenceStatus(
     return "visual_sourcing_timeout_text_fallback";
   }
 
+  if (diagnostics.isolationReason === "visual_sourcing_skipped_product_images_disabled_text_fallback") {
+    return "visual_sourcing_skipped_text_fallback";
+  }
+
   if (diagnostics.isolationReason === "visual_sourcing_failed_without_timeout") {
     return "text_fallback_without_timeout";
   }
@@ -1052,6 +1058,9 @@ function visualSourcingEvidenceNotes({
   if (status === "visual_sourcing_timeout_text_fallback") {
     notes.push("Visual sourcing timed out and deterministic text fallback was used.");
     notes.push("Review semantic product matching separately from provider visual reasoning.");
+  } else if (status === "visual_sourcing_skipped_text_fallback") {
+    notes.push("Visual sourcing was skipped because product candidate images were disabled.");
+    notes.push("Deterministic text fallback was used without waiting for provider visual reasoning.");
   } else if (status === "retry_visual_sourcing_timeout") {
     notes.push("Initial visual sourcing completed, but retry visual sourcing timed out.");
     notes.push("Review retry timeout separately from semantic product matching quality.");

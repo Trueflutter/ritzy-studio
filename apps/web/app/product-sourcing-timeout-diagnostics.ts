@@ -3,6 +3,7 @@ export type ProductSourcingAttemptKind = "initial_visual_sourcing" | "retry_miss
 export type ProductSourcingFallbackReason =
   | "initial_visual_sourcing_timeout"
   | "retry_visual_sourcing_timeout"
+  | "product_candidate_images_disabled"
   | "none";
 
 export type ProductSourcingTimeoutDiagnosticInput = {
@@ -39,6 +40,7 @@ export type ProductSourcingTimeoutDiagnostics = {
   isolationReason:
     | "visual_sourcing_completed"
     | "visual_sourcing_timeout_text_fallback"
+    | "visual_sourcing_skipped_product_images_disabled_text_fallback"
     | "retry_visual_sourcing_timeout"
     | "visual_sourcing_failed_without_timeout";
   canDistinguishTimeoutFromSemanticQuality: boolean;
@@ -59,7 +61,11 @@ export type ProductSourcingTimeoutDiagnostics = {
 };
 
 function normalizeFallbackReason(reason: string | null): ProductSourcingFallbackReason {
-  if (reason === "initial_visual_sourcing_timeout" || reason === "retry_visual_sourcing_timeout") {
+  if (
+    reason === "initial_visual_sourcing_timeout" ||
+    reason === "retry_visual_sourcing_timeout" ||
+    reason === "product_candidate_images_disabled"
+  ) {
     return reason;
   }
 
@@ -85,11 +91,13 @@ export function buildProductSourcingTimeoutDiagnostics({
   const fallbackSourcePath = fallbackUsed ? "text_fallback" : "visual";
   const isolationReason = timedOut
     ? "visual_sourcing_timeout_text_fallback"
-    : retryTimedOut
-      ? "retry_visual_sourcing_timeout"
-      : fallbackUsed
-        ? "visual_sourcing_failed_without_timeout"
-        : "visual_sourcing_completed";
+    : normalizedFallbackReason === "product_candidate_images_disabled"
+      ? "visual_sourcing_skipped_product_images_disabled_text_fallback"
+      : retryTimedOut
+        ? "retry_visual_sourcing_timeout"
+        : fallbackUsed
+          ? "visual_sourcing_failed_without_timeout"
+          : "visual_sourcing_completed";
 
   return {
     attemptKind,
@@ -100,7 +108,8 @@ export function buildProductSourcingTimeoutDiagnostics({
     fallbackReason: normalizedFallbackReason,
     fallbackSourcePath,
     isolationReason,
-    canDistinguishTimeoutFromSemanticQuality: timedOut || retryTimedOut || !fallbackUsed,
+    canDistinguishTimeoutFromSemanticQuality:
+      timedOut || retryTimedOut || !fallbackUsed || normalizedFallbackReason === "product_candidate_images_disabled",
     candidateCount,
     rolePoolCount,
     conceptImageDetail,

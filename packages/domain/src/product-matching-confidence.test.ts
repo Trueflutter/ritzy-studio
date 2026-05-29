@@ -1019,6 +1019,23 @@ const visualRetryTimeoutEvidence = buildProductMatchVisualSourcingEvidence({
   }
 });
 assert.equal(visualRetryTimeoutEvidence.status, "retry_visual_sourcing_timeout");
+
+const visualSkippedTextFallbackEvidence = buildProductMatchVisualSourcingEvidence({
+  diagnostics: {
+    isolationReason: "visual_sourcing_skipped_product_images_disabled_text_fallback",
+    initialAttemptDurationMs: 0,
+    timeoutMs: 60000,
+    timedOut: false,
+    fallbackUsed: true,
+    fallbackReason: "product_candidate_images_disabled",
+    candidateCount: 18,
+    rolePoolCount: 8,
+    productCandidateImagesEnabled: false
+  }
+});
+assert.equal(visualSkippedTextFallbackEvidence.status, "visual_sourcing_skipped_text_fallback");
+assert.equal(visualSkippedTextFallbackEvidence.needsSemanticReview, true);
+assert.ok(visualSkippedTextFallbackEvidence.notes.some((note) => note.includes("without waiting")));
 assert.equal(visualRetryTimeoutEvidence.needsSemanticReview, true);
 assert.equal(visualRetryTimeoutEvidence.retry?.timedOut, true);
 assert.ok(visualRetryTimeoutEvidence.notes.some((note) => note.includes("retry visual sourcing timed out")));
