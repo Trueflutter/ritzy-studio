@@ -1878,8 +1878,25 @@ function roleSpecificKeywordScore(
       roleText.includes("over-table") ||
       roleText.includes("over table") ||
       hasAnyToken(roleTokens, ["pendant", "chandelier", "ceiling"]);
+    const floorOrTableRole =
+      roleText.includes("floor or table") ||
+      roleText.includes("floor/table") ||
+      roleText.includes("table or floor") ||
+      hasAnyToken(roleTokens, ["floor", "table", "desk", "task", "bedside"]);
 
     if (!overTableRole) {
+      if (floorOrTableRole) {
+        if (hasAnyToken(candidateTokens, ["floor", "table", "desk", "task", "bedside"]) && candidateTokens.has("lamp")) {
+          score += 34;
+          reasons.push("floor or table lamp language matches role");
+        }
+
+        if (hasAnyToken(candidateTokens, ["chandelier", "ceiling", "pendant", "suspension", "hanging"])) {
+          score -= 48;
+          weaknessReasons.push("ceiling fixture is weak for floor or table lighting role");
+        }
+      }
+
       if (hasAnyToken(candidateTokens, ["lamp", "lighting", "shade", "sconce"])) {
         score += 18;
         reasons.push("lamp or layered-lighting language matches role");

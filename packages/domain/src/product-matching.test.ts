@@ -1009,6 +1009,46 @@ assert.ok(
   )
 );
 
+const livingFloorTableLightingPool = buildRoleScopedCandidatePools({
+  roomType: "living room",
+  conceptText: "warm brass table lamp beside a soft neutral sofa",
+  roles: [
+    {
+      category: "lighting",
+      label: "floor or table lighting",
+      visualBrief: "aged brass table lamp with linen shade",
+      quantity: 1,
+      priority: "supporting"
+    }
+  ],
+  candidates: [
+    {
+      ...base,
+      id: "00000000-0000-4000-8000-000000000557",
+      name: "Hahn E14 8-Lights Linen Chandelier",
+      categoryNormalized: "lighting",
+      availability: "in stock",
+      primaryImageUrl: "https://example.com/hahn-linen-chandelier.jpg",
+      materialTags: ["linen", "metal"]
+    },
+    {
+      ...base,
+      id: "00000000-0000-4000-8000-000000000558",
+      name: "Aged Brass Table Lamp With Linen Shade",
+      categoryNormalized: "lighting",
+      availability: "in stock",
+      primaryImageUrl: "https://example.com/aged-brass-table-lamp.jpg",
+      materialTags: ["brass", "linen"]
+    }
+  ]
+});
+assert.equal(livingFloorTableLightingPool.pools[0].candidates[0].name, "Aged Brass Table Lamp With Linen Shade");
+assert.ok(
+  livingFloorTableLightingPool.pools[0].weaknessReasons.includes(
+    "ceiling fixture is weak for floor or table lighting role"
+  )
+);
+
 const mediaConsolePool = buildRoleScopedCandidatePools({
   roomType: "living room",
   conceptText: "walnut TV media console below the wall-mounted television",
@@ -1134,6 +1174,24 @@ assert.ok(overTableFloorLampAttributeScore.roleFit < 0);
 assert.ok(
   overTableFloorLampAttributeScore.weaknessReasons.includes(
     "floor or table lamp is weak for over-table lighting role"
+  )
+);
+
+const floorTableChandelierAttributeScore = scoreProductCandidateForRole({
+  candidate: livingFloorTableLightingPool.pools[0].candidates.find((candidate) => candidate.name.includes("Chandelier"))!,
+  role: {
+    category: "lighting",
+    label: "floor or table lighting",
+    visualBrief: "aged brass table lamp with linen shade",
+    quantity: 1,
+    priority: "supporting"
+  },
+  conceptText: "soft neutral living room"
+});
+assert.ok(floorTableChandelierAttributeScore.roleFit < 0);
+assert.ok(
+  floorTableChandelierAttributeScore.weaknessReasons.includes(
+    "ceiling fixture is weak for floor or table lighting role"
   )
 );
 
