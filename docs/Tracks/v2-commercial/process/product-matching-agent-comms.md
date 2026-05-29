@@ -1,25 +1,49 @@
 # Product Matching Engine Agent Comms
 
 ## Current PR
-None. PR #249 (<https://github.com/Trueflutter/ritzy-studio/pull/249>) merged at `8f2591537ec884e65b79b5325c1d44f2972f6176` after PR Review Agent approval.
+Docs-only validation-route PR for post-PR #258 PM-001 local/dev validation. After this PR merges, Product Matching Agent owns acknowledgement, exactly one validation pass, and one focused evidence PR.
 
 ## Current stage
-DUAL_TRACK:
-- `PM001_AESTHETIC_TASTE_GATE_POST_MERGE_VALIDATED_LOCAL_DEV`
-- `PM001_NARRATIVE_READINESS_RECOMMENDATION_READY_FOR_REVIEW`
-- `PM001_COFFEE_TABLE_QUALITY_FIX_MERGED_BLOCKED_WAITING_FOR_SAM_CHIEF_DECISION`
-- `CONTROLLED_PREVIEW_EXPANSION_BLOCKED_WAITING_FOR_SAM_CHIEF_DECISION` remains the runtime gate outside the approved local/dev current test boundary
+PM001_POST_258_LOCAL_DEV_VALIDATION_ROUTE_PENDING_REVIEW
 
 ## Blockers
-PM-001 is blocked pending `NEXT_PM001_LOCAL_DEV_FIX_BOUNDARY_REQUIRED`. PR #249 completed the thin/empty option-pool warning guard/test, so no further Product Matching implementation or execution is approved right now. The next expected action is Sam/Chief approval for exactly one narrow local/dev fix boundary, or a Product Matching Agent `ARCHITECT_NOTE:` proposing the smallest safe slice. Sam approved the earlier local/dev PM-001 aesthetic-quality rescue in-thread on 2026-05-27 after a catalogue-grounded test render produced an unsuitable black/brown pedestal shell chair and a noisy striped coffee table; that prior boundary is not approval for additional execution or implementation after PR #249.
+PR #258 merged at `80a55d12bb16f5ddd926e9c87cdc829362740b68` after PR Review Agent approved updated head `daa9a1fcfc527e1b2f59846e400181404cca4538`. This docs-only route PR must be reviewed and merged before Product Matching Agent runs the next validation.
 
-PM-001 coffee-table blocker has a narrow fix and one approved local/dev retest. Retest `ai_jobs` row `182e8d5b-2386-4f1a-a139-5d905e67d2fe` passes QA stop rules with 0 blockers; Chief/Sam review is still required before customer-facing reuse or any further execution.
+After this route merges, Product Matching Agent may run exactly one local/dev validation pass on project `4207ade6-2604-4e15-9b05-ffa77531d3d2`, room `75e18e73-cf69-4b2e-b192-009fbc135b38`, concept `d9cc2f82-6d8f-455c-8c8d-e08522e0938c`, Sam local/dev account, localhost/local dev, existing catalogue rows only, with only existing app-flow local/dev concept/job/shopping-list rows required by the validation flow. Evidence must verify whether PR #258 avoids the prior product-candidate-images-disabled retry/visual-provider wait and must record selected SKUs, persisted-selection snapshot, visual-sourcing diagnostics, zero/thin pool warnings, closest-available blockers, lighting role fit, curtains/textiles status, render/list fidelity limits if observable, and the next narrow boundary if PM-001 remains below the investor-demo bar.
 
-Product Matching Engine V1 is still not approved for production deploys, production flags, broad/runtime allowlist expansion, app actions, draft shopping-list/catalog writes, live catalog writes, DB/schema changes, generated DB types, runtime/UI redesign/prompt changes, payment/checkout changes, default-on activation, production rollout, selection/scoring changes, Catalog-First runtime coupling, new preview targets, or broader execution without a new approval.
-
-The PR #240 validation boundary expired after PR #242: one local/dev validation pass and one evidence artifact are complete. The next PM-001 implementation step needs a fresh Sam/Chief boundary before Product Matching Agent resumes code or runtime work.
+No second validation pass, production deploys/flags, rollout, controlled preview, live app actions, catalogue/product writes, live ingestion/catalog writes, DB/schema/generated type changes, runtime allowlist expansion, payment/checkout changes, broad scoring rewrites, prompt/runtime image-generation behavior changes beyond the approved local/dev validation flow, floor-plan work, final-render execution, or Catalog-First coupling is approved by this route.
 
 ## Chief architect routing
+ARCHITECT_NOTE:
+PR #258 merged at `80a55d12bb16f5ddd926e9c87cdc829362740b68` after PR Review Agent approved updated head `daa9a1fcfc527e1b2f59846e400181404cca4538`. It completed the PM-001 visual-sourcing timeout/retry/fallback evidence implementation: product-candidate-images-disabled flows now use deterministic text fallback for the initial attempt and retry/missing-required-role path, with diagnostics that distinguish `product_candidate_images_disabled`, `visual_sourcing_skipped_product_images_disabled_text_fallback`, and `retry_visual_sourcing_skipped_product_images_disabled_text_fallback` from provider timeouts and semantic matching quality. No Product Matching validation pass, app action, controlled preview, live catalogue/product writes, schema/generated type change, runtime allowlist change, prompt/runtime image-generation behavior change, broad scoring rewrite, production action, floor-plan work, final-render execution, or Catalog-First coupling was performed.
+
+CHIEF_ARCHITECT_REPLY:
+PM-001 is routed through this docs-only PR after PR #258 merged and the lane needs one fresh local/dev validation boundary.
+
+Owner after route merge: Product Matching Agent.
+
+Route after this docs PR merges:
+- Pull latest `origin/main` at this routing PR's merge commit.
+- Create a clean branch.
+- Acknowledge this route with the branch name and explicit stop-rule confirmation.
+- Run exactly one local/dev validation pass on project `4207ade6-2604-4e15-9b05-ffa77531d3d2`, room `75e18e73-cf69-4b2e-b192-009fbc135b38`, concept `d9cc2f82-6d8f-455c-8c8d-e08522e0938c`, Sam local/dev account, localhost/local dev, existing catalogue rows only.
+- Allowed writes: only existing app-flow local/dev concept/job/shopping-list rows required by the validation flow.
+- Evidence artifact must verify whether PR #258 avoids the prior product-candidate-images-disabled retry/visual-provider wait, and must cover selected SKUs, persisted-selection snapshot, visual-sourcing diagnostics, zero/thin pool warnings, closest-available blockers, lighting role fit, curtains/textiles status, render/list fidelity limits if observable, and the next narrow boundary if PM-001 remains below the investor-demo bar.
+- Open one focused evidence PR with an `ARCHITECT_NOTE:` confirming scope, verification, created local/dev rows/jobs, findings, and stop rules.
+- Leave the evidence PR for PR Review Agent review before merge.
+
+Forbidden scope:
+- any second validation pass without a new route
+- production deploys/flags, rollout, controlled preview, live app actions, catalogue/product writes, live ingestion/catalog writes
+- DB/schema/generated type changes
+- runtime allowlist expansion
+- payment/checkout changes
+- broad scoring rewrites or unrelated product-quality changes
+- prompt/runtime image-generation behavior changes beyond the validation flow
+- floor-plan work, final-render execution, or Catalog-First coupling
+
+If validation requires anything outside this route, stop and leave an explicit blocker.
+
 PRODUCT_MATCHING_AGENT_ACK: 2026-05-29 — Product Matching Agent acknowledges PM-001 stale recovery on branch `codex/pm-001-validation-20260529`, based on latest `origin/main` at `a394e25afa57986c2006fe460368329614fe1786`. Scope accepted: exactly one local/dev validation pass for project `4207ade6-2604-4e15-9b05-ffa77531d3d2`, room `75e18e73-cf69-4b2e-b192-009fbc135b38`, Sam local/dev account, localhost/local dev, existing catalogue rows only, with only existing app-flow local/dev concept/job/shopping-list rows required by the validation flow. Stop rules accepted: no production deploys/flags, rollout, live app actions, catalogue/product writes, live ingestion, DB/schema/generated type changes, controlled-preview expansion, runtime allowlist expansion, payment/checkout changes, broad scoring rewrites, prompt/runtime/image-generation behavior changes beyond validation, floor-plan work, or Catalog-First coupling.
 
 CHIEF_ARCHITECT_REPLY: STALE RECOVERY — Product Matching Agent / PM-001 missed the acknowledgement heartbeat after PR #240 merged on `main` at `71b9b15c02e207cf00d5847ea4636a204ddbbdea`. Pull latest `origin/main`, create a clean branch, and acknowledge with the branch name before execution. Run exactly one local/dev validation pass on project `4207ade6-2604-4e15-9b05-ffa77531d3d2`, room `75e18e73-cf69-4b2e-b192-009fbc135b38`, Sam local/dev account, localhost, existing catalogue rows only. Allowed writes: existing app-flow local/dev concept/job/shopping-list rows required by validation. Evidence artifact must cover persisted selection snapshot, selected SKUs, render/list fidelity, missing roles, recommendation similarity, repeated sofa/support-role regressions, and next narrow code boundary if validation fails. Stop before production deploys/flags, rollout, live app actions, catalogue/product writes, live ingestion, DB/schema/generated type changes, controlled-preview expansion, runtime allowlist expansion, payment/checkout changes, broad scoring rewrites, prompt/runtime/image-generation changes beyond validation, floor-plan work, or Catalog-First coupling.
