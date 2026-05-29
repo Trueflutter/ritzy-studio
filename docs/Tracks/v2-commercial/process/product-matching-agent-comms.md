@@ -378,7 +378,28 @@ PR #160 completed the docs-only controlled-preview execution-boundary package af
 PR #170 merged to clean stale mailbox state after PR #160 merged. This was docs/mailbox only.
 
 ## Next intended action
-PR Review Agent: review the docs-only PM-001 visual-timeout follow-up route PR. If approved and merged, Product Matching Agent should acknowledge the route, implement exactly one narrow local/dev visual-sourcing timeout/retry/fallback evidence slice, add focused tests, and open one implementation PR for PR Review Agent review. Do not run another Product Matching validation pass, visual-sourcing runtime call through the app flow, controlled preview, app action, write outside implementation tests, broad/runtime allowlist change, production activity, broad scoring rewrite, prompt/runtime image-generation behavior change, unrelated quality change, floor-plan work, or Catalog-First coupling without a new explicit Sam/Chief boundary.
+PR Review Agent: review the PM-001 visual-timeout evidence implementation PR on branch `codex/pm001-visual-timeout-evidence-impl`. If approved and merged, PM-001 remains blocked pending a fresh Sam/Chief local/dev validation boundary. Do not run another Product Matching validation pass, visual-sourcing runtime call through the app flow, controlled preview, app action, write outside implementation tests, broad/runtime allowlist change, production activity, broad scoring rewrite, prompt/runtime image-generation behavior change, unrelated quality change, floor-plan work, or Catalog-First coupling without a new explicit Sam/Chief boundary.
+
+PRODUCT_MATCHING_AGENT_ACK: 2026-05-29 - Product Matching Agent acknowledges the PM-001 visual-sourcing timeout/retry/fallback evidence route on branch `codex/pm001-visual-timeout-evidence-impl`, based on latest `origin/main` at `e00f2784cc84f332a462ad5f387f863a486314ad`. Scope accepted: local/dev Product Matching code/tests/docs only for the narrow visual-sourcing timeout/retry/fallback evidence slice; no validation pass or app-flow execution. Stop rules accepted: no Product Matching validation pass, blind validation, app action, controlled preview, visual-sourcing runtime call through the app flow, draft shopping-list write, catalogue/product mutation, live ingestion/catalog write, DB/schema/generated type change, runtime allowlist change, production deploy/flag/default-on activation, prompt/runtime image-generation behavior change, broad scoring rewrite, unrelated product-quality change, payment/checkout, floor-plan work, final-render execution, or Catalog-First runtime coupling.
+
+ARCHITECT_NOTE:
+PM-001 visual-timeout evidence implementation is open on branch `codex/pm001-visual-timeout-evidence-impl`.
+
+Scope completed:
+- Added a fast deterministic text-fallback strategy when product candidate images are disabled (`candidateImageLimit: 0`) and role pools are present, so PM-001 no longer waits for a 45s provider visual-sourcing timeout in that local/dev configuration.
+- Preserved deterministic text fallback behavior.
+- Added explicit diagnostics for `product_candidate_images_disabled` and `visual_sourcing_skipped_product_images_disabled_text_fallback` so evidence distinguishes provider timeout from a deliberate skipped-visual path and from semantic match quality.
+- Updated domain visual-sourcing evidence output so the skipped-visual path is visible as `visual_sourcing_skipped_text_fallback`.
+
+Verification:
+- `pnpm install --offline --frozen-lockfile`
+- `pnpm --filter @ritzy-studio/web exec tsx app/product-sourcing-visual-strategy.test.ts`
+- `pnpm --filter @ritzy-studio/web exec tsx app/product-sourcing-timeout-diagnostics.test.ts`
+- `pnpm --filter @ritzy-studio/domain exec tsx src/product-matching-confidence.test.ts`
+- `pnpm --filter @ritzy-studio/domain typecheck`
+- `pnpm --filter @ritzy-studio/web typecheck`
+
+No Product Matching validation pass, blind validation, app action, controlled preview, visual-sourcing runtime call through the app flow, draft shopping-list write, catalogue/product mutation, live ingestion/catalog write, DB/schema/generated type change, runtime allowlist change, production deploy/flag/default-on activation, prompt/runtime image-generation behavior change, broad scoring rewrite, unrelated product-quality change, payment/checkout, floor-plan work, final-render execution, or Catalog-First runtime coupling was performed.
 
 CHIEF_ARCHITECT_REPLY:
 PR #256 merged at `59dc6b062216b341df9e7c4688b5e126ed5b333c`, recording the post-#255 validation evidence and returning PM-001 to blocked pending the next boundary. Sam previously authorized Chief to route narrow local/dev fix boundaries in his absence. Chief now routes the next exact PM-001 boundary to Product Matching Agent, pending PR Review Agent approval and merge of this docs-only route PR.

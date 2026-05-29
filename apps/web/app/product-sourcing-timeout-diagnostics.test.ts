@@ -60,3 +60,41 @@ assert.equal(retryTimeout.isolationReason, "retry_visual_sourcing_timeout");
 assert.equal(retryTimeout.retry.attempted, true);
 assert.equal(retryTimeout.retry.fallbackReason, "retry_visual_sourcing_timeout");
 assert.equal(retryTimeout.retry.imageGateUsable, true);
+
+const skippedVisual = buildProductSourcingTimeoutDiagnostics({
+  ...base,
+  attemptDurationMs: 0,
+  timedOut: false,
+  fallbackUsed: true,
+  fallbackReason: "product_candidate_images_disabled",
+  productCandidateImagesEnabled: false
+});
+
+assert.equal(skippedVisual.fallbackSourcePath, "text_fallback");
+assert.equal(skippedVisual.fallbackReason, "product_candidate_images_disabled");
+assert.equal(skippedVisual.isolationReason, "visual_sourcing_skipped_product_images_disabled_text_fallback");
+assert.equal(skippedVisual.canDistinguishTimeoutFromSemanticQuality, true);
+
+const skippedRetryVisual = buildProductSourcingTimeoutDiagnostics({
+  ...base,
+  attemptDurationMs: 900,
+  timedOut: false,
+  fallbackUsed: false,
+  fallbackReason: null,
+  retry: {
+    attempted: true,
+    attemptDurationMs: 0,
+    timedOut: false,
+    fallbackUsed: true,
+    fallbackReason: "product_candidate_images_disabled",
+    providerImageDownloadFailure: false,
+    imageGateUsable: null
+  }
+});
+
+assert.equal(
+  skippedRetryVisual.isolationReason,
+  "retry_visual_sourcing_skipped_product_images_disabled_text_fallback"
+);
+assert.equal(skippedRetryVisual.retry.fallbackReason, "product_candidate_images_disabled");
+assert.equal(skippedRetryVisual.canDistinguishTimeoutFromSemanticQuality, true);

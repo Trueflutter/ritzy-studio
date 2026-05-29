@@ -109,16 +109,16 @@ Docs-only, test-only, domain-only, and dry-run-only work may proceed only when t
 ### Ticket PM-001
 
 Owner: Product Matching Agent
-Status: ROUTED
-Branch: pending Product Matching Agent acknowledgement
-Allowed scope: After this docs-only route PR is reviewed and merged, implement exactly one narrow local/dev visual-sourcing timeout/retry/fallback evidence slice. The implementation may change local/dev Product Matching code/tests/docs only to reduce or isolate the 45s visual-sourcing timeout observed in job `96418e26-05a7-46f1-a1dc-fea7908c3e7c`, preserve deterministic fallback behavior, and make retry/fallback evidence auditable. Add focused tests and open one implementation PR for PR Review Agent review before merge.
+Status: BLOCKED
+Branch: none after the visual-timeout evidence implementation PR merges
+Allowed scope: Local/dev Product Matching code/tests/docs for exactly one narrow visual-sourcing timeout/retry/fallback evidence slice. The implementation may skip provider visual sourcing when product candidate images are disabled, preserve deterministic fallback behavior, and make retry/fallback evidence auditable. No validation pass is approved by this implementation PR.
 Forbidden scope: No Product Matching validation pass, blind validation, app action, controlled preview, production deploy, production flag, live catalog write, live ingestion, DB/schema/generated type change, payment/checkout change, floor-plan work, Catalog-First runtime coupling, production Product Matching execution, runtime allowlist expansion, default-on production activation, unrelated UI redesign, broad catalogue rewrite, catalogue/product row mutation, broad scoring rewrite, prompt/runtime image-generation behavior change, production selection behavior change, or final-render execution.
-Expected next artifact: Product Matching Agent acknowledgement after this route PR merges, then one focused implementation PR for PR Review Agent review.
-SLA: Product Matching Agent acknowledgement within one owner heartbeat after route merge; branch, commit, PR, mailbox update, or explicit blocker within 30 minutes after acknowledgement.
-Last architect instruction: 2026-05-29 PR #256 merged at `59dc6b062216b341df9e7c4688b5e126ed5b333c`, leaving PM-001 blocked with evidence that visual sourcing still timed out after 45,064 ms and used deterministic text fallback. Sam previously authorized Chief to route narrow local/dev fix boundaries in his absence. Chief routes the next exact boundary as visual-sourcing timeout/retry/fallback evidence only.
-Agent ack: Pending. Product Matching Agent must acknowledge branch and stop rules before implementation.
-Current PR: none after the visual-timeout route PR merges
-Blocker: Product Matching Agent acknowledgement and stop-rule confirmation required after route merge. If the timeout/retry/fallback fix requires Product Matching execution, app actions, controlled preview, catalogue/product writes, DB/schema/generated types, prompt/runtime image-generation behavior changes, broad scoring rewrites, runtime allowlists, production behavior, or any forbidden scope, stop and leave an `ARCHITECT_NOTE:` naming the smallest required boundary.
+Expected next artifact: PR Review Agent review of the visual-timeout evidence implementation PR. If approved and merged, PM-001 remains blocked pending a fresh Sam/Chief local/dev validation boundary.
+SLA: PR Review Agent review should happen within one heartbeat; merge/fix/block within 30 minutes after review.
+Last architect instruction: 2026-05-29 PR #257 merged at `e00f2784cc84f332a462ad5f387f863a486314ad`, routing this exact local/dev implementation boundary. Product Matching Agent acknowledged on branch `codex/pm001-visual-timeout-evidence-impl` and implemented a fast deterministic text-fallback path when product candidate images are disabled, with diagnostics that distinguish the skipped visual provider path from provider timeout and semantic quality.
+Agent ack: Product Matching Agent acknowledged branch `codex/pm001-visual-timeout-evidence-impl` and accepted stop rules. No validation pass was run.
+Current PR: none after the visual-timeout evidence implementation PR merges
+Blocker: `NEXT_PM001_LOCAL_DEV_VALIDATION_BOUNDARY_REQUIRED`. After this implementation PR merges, no additional PM-001 execution, validation, or implementation is approved until Sam/Chief routes the next exact boundary.
 
 ### Ticket MI-001
 
