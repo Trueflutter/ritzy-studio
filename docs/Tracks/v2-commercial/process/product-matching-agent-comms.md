@@ -1,17 +1,46 @@
 # Product Matching Engine Agent Comms
 
 ## Current PR
-None.
+None after this route PR merges.
 
 ## Current stage
-PM001_BLOCKED_POST_270_HANDOFF
+PM001_POST_270_LOCAL_DEV_VALIDATION_ROUTED
 
 ## Blockers
 PR #270 merged at `3a8003c6b01d2cb74c686e8ba85e54bb34f5cac3` after PR Review Agent approval and explicit implementation-agent merge instruction. It completed the PR #269-routed narrow local/dev required-role QA hardening/audit slice for `sofas::anchor_seating`, `coffee_tables::coffee_table`, and `rugs::generous_rug`. The implementation took the audit-hardening path: `required_closest_available` blockers now include deterministic audit details for candidate pool count, rejected candidates/top rejection reasons, weakness reasons, selected-product metadata gaps, and selected-product dimension evidence gaps. Verification claimed and reviewed: `git diff --check`; `pnpm --filter @ritzy-studio/domain exec tsx src/product-matching-confidence.test.ts`; `pnpm --filter @ritzy-studio/domain typecheck`.
 
 No Product Matching execution, validation pass, blind validation, controlled preview, visual-sourcing runtime call, app action, shopping-list refresh/create, catalogue/product mutation, live ingestion/catalog write, DB/schema/generated type change, runtime allowlist expansion, production action, prompt/runtime image-generation behavior change, broad scoring rewrite, curtains/textiles candidate generation, thin-pool fix, side-table/storage/media change, lighting change, final-render execution, floor-plan work, payment/checkout change, or Catalog-First coupling was performed.
 
-PM-001 is blocked with no active PR and no approved next implementation/execution boundary. Any next Product Matching implementation, validation pass, execution, or rollout requires a fresh exact Sam/Chief route.
+PM-001 is routed through this docs-only PR for one post-PR #270 local/dev validation pass. No Product Matching execution is approved until this route PR is reviewed, approved, and merged, and Product Matching Agent acknowledges the route with branch/scope/stop-rule confirmation.
+
+CHIEF_ARCHITECT_REPLY:
+PM-001 is routed through this docs-only PR after PR #271 merged and the PR #270 audit-hardening slice completed without validation.
+
+Owner after route merge: Product Matching Agent.
+
+Route after this docs PR merges:
+- Pull latest `origin/main` at this routing PR's merge commit.
+- Create a clean branch.
+- Acknowledge this route with the branch name and explicit stop-rule confirmation before execution.
+- Run exactly one local/dev validation pass on project `4207ade6-2604-4e15-9b05-ffa77531d3d2`, room `75e18e73-cf69-4b2e-b192-009fbc135b38`, concept `d9cc2f82-6d8f-455c-8c8d-e08522e0938c`, Sam local/dev account, localhost/local dev, existing catalogue rows only.
+- Allowed writes: only existing app-flow local/dev concept/job/shopping-list rows required by the validation flow.
+- Evidence artifact must verify the post-PR #270 enriched required-role `required_closest_available` evidence for `sofas::anchor_seating`, `coffee_tables::coffee_table`, and `rugs::generous_rug`.
+- Evidence artifact must also record selected SKUs, persisted-selection snapshot, visual-sourcing diagnostics, zero/thin pool warnings, closest-available blockers, curtains/textiles status, render/list fidelity limits if observable, and the next narrow boundary if PM-001 remains below the investor-demo bar.
+- Open one focused evidence PR with an `ARCHITECT_NOTE:` confirming scope, verification, created local/dev rows/jobs, findings, and stop rules.
+- Leave the evidence PR for PR Review Agent review before merge.
+
+Forbidden scope:
+- any second validation pass without a new route
+- production deploys/flags, rollout, controlled preview, live app actions, catalogue/product writes, live ingestion/catalog writes
+- DB/schema/generated type changes
+- runtime allowlist expansion
+- payment/checkout changes
+- broad scoring rewrites or unrelated product-quality changes
+- prompt/runtime image-generation behavior changes beyond the validation flow
+- curtains/textiles candidate generation, thin-pool fixes, side-table/storage/media changes, lighting changes
+- floor-plan work, final-render execution, or Catalog-First coupling
+
+If validation requires anything outside this route, stop and leave an explicit blocker.
 
 PR #266 merged at `1a908d0ecc61fd8ef8824f56f218b40ac50fd365` after PR Review Agent approval and explicit implementation-agent merge instruction. It is the docs-only evidence artifact for the single PR #265-routed local/dev PM-001 validation pass after PR #263 lighting role-fit guard/test merged. The evidence documents job `9d9dff0a-7fcc-48d5-9ec5-93f6c8a3df02`, shopping list `99062356-7a63-4438-bd4b-461cc43c66ba`, selected SKUs, persisted-selection snapshot, visual-sourcing fallback evidence, zero/thin pool warnings, QA blockers, and the result that the lighting role now selects `Frosty Wooden Floor Lamp - 154 cm` instead of a chandelier while recording `lighting_role_fixture_mismatch: 12`.
 
@@ -521,7 +550,7 @@ PR #160 completed the docs-only controlled-preview execution-boundary package af
 PR #170 merged to clean stale mailbox state after PR #160 merged. This was docs/mailbox only.
 
 ## Next intended action
-Product Matching Agent: after this route PR merges, pull the route merge commit, create a clean branch, acknowledge the required-role QA hardening route with branch, scope, and stop-rule confirmation, implement only the three-role required QA hardening/audit slice, and open one focused implementation PR for review. Do not run validation, use controlled preview, invoke browser-click or live app actions, refresh/create shopping lists, mutate catalogue/product rows, write live ingestion/catalog rows, change DB/schema/generated types, broaden/runtime allowlists, perform production activity, make broad scoring rewrites, change prompt/runtime image-generation behavior, change curtains/textiles/thin pools/side-table/storage/media/lighting behavior, touch floor-plan work, execute final render, or add Catalog-First coupling from this route.
+Product Matching Agent: after this route PR merges, pull the route merge commit, create a clean branch, acknowledge the post-PR #270 validation route with branch, scope, and stop-rule confirmation, run exactly one approved local/dev validation pass on project `4207ade6-2604-4e15-9b05-ffa77531d3d2`, room `75e18e73-cf69-4b2e-b192-009fbc135b38`, concept `d9cc2f82-6d8f-455c-8c8d-e08522e0938c`, Sam local/dev account, localhost/local dev, existing catalogue rows only, and open one focused evidence PR for review. Allowed writes after merge are only existing app-flow local/dev concept/job/shopping-list rows required by that one validation flow. Do not run a second validation pass, use controlled preview, invoke browser-click or live app actions, mutate catalogue/product rows, write live ingestion/catalog rows, change DB/schema/generated types, broaden/runtime allowlists, perform production activity, make broad scoring rewrites, change prompt/runtime image-generation behavior beyond validation, change curtains/textiles/thin pools/side-table/storage/media/lighting behavior, touch floor-plan work, execute final render, or add Catalog-First coupling from this route.
 
 PRODUCT_MATCHING_AGENT_ACK: 2026-05-29 - Product Matching Agent acknowledges the PM-001 visual-sourcing timeout/retry/fallback evidence route on branch `codex/pm001-visual-timeout-evidence-impl`, based on latest `origin/main` at `e00f2784cc84f332a462ad5f387f863a486314ad`. Scope accepted: local/dev Product Matching code/tests/docs only for the narrow visual-sourcing timeout/retry/fallback evidence slice; no validation pass or app-flow execution. Stop rules accepted: no Product Matching validation pass, blind validation, app action, controlled preview, visual-sourcing runtime call through the app flow, draft shopping-list write, catalogue/product mutation, live ingestion/catalog write, DB/schema/generated type change, runtime allowlist change, production deploy/flag/default-on activation, prompt/runtime image-generation behavior change, broad scoring rewrite, unrelated product-quality change, payment/checkout, floor-plan work, final-render execution, or Catalog-First runtime coupling.
 

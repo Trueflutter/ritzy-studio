@@ -109,16 +109,16 @@ Docs-only, test-only, domain-only, and dry-run-only work may proceed only when t
 ### Ticket PM-001
 
 Owner: Product Matching Agent
-Status: BLOCKED
-Branch: none
-Allowed scope: None until Sam/Chief routes a fresh exact Product Matching boundary. PR #270 merged the PR #269-routed narrow local/dev required-role QA hardening/audit slice for `sofas::anchor_seating`, `coffee_tables::coffee_table`, and `rugs::generous_rug` by taking the audit-hardening path: deterministic code/tests/docs now make `required_closest_available` stop-rule evidence explicit about which catalogue metadata/pool condition prevents acceptable required-role confidence.
-Forbidden scope: No validation pass, blind validation, controlled preview, production deploy, production flag, live app action, live catalog write, live ingestion, DB/schema/generated type change, runtime allowlist expansion, payment/checkout change, floor-plan work, Catalog-First runtime coupling, production Product Matching execution, default-on production activation, unrelated UI redesign, broad catalogue rewrite, catalogue/product row mutation, broad scoring rewrite beyond the three required-role QA/audit slice, prompt/runtime image-generation behavior change, production selection behavior change, final-render execution, curtains/textiles candidate generation, thin-pool fixes, side-table/storage/media changes, lighting changes, or additional aesthetic-quality implementation outside the three required roles.
-Expected next artifact: None until Sam/Chief routes a fresh exact Product Matching boundary.
-SLA: None while blocked.
-Last architect instruction: 2026-05-29 PR #270 merged at `3a8003c6b01d2cb74c686e8ba85e54bb34f5cac3` after PR Review Agent approval and explicit implementation-agent merge instruction. It completed the required-role QA audit-hardening slice by enriching `required_closest_available` blockers with candidate pool count, rejected candidates/top rejection reasons, weakness reasons, selected-product metadata gaps, and selected-product dimension evidence gaps without changing selection/scoring.
+Status: ROUTED
+Branch: pending Product Matching Agent acknowledgement
+Allowed scope: After this docs-only route merges, Product Matching Agent may run exactly one post-PR #270 local/dev validation pass on project `4207ade6-2604-4e15-9b05-ffa77531d3d2`, room `75e18e73-cf69-4b2e-b192-009fbc135b38`, concept `d9cc2f82-6d8f-455c-8c8d-e08522e0938c`, Sam local/dev account, localhost/local dev, existing catalogue rows only. Allowed writes are only existing app-flow local/dev concept/job/shopping-list rows required by that one validation flow.
+Forbidden scope: No second validation pass, blind validation beyond the single routed pass, controlled preview, production deploy, production flag, live app action, live catalog write, live ingestion, DB/schema/generated type change, runtime allowlist expansion, payment/checkout change, floor-plan work, Catalog-First runtime coupling, production Product Matching execution, default-on production activation, unrelated UI redesign, broad catalogue rewrite, catalogue/product row mutation, broad scoring rewrite, prompt/runtime image-generation behavior change beyond the validation flow, production selection behavior change, final-render execution, curtains/textiles candidate generation, thin-pool fixes, side-table/storage/media changes, lighting changes, or additional aesthetic-quality implementation.
+Expected next artifact: Product Matching Agent acknowledgement with branch/scope/stop-rule confirmation, then one focused evidence PR recording the post-PR #270 validation results.
+SLA: Product Matching Agent must acknowledge within one owner heartbeat after the route PR merges; after acknowledgement, it must show branch/PR/evidence progress or an explicit blocker within 30 minutes.
+Last architect instruction: 2026-05-29 PR #270 merged at `3a8003c6b01d2cb74c686e8ba85e54bb34f5cac3` after PR Review Agent approval and explicit implementation-agent merge instruction. Chief now routes exactly one post-PR #270 local/dev validation pass to capture the enriched required-role `required_closest_available` evidence and determine the next narrow boundary.
 Agent ack: Product Matching Agent acknowledged the PR #269 route on branch `codex/pm001-required-role-qa-hardening`, confirmed stop rules, opened PR #270, merged it after approval, and opened a docs/mailbox-only post-270 handoff.
 Current PR: none
-Blocker: PM-001 remains below the investor-demo bar and needs fresh Sam/Chief approval for any next implementation, validation pass, execution, or rollout boundary.
+Blocker: Waiting for Product Matching Agent acknowledgement after this route merges.
 
 ### Ticket MI-001
 
