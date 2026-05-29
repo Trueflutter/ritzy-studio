@@ -1,12 +1,16 @@
 # Product Matching Engine Agent Comms
 
 ## Current PR
-None after this route PR merges.
+PR #270: <https://github.com/Trueflutter/ritzy-studio/pull/270>
 
 ## Current stage
-PM001_REQUIRED_ROLE_QA_HARDENING_ROUTED
+PM001_REQUIRED_ROLE_QA_HARDENING_REVIEW_REQUESTED
 
 ## Blockers
+PR #270 is open for PR Review Agent review. It implements the PR #269-routed narrow local/dev required-role QA hardening/audit slice for `sofas::anchor_seating`, `coffee_tables::coffee_table`, and `rugs::generous_rug`. The implementation takes the audit-hardening path: `required_closest_available` blockers now include deterministic audit details for candidate pool count, rejected candidates/top rejection reasons, weakness reasons, selected-product metadata gaps, and selected-product dimension evidence gaps. Verification: `git diff --check`; `pnpm --filter @ritzy-studio/domain exec tsx src/product-matching-confidence.test.ts`; `pnpm --filter @ritzy-studio/domain typecheck`.
+
+No Product Matching execution, validation pass, blind validation, controlled preview, visual-sourcing runtime call, app action, shopping-list refresh/create, catalogue/product mutation, live ingestion/catalog write, DB/schema/generated type change, runtime allowlist expansion, production action, prompt/runtime image-generation behavior change, broad scoring rewrite, curtains/textiles candidate generation, thin-pool fix, side-table/storage/media change, lighting change, final-render execution, floor-plan work, payment/checkout change, or Catalog-First coupling was performed.
+
 PR #266 merged at `1a908d0ecc61fd8ef8824f56f218b40ac50fd365` after PR Review Agent approval and explicit implementation-agent merge instruction. It is the docs-only evidence artifact for the single PR #265-routed local/dev PM-001 validation pass after PR #263 lighting role-fit guard/test merged. The evidence documents job `9d9dff0a-7fcc-48d5-9ec5-93f6c8a3df02`, shopping list `99062356-7a63-4438-bd4b-461cc43c66ba`, selected SKUs, persisted-selection snapshot, visual-sourcing fallback evidence, zero/thin pool warnings, QA blockers, and the result that the lighting role now selects `Frosty Wooden Floor Lamp - 154 cm` instead of a chandelier while recording `lighting_role_fixture_mismatch: 12`.
 
 The PR #265 validation boundary has been consumed. No second validation pass, Product Matching execution, implementation, final-render execution, controlled preview, live app action, catalogue/product write, live ingestion/catalog write, DB/schema/generated type change, runtime allowlist expansion, payment/checkout change, broad scoring rewrite, prompt/runtime image-generation behavior change, curtains/textiles candidate generation, thin-pool fix, sofa/coffee/rug rewrite, floor-plan work, production deploy/flag, or Catalog-First coupling is approved.
