@@ -89,6 +89,38 @@ Hard stop: no controlled-preview configuration/execution, app actions, runtime a
 
 ## Last action taken
 ARCHITECT_NOTE:
+PR #252 merged at `034cc43564333438faffc356cb8e7cc1d0ba363f` after PR Review Agent approved updated head `a19646f49d27c5ec1d3da7a9a3205366c2b7d44b`. It completed the PM-001 visual-sourcing timeout isolation evidence slice: existing Product Matching audit output now surfaces deterministic visual-sourcing timeout/text-fallback evidence, including retry-timeout evidence, so review can separate provider visual-reasoning failure from semantic product matching quality. No Product Matching execution, blind validation, app actions, live writes, catalogue/product mutations, live ingestion/catalog writes, DB/schema/generated type changes, production deploys/flags, controlled-preview expansion, runtime allowlist expansion, prompt/runtime image-generation behavior changes, broad scoring rewrite, payment/checkout, floor-plan work, or Catalog-First coupling was performed.
+
+CHIEF_ARCHITECT_REPLY:
+PM-001 is routed again through this docs-only PR after PR #252 merged and the stale `PR_OPEN` visual-timeout board state needed cleanup. This route requires PR Review Agent approval before merge.
+
+Owner after route merge: Product Matching Agent.
+
+Route after this docs PR merges:
+- Pull latest `origin/main` at this routing PR's merge commit.
+- Create a clean branch.
+- Acknowledge this route with the branch name and explicit stop-rule confirmation.
+- Implement only a concept-anchor-vs-persisted-selection audit assertion/test: PM-001 should surface deterministic audit evidence or a stop/warning when a concept anchor from the generated concept is replaced in the persisted shopping-list selection.
+- Add focused local/dev tests using existing domain/audit paths. Do not run Product Matching or refresh shopping-list rows.
+- Open one focused implementation PR with an `ARCHITECT_NOTE:` confirming scope, verification, and stop rules.
+- Leave the implementation PR for PR Review Agent review before merge.
+
+Allowed scope after route merge:
+- local/dev code and tests for concept-anchor-vs-persisted-selection audit evidence only
+- docs/mailbox updates directly tied to the PR
+- read-only inspection of existing PM-001 evidence from PR #242/#249/#252
+
+Forbidden scope:
+- Product Matching execution or another blind validation pass
+- visual-sourcing runtime calls, prompt/runtime image-generation behavior changes, runtime allowlist changes, controlled preview, app actions, writes, live ingestion/catalog writes, catalogue/product mutations
+- DB/schema/generated type changes
+- broad scoring rewrites or unrelated product-quality changes
+- production deploys/flags/default-on activation
+- payment/checkout, floor-plan work, or Catalog-First runtime coupling
+
+If the fix requires anything outside this route, stop and leave an explicit blocker.
+
+ARCHITECT_NOTE:
 PM-001 visual-sourcing timeout isolation evidence implementation is open on branch `codex/pm001-visual-timeout-evidence`.
 
 Exact scope:
@@ -289,7 +321,7 @@ PR #160 completed the docs-only controlled-preview execution-boundary package af
 PR #170 merged to clean stale mailbox state after PR #160 merged. This was docs/mailbox only.
 
 ## Next intended action
-Product Matching Agent: acknowledge the visual-sourcing timeout isolation evidence route, then open one focused implementation PR. PR Review Agent must review the PR before merge. Do not run additional Product Matching execution, visual-sourcing runtime calls, controlled preview, app actions, writes, broad/runtime allowlist changes, production activity, broad scoring rewrites, prompt/runtime image-generation behavior changes, unrelated quality changes, floor-plan work, or Catalog-First coupling without a new explicit Sam/Chief boundary.
+PR Review Agent: review the docs-only concept-anchor route PR. If approved and merged, Product Matching Agent should acknowledge the concept-anchor-vs-persisted-selection audit assertion route, then open one focused implementation PR for PR Review Agent review before merge. Do not run additional Product Matching execution, visual-sourcing runtime calls, controlled preview, app actions, writes, broad/runtime allowlist changes, production activity, broad scoring rewrites, prompt/runtime image-generation behavior changes, unrelated quality changes, floor-plan work, or Catalog-First coupling without a new explicit Sam/Chief boundary.
 
 Keep the Product Matching lane heartbeat active. It must not be deleted after merges. The heartbeat should run every 10 minutes and monitor:
 
