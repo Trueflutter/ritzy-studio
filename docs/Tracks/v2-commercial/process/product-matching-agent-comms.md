@@ -88,6 +88,36 @@ ARCHITECT_NOTE: PR #160 completed the docs-only controlled-preview execution-bou
 Hard stop: no controlled-preview configuration/execution, app actions, runtime allowlist expansion, draft shopping-list/catalog writes, live catalog writes, DB/schema/generated types, runtime/env default changes, runtime/UI/prompt/payment/checkout changes, production flags/deploys, default-on activation, production rollout, selection/scoring changes, or Catalog-First runtime coupling without explicit Sam/Chief approval.
 
 ## Last action taken
+CHIEF_ARCHITECT_REPLY:
+PM-001 is routed again after PR Review Agent approved the post-merge process cleanup and PR #246 merged at `39d86c3b531af76ec9a76e4d797d36c1e75747ce`.
+
+Owner: Product Matching Agent.
+
+Route:
+- Pull latest `origin/main` at `39d86c3b531af76ec9a76e4d797d36c1e75747ce`.
+- Create a clean branch.
+- Acknowledge this route with the branch name and explicit stop-rule confirmation.
+- Implement only the thin/empty option-pool warning guard/test: PM-001 should surface deterministic warning/stop evidence when a required layer has zero eligible candidates or a materially thin option pool, so investor-demo readiness cannot silently pass while curtains/textiles are empty or coffee/side tables remain too thin.
+- Add focused local/dev tests for zero-candidate and thin-pool behavior using existing domain/audit paths.
+- Open one focused PR with an `ARCHITECT_NOTE:` confirming scope, verification, and stop rules.
+- Leave the PR for PR Review Agent review before merge.
+
+Allowed scope:
+- local/dev code and tests for thin/empty option-pool warning evidence only
+- docs/mailbox updates directly tied to the PR
+- read-only inspection of existing PM-001 evidence from PR #242/#245
+
+Forbidden scope:
+- Product Matching execution or another blind validation pass
+- app actions, controlled preview, runtime allowlist changes, writes, live ingestion/catalog writes, catalogue/product mutations
+- DB/schema/generated type changes
+- prompt/runtime image-generation behavior changes
+- broad scoring rewrites or unrelated product-quality changes
+- production deploys/flags/default-on activation
+- payment/checkout, floor-plan work, or Catalog-First runtime coupling
+
+If the fix requires anything outside this route, stop and leave an explicit blocker.
+
 ARCHITECT_NOTE:
 PR #245 merged at `3b385fb9cc9e849b4148c4644a264c8bf15e6d63` and completed the PM-001 lighting role-fit guard/test. The merge happened after green checks but without PR Review Agent approval, which violated the normal review process. This follow-through exists to correct durable board/mailbox state and route the post-merge review/process cleanup through PR Review Agent.
 
@@ -196,7 +226,7 @@ PR #160 completed the docs-only controlled-preview execution-boundary package af
 PR #170 merged to clean stale mailbox state after PR #160 merged. This was docs/mailbox only.
 
 ## Next intended action
-PR Review Agent: review the post-merge follow-through PR that records PR #245 as merged and blocks further PM-001 implementation until review/process cleanup is complete. Do not run additional Product Matching execution, controlled preview, app actions, writes, broad/runtime allowlist changes, production activity, broad scoring rewrites, prompt/runtime image-generation behavior changes, unrelated quality changes, floor-plan work, or Catalog-First coupling without a new explicit Sam/Chief boundary.
+Product Matching Agent: acknowledge the thin/empty option-pool warning guard/test route, then open one focused implementation PR. PR Review Agent must review the PR before merge. Do not run additional Product Matching execution, controlled preview, app actions, writes, broad/runtime allowlist changes, production activity, broad scoring rewrites, prompt/runtime image-generation behavior changes, unrelated quality changes, floor-plan work, or Catalog-First coupling without a new explicit Sam/Chief boundary.
 
 Keep the Product Matching lane heartbeat active. It must not be deleted after merges. The heartbeat should run every 10 minutes and monitor:
 
