@@ -1,17 +1,19 @@
 # Product Matching Engine Agent Comms
 
 ## Current PR
-None after this route PR merges.
+Pending post-PR #270 validation evidence PR.
 
 ## Current stage
-PM001_POST_270_LOCAL_DEV_VALIDATION_ROUTED
+PM001_POST_270_LOCAL_DEV_VALIDATION_REVIEW_REQUESTED
 
 ## Blockers
 PR #270 merged at `3a8003c6b01d2cb74c686e8ba85e54bb34f5cac3` after PR Review Agent approval and explicit implementation-agent merge instruction. It completed the PR #269-routed narrow local/dev required-role QA hardening/audit slice for `sofas::anchor_seating`, `coffee_tables::coffee_table`, and `rugs::generous_rug`. The implementation took the audit-hardening path: `required_closest_available` blockers now include deterministic audit details for candidate pool count, rejected candidates/top rejection reasons, weakness reasons, selected-product metadata gaps, and selected-product dimension evidence gaps. Verification claimed and reviewed: `git diff --check`; `pnpm --filter @ritzy-studio/domain exec tsx src/product-matching-confidence.test.ts`; `pnpm --filter @ritzy-studio/domain typecheck`.
 
 No Product Matching execution, validation pass, blind validation, controlled preview, visual-sourcing runtime call, app action, shopping-list refresh/create, catalogue/product mutation, live ingestion/catalog write, DB/schema/generated type change, runtime allowlist expansion, production action, prompt/runtime image-generation behavior change, broad scoring rewrite, curtains/textiles candidate generation, thin-pool fix, side-table/storage/media change, lighting change, final-render execution, floor-plan work, payment/checkout change, or Catalog-First coupling was performed.
 
-PM-001 is routed through this docs-only PR for one post-PR #270 local/dev validation pass. No Product Matching execution is approved until this route PR is reviewed, approved, and merged, and Product Matching Agent acknowledges the route with branch/scope/stop-rule confirmation.
+PR #272 merged at `19dc1484a8ac5890892f33dd5368de3c4aeb7fe4`, routing exactly one post-PR #270 local/dev validation pass. Product Matching Agent acknowledged on branch `codex/pm001-post-270-validation`, then ran exactly one valid local/dev validation pass for project `4207ade6-2604-4e15-9b05-ffa77531d3d2`, room `75e18e73-cf69-4b2e-b192-009fbc135b38`, concept `d9cc2f82-6d8f-455c-8c8d-e08522e0938c`, Sam local/dev account, localhost/local dev, existing catalogue rows only. The pass created product-sourcing job `3f99c0de-b9a4-472f-9db3-8f617613d3f4` (`succeeded`) and refreshed shopping list `99062356-7a63-4438-bd4b-461cc43c66ba` with 35 item rows and 10 selected rows. Evidence is recorded in `docs/Tracks/v2-commercial/product-matching-evals/manual-qa/2026-05-29-pm001-post-270-validation.md`.
+
+The post-PR #270 validation confirms the enriched required-role blocker evidence is present, but PM-001 remains below the investor-demo bar: sofa/coffee-table/rug still block as `required_closest_available`, curtains/textiles remain zero-candidate, lighting regressed to a chandelier for `floor or table lighting`, and final-render fidelity was not executed. No second validation pass, Product Matching execution, implementation, final-render execution, controlled preview, live app action, catalogue/product write, live ingestion/catalog write, DB/schema/generated type change, runtime allowlist expansion, payment/checkout change, broad scoring rewrite, prompt/runtime image-generation behavior change, curtains/textiles candidate generation, thin-pool fix, side-table/storage/media change, lighting change, floor-plan work, production deploy/flag, or Catalog-First coupling is approved.
 
 CHIEF_ARCHITECT_REPLY:
 PM-001 is routed through this docs-only PR after PR #271 merged and the PR #270 audit-hardening slice completed without validation.
