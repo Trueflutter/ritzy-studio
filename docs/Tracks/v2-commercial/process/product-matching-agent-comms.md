@@ -231,7 +231,7 @@ PR #160 completed the docs-only controlled-preview execution-boundary package af
 PR #170 merged to clean stale mailbox state after PR #160 merged. This was docs/mailbox only.
 
 ## Next intended action
-Product Matching Agent: acknowledge the thin/empty option-pool warning guard/test route, then open one focused implementation PR. PR Review Agent must review the PR before merge. Do not run additional Product Matching execution, controlled preview, app actions, writes, broad/runtime allowlist changes, production activity, broad scoring rewrites, prompt/runtime image-generation behavior changes, unrelated quality changes, floor-plan work, or Catalog-First coupling without a new explicit Sam/Chief boundary.
+Sam/Chief: route the next exact safe PM-001 local/dev slice, or Product Matching Agent may leave an `ARCHITECT_NOTE:` proposing the smallest safe boundary. PR #249 completed the thin/empty option-pool warning guard/test, so no further Product Matching implementation or execution is approved right now. Do not run additional Product Matching execution, controlled preview, app actions, writes, broad/runtime allowlist changes, production activity, broad scoring rewrites, prompt/runtime image-generation behavior changes, unrelated quality changes, floor-plan work, or Catalog-First coupling without a new explicit Sam/Chief boundary.
 
 Keep the Product Matching lane heartbeat active. It must not be deleted after merges. The heartbeat should run every 10 minutes and monitor:
 
