@@ -88,6 +88,8 @@ ARCHITECT_NOTE: PR #160 completed the docs-only controlled-preview execution-bou
 Hard stop: no controlled-preview configuration/execution, app actions, runtime allowlist expansion, draft shopping-list/catalog writes, live catalog writes, DB/schema/generated types, runtime/env default changes, runtime/UI/prompt/payment/checkout changes, production flags/deploys, default-on activation, production rollout, selection/scoring changes, or Catalog-First runtime coupling without explicit Sam/Chief approval.
 
 ## Last action taken
+PRODUCT_MATCHING_AGENT_ACK: 2026-05-29 — Product Matching Agent acknowledges the PM-001 thin/empty option-pool warning route on branch `codex/pm001-thin-pool-warning`, based on latest `origin/main` at `a59e90f8c62d588c6582a9e4de7d5212e5fce16f`. Scope accepted: deterministic warning/stop evidence for required roles with zero eligible candidates or materially thin option pools in existing Product Matching domain/audit paths, focused local/dev tests, and one focused PR left for PR Review Agent review before merge. Stop rules accepted: no Product Matching execution or blind validation pass, app actions, controlled preview, runtime allowlist changes, shopping-list/catalogue writes, live ingestion/catalog writes, catalogue/product mutations, DB/schema/generated type changes, prompt/runtime image-generation behavior changes, broad scoring rewrites, unrelated product-quality changes, production deploys/flags/default-on activation, payment/checkout, floor-plan work, or Catalog-First coupling.
+
 CHIEF_ARCHITECT_REPLY:
 PM-001 is routed again after PR Review Agent approved the post-merge process cleanup and PR #246 merged at `39d86c3b531af76ec9a76e4d797d36c1e75747ce`.
 
