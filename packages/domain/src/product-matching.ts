@@ -819,11 +819,13 @@ export type PersistedSelectionSnapshot = {
     selectedProductId: string | null;
     selectedProductName: string | null;
     sourceSelectedProductId: string | null;
+    conceptAnchorProductId: string | null;
     selectedOptionRank: number | null;
     selectedStatus: ShoppingListItemStatus | null;
     optionCount: number;
     optionProductIds: string[];
     postProcessingReplacement: boolean;
+    conceptAnchorReplacement: boolean;
   }>;
 };
 
@@ -2297,7 +2299,8 @@ export function buildPersistedSelectionSnapshot({
   sourcePath,
   roleOptions,
   itemRows,
-  sourceSelectedProductIdByCategory = new Map()
+  sourceSelectedProductIdByCategory = new Map(),
+  conceptAnchorProductIdByCategory = new Map()
 }: {
   shoppingListId: string;
   estimatedTotalAed: number;
@@ -2305,6 +2308,7 @@ export function buildPersistedSelectionSnapshot({
   roleOptions: RoleProductOptions[];
   itemRows: ShoppingListItemDraft[];
   sourceSelectedProductIdByCategory?: Map<string, string | null>;
+  conceptAnchorProductIdByCategory?: Map<string, string | null>;
 }): PersistedSelectionSnapshot {
   const itemRowsByCategory = new Map<string, ShoppingListItemDraft[]>();
   for (const row of itemRows) {
@@ -2326,6 +2330,7 @@ export function buildPersistedSelectionSnapshot({
         ? role.options.find((option) => option.id === selectedRow.product_id) ?? null
         : null;
       const sourceSelectedProductId = sourceSelectedProductIdByCategory.get(role.category) ?? null;
+      const conceptAnchorProductId = conceptAnchorProductIdByCategory.get(role.category) ?? null;
 
       return {
         category: role.category,
@@ -2334,6 +2339,7 @@ export function buildPersistedSelectionSnapshot({
         selectedProductId: selectedRow?.product_id ?? null,
         selectedProductName: selectedOption?.name ?? null,
         sourceSelectedProductId,
+        conceptAnchorProductId,
         selectedOptionRank: selectedRow?.option_rank ?? null,
         selectedStatus: selectedRow?.status ?? null,
         optionCount: rows.length,
@@ -2342,6 +2348,11 @@ export function buildPersistedSelectionSnapshot({
           sourceSelectedProductId &&
             selectedRow?.product_id &&
             sourceSelectedProductId !== selectedRow.product_id
+        ),
+        conceptAnchorReplacement: Boolean(
+          conceptAnchorProductId &&
+            selectedRow?.product_id &&
+            conceptAnchorProductId !== selectedRow.product_id
         )
       };
     })
