@@ -42,6 +42,7 @@ export type ProductSourcingTimeoutDiagnostics = {
     | "visual_sourcing_timeout_text_fallback"
     | "visual_sourcing_skipped_product_images_disabled_text_fallback"
     | "retry_visual_sourcing_timeout"
+    | "retry_visual_sourcing_skipped_product_images_disabled_text_fallback"
     | "visual_sourcing_failed_without_timeout";
   canDistinguishTimeoutFromSemanticQuality: boolean;
   candidateCount: number;
@@ -88,11 +89,14 @@ export function buildProductSourcingTimeoutDiagnostics({
 }: ProductSourcingTimeoutDiagnosticInput): ProductSourcingTimeoutDiagnostics {
   const normalizedFallbackReason = normalizeFallbackReason(fallbackReason);
   const retryTimedOut = retry?.timedOut ?? false;
+  const retryFallbackReason = normalizeFallbackReason(retry?.fallbackReason ?? null);
   const fallbackSourcePath = fallbackUsed ? "text_fallback" : "visual";
   const isolationReason = timedOut
     ? "visual_sourcing_timeout_text_fallback"
     : normalizedFallbackReason === "product_candidate_images_disabled"
       ? "visual_sourcing_skipped_product_images_disabled_text_fallback"
+      : retryFallbackReason === "product_candidate_images_disabled"
+        ? "retry_visual_sourcing_skipped_product_images_disabled_text_fallback"
       : retryTimedOut
         ? "retry_visual_sourcing_timeout"
         : fallbackUsed
@@ -109,7 +113,11 @@ export function buildProductSourcingTimeoutDiagnostics({
     fallbackSourcePath,
     isolationReason,
     canDistinguishTimeoutFromSemanticQuality:
-      timedOut || retryTimedOut || !fallbackUsed || normalizedFallbackReason === "product_candidate_images_disabled",
+      timedOut ||
+      retryTimedOut ||
+      !fallbackUsed ||
+      normalizedFallbackReason === "product_candidate_images_disabled" ||
+      retryFallbackReason === "product_candidate_images_disabled",
     candidateCount,
     rolePoolCount,
     conceptImageDetail,
@@ -120,7 +128,7 @@ export function buildProductSourcingTimeoutDiagnostics({
       attemptDurationMs: retry?.attemptDurationMs ?? null,
       timedOut: retryTimedOut,
       fallbackUsed: retry?.fallbackUsed ?? false,
-      fallbackReason: normalizeFallbackReason(retry?.fallbackReason ?? null),
+      fallbackReason: retryFallbackReason,
       providerImageDownloadFailure: retry?.providerImageDownloadFailure ?? false,
       imageGateUsable: retry?.imageGateUsable ?? null
     }

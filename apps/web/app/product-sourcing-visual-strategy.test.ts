@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 
-import { productSourcingVisualStrategy } from "./product-sourcing-visual-strategy";
+import {
+  productSourcingRetryFallbackEvidenceForStrategy,
+  productSourcingVisualStrategy
+} from "./product-sourcing-visual-strategy";
 
 const fastFallback = productSourcingVisualStrategy({
   productCandidateImagesEnabled: false,
@@ -11,6 +14,15 @@ const fastFallback = productSourcingVisualStrategy({
 assert.equal(fastFallback.shouldAttemptVisualSourcing, false);
 assert.equal(fastFallback.fallbackReason, "product_candidate_images_disabled");
 assert.ok(fastFallback.evidenceNote?.includes("without waiting"));
+assert.deepEqual(productSourcingRetryFallbackEvidenceForStrategy(fastFallback), {
+  retryAttempted: true,
+  retryAttemptDurationMs: 0,
+  retryTimedOut: false,
+  retryFallbackUsed: true,
+  retryFallbackReason: "product_candidate_images_disabled",
+  retryProviderImageDownloadFailure: false,
+  retryImageGateUsable: null
+});
 
 const noRolePools = productSourcingVisualStrategy({
   productCandidateImagesEnabled: false,
@@ -29,3 +41,4 @@ const imagesEnabled = productSourcingVisualStrategy({
 
 assert.equal(imagesEnabled.shouldAttemptVisualSourcing, true);
 assert.equal(imagesEnabled.fallbackReason, null);
+assert.equal(productSourcingRetryFallbackEvidenceForStrategy(imagesEnabled), null);

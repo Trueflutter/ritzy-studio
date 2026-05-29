@@ -29,3 +29,31 @@ export function productSourcingVisualStrategy({
     evidenceNote: null
   };
 }
+
+export type ProductSourcingRetryFallbackEvidence = {
+  retryAttempted: boolean;
+  retryAttemptDurationMs: number;
+  retryTimedOut: boolean;
+  retryFallbackUsed: boolean;
+  retryFallbackReason: "product_candidate_images_disabled";
+  retryProviderImageDownloadFailure: boolean;
+  retryImageGateUsable: boolean | null;
+};
+
+export function productSourcingRetryFallbackEvidenceForStrategy(
+  strategy: ProductSourcingVisualStrategy
+): ProductSourcingRetryFallbackEvidence | null {
+  if (strategy.shouldAttemptVisualSourcing || strategy.fallbackReason !== "product_candidate_images_disabled") {
+    return null;
+  }
+
+  return {
+    retryAttempted: true,
+    retryAttemptDurationMs: 0,
+    retryTimedOut: false,
+    retryFallbackUsed: true,
+    retryFallbackReason: strategy.fallbackReason,
+    retryProviderImageDownloadFailure: false,
+    retryImageGateUsable: null
+  };
+}
