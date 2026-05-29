@@ -1048,6 +1048,38 @@ assert.ok(
     "ceiling fixture is weak for floor or table lighting role"
   )
 );
+assert.equal(
+  livingFloorTableLightingPool.pools[0].candidates.some((candidate) => candidate.name.includes("Chandelier")),
+  false
+);
+assert.equal(livingFloorTableLightingPool.pools[0].rejectionReasons.lighting_role_fixture_mismatch, 1);
+
+const thinFloorTableLightingPool = buildRoleScopedCandidatePools({
+  roomType: "living room",
+  conceptText: "warm soft-neutral living room with layered lighting",
+  roles: [
+    {
+      category: "lighting",
+      label: "floor or table lighting",
+      visualBrief: "warm shaded floor or table lamp",
+      quantity: 1,
+      priority: "supporting"
+    }
+  ],
+  candidates: [
+    {
+      ...base,
+      id: "00000000-0000-4000-8000-000000000559",
+      name: "Hahn E14 8-Lights Linen Chandelier",
+      categoryNormalized: "lighting",
+      availability: "in stock",
+      primaryImageUrl: "https://example.com/hahn-linen-chandelier.jpg",
+      materialTags: ["linen", "metal"]
+    }
+  ]
+});
+assert.equal(thinFloorTableLightingPool.pools[0].candidates[0]?.name, "Hahn E14 8-Lights Linen Chandelier");
+assert.equal(thinFloorTableLightingPool.pools[0].rejectionReasons.lighting_role_fixture_mismatch, undefined);
 
 const mediaConsolePool = buildRoleScopedCandidatePools({
   roomType: "living room",
@@ -1178,7 +1210,15 @@ assert.ok(
 );
 
 const floorTableChandelierAttributeScore = scoreProductCandidateForRole({
-  candidate: livingFloorTableLightingPool.pools[0].candidates.find((candidate) => candidate.name.includes("Chandelier"))!,
+  candidate: {
+    ...base,
+    id: "00000000-0000-4000-8000-000000000559",
+    name: "Hahn E14 8-Lights Linen Chandelier",
+    categoryNormalized: "lighting",
+    availability: "in stock",
+    primaryImageUrl: "https://example.com/hahn-linen-chandelier.jpg",
+    materialTags: ["linen", "metal"]
+  },
   role: {
     category: "lighting",
     label: "floor or table lighting",

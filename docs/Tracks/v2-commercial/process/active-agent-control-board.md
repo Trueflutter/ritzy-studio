@@ -109,16 +109,16 @@ Docs-only, test-only, domain-only, and dry-run-only work may proceed only when t
 ### Ticket PM-001
 
 Owner: Product Matching Agent
-Status: ROUTED
-Branch: pending Product Matching Agent acknowledgement after this lighting-role route PR merges
-Allowed scope: Local/dev Product Matching code/tests/docs for exactly one narrow lighting role-fit guard/test: prevent a ceiling fixture such as a chandelier from satisfying a floor/table lighting role when eligible floor or table lamps exist in the candidate pool. The implementation may add deterministic role-fit filtering/scoring evidence and focused local/dev tests for the lighting role-fit guard only. No validation pass is approved by this implementation route.
+Status: PR_OPEN
+Branch: `codex/pm001-lighting-role-guard-impl`
+Allowed scope: Local/dev Product Matching code/tests/docs for exactly one narrow lighting role-fit guard/test after PR #262 merged at `45142c0c8a789fb77a0dcfb4509a41dbcea8146e`: prevent a ceiling fixture such as a chandelier from satisfying a floor/table lighting role when eligible floor or table lamps exist in the candidate pool. The implementation adds deterministic role-fit guard evidence and focused local/dev tests for the lighting role-fit guard only. No validation pass is approved by this implementation route.
 Forbidden scope: No Product Matching validation pass, blind validation, app action, controlled preview, production deploy, production flag, live catalog write, live ingestion, DB/schema/generated type change, runtime allowlist expansion, payment/checkout change, floor-plan work, Catalog-First runtime coupling, production Product Matching execution, default-on production activation, unrelated UI redesign, broad catalogue rewrite, catalogue/product row mutation, broad scoring rewrite, prompt/runtime image-generation behavior change, production selection behavior change, final-render execution, curtains/textiles candidate generation, thin-pool fixes, sofa/coffee/rug role rewrites, or additional aesthetic-quality work outside the lighting role-fit guard/test.
-Expected next artifact: Product Matching Agent acknowledgement with branch and stop-rule confirmation, then one focused implementation PR left for PR Review Agent review.
-SLA: Product Matching Agent acknowledgement within one heartbeat after this lighting-role route PR merges; focused implementation PR or explicit blocker within 30 minutes after acknowledgement.
-Last architect instruction: 2026-05-29 PR #261 merged and PM-001 was blocked after PR #260 evidence. Chief now routes the next exact local/dev implementation boundary based on the PR #260 evidence: lighting selected a chandelier for a floor/table lighting role, so Product Matching Agent may implement only a narrow lighting role-fit guard/test. Product Matching Agent must acknowledge before implementation.
-Agent ack: Product Matching Agent acknowledged the PR #259 route on branch `codex/pm001-post-258-validation` and confirmed stop rules before execution.
-Current PR: none after this lighting-role route PR merges
-Blocker: Product Matching Agent acknowledgement and stop-rule confirmation after this route merges.
+Expected next artifact: PR Review Agent review of the focused lighting role-fit guard/test implementation PR.
+SLA: PR Review Agent review should happen within one heartbeat; merge/fix/block within 30 minutes after review.
+Last architect instruction: 2026-05-29 PR #262 merged at `45142c0c8a789fb77a0dcfb4509a41dbcea8146e`, routing the next exact local/dev implementation boundary. Product Matching Agent acknowledged on PR #262 before implementation and opened the focused lighting role-fit guard/test implementation PR.
+Agent ack: Product Matching Agent acknowledged the PR #262 route on branch `codex/pm001-lighting-role-guard-impl` and confirmed stop rules before implementation.
+Current PR: lighting role-fit guard/test implementation PR
+Blocker: PR Review Agent must review this implementation PR before merge. No validation pass or further PM-001 execution is approved from this PR.
 
 ### Ticket MI-001
 
