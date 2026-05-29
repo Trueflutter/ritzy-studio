@@ -378,7 +378,22 @@ PR #160 completed the docs-only controlled-preview execution-boundary package af
 PR #170 merged to clean stale mailbox state after PR #160 merged. This was docs/mailbox only.
 
 ## Next intended action
-PR Review Agent: review the docs-only post-254 validation-route PR. If approved and merged, Product Matching Agent should acknowledge the one-pass local/dev validation route, run exactly one validation pass inside the named boundary, and open one evidence PR for PR Review Agent review before merge. Do not run additional Product Matching execution, visual-sourcing runtime calls, controlled preview, app actions, writes outside the named local/dev validation path, broad/runtime allowlist changes, production activity, broad scoring rewrites, prompt/runtime image-generation behavior changes beyond validation, unrelated quality changes, floor-plan work, or Catalog-First coupling without a new explicit Sam/Chief boundary.
+PR Review Agent: review the post-#255 validation evidence PR on branch `codex/pm001-post-255-validation`. If approved and merged, PM-001 returns to blocked pending a fresh Sam/Chief boundary. Do not run another Product Matching validation pass, visual-sourcing runtime call, controlled preview, app action, write outside the already completed local/dev validation path, broad/runtime allowlist change, production activity, broad scoring rewrite, prompt/runtime image-generation behavior change, unrelated quality change, floor-plan work, or Catalog-First coupling without a new explicit Sam/Chief boundary.
+
+ARCHITECT_NOTE:
+PR #255 merged at `d129765cc1752f6b1cbdabf518affdb126cadbd2` after PR Review Agent approval, routing exactly one local/dev PM-001 validation pass. Chief acknowledged and completed that single pass on branch `codex/pm001-post-255-validation` for project `4207ade6-2604-4e15-9b05-ffa77531d3d2`, room `75e18e73-cf69-4b2e-b192-009fbc135b38`, concept `d9cc2f82-6d8f-455c-8c8d-e08522e0938c`, Sam local/dev account, localhost/local dev, existing catalogue rows only, with only the existing app-flow local/dev concept/job/shopping-list rows required by the validation flow.
+
+The pass produced product-sourcing job `96418e26-05a7-46f1-a1dc-fea7908c3e7c` (`succeeded`) and refreshed draft shopping list `99062356-7a63-4438-bd4b-461cc43c66ba` with 44 item rows and 10 selected rows. Evidence is recorded in `docs/Tracks/v2-commercial/product-matching-evals/manual-qa/2026-05-29-pm001-post-255-validation.md`.
+
+Findings:
+- Visual sourcing still timed out after 45,064 ms and used deterministic text fallback, but timeout isolation is now explicit in `productSourcingTimeoutDiagnostics`.
+- Persisted-selection snapshot now exposes concept-anchor replacement. The sofa concept anchor was replaced; coffee-table and rug concept anchors persisted.
+- Lighting improved: the selected floor/table lighting product is a floor lamp, not a chandelier.
+- Curtains/textiles still have zero eligible candidates.
+- Coffee-table and side-table pools remain thin.
+- Required sofa, coffee table, and rug roles are still `closest_available` blockers, so PM-001 remains below the 9/10 investor-demo bar.
+
+No second validation pass, production deploys/flags, rollout, controlled preview, live app actions, catalogue/product writes, live ingestion/catalog writes, DB/schema/generated type changes, runtime allowlist expansion, payment/checkout changes, broad scoring rewrites, prompt/runtime/image-generation behavior changes, floor-plan work, or Catalog-First coupling was performed.
 
 Keep the Product Matching lane heartbeat active. It must not be deleted after merges. The heartbeat should run every 10 minutes and monitor:
 
