@@ -109,16 +109,16 @@ Docs-only, test-only, domain-only, and dry-run-only work may proceed only when t
 ### Ticket PM-001
 
 Owner: Ritzy Chief Architect
-Status: PR_OPEN
-Branch: `codex/pm001-post-255-validation`
+Status: BLOCKED
+Branch: none
 Allowed scope: Docs-only evidence PR for the one PM-001 local/dev validation pass approved by PR #255 and completed after PR #255 merged at `d129765cc1752f6b1cbdabf518affdb126cadbd2`. Evidence may document local/dev readbacks for project `4207ade6-2604-4e15-9b05-ffa77531d3d2`, room `75e18e73-cf69-4b2e-b192-009fbc135b38`, concept `d9cc2f82-6d8f-455c-8c8d-e08522e0938c`, the latest local/dev product-sourcing job, the existing draft shopping list, selected SKUs, persisted-selection snapshot, visual-timeout/fallback fields, missing/zero/thin pools, role-fit status, and recommended next narrow boundary.
 Forbidden scope: No second Product Matching validation pass, Product Matching execution, visual-sourcing runtime call, production deploy, production flag, live catalog write, live ingestion, DB/schema/generated type change, payment/checkout change, floor-plan work, Catalog-First runtime coupling, controlled-preview expansion, production Product Matching execution, runtime allowlist expansion, default-on production activation, unrelated UI redesign, broad catalogue rewrite, catalogue/product row mutation, prompt/runtime image-generation behavior change, or production selection behavior change.
-Expected next artifact: PR Review Agent review of the post-#255 validation evidence PR. If approved and merged, PM-001 returns to `BLOCKED` pending the next exact Sam/Chief local/dev boundary.
-SLA: PR Review Agent review should happen within one heartbeat; merge/fix/block within 30 minutes after review.
+Expected next artifact: Fresh Sam/Chief local/dev boundary if PM-001 should continue. Recommended next boundary is narrow visual-sourcing timeout/retry/fallback evidence, but it is not approved until explicitly routed.
+SLA: None while blocked.
 Last architect instruction: 2026-05-29 PR #255 merged at `d129765cc1752f6b1cbdabf518affdb126cadbd2` after PR Review Agent approval. Chief ran exactly one approved local/dev validation pass and opened this evidence PR. The pass produced job `96418e26-05a7-46f1-a1dc-fea7908c3e7c` and refreshed shopping list `99062356-7a63-4438-bd4b-461cc43c66ba`.
 Agent ack: Chief acknowledged and completed the one-pass validation route inside the approved local/dev boundary. No second pass is approved.
-Current PR: post-#255 validation evidence PR
-Blocker: PR Review Agent must review this evidence PR before merge. After merge, the smallest next likely boundary is a narrow local/dev visual-sourcing timeout/retry/fallback slice, but no further PM-001 execution or implementation is approved until Sam/Chief explicitly routes it.
+Current PR: none after the post-#255 validation evidence PR merges
+Blocker: `NEXT_PM001_LOCAL_DEV_FIX_BOUNDARY_REQUIRED`. The smallest next likely boundary is a narrow local/dev visual-sourcing timeout/retry/fallback slice, but no further PM-001 execution or implementation is approved until Sam/Chief explicitly routes it.
 
 ### Ticket MI-001
 
