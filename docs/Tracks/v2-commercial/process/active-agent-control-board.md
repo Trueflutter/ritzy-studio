@@ -108,17 +108,17 @@ Docs-only, test-only, domain-only, and dry-run-only work may proceed only when t
 
 ### Ticket PM-001
 
-Owner: Product Matching Agent
+Owner: Ritzy Chief Architect
 Status: PR_OPEN
-Branch: `codex/pm001-post-254-handoff`
-Allowed scope: Docs-only Chief routing PR after PR #254 merged: close the completed concept-anchor audit evidence slice and route exactly one next local/dev PM-001 validation boundary for Product Matching Agent. The next validation boundary, once this docs PR is reviewed and merged, is limited to one local/dev validation pass for project `4207ade6-2604-4e15-9b05-ffa77531d3d2`, room `75e18e73-cf69-4b2e-b192-009fbc135b38`, Sam local/dev account, localhost/local dev, existing catalogue rows only, with only existing app-flow local/dev concept/job/shopping-list rows required by the validation flow. No production or controlled-preview execution is approved by this route.
-Forbidden scope: No production deploy, production flags, live catalog writes, live ingestion, DB/schema/generated type changes, payment/checkout changes, floor-plan work, Catalog-First runtime coupling, controlled-preview expansion, production Product Matching execution, runtime allowlist expansion, default-on production activation, unrelated UI redesign, or broad catalogue rewrites. Do not mutate catalogue/product rows. Do not make production selection behavior change unless a future Sam/Chief boundary explicitly approves rollout.
-Expected next artifact: PR Review Agent review of this docs-only post-254 handoff/validation-route PR. If approved and merged, Product Matching Agent should acknowledge the validation route, run exactly one local/dev validation pass inside the named boundary, and open one evidence PR with findings and any next narrow boundary recommendation.
-SLA: PR Review Agent review should happen within one heartbeat; merge/fix/block within 30 minutes after review. Product Matching Agent acknowledgement should follow within one owner heartbeat after route merge.
-Last architect instruction: 2026-05-29 PR #254 merged at `3ef00debfff920d7aaeaa13f55f3b2ed363d6ef5` after PR Review Agent approval, completing the concept-anchor audit evidence slice. Chief now routes a docs-only follow-through PR to close the completed state and prepare one bounded local/dev validation pass on the existing PM-001 demo project/room.
-Agent ack: Pending. Product Matching Agent should not run validation until this docs-only routing PR is approved and merged.
-Current PR: docs-only post-254 validation-route PR
-Blocker: PR Review Agent must review this docs-only routing PR before merge. If validation requires production deploys/flags, controlled preview, live app actions, catalogue/product mutations, live ingestion/catalog writes, DB/schema/generated type changes, runtime allowlist expansion, prompt/runtime image-generation changes beyond the validation flow, broad scoring rewrites, floor-plan work, Catalog-First coupling, or production-facing behavior, stop and request a fresh boundary.
+Branch: `codex/pm001-post-255-validation`
+Allowed scope: Docs-only evidence PR for the one PM-001 local/dev validation pass approved by PR #255 and completed after PR #255 merged at `d129765cc1752f6b1cbdabf518affdb126cadbd2`. Evidence may document local/dev readbacks for project `4207ade6-2604-4e15-9b05-ffa77531d3d2`, room `75e18e73-cf69-4b2e-b192-009fbc135b38`, concept `d9cc2f82-6d8f-455c-8c8d-e08522e0938c`, the latest local/dev product-sourcing job, the existing draft shopping list, selected SKUs, persisted-selection snapshot, visual-timeout/fallback fields, missing/zero/thin pools, role-fit status, and recommended next narrow boundary.
+Forbidden scope: No second Product Matching validation pass, Product Matching execution, visual-sourcing runtime call, production deploy, production flag, live catalog write, live ingestion, DB/schema/generated type change, payment/checkout change, floor-plan work, Catalog-First runtime coupling, controlled-preview expansion, production Product Matching execution, runtime allowlist expansion, default-on production activation, unrelated UI redesign, broad catalogue rewrite, catalogue/product row mutation, prompt/runtime image-generation behavior change, or production selection behavior change.
+Expected next artifact: PR Review Agent review of the post-#255 validation evidence PR. If approved and merged, PM-001 returns to `BLOCKED` pending the next exact Sam/Chief local/dev boundary.
+SLA: PR Review Agent review should happen within one heartbeat; merge/fix/block within 30 minutes after review.
+Last architect instruction: 2026-05-29 PR #255 merged at `d129765cc1752f6b1cbdabf518affdb126cadbd2` after PR Review Agent approval. Chief ran exactly one approved local/dev validation pass and opened this evidence PR. The pass produced job `96418e26-05a7-46f1-a1dc-fea7908c3e7c` and refreshed shopping list `99062356-7a63-4438-bd4b-461cc43c66ba`.
+Agent ack: Chief acknowledged and completed the one-pass validation route inside the approved local/dev boundary. No second pass is approved.
+Current PR: post-#255 validation evidence PR
+Blocker: PR Review Agent must review this evidence PR before merge. After merge, the smallest next likely boundary is a narrow local/dev visual-sourcing timeout/retry/fallback slice, but no further PM-001 execution or implementation is approved until Sam/Chief explicitly routes it.
 
 ### Ticket MI-001
 
