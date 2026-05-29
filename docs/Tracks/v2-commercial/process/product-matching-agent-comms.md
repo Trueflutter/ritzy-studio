@@ -1,12 +1,16 @@
 # Product Matching Engine Agent Comms
 
 ## Current PR
-None after this route PR merges.
+PR #266: <https://github.com/Trueflutter/ritzy-studio/pull/266>
 
 ## Current stage
-PM001_POST_263_LOCAL_DEV_VALIDATION_ROUTED
+PM001_POST_263_LOCAL_DEV_VALIDATION_REVIEW_REQUESTED
 
 ## Blockers
+PR #266 is open for PR Review Agent review. It is a docs-only evidence PR for the single PR #265-routed local/dev PM-001 validation pass after PR #263 lighting role-fit guard/test merged. The evidence documents job `9d9dff0a-7fcc-48d5-9ec5-93f6c8a3df02`, shopping list `99062356-7a63-4438-bd4b-461cc43c66ba`, selected SKUs, persisted-selection snapshot, visual-sourcing fallback evidence, zero/thin pool warnings, QA blockers, and the result that the lighting role now selects `Frosty Wooden Floor Lamp - 154 cm` instead of a chandelier while recording `lighting_role_fixture_mismatch: 12`.
+
+The PR #265 validation boundary has been consumed. No second validation pass, Product Matching execution, implementation, final-render execution, controlled preview, live app action, catalogue/product write, live ingestion/catalog write, DB/schema/generated type change, runtime allowlist expansion, payment/checkout change, broad scoring rewrite, prompt/runtime image-generation behavior change, curtains/textiles candidate generation, thin-pool fix, sofa/coffee/rug rewrite, floor-plan work, production deploy/flag, or Catalog-First coupling is approved.
+
 PR #263 merged at `76899922f49f2bc109177e57498ecfa848d90d72` after PR Review Agent approval and explicit implementation-agent merge instruction. It completed the narrow local/dev PM-001 lighting role-fit guard/test routed by PR #262: floor/table lighting role pools remove chandeliers/pendants/ceiling fixtures only when an eligible floor/table lamp exists, while over-table lighting behavior and thin no-lamp pools are preserved.
 
 PR #262 merged at `45142c0c8a789fb77a0dcfb4509a41dbcea8146e`, routing exactly one local/dev lighting role-fit guard/test implementation. Product Matching Agent acknowledged on branch `codex/pm001-lighting-role-guard-impl` before implementation.
@@ -473,7 +477,7 @@ PR #160 completed the docs-only controlled-preview execution-boundary package af
 PR #170 merged to clean stale mailbox state after PR #160 merged. This was docs/mailbox only.
 
 ## Next intended action
-Product Matching Agent: after this route PR merges, pull the route merge commit, create a clean branch, acknowledge the post-PR #263 validation route with branch, scope, and stop-rule confirmation, run exactly one approved local/dev validation pass on project `4207ade6-2604-4e15-9b05-ffa77531d3d2`, room `75e18e73-cf69-4b2e-b192-009fbc135b38`, concept `d9cc2f82-6d8f-455c-8c8d-e08522e0938c`, Sam local/dev account, localhost/local dev, existing catalogue rows only, and open one focused evidence PR for review. Allowed writes after merge are only existing app-flow local/dev concept/job/shopping-list rows required by that one validation flow. Do not run a second validation pass, use controlled preview, invoke live app actions, mutate catalogue/product rows, write live ingestion/catalog rows, change DB/schema/generated types, broaden/runtime allowlists, perform production activity, make broad scoring rewrites, change prompt/runtime image-generation behavior beyond validation, change curtains/textiles/thin pools/sofa/coffee/rug behavior, touch floor-plan work, execute final render, or add Catalog-First coupling from this route.
+PR Review Agent should review PR #266 as the focused docs-only evidence artifact for the already-consumed PR #265 post-PR #263 local/dev validation pass. If PR #266 is approved and merged, Product Matching Agent should open a docs/mailbox-only post-266 handoff PR that returns PM-001 to `BLOCKED` with no active PR and no approved next implementation/execution boundary. Do not run a second validation pass, use controlled preview, invoke browser-click or live app actions, refresh/create shopping lists, mutate catalogue/product rows, write live ingestion/catalog rows, change DB/schema/generated types, broaden/runtime allowlists, perform production activity, make broad scoring rewrites, change prompt/runtime image-generation behavior, change curtains/textiles/thin pools/sofa/coffee/rug behavior, touch floor-plan work, execute final render, or add Catalog-First coupling without a fresh Sam/Chief route.
 
 PRODUCT_MATCHING_AGENT_ACK: 2026-05-29 - Product Matching Agent acknowledges the PM-001 visual-sourcing timeout/retry/fallback evidence route on branch `codex/pm001-visual-timeout-evidence-impl`, based on latest `origin/main` at `e00f2784cc84f332a462ad5f387f863a486314ad`. Scope accepted: local/dev Product Matching code/tests/docs only for the narrow visual-sourcing timeout/retry/fallback evidence slice; no validation pass or app-flow execution. Stop rules accepted: no Product Matching validation pass, blind validation, app action, controlled preview, visual-sourcing runtime call through the app flow, draft shopping-list write, catalogue/product mutation, live ingestion/catalog write, DB/schema/generated type change, runtime allowlist change, production deploy/flag/default-on activation, prompt/runtime image-generation behavior change, broad scoring rewrite, unrelated product-quality change, payment/checkout, floor-plan work, final-render execution, or Catalog-First runtime coupling.
 
