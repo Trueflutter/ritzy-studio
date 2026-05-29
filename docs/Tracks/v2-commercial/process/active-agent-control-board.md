@@ -1,7 +1,7 @@
 # Active Agent Control Board
 
 Status: active coordination source of truth
-Last updated: 2026-05-28
+Last updated: 2026-05-29
 
 This board replaces ad hoc routing through chat-only prompts and stale mailbox prose for active Ritzy Studio implementation lanes. Mailbox files still hold lane history and architectural notes, but this file is the first place agents and heartbeats must read when deciding whether work is parked, routed, blocked, stale, or ready for review.
 
@@ -109,16 +109,16 @@ Docs-only, test-only, domain-only, and dry-run-only work may proceed only when t
 ### Ticket PM-001
 
 Owner: Product Matching Agent
-Status: BLOCKED
-Branch: none
-Allowed scope: Coordination only until Sam/Chief approves the next narrow local/dev code boundary. The completed PR #240 validation boundary has expired after one validation pass and one evidence artifact.
+Status: ROUTED
+Branch: pending Product Matching Agent acknowledgement
+Allowed scope: One narrow local/dev PM-001 fix boundary approved by Sam/Chief on 2026-05-29: implement and test a lighting role-fit guard so `floor lighting`, `table lighting`, or `floor/table lighting` roles cannot select chandeliers, ceiling lights, pendant lights, or other ceiling fixtures when floor-lamp or table-lamp candidates exist. Scope is limited to code/tests/docs required for this role-fit guard and read-only inspection of existing local/dev evidence. No additional Product Matching execution is approved by this route.
 Forbidden scope: No production deploy, production flags, live catalog writes, live ingestion, DB/schema/generated type changes, payment/checkout changes, floor-plan work, Catalog-First runtime coupling, controlled-preview expansion, production Product Matching execution, runtime allowlist expansion, default-on production activation, unrelated UI redesign, or broad catalogue rewrites. Do not mutate catalogue/product rows. Do not make production selection behavior change unless a future Sam/Chief boundary explicitly approves rollout.
-Expected next artifact: Sam/Chief approval for one narrow local/dev PM-001 fix boundary, or a Product Matching Agent `ARCHITECT_NOTE:` proposing the smallest safe slice. Candidate next slices from PR #242 evidence: lighting role-fit guard/test, concept-anchor-vs-persisted-selection audit assertion, thin-pool stop/warning, or visual-sourcing timeout isolation.
-SLA: Branch, commits, PR, or explicit blocker within 30 minutes. If the local/dev gate cannot reach 9/10 quality with existing SKUs, stop with evidence and propose the smallest next architecture slice.
-Last architect instruction: 2026-05-28 post-PR #242 follow-through: the stale recovery validation is complete and merged. Do not run another blind validation pass. PM-001 needs the next exact local/dev code boundary approved before Product Matching Agent resumes implementation.
-Agent ack: Product Matching Agent acknowledged the post-#240/#241 stale-recovery route on 2026-05-29 with branch `codex/pm-001-validation-20260529`, latest `origin/main` at `a394e25afa57986c2006fe460368329614fe1786`, and the approved one-pass local/dev validation boundary. PR #242 merged at `b9af25ec2104933174e7d0051c7d8691c6cc8f3c`; the validation created product-sourcing job `d71d47f6-6f88-43a0-b9fc-f48c1a1492f9`, refreshed shopping list `99062356-7a63-4438-bd4b-461cc43c66ba`, and is recorded at `docs/Tracks/v2-commercial/product-matching-evals/manual-qa/2026-05-29-pm001-post-240-validation.md`. Product Matching Agent acknowledged the post-#232 route on PR #234 with branch `codex/pm001-post-232-validation`. PR #220 merged the local/dev aesthetic taste gate; PR #222 added post-merge validation; PR #226 merged the follow-up local/dev SKU-fidelity/support-role improvements after approval and green checks; PR #230 merged focused support-role quality and timeout diagnostics; PR #232 merged deterministic local/dev refresh-history diversity and soft-neutral support-role filtering after approval and green checks. PR #235 merged the evidence-only post-#232 validation note at `57a132f0024bac205893a6831b01178ae2e5f707`. PR #238 merged the persisted-selection audit snapshot and focused local/dev tests at `d398ea42048e5276ea5e89ec15ccfe7490532f65`.
+Expected next artifact: Product Matching Agent acknowledgement with branch name, followed by a focused PR or explicit blocker. The PR should include tests proving floor/table lighting roles prefer eligible floor/table lamps over ceiling/chandelier fixtures when candidates exist, plus a short docs/mailbox note confirming no forbidden scope was crossed.
+SLA: Product Matching Agent must acknowledge within one owner heartbeat and show branch, commits, PR, mailbox update, or explicit blocker within 30 minutes.
+Last architect instruction: 2026-05-29 Chief/Sam approved the next exact local/dev code boundary for the lighting role-fit guard/test. Product Matching Agent should pull latest `origin/main` at `dc9e2d36939a7a05614bd3c522e376876da79c25`, create a clean branch, acknowledge this route with branch name and scope, then implement only the lighting role-fit guard/test. Do not run another blind validation pass.
+Agent ack: Awaiting Product Matching Agent acknowledgement for the 2026-05-29 lighting role-fit guard/test route. Prior stale-recovery validation was acknowledged on branch `codex/pm-001-validation-20260529` and completed via PR #242; that validation boundary is expired.
 Current PR: none
-Blocker: `NEXT_PM001_LOCAL_DEV_FIX_BOUNDARY_REQUIRED` — PR #242 proves PM-001 remains below the 9/10 investor-demo bar. The next implementation step must be explicitly scoped to one narrow local/dev fix and must not include production deploys/flags, app actions, catalogue writes, live ingestion, schema/generated type changes, payment/checkout, controlled-preview expansion, runtime allowlist expansion, broad scoring rewrites, prompt/runtime image-generation behavior changes, floor-plan work, or Catalog-First coupling.
+Blocker: None for the routed lighting role-fit guard/test. If the fix requires Product Matching execution, app actions, catalogue/product mutations, schema/generated type changes, runtime allowlist expansion, prompt/runtime image-generation changes, broad scoring rewrites, visual-sourcing runtime changes, floor-plan work, Catalog-First coupling, or production-facing behavior, stop and request a fresh boundary.
 
 ### Ticket MI-001
 
