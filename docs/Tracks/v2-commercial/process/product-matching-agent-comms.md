@@ -1,17 +1,53 @@
 # Product Matching Engine Agent Comms
 
 ## Current PR
-None.
+None after this route PR merges.
 
 ## Current stage
-PM001_POST_266_VALIDATION_EVIDENCE_MERGED_BLOCKED
+PM001_REQUIRED_ROLE_QA_HARDENING_ROUTED
 
 ## Blockers
 PR #266 merged at `1a908d0ecc61fd8ef8824f56f218b40ac50fd365` after PR Review Agent approval and explicit implementation-agent merge instruction. It is the docs-only evidence artifact for the single PR #265-routed local/dev PM-001 validation pass after PR #263 lighting role-fit guard/test merged. The evidence documents job `9d9dff0a-7fcc-48d5-9ec5-93f6c8a3df02`, shopping list `99062356-7a63-4438-bd4b-461cc43c66ba`, selected SKUs, persisted-selection snapshot, visual-sourcing fallback evidence, zero/thin pool warnings, QA blockers, and the result that the lighting role now selects `Frosty Wooden Floor Lamp - 154 cm` instead of a chandelier while recording `lighting_role_fixture_mismatch: 12`.
 
 The PR #265 validation boundary has been consumed. No second validation pass, Product Matching execution, implementation, final-render execution, controlled preview, live app action, catalogue/product write, live ingestion/catalog write, DB/schema/generated type change, runtime allowlist expansion, payment/checkout change, broad scoring rewrite, prompt/runtime image-generation behavior change, curtains/textiles candidate generation, thin-pool fix, sofa/coffee/rug rewrite, floor-plan work, production deploy/flag, or Catalog-First coupling is approved.
 
-PM-001 remains below the investor-demo bar after PR #266 evidence: required sofa/coffee-table/rug roles still report `required_closest_available`, curtains/textiles remain zero-candidate, side-table options are thin, storage/media aesthetic fit remains uneven, and final-render fidelity was not executed. The next boundary is not approved by this handoff.
+PM-001 remains below the investor-demo bar after PR #266 evidence: required sofa/coffee-table/rug roles still report `required_closest_available`, curtains/textiles remain zero-candidate, side-table options are thin, storage/media aesthetic fit remains uneven, and final-render fidelity was not executed. This route approves only the narrow required-role QA hardening/audit slice for the three required blockers; it does not approve curtains/textiles, side-table, storage/media, final-render, or validation execution.
+
+CHIEF_ARCHITECT_REPLY:
+PM-001 is routed through this docs-only PR after PR #267 merged and the post-#263 validation evidence identified three remaining required-role QA blockers.
+
+Owner after route merge: Product Matching Agent.
+
+Route after this docs PR merges:
+- Pull latest `origin/main` at this routing PR's merge commit.
+- Create a clean branch.
+- Acknowledge this route with the branch name and explicit stop-rule confirmation before implementation.
+- Implement exactly one narrow local/dev required-role QA hardening/audit slice for the three remaining required blockers from PR #266 evidence:
+  - `sofas::anchor_seating`
+  - `coffee_tables::coffee_table`
+  - `rugs::generous_rug`
+- The slice must either raise these required roles above `required_closest_available` using deterministic local/dev domain logic/tests, or make the stop-rule evidence explicit about which catalogue metadata/pool condition prevents acceptable required-role confidence.
+- Add focused local/dev tests using existing Product Matching domain/audit paths.
+- Open one focused implementation PR with an `ARCHITECT_NOTE:` confirming scope, verification, and stop rules.
+- Leave the implementation PR for PR Review Agent review before merge.
+
+Allowed scope after route merge:
+- local/dev code/tests/docs for the three required-role QA hardening/audit slice only
+- read-only inspection of existing PR #266 PM-001 evidence
+- docs/mailbox updates directly tied to the implementation PR
+
+Forbidden scope:
+- Product Matching execution, validation pass, or blind validation
+- visual-sourcing runtime calls, controlled preview, app actions, shopping-list refresh/create, catalogue/product mutations, live ingestion/catalog writes
+- DB/schema/generated type changes
+- runtime allowlist expansion
+- prompt/runtime image-generation behavior changes
+- broad scoring rewrites or unrelated product-quality changes outside the three required-role QA/audit slice
+- curtains/textiles candidate generation, thin-pool fixes, side-table/storage/media changes, lighting changes
+- production deploys/flags/default-on activation
+- payment/checkout, floor-plan work, final-render execution, or Catalog-First runtime coupling
+
+If the fix requires anything outside this route, stop and leave an explicit blocker naming the smallest required boundary.
 
 PR #263 merged at `76899922f49f2bc109177e57498ecfa848d90d72` after PR Review Agent approval and explicit implementation-agent merge instruction. It completed the narrow local/dev PM-001 lighting role-fit guard/test routed by PR #262: floor/table lighting role pools remove chandeliers/pendants/ceiling fixtures only when an eligible floor/table lamp exists, while over-table lighting behavior and thin no-lamp pools are preserved.
 
@@ -479,7 +515,7 @@ PR #160 completed the docs-only controlled-preview execution-boundary package af
 PR #170 merged to clean stale mailbox state after PR #160 merged. This was docs/mailbox only.
 
 ## Next intended action
-Sam/Chief: route the next exact PM-001 local/dev boundary if Product Matching should continue. Candidate boundaries from PR #266 evidence are recommendations only, not approval: required sofa/coffee-table/rug closest-available blockers, curtains/textiles zero-candidate coverage, thin side-table options, storage/media aesthetic fit, or final-render fidelity proof. Product Matching Agent should not run another validation pass, implement a fix, use controlled preview, invoke browser-click or live app actions, refresh/create shopping lists, mutate catalogue/product rows, write live ingestion/catalog rows, change DB/schema/generated types, broaden/runtime allowlists, perform production activity, make broad scoring rewrites, change prompt/runtime image-generation behavior, change curtains/textiles/thin pools/sofa/coffee/rug behavior, touch floor-plan work, execute final render, or add Catalog-First coupling without a fresh Sam/Chief route.
+Product Matching Agent: after this route PR merges, pull the route merge commit, create a clean branch, acknowledge the required-role QA hardening route with branch, scope, and stop-rule confirmation, implement only the three-role required QA hardening/audit slice, and open one focused implementation PR for review. Do not run validation, use controlled preview, invoke browser-click or live app actions, refresh/create shopping lists, mutate catalogue/product rows, write live ingestion/catalog rows, change DB/schema/generated types, broaden/runtime allowlists, perform production activity, make broad scoring rewrites, change prompt/runtime image-generation behavior, change curtains/textiles/thin pools/side-table/storage/media/lighting behavior, touch floor-plan work, execute final render, or add Catalog-First coupling from this route.
 
 PRODUCT_MATCHING_AGENT_ACK: 2026-05-29 - Product Matching Agent acknowledges the PM-001 visual-sourcing timeout/retry/fallback evidence route on branch `codex/pm001-visual-timeout-evidence-impl`, based on latest `origin/main` at `e00f2784cc84f332a462ad5f387f863a486314ad`. Scope accepted: local/dev Product Matching code/tests/docs only for the narrow visual-sourcing timeout/retry/fallback evidence slice; no validation pass or app-flow execution. Stop rules accepted: no Product Matching validation pass, blind validation, app action, controlled preview, visual-sourcing runtime call through the app flow, draft shopping-list write, catalogue/product mutation, live ingestion/catalog write, DB/schema/generated type change, runtime allowlist change, production deploy/flag/default-on activation, prompt/runtime image-generation behavior change, broad scoring rewrite, unrelated product-quality change, payment/checkout, floor-plan work, final-render execution, or Catalog-First runtime coupling.
 
