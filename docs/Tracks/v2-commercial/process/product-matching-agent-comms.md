@@ -89,6 +89,11 @@ Hard stop: no controlled-preview configuration/execution, app actions, runtime a
 
 ## Last action taken
 ARCHITECT_NOTE:
+PR #245 merged at `3b385fb9cc9e849b4148c4644a264c8bf15e6d63` and completed the PM-001 lighting role-fit guard/test. The merge happened after green checks but without PR Review Agent approval, which violated the normal review process. This follow-through exists to correct durable board/mailbox state and route the post-merge review/process cleanup through PR Review Agent.
+
+Do not start the next PM-001 implementation slice until PR Review Agent has reviewed the follow-through PR and Chief/Sam has explicitly routed the next exact local/dev boundary.
+
+ARCHITECT_NOTE:
 PM-001 lighting role-fit guard/test is implemented in PR #245 on branch `codex/pm001-lighting-role-guard`.
 
 Scope completed:
@@ -191,7 +196,7 @@ PR #160 completed the docs-only controlled-preview execution-boundary package af
 PR #170 merged to clean stale mailbox state after PR #160 merged. This was docs/mailbox only.
 
 ## Next intended action
-Chief/PR Review: review PR #245 for the focused PM-001 lighting role-fit guard/test. If approved with unchanged head and green checks, merge PR #245 and retarget PM-001 to the next smallest post-PR #242 fix boundary. Do not run additional Product Matching execution, controlled preview, app actions, writes, broad/runtime allowlist changes, production activity, broad scoring rewrites, prompt/runtime image-generation behavior changes, unrelated quality changes, floor-plan work, or Catalog-First coupling without a new explicit Sam/Chief boundary.
+PR Review Agent: review the post-merge follow-through PR that records PR #245 as merged and blocks further PM-001 implementation until review/process cleanup is complete. Do not run additional Product Matching execution, controlled preview, app actions, writes, broad/runtime allowlist changes, production activity, broad scoring rewrites, prompt/runtime image-generation behavior changes, unrelated quality changes, floor-plan work, or Catalog-First coupling without a new explicit Sam/Chief boundary.
 
 Keep the Product Matching lane heartbeat active. It must not be deleted after merges. The heartbeat should run every 10 minutes and monitor:
 

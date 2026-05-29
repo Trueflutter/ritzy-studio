@@ -109,16 +109,16 @@ Docs-only, test-only, domain-only, and dry-run-only work may proceed only when t
 ### Ticket PM-001
 
 Owner: Product Matching Agent
-Status: PR_OPEN
-Branch: `codex/pm001-lighting-role-guard`
-Allowed scope: One narrow local/dev PM-001 fix boundary approved by Sam/Chief on 2026-05-29: implement and test a lighting role-fit guard so `floor lighting`, `table lighting`, or `floor/table lighting` roles cannot select chandeliers, ceiling lights, pendant lights, or other ceiling fixtures when floor-lamp or table-lamp candidates exist. Scope is limited to code/tests/docs required for this role-fit guard and read-only inspection of existing local/dev evidence. No additional Product Matching execution is approved by this route.
+Status: BLOCKED
+Branch: none
+Allowed scope: Coordination only until PR Review Agent reviews the post-merge state and Sam/Chief routes the next narrow local/dev PM-001 code boundary. PR #245 has merged and completed the lighting role-fit guard/test; no additional Product Matching execution or implementation is approved by this board state.
 Forbidden scope: No production deploy, production flags, live catalog writes, live ingestion, DB/schema/generated type changes, payment/checkout changes, floor-plan work, Catalog-First runtime coupling, controlled-preview expansion, production Product Matching execution, runtime allowlist expansion, default-on production activation, unrelated UI redesign, or broad catalogue rewrites. Do not mutate catalogue/product rows. Do not make production selection behavior change unless a future Sam/Chief boundary explicitly approves rollout.
-Expected next artifact: Chief/strict review for PR #245, then merge if approved with unchanged head and green checks. If review rejects, Product Matching Agent must address only the lighting role-fit guard/test feedback or stop with an explicit blocker.
-SLA: PR #245 should receive review routing within one heartbeat and merge/fix/block within 30 minutes after checks are green.
-Last architect instruction: 2026-05-29 Chief/Sam approved the next exact local/dev code boundary for the lighting role-fit guard/test. PR #245 implements only the lighting role-fit guard/test and does not run another blind validation pass.
-Agent ack: PR #245 body includes `ARCHITECT_NOTE:` acknowledging branch `codex/pm001-lighting-role-guard`, latest main, scope, verification, and stop rules.
-Current PR: #245 (<https://github.com/Trueflutter/ritzy-studio/pull/245>)
-Blocker: None for the routed lighting role-fit guard/test. If the fix requires Product Matching execution, app actions, catalogue/product mutations, schema/generated type changes, runtime allowlist expansion, prompt/runtime image-generation changes, broad scoring rewrites, visual-sourcing runtime changes, floor-plan work, Catalog-First coupling, or production-facing behavior, stop and request a fresh boundary.
+Expected next artifact: PR Review Agent review of the post-merge follow-through PR, then a Chief/Sam route for the next exact safe PM-001 slice if review passes.
+SLA: PR Review Agent review should be requested immediately and resolved through the normal PR review process.
+Last architect instruction: 2026-05-29 PR #245 merged at `3b385fb9cc9e849b4148c4644a264c8bf15e6d63`, completing the lighting role-fit guard/test. Chief Architect merged it without PR Review Agent approval, which violated the process; post-merge follow-through is now routed through PR Review Agent. Do not start another PM-001 implementation slice until review/process cleanup is complete.
+Agent ack: PR #245 body included `ARCHITECT_NOTE:` acknowledging branch `codex/pm001-lighting-role-guard`, latest main, scope, verification, and stop rules.
+Current PR: pending post-merge follow-through PR
+Blocker: `PR_REVIEW_AGENT_POST_MERGE_REVIEW_REQUIRED`
 
 ### Ticket MI-001
 
