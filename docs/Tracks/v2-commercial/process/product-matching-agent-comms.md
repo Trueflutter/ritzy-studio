@@ -1,7 +1,7 @@
 # Product Matching Engine Agent Comms
 
 ## Current PR
-Pending post-PR #270 validation evidence PR.
+PR #273: <https://github.com/Trueflutter/ritzy-studio/pull/273>
 
 ## Current stage
 PM001_POST_270_LOCAL_DEV_VALIDATION_REVIEW_REQUESTED
