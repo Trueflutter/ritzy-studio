@@ -1,12 +1,16 @@
 # Product Matching Engine Agent Comms
 
 ## Current PR
-None after this route PR merges.
+PR #266: <https://github.com/Trueflutter/ritzy-studio/pull/266>
 
 ## Current stage
-PM001_POST_263_LOCAL_DEV_VALIDATION_ROUTED
+PM001_POST_263_LOCAL_DEV_VALIDATION_REVIEW_REQUESTED
 
 ## Blockers
+PR #266 is open for PR Review Agent review. It is a docs-only evidence PR for the single PR #265-routed local/dev PM-001 validation pass after PR #263 lighting role-fit guard/test merged. The evidence documents job `9d9dff0a-7fcc-48d5-9ec5-93f6c8a3df02`, shopping list `99062356-7a63-4438-bd4b-461cc43c66ba`, selected SKUs, persisted-selection snapshot, visual-sourcing fallback evidence, zero/thin pool warnings, QA blockers, and the result that the lighting role now selects `Frosty Wooden Floor Lamp - 154 cm` instead of a chandelier while recording `lighting_role_fixture_mismatch: 12`.
+
+The PR #265 validation boundary has been consumed. No second validation pass, Product Matching execution, implementation, final-render execution, controlled preview, live app action, catalogue/product write, live ingestion/catalog write, DB/schema/generated type change, runtime allowlist expansion, payment/checkout change, broad scoring rewrite, prompt/runtime image-generation behavior change, curtains/textiles candidate generation, thin-pool fix, sofa/coffee/rug rewrite, floor-plan work, production deploy/flag, or Catalog-First coupling is approved.
+
 PR #263 merged at `76899922f49f2bc109177e57498ecfa848d90d72` after PR Review Agent approval and explicit implementation-agent merge instruction. It completed the narrow local/dev PM-001 lighting role-fit guard/test routed by PR #262: floor/table lighting role pools remove chandeliers/pendants/ceiling fixtures only when an eligible floor/table lamp exists, while over-table lighting behavior and thin no-lamp pools are preserved.
 
 PR #262 merged at `45142c0c8a789fb77a0dcfb4509a41dbcea8146e`, routing exactly one local/dev lighting role-fit guard/test implementation. Product Matching Agent acknowledged on branch `codex/pm001-lighting-role-guard-impl` before implementation.

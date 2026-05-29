@@ -109,16 +109,16 @@ Docs-only, test-only, domain-only, and dry-run-only work may proceed only when t
 ### Ticket PM-001
 
 Owner: Product Matching Agent
-Status: ROUTED
-Branch: pending Product Matching Agent acknowledgement
-Allowed scope: After this docs-only route merges, Product Matching Agent may run exactly one post-PR #263 local/dev validation pass on project `4207ade6-2604-4e15-9b05-ffa77531d3d2`, room `75e18e73-cf69-4b2e-b192-009fbc135b38`, concept `d9cc2f82-6d8f-455c-8c8d-e08522e0938c`, Sam local/dev account, localhost/local dev, existing catalogue rows only. Allowed writes are only existing app-flow local/dev concept/job/shopping-list rows required by that one validation flow.
+Status: REVIEW_REQUESTED
+Branch: `codex/pm001-post-263-validation-evidence`
+Allowed scope: Docs/evidence-only follow-through for the single post-PR #263 local/dev validation pass routed by PR #265 on project `4207ade6-2604-4e15-9b05-ffa77531d3d2`, room `75e18e73-cf69-4b2e-b192-009fbc135b38`, concept `d9cc2f82-6d8f-455c-8c8d-e08522e0938c`, Sam local/dev account, localhost/local dev, existing catalogue rows only. The single allowed app-flow local/dev validation pass has been consumed.
 Forbidden scope: No second validation pass, blind validation beyond the single routed pass, controlled preview, production deploy, production flag, live app action, live catalog write, live ingestion, DB/schema/generated type change, runtime allowlist expansion, payment/checkout change, floor-plan work, Catalog-First runtime coupling, production Product Matching execution, default-on production activation, unrelated UI redesign, broad catalogue rewrite, catalogue/product row mutation, broad scoring rewrite, prompt/runtime image-generation behavior change beyond the validation flow, production selection behavior change, final-render execution, curtains/textiles candidate generation, thin-pool fixes, sofa/coffee/rug role rewrites, or additional aesthetic-quality implementation.
-Expected next artifact: Product Matching Agent acknowledgement with branch/scope/stop-rule confirmation, then one focused evidence PR recording the post-#263 validation results.
-SLA: Product Matching Agent must acknowledge within one owner heartbeat after the route PR merges; after acknowledgement, it must show branch/PR/evidence progress or an explicit blocker within 30 minutes.
-Last architect instruction: 2026-05-29 PR #263 merged at `76899922f49f2bc109177e57498ecfa848d90d72` after PR Review Agent approval and explicit implementation-agent merge instruction. PR #263 completed the narrow local/dev lighting role-fit guard/test implementation routed by PR #262. Chief now routes exactly one post-#263 local/dev validation pass to verify whether the chandelier/floor-light role-fit regression is resolved and to capture remaining PM-001 blockers.
-Agent ack: Product Matching Agent acknowledged the PR #262 route on branch `codex/pm001-lighting-role-guard-impl` and confirmed stop rules before implementation.
-Current PR: none
-Blocker: Waiting for Product Matching Agent acknowledgement after this route merges.
+Expected next artifact: PR Review Agent verdict on the focused post-#263 validation evidence PR.
+SLA: PR Review Agent review or explicit blocker on PR #266.
+Last architect instruction: 2026-05-29 PR #265 merged at `18e9bccefdda1725fb4dca909704197e9f311ca6`, routing exactly one post-PR #263 local/dev validation pass to verify whether the chandelier/floor-light role-fit regression is resolved and to capture remaining PM-001 blockers.
+Agent ack: Product Matching Agent acknowledged the PR #265 validation route on branch `codex/pm001-post-263-validation-evidence`, then ran exactly one local/dev validation pass. Evidence PR #266 records job `9d9dff0a-7fcc-48d5-9ec5-93f6c8a3df02`, shopping list `99062356-7a63-4438-bd4b-461cc43c66ba`, lighting-role fixture-mismatch rejection evidence, selected SKUs, zero/thin pool status, QA blockers, and stop-rule confirmation.
+Current PR: #266 (<https://github.com/Trueflutter/ritzy-studio/pull/266>)
+Blocker: Waiting for PR Review Agent verdict on PR #266; no further Product Matching execution/implementation is approved.
 
 ### Ticket MI-001
 
