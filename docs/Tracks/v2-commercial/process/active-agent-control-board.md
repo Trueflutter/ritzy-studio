@@ -108,17 +108,17 @@ Docs-only, test-only, domain-only, and dry-run-only work may proceed only when t
 
 ### Ticket PM-001
 
-Owner: Ritzy Chief Architect
-Status: BLOCKED
-Branch: none
-Allowed scope: Docs-only evidence PR for the one PM-001 local/dev validation pass approved by PR #255 and completed after PR #255 merged at `d129765cc1752f6b1cbdabf518affdb126cadbd2`. Evidence may document local/dev readbacks for project `4207ade6-2604-4e15-9b05-ffa77531d3d2`, room `75e18e73-cf69-4b2e-b192-009fbc135b38`, concept `d9cc2f82-6d8f-455c-8c8d-e08522e0938c`, the latest local/dev product-sourcing job, the existing draft shopping list, selected SKUs, persisted-selection snapshot, visual-timeout/fallback fields, missing/zero/thin pools, role-fit status, and recommended next narrow boundary.
-Forbidden scope: No second Product Matching validation pass, Product Matching execution, visual-sourcing runtime call, production deploy, production flag, live catalog write, live ingestion, DB/schema/generated type change, payment/checkout change, floor-plan work, Catalog-First runtime coupling, controlled-preview expansion, production Product Matching execution, runtime allowlist expansion, default-on production activation, unrelated UI redesign, broad catalogue rewrite, catalogue/product row mutation, prompt/runtime image-generation behavior change, or production selection behavior change.
-Expected next artifact: Fresh Sam/Chief local/dev boundary if PM-001 should continue. Recommended next boundary is narrow visual-sourcing timeout/retry/fallback evidence, but it is not approved until explicitly routed.
-SLA: None while blocked.
-Last architect instruction: 2026-05-29 PR #255 merged at `d129765cc1752f6b1cbdabf518affdb126cadbd2` after PR Review Agent approval. Chief ran exactly one approved local/dev validation pass and opened this evidence PR. The pass produced job `96418e26-05a7-46f1-a1dc-fea7908c3e7c` and refreshed shopping list `99062356-7a63-4438-bd4b-461cc43c66ba`.
-Agent ack: Chief acknowledged and completed the one-pass validation route inside the approved local/dev boundary. No second pass is approved.
-Current PR: none after the post-#255 validation evidence PR merges
-Blocker: `NEXT_PM001_LOCAL_DEV_FIX_BOUNDARY_REQUIRED`. The smallest next likely boundary is a narrow local/dev visual-sourcing timeout/retry/fallback slice, but no further PM-001 execution or implementation is approved until Sam/Chief explicitly routes it.
+Owner: Product Matching Agent
+Status: ROUTED
+Branch: pending Product Matching Agent acknowledgement
+Allowed scope: After this docs-only route PR is reviewed and merged, implement exactly one narrow local/dev visual-sourcing timeout/retry/fallback evidence slice. The implementation may change local/dev Product Matching code/tests/docs only to reduce or isolate the 45s visual-sourcing timeout observed in job `96418e26-05a7-46f1-a1dc-fea7908c3e7c`, preserve deterministic fallback behavior, and make retry/fallback evidence auditable. Add focused tests and open one implementation PR for PR Review Agent review before merge.
+Forbidden scope: No Product Matching validation pass, blind validation, app action, controlled preview, production deploy, production flag, live catalog write, live ingestion, DB/schema/generated type change, payment/checkout change, floor-plan work, Catalog-First runtime coupling, production Product Matching execution, runtime allowlist expansion, default-on production activation, unrelated UI redesign, broad catalogue rewrite, catalogue/product row mutation, broad scoring rewrite, prompt/runtime image-generation behavior change, production selection behavior change, or final-render execution.
+Expected next artifact: Product Matching Agent acknowledgement after this route PR merges, then one focused implementation PR for PR Review Agent review.
+SLA: Product Matching Agent acknowledgement within one owner heartbeat after route merge; branch, commit, PR, mailbox update, or explicit blocker within 30 minutes after acknowledgement.
+Last architect instruction: 2026-05-29 PR #256 merged at `59dc6b062216b341df9e7c4688b5e126ed5b333c`, leaving PM-001 blocked with evidence that visual sourcing still timed out after 45,064 ms and used deterministic text fallback. Sam previously authorized Chief to route narrow local/dev fix boundaries in his absence. Chief routes the next exact boundary as visual-sourcing timeout/retry/fallback evidence only.
+Agent ack: Pending. Product Matching Agent must acknowledge branch and stop rules before implementation.
+Current PR: none after the visual-timeout route PR merges
+Blocker: Product Matching Agent acknowledgement and stop-rule confirmation required after route merge. If the timeout/retry/fallback fix requires Product Matching execution, app actions, controlled preview, catalogue/product writes, DB/schema/generated types, prompt/runtime image-generation behavior changes, broad scoring rewrites, runtime allowlists, production behavior, or any forbidden scope, stop and leave an `ARCHITECT_NOTE:` naming the smallest required boundary.
 
 ### Ticket MI-001
 

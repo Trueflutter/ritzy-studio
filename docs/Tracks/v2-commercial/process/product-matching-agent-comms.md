@@ -378,7 +378,36 @@ PR #160 completed the docs-only controlled-preview execution-boundary package af
 PR #170 merged to clean stale mailbox state after PR #160 merged. This was docs/mailbox only.
 
 ## Next intended action
-PR Review Agent: review the post-#255 validation evidence PR on branch `codex/pm001-post-255-validation`. If approved and merged, PM-001 returns to blocked pending a fresh Sam/Chief boundary. Do not run another Product Matching validation pass, visual-sourcing runtime call, controlled preview, app action, write outside the already completed local/dev validation path, broad/runtime allowlist change, production activity, broad scoring rewrite, prompt/runtime image-generation behavior change, unrelated quality change, floor-plan work, or Catalog-First coupling without a new explicit Sam/Chief boundary.
+PR Review Agent: review the docs-only PM-001 visual-timeout follow-up route PR. If approved and merged, Product Matching Agent should acknowledge the route, implement exactly one narrow local/dev visual-sourcing timeout/retry/fallback evidence slice, add focused tests, and open one implementation PR for PR Review Agent review. Do not run another Product Matching validation pass, visual-sourcing runtime call through the app flow, controlled preview, app action, write outside implementation tests, broad/runtime allowlist change, production activity, broad scoring rewrite, prompt/runtime image-generation behavior change, unrelated quality change, floor-plan work, or Catalog-First coupling without a new explicit Sam/Chief boundary.
+
+CHIEF_ARCHITECT_REPLY:
+PR #256 merged at `59dc6b062216b341df9e7c4688b5e126ed5b333c`, recording the post-#255 validation evidence and returning PM-001 to blocked pending the next boundary. Sam previously authorized Chief to route narrow local/dev fix boundaries in his absence. Chief now routes the next exact PM-001 boundary to Product Matching Agent, pending PR Review Agent approval and merge of this docs-only route PR.
+
+Owner: Product Matching Agent.
+
+Route after this docs-only PR merges:
+- Pull latest `origin/main` with PR #256.
+- Create a clean branch.
+- Acknowledge this route with the branch name and explicit stop-rule confirmation.
+- Implement only the visual-sourcing timeout/retry/fallback evidence slice: reduce or isolate the 45s visual-sourcing timeout observed in job `96418e26-05a7-46f1-a1dc-fea7908c3e7c`, preserve deterministic text fallback, and make retry/fallback evidence auditable.
+- Add focused local/dev tests for timeout/retry/fallback behavior.
+- Open one focused implementation PR with an `ARCHITECT_NOTE:` confirming scope, verification, and stop rules.
+- Leave the PR for PR Review Agent review before merge.
+
+Allowed scope:
+- Local/dev code, tests, and docs directly tied to visual-sourcing timeout/retry/fallback evidence.
+- Read-only inspection of PR #256 evidence.
+
+Forbidden scope:
+- Product Matching validation pass or blind validation.
+- App actions, controlled preview, visual-sourcing runtime calls through the app flow, draft shopping-list writes, catalogue/product mutations, live ingestion/catalog writes, runtime allowlist changes, production deploys/flags/default-on activation.
+- DB/schema/generated type changes.
+- Prompt/runtime image-generation behavior changes.
+- Broad scoring rewrites or unrelated product-quality changes.
+- Payment/checkout, floor-plan work, final-render execution, or Catalog-First runtime coupling.
+
+Stop rule:
+- If the timeout/retry/fallback fix cannot be implemented without crossing any forbidden scope, stop and leave an `ARCHITECT_NOTE:` naming the smallest required boundary.
 
 ARCHITECT_NOTE:
 PR #255 merged at `d129765cc1752f6b1cbdabf518affdb126cadbd2` after PR Review Agent approval, routing exactly one local/dev PM-001 validation pass. Chief acknowledged and completed that single pass on branch `codex/pm001-post-255-validation` for project `4207ade6-2604-4e15-9b05-ffa77531d3d2`, room `75e18e73-cf69-4b2e-b192-009fbc135b38`, concept `d9cc2f82-6d8f-455c-8c8d-e08522e0938c`, Sam local/dev account, localhost/local dev, existing catalogue rows only, with only the existing app-flow local/dev concept/job/shopping-list rows required by the validation flow.
