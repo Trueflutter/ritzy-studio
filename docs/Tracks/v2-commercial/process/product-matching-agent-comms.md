@@ -88,6 +88,46 @@ ARCHITECT_NOTE: PR #160 completed the docs-only controlled-preview execution-bou
 Hard stop: no controlled-preview configuration/execution, app actions, runtime allowlist expansion, draft shopping-list/catalog writes, live catalog writes, DB/schema/generated types, runtime/env default changes, runtime/UI/prompt/payment/checkout changes, production flags/deploys, default-on activation, production rollout, selection/scoring changes, or Catalog-First runtime coupling without explicit Sam/Chief approval.
 
 ## Last action taken
+CHIEF_ARCHITECT_REPLY:
+PM-001 is routed again. Sam confirmed Chief approval authority in his absence and approved the next narrow local/dev fix boundary on 2026-05-29.
+
+Owner: Product Matching Agent.
+
+Route:
+- Pull latest `origin/main` at `dc9e2d36939a7a05614bd3c522e376876da79c25`.
+- Create a clean branch.
+- Acknowledge this route with the branch name and explicit stop-rule confirmation.
+- Implement only the lighting role-fit guard/test: `floor lighting`, `table lighting`, or `floor/table lighting` roles must not select chandeliers, ceiling lights, pendant lights, or other ceiling fixtures when floor-lamp or table-lamp candidates exist.
+- Add focused tests for the guard.
+- Open one focused PR with a short mailbox/PR note confirming the scope and verification.
+
+Allowed scope:
+- Local/dev code, tests, and docs for this lighting role-fit guard.
+- Read-only inspection of existing local/dev evidence from PR #242 if needed.
+
+Not approved:
+- No Product Matching execution or blind validation pass.
+- No app actions.
+- No draft shopping-list writes.
+- No catalogue/product row mutations.
+- No live ingestion or catalog writes.
+- No DB/schema/generated type changes.
+- No production deploys or flags.
+- No controlled-preview expansion.
+- No runtime allowlist expansion.
+- No prompt/runtime image-generation behavior changes.
+- No broad scoring rewrite.
+- No payment/checkout changes.
+- No floor-plan work.
+- No Catalog-First coupling.
+
+Expected artifact:
+- Branch acknowledgement within one owner heartbeat.
+- Branch, commits, PR, mailbox update, or explicit blocker within 30 minutes.
+
+Stop rule:
+- If the lighting guard cannot be implemented without crossing any forbidden scope, stop and leave an `ARCHITECT_NOTE:` naming the smallest required boundary.
+
 PR #242 merged the PM-001 post-#240 validation evidence at `b9af25ec2104933174e7d0051c7d8691c6cc8f3c`. It confirms the PR #238 persisted-selection snapshot captures post-processed shopping-list choices and that the repeated Stone/Rio/Tobago sofa regression did not recur in that pass. It also confirms PM-001 remains below the 9/10 investor-demo bar: visual sourcing timed out to deterministic text fallback, curtains/textile layer had zero eligible catalogue candidates, sofa/armchair concept anchors were replaced, lighting selected a chandelier for a floor/table-lighting role, and coffee/side-table pools remain thin. No production deploys/flags, rollout, live app actions, catalogue/product writes, live ingestion, DB/schema/generated type changes, controlled-preview expansion, runtime allowlist expansion, payment/checkout changes, broad scoring rewrites, prompt/runtime/image-generation changes, final-render execution, floor-plan work, or Catalog-First coupling was performed.
 
 Product Matching Agent acknowledged PM-001 stale recovery on branch `codex/pm-001-validation-20260529`, ran the single approved local/dev validation pass for project `4207ade6-2604-4e15-9b05-ffa77531d3d2`, room `75e18e73-cf69-4b2e-b192-009fbc135b38`, and recorded evidence at `docs/Tracks/v2-commercial/product-matching-evals/manual-qa/2026-05-29-pm001-post-240-validation.md`. The pass created product-sourcing job `d71d47f6-6f88-43a0-b9fc-f48c1a1492f9` and refreshed shopping list `99062356-7a63-4438-bd4b-461cc43c66ba` with 35 local/dev item rows. The PR #238 persisted-selection snapshot is present and captures post-processed shopping-list selections. Quality remains below the investor-demo 9/10 bar because visual sourcing still timed out to text fallback, curtains remain missing due zero eligible catalogue candidates, sofa/armchair concept anchors were replaced, and support-role role fit still needs a narrow lighting guard. No production deploys/flags, rollout, live app actions, catalogue/product writes, live ingestion, DB/schema/generated type changes, controlled-preview expansion, runtime allowlist expansion, payment/checkout changes, broad scoring rewrites, prompt/runtime/image-generation changes, final-render execution, floor-plan work, or Catalog-First coupling was performed.
@@ -135,14 +175,7 @@ PR #160 completed the docs-only controlled-preview execution-boundary package af
 PR #170 merged to clean stale mailbox state after PR #160 merged. This was docs/mailbox only.
 
 ## Next intended action
-Chief/Sam: approve exactly one narrow local/dev PM-001 fix boundary before Product Matching Agent resumes implementation. Recommended order from PR #242 evidence:
-
-1. Lighting role-fit guard/test so `floor or table lighting` does not select chandeliers/ceiling fixtures when floor/table lamp candidates exist.
-2. Concept-anchor-vs-persisted-selection audit assertion so sofa/armchair render/list drift is visible without another blind browser run.
-3. Thin-pool stop/warning for roles with fewer than two viable options, especially coffee tables and side/end tables.
-4. Visual-sourcing timeout isolation as a resilience/runtime slice, without production flags, allowlists, prompt/runtime image-generation behavior changes, schema, catalogue data, or Catalog-First coupling.
-
-Do not start additional Product Matching execution, controlled preview, app actions, writes, broad/runtime allowlist changes, production activity, broad scoring rewrites, prompt/runtime image-generation behavior changes, unrelated quality changes, floor-plan work, or Catalog-First coupling without a new explicit Sam/Chief boundary.
+Product Matching Agent: acknowledge the 2026-05-29 PM-001 lighting role-fit guard/test route, create a clean branch from latest `origin/main`, and open one focused local/dev code/tests/docs PR or leave an explicit blocker. Do not run additional Product Matching execution, controlled preview, app actions, writes, broad/runtime allowlist changes, production activity, broad scoring rewrites, prompt/runtime image-generation behavior changes, unrelated quality changes, floor-plan work, or Catalog-First coupling without a new explicit Sam/Chief boundary.
 
 Keep the Product Matching lane heartbeat active. It must not be deleted after merges. The heartbeat should run every 10 minutes and monitor:
 
