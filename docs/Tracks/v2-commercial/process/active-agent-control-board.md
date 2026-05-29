@@ -109,16 +109,16 @@ Docs-only, test-only, domain-only, and dry-run-only work may proceed only when t
 ### Ticket PM-001
 
 Owner: Product Matching Agent
-Status: PR_OPEN
-Branch: `codex/pm001-lighting-role-guard-impl`
-Allowed scope: Local/dev Product Matching code/tests/docs for exactly one narrow lighting role-fit guard/test after PR #262 merged at `45142c0c8a789fb77a0dcfb4509a41dbcea8146e`: prevent a ceiling fixture such as a chandelier from satisfying a floor/table lighting role when eligible floor or table lamps exist in the candidate pool. The implementation adds deterministic role-fit guard evidence and focused local/dev tests for the lighting role-fit guard only. No validation pass is approved by this implementation route.
+Status: BLOCKED
+Branch: none
+Allowed scope: Docs/mailbox-only coordination from already merged PM-001 evidence. Latest completed slice: PR #263 merged the narrow lighting role-fit guard/test at `76899922f49f2bc109177e57498ecfa848d90d72`; floor/table lighting role pools now remove chandeliers/pendants/ceiling fixtures only when an eligible floor/table lamp exists, while over-table lighting behavior and thin no-lamp pools are preserved. No validation pass is approved by this post-merge handoff.
 Forbidden scope: No Product Matching validation pass, blind validation, app action, controlled preview, production deploy, production flag, live catalog write, live ingestion, DB/schema/generated type change, runtime allowlist expansion, payment/checkout change, floor-plan work, Catalog-First runtime coupling, production Product Matching execution, default-on production activation, unrelated UI redesign, broad catalogue rewrite, catalogue/product row mutation, broad scoring rewrite, prompt/runtime image-generation behavior change, production selection behavior change, final-render execution, curtains/textiles candidate generation, thin-pool fixes, sofa/coffee/rug role rewrites, or additional aesthetic-quality work outside the lighting role-fit guard/test.
-Expected next artifact: PR Review Agent review of the focused lighting role-fit guard/test implementation PR.
-SLA: PR Review Agent review should happen within one heartbeat; merge/fix/block within 30 minutes after review.
-Last architect instruction: 2026-05-29 PR #262 merged at `45142c0c8a789fb77a0dcfb4509a41dbcea8146e`, routing the next exact local/dev implementation boundary. Product Matching Agent acknowledged on PR #262 before implementation and opened the focused lighting role-fit guard/test implementation PR.
+Expected next artifact: Fresh Sam/Chief route for exactly one narrow PM-001 implementation or validation boundary, if they want Product Matching to continue.
+SLA: Stay parked until a fresh Sam/Chief route appears in a PR comment, mailbox entry, or this thread.
+Last architect instruction: 2026-05-29 PR #263 merged at `76899922f49f2bc109177e57498ecfa848d90d72` after PR Review Agent approval and explicit implementation-agent merge instruction. PR #263 completed the narrow local/dev lighting role-fit guard/test implementation routed by PR #262.
 Agent ack: Product Matching Agent acknowledged the PR #262 route on branch `codex/pm001-lighting-role-guard-impl` and confirmed stop rules before implementation.
-Current PR: lighting role-fit guard/test implementation PR
-Blocker: PR Review Agent must review this implementation PR before merge. No validation pass or further PM-001 execution is approved from this PR.
+Current PR: none
+Blocker: No further PM-001 execution or implementation is approved until Sam/Chief explicitly routes the next exact boundary.
 
 ### Ticket MI-001
 
