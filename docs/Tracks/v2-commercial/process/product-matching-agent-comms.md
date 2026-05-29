@@ -88,6 +88,22 @@ ARCHITECT_NOTE: PR #160 completed the docs-only controlled-preview execution-bou
 Hard stop: no controlled-preview configuration/execution, app actions, runtime allowlist expansion, draft shopping-list/catalog writes, live catalog writes, DB/schema/generated types, runtime/env default changes, runtime/UI/prompt/payment/checkout changes, production flags/deploys, default-on activation, production rollout, selection/scoring changes, or Catalog-First runtime coupling without explicit Sam/Chief approval.
 
 ## Last action taken
+ARCHITECT_NOTE:
+PM-001 lighting role-fit guard/test is implemented in PR #245 on branch `codex/pm001-lighting-role-guard`.
+
+Scope completed:
+- Added a focused local/dev role-fit guard so `floor lighting`, `table lighting`, `floor/table lighting`, task, or bedside lighting roles reward floor/table/desk/task/bedside lamp language and penalize chandeliers, ceiling lights, pendants, suspension lights, and hanging fixtures when the role is not an over-table/ceiling role.
+- Added focused domain tests proving an eligible aged-brass table lamp outranks a linen chandelier for `floor or table lighting`, while the existing over-table chandelier behavior remains covered.
+
+Verification:
+- `pnpm install --offline --frozen-lockfile`
+- `pnpm --filter @ritzy-studio/domain exec tsx src/product-matching.test.ts`
+- `pnpm --filter @ritzy-studio/domain test`
+- `pnpm --filter @ritzy-studio/domain typecheck`
+- `git diff --check`
+
+No Product Matching execution, blind validation, app actions, draft shopping-list writes, catalogue/product mutations, live ingestion/catalog writes, DB/schema/generated type changes, production deploys/flags, controlled-preview expansion, runtime allowlist expansion, prompt/runtime image-generation behavior changes, broad scoring rewrite, payment/checkout, floor-plan work, or Catalog-First coupling was performed.
+
 CHIEF_ARCHITECT_REPLY:
 PM-001 is routed again. Sam confirmed Chief approval authority in his absence and approved the next narrow local/dev fix boundary on 2026-05-29.
 
@@ -175,7 +191,7 @@ PR #160 completed the docs-only controlled-preview execution-boundary package af
 PR #170 merged to clean stale mailbox state after PR #160 merged. This was docs/mailbox only.
 
 ## Next intended action
-Product Matching Agent: acknowledge the 2026-05-29 PM-001 lighting role-fit guard/test route, create a clean branch from latest `origin/main`, and open one focused local/dev code/tests/docs PR or leave an explicit blocker. Do not run additional Product Matching execution, controlled preview, app actions, writes, broad/runtime allowlist changes, production activity, broad scoring rewrites, prompt/runtime image-generation behavior changes, unrelated quality changes, floor-plan work, or Catalog-First coupling without a new explicit Sam/Chief boundary.
+Chief/PR Review: review PR #245 for the focused PM-001 lighting role-fit guard/test. If approved with unchanged head and green checks, merge PR #245 and retarget PM-001 to the next smallest post-PR #242 fix boundary. Do not run additional Product Matching execution, controlled preview, app actions, writes, broad/runtime allowlist changes, production activity, broad scoring rewrites, prompt/runtime image-generation behavior changes, unrelated quality changes, floor-plan work, or Catalog-First coupling without a new explicit Sam/Chief boundary.
 
 Keep the Product Matching lane heartbeat active. It must not be deleted after merges. The heartbeat should run every 10 minutes and monitor:
 
