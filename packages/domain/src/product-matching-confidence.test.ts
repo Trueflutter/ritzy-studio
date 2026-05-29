@@ -283,6 +283,14 @@ assert.ok(closestRequiredGate.blockers.some((issue) => issue.code === "required_
 assert.ok(closestRequiredGate.blockers.some((issue) => issue.code === "required_color_mismatch"));
 assert.ok(closestRequiredGate.warnings.some((issue) => issue.code === "weak_material_match"));
 assert.equal(closestRequiredGate.counts.weakMaterialRequiredCount, 1);
+const closestRequiredIssue = closestRequiredGate.blockers.find(
+  (issue) => issue.code === "required_closest_available"
+);
+assert.ok(closestRequiredIssue);
+assert.match(closestRequiredIssue.message, /candidate pool has 1 candidate/);
+assert.match(closestRequiredIssue.message, /weakness: color family conflicts with role brief/);
+assert.match(closestRequiredIssue.message, /metadata gaps: Style or room evidence is missing/);
+assert.match(closestRequiredIssue.message, /dimension evidence: Product dimensions are missing/);
 
 const missingRequiredGate = buildProductMatchQaStopRuleStatus({
   roleConfidence: missingSummary,
