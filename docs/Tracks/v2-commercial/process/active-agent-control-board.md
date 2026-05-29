@@ -109,15 +109,15 @@ Docs-only, test-only, domain-only, and dry-run-only work may proceed only when t
 ### Ticket PM-001
 
 Owner: Product Matching Agent
-Status: ROUTED
-Branch: pending Product Matching Agent acknowledgement
+Status: PR_OPEN
+Branch: `codex/pm001-lighting-role-guard`
 Allowed scope: One narrow local/dev PM-001 fix boundary approved by Sam/Chief on 2026-05-29: implement and test a lighting role-fit guard so `floor lighting`, `table lighting`, or `floor/table lighting` roles cannot select chandeliers, ceiling lights, pendant lights, or other ceiling fixtures when floor-lamp or table-lamp candidates exist. Scope is limited to code/tests/docs required for this role-fit guard and read-only inspection of existing local/dev evidence. No additional Product Matching execution is approved by this route.
 Forbidden scope: No production deploy, production flags, live catalog writes, live ingestion, DB/schema/generated type changes, payment/checkout changes, floor-plan work, Catalog-First runtime coupling, controlled-preview expansion, production Product Matching execution, runtime allowlist expansion, default-on production activation, unrelated UI redesign, or broad catalogue rewrites. Do not mutate catalogue/product rows. Do not make production selection behavior change unless a future Sam/Chief boundary explicitly approves rollout.
-Expected next artifact: Product Matching Agent acknowledgement with branch name, followed by a focused PR or explicit blocker. The PR should include tests proving floor/table lighting roles prefer eligible floor/table lamps over ceiling/chandelier fixtures when candidates exist, plus a short docs/mailbox note confirming no forbidden scope was crossed.
-SLA: Product Matching Agent must acknowledge within one owner heartbeat and show branch, commits, PR, mailbox update, or explicit blocker within 30 minutes.
-Last architect instruction: 2026-05-29 Chief/Sam approved the next exact local/dev code boundary for the lighting role-fit guard/test. Product Matching Agent should pull latest `origin/main` at `dc9e2d36939a7a05614bd3c522e376876da79c25`, create a clean branch, acknowledge this route with branch name and scope, then implement only the lighting role-fit guard/test. Do not run another blind validation pass.
-Agent ack: Awaiting Product Matching Agent acknowledgement for the 2026-05-29 lighting role-fit guard/test route. Prior stale-recovery validation was acknowledged on branch `codex/pm-001-validation-20260529` and completed via PR #242; that validation boundary is expired.
-Current PR: none
+Expected next artifact: Chief/strict review for PR #245, then merge if approved with unchanged head and green checks. If review rejects, Product Matching Agent must address only the lighting role-fit guard/test feedback or stop with an explicit blocker.
+SLA: PR #245 should receive review routing within one heartbeat and merge/fix/block within 30 minutes after checks are green.
+Last architect instruction: 2026-05-29 Chief/Sam approved the next exact local/dev code boundary for the lighting role-fit guard/test. PR #245 implements only the lighting role-fit guard/test and does not run another blind validation pass.
+Agent ack: PR #245 body includes `ARCHITECT_NOTE:` acknowledging branch `codex/pm001-lighting-role-guard`, latest main, scope, verification, and stop rules.
+Current PR: #245 (<https://github.com/Trueflutter/ritzy-studio/pull/245>)
 Blocker: None for the routed lighting role-fit guard/test. If the fix requires Product Matching execution, app actions, catalogue/product mutations, schema/generated type changes, runtime allowlist expansion, prompt/runtime image-generation changes, broad scoring rewrites, visual-sourcing runtime changes, floor-plan work, Catalog-First coupling, or production-facing behavior, stop and request a fresh boundary.
 
 ### Ticket MI-001
