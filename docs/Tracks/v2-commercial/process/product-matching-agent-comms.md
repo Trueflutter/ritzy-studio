@@ -1,12 +1,45 @@
 # Product Matching Engine Agent Comms
 
 ## Current PR
-None.
+PR #275: <https://github.com/Trueflutter/ritzy-studio/pull/275>
 
 ## Current stage
-PM001_POST_273_VALIDATION_EVIDENCE_MERGED_BLOCKED
+PM001_LIGHTING_ROLE_REGRESSION_ROUTE_PENDING_REVIEW
 
 ## Blockers
+CHIEF_ARCHITECT_REPLY:
+PM-001 is routed through this docs-only PR after PR #274 merged and PR #273 evidence showed a lighting role-fit regression.
+
+Owner after route merge: Product Matching Agent.
+
+Route after this docs PR merges:
+- Pull latest `origin/main` at this routing PR's merge commit.
+- Create a clean branch.
+- Acknowledge this route with the branch name and explicit stop-rule confirmation before implementation.
+- Implement exactly one narrow local/dev lighting role-fit regression guard/test for the PR #273 evidence regression where `floor or table lighting` persisted `Hahn E14 8-lights Linen Chandelier`.
+- The guard/test must prevent chandeliers/pendants/ceiling fixtures from persisting for `floor or table lighting` after post-processing when eligible floor/table lamps exist.
+- Use focused local/dev Product Matching domain code/tests/docs only.
+- Open one focused implementation PR with an `ARCHITECT_NOTE:` confirming scope, verification, and stop rules.
+- Leave the implementation PR for PR Review Agent review before merge.
+
+Allowed scope after route merge:
+- local/dev code/tests/docs for the lighting role-fit regression guard/test only
+- read-only inspection of existing PR #273 evidence
+- docs/mailbox updates directly tied to the implementation PR
+
+Forbidden scope:
+- Product Matching validation pass, blind validation, or final-render execution
+- visual-sourcing runtime calls, controlled preview, app actions, shopping-list refresh/create, catalogue/product mutations, live ingestion/catalog writes
+- DB/schema/generated type changes
+- runtime allowlist expansion
+- prompt/runtime image-generation behavior changes
+- broad scoring rewrites or unrelated product-quality changes outside the narrow lighting role-fit regression guard/test
+- curtains/textiles candidate generation, thin-pool fixes, side-table/storage/media changes, required sofa/coffee/rug changes
+- production deploys/flags/default-on activation
+- payment/checkout, floor-plan work, or Catalog-First runtime coupling
+
+If the fix requires anything outside this route, stop and leave an explicit blocker naming the smallest required boundary.
+
 PR #273 merged at `6e566d8ebbbd04fb06623406ae950e5a710551e4` after PR Review Agent approval. It recorded the single PR #272-routed post-PR #270 local/dev validation pass and consumed that validation boundary. Evidence is recorded in `docs/Tracks/v2-commercial/product-matching-evals/manual-qa/2026-05-29-pm001-post-270-validation.md`.
 
 The post-PR #270 validation evidence records job `3f99c0de-b9a4-472f-9db3-8f617613d3f4`, shopping list `99062356-7a63-4438-bd4b-461cc43c66ba`, 35 item rows, and 10 selected rows. PR #270's enriched `required_closest_available` blocker evidence is present for `sofas::anchor_seating`, `coffee_tables::coffee_table`, and `rugs::generous_rug`, but PM-001 remains below the investor-demo bar: those three required roles still block as `required_closest_available`, curtains/textiles remain zero-candidate, lighting regressed to `Hahn E14 8-lights Linen Chandelier` for `floor or table lighting`, and final-render fidelity was not executed.
@@ -558,7 +591,7 @@ PR #160 completed the docs-only controlled-preview execution-boundary package af
 PR #170 merged to clean stale mailbox state after PR #160 merged. This was docs/mailbox only.
 
 ## Next intended action
-PM-001 is blocked pending a fresh exact Sam/Chief route. Do not run another validation pass, Product Matching execution, implementation, final-render execution, controlled preview, live app action, catalogue/product write, live ingestion/catalog write, DB/schema/generated type change, runtime allowlist expansion, payment/checkout change, broad scoring rewrite, prompt/runtime image-generation behavior change, curtains/textiles candidate generation, thin-pool fix, side-table/storage/media change, lighting change, floor-plan work, production deploy/flag, or Catalog-First coupling from the merged PR #273 evidence. The likely smallest next boundary to request is a narrow local/dev lighting role-fit regression guard/test for the `floor or table lighting` chandelier regression, but this note is not authorization to implement it.
+PR Review Agent should review this docs-only route PR. After approval and merge, Product Matching Agent should pull the route merge commit, create a clean branch, acknowledge the route with branch/scope/stop-rule confirmation, implement exactly one narrow local/dev lighting role-fit regression guard/test, and open one focused implementation PR for PR Review Agent review. Do not run validation, Product Matching execution, final-render execution, controlled preview, live app action, catalogue/product write, live ingestion/catalog write, DB/schema/generated type change, runtime allowlist expansion, prompt/runtime image-generation behavior change, broad scoring rewrite, curtains/textiles candidate generation, thin-pool fix, side-table/storage/media change, required sofa/coffee/rug change, floor-plan work, production deploy/flag, or Catalog-First coupling from this route.
 
 PRODUCT_MATCHING_AGENT_ACK: 2026-05-29 - Product Matching Agent acknowledges the PM-001 visual-sourcing timeout/retry/fallback evidence route on branch `codex/pm001-visual-timeout-evidence-impl`, based on latest `origin/main` at `e00f2784cc84f332a462ad5f387f863a486314ad`. Scope accepted: local/dev Product Matching code/tests/docs only for the narrow visual-sourcing timeout/retry/fallback evidence slice; no validation pass or app-flow execution. Stop rules accepted: no Product Matching validation pass, blind validation, app action, controlled preview, visual-sourcing runtime call through the app flow, draft shopping-list write, catalogue/product mutation, live ingestion/catalog write, DB/schema/generated type change, runtime allowlist change, production deploy/flag/default-on activation, prompt/runtime image-generation behavior change, broad scoring rewrite, unrelated product-quality change, payment/checkout, floor-plan work, final-render execution, or Catalog-First runtime coupling.
 

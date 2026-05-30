@@ -109,16 +109,16 @@ Docs-only, test-only, domain-only, and dry-run-only work may proceed only when t
 ### Ticket PM-001
 
 Owner: Product Matching Agent
-Status: BLOCKED
-Branch: none
-Allowed scope: None while blocked. The PR #272-routed single post-PR #270 local/dev validation pass has been consumed and recorded by PR #273.
-Forbidden scope: No second validation pass, blind validation beyond the single routed pass, controlled preview, production deploy, production flag, live app action, live catalog write, live ingestion, DB/schema/generated type change, runtime allowlist expansion, payment/checkout change, floor-plan work, Catalog-First runtime coupling, production Product Matching execution, default-on production activation, unrelated UI redesign, broad catalogue rewrite, catalogue/product row mutation, broad scoring rewrite, prompt/runtime image-generation behavior change beyond the validation flow, production selection behavior change, final-render execution, curtains/textiles candidate generation, thin-pool fixes, side-table/storage/media changes, lighting changes, or additional aesthetic-quality implementation.
-Expected next artifact: Fresh Sam/Chief route for exactly one next local/dev boundary, if PM-001 should continue.
-SLA: None while blocked.
-Last architect instruction: PR #273 merged at `6e566d8ebbbd04fb06623406ae950e5a710551e4` after PR Review Agent approval, recording the post-PR #270 validation evidence and consuming the PR #272 validation route. PM-001 remains below the investor-demo bar: required sofa/coffee-table/rug still report `required_closest_available`, curtains/textiles remain zero-candidate, lighting regressed to `Hahn E14 8-lights Linen Chandelier` for `floor or table lighting`, and final-render fidelity was not executed.
+Status: ROUTED
+Branch: pending Product Matching Agent acknowledgement after this route PR merges
+Allowed scope: After this docs-only route PR is approved and merged, Product Matching Agent may implement exactly one narrow local/dev lighting role-fit regression guard/test for the PR #273 evidence regression where `floor or table lighting` persisted `Hahn E14 8-lights Linen Chandelier`. The implementation must prevent chandeliers/pendants/ceiling fixtures from persisting for `floor or table lighting` after post-processing when eligible floor/table lamps exist, using focused local/dev domain code/tests/docs only.
+Forbidden scope: No validation pass, blind validation, controlled preview, production deploy, production flag, live app action, live catalog write, live ingestion, DB/schema/generated type change, runtime allowlist expansion, payment/checkout change, floor-plan work, Catalog-First runtime coupling, production Product Matching execution, default-on production activation, unrelated UI redesign, broad catalogue rewrite, catalogue/product row mutation, broad scoring rewrite outside this lighting role-fit regression guard/test, prompt/runtime image-generation behavior change, production selection behavior change beyond the narrow local/dev guard/test, final-render execution, curtains/textiles candidate generation, thin-pool fixes, side-table/storage/media changes, required sofa/coffee/rug changes, or additional aesthetic-quality implementation.
+Expected next artifact: Product Matching Agent acknowledgement with branch/scope/stop-rule confirmation after this route PR merges, then one focused implementation PR for PR Review Agent review.
+SLA: Product Matching Agent must acknowledge within one owner heartbeat after the route PR merges; after acknowledgement, it must show branch/PR/evidence progress or an explicit blocker within 30 minutes.
+Last architect instruction: PR #274 merged at `76391a9c5e55126e0aedc7ba6a0763be1d9e61d1`, returning PM-001 to BLOCKED after PR #273 evidence. Chief now routes exactly one narrow local/dev lighting role-fit regression guard/test because PR #273 showed `Hahn E14 8-lights Linen Chandelier` persisted for `floor or table lighting` even though earlier lighting guard evidence had rejected ceiling fixtures when eligible floor/table lamps existed.
 Agent ack: Product Matching Agent acknowledged the PR #272 route on branch `codex/pm001-post-270-validation`, confirmed stop rules, ran exactly one valid local/dev validation pass, and recorded evidence in `docs/Tracks/v2-commercial/product-matching-evals/manual-qa/2026-05-29-pm001-post-270-validation.md`.
-Current PR: none
-Blocker: `NEXT_PM001_LOCAL_DEV_FIX_BOUNDARY_REQUIRED` - likely smallest next boundary is a narrow local/dev lighting role-fit regression guard/test, but no implementation, validation, or execution boundary is currently approved.
+Current PR: #275 (<https://github.com/Trueflutter/ritzy-studio/pull/275>)
+Blocker: Waiting for PR Review Agent approval and merge of this docs-only route before Product Matching Agent acknowledgement/implementation.
 
 ### Ticket MI-001
 
