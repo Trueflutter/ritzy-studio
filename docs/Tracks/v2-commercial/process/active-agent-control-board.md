@@ -109,16 +109,16 @@ Docs-only, test-only, domain-only, and dry-run-only work may proceed only when t
 ### Ticket PM-001
 
 Owner: Product Matching Agent
-Status: REVIEW_REQUESTED
-Branch: `codex/pm001-post-270-validation`
-Allowed scope: The PR #272-routed single post-PR #270 local/dev validation pass on project `4207ade6-2604-4e15-9b05-ffa77531d3d2`, room `75e18e73-cf69-4b2e-b192-009fbc135b38`, concept `d9cc2f82-6d8f-455c-8c8d-e08522e0938c`, Sam local/dev account, localhost/local dev, existing catalogue rows only. The validation pass has been consumed; allowed writes were only existing app-flow local/dev concept/job/shopping-list rows required by that one validation flow.
+Status: BLOCKED
+Branch: none
+Allowed scope: None while blocked. The PR #272-routed single post-PR #270 local/dev validation pass has been consumed and recorded by PR #273.
 Forbidden scope: No second validation pass, blind validation beyond the single routed pass, controlled preview, production deploy, production flag, live app action, live catalog write, live ingestion, DB/schema/generated type change, runtime allowlist expansion, payment/checkout change, floor-plan work, Catalog-First runtime coupling, production Product Matching execution, default-on production activation, unrelated UI redesign, broad catalogue rewrite, catalogue/product row mutation, broad scoring rewrite, prompt/runtime image-generation behavior change beyond the validation flow, production selection behavior change, final-render execution, curtains/textiles candidate generation, thin-pool fixes, side-table/storage/media changes, lighting changes, or additional aesthetic-quality implementation.
-Expected next artifact: PR Review Agent verdict on PR #273.
-SLA: PR Review Agent review or explicit blocker on PR #273.
-Last architect instruction: 2026-05-29 PR #270 merged at `3a8003c6b01d2cb74c686e8ba85e54bb34f5cac3` after PR Review Agent approval and explicit implementation-agent merge instruction. Chief now routes exactly one post-PR #270 local/dev validation pass to capture the enriched required-role `required_closest_available` evidence and determine the next narrow boundary.
+Expected next artifact: Fresh Sam/Chief route for exactly one next local/dev boundary, if PM-001 should continue.
+SLA: None while blocked.
+Last architect instruction: PR #273 merged at `6e566d8ebbbd04fb06623406ae950e5a710551e4` after PR Review Agent approval, recording the post-PR #270 validation evidence and consuming the PR #272 validation route. PM-001 remains below the investor-demo bar: required sofa/coffee-table/rug still report `required_closest_available`, curtains/textiles remain zero-candidate, lighting regressed to `Hahn E14 8-lights Linen Chandelier` for `floor or table lighting`, and final-render fidelity was not executed.
 Agent ack: Product Matching Agent acknowledged the PR #272 route on branch `codex/pm001-post-270-validation`, confirmed stop rules, ran exactly one valid local/dev validation pass, and recorded evidence in `docs/Tracks/v2-commercial/product-matching-evals/manual-qa/2026-05-29-pm001-post-270-validation.md`.
-Current PR: #273 (<https://github.com/Trueflutter/ritzy-studio/pull/273>)
-Blocker: Waiting for PR Review Agent review of the post-PR #270 validation evidence; no second validation pass or broader PM-001 implementation is approved.
+Current PR: none
+Blocker: `NEXT_PM001_LOCAL_DEV_FIX_BOUNDARY_REQUIRED` - likely smallest next boundary is a narrow local/dev lighting role-fit regression guard/test, but no implementation, validation, or execution boundary is currently approved.
 
 ### Ticket MI-001
 

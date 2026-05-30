@@ -1,12 +1,18 @@
 # Product Matching Engine Agent Comms
 
 ## Current PR
-PR #273: <https://github.com/Trueflutter/ritzy-studio/pull/273>
+None.
 
 ## Current stage
-PM001_POST_270_LOCAL_DEV_VALIDATION_REVIEW_REQUESTED
+PM001_POST_273_VALIDATION_EVIDENCE_MERGED_BLOCKED
 
 ## Blockers
+PR #273 merged at `6e566d8ebbbd04fb06623406ae950e5a710551e4` after PR Review Agent approval. It recorded the single PR #272-routed post-PR #270 local/dev validation pass and consumed that validation boundary. Evidence is recorded in `docs/Tracks/v2-commercial/product-matching-evals/manual-qa/2026-05-29-pm001-post-270-validation.md`.
+
+The post-PR #270 validation evidence records job `3f99c0de-b9a4-472f-9db3-8f617613d3f4`, shopping list `99062356-7a63-4438-bd4b-461cc43c66ba`, 35 item rows, and 10 selected rows. PR #270's enriched `required_closest_available` blocker evidence is present for `sofas::anchor_seating`, `coffee_tables::coffee_table`, and `rugs::generous_rug`, but PM-001 remains below the investor-demo bar: those three required roles still block as `required_closest_available`, curtains/textiles remain zero-candidate, lighting regressed to `Hahn E14 8-lights Linen Chandelier` for `floor or table lighting`, and final-render fidelity was not executed.
+
+No second validation pass, Product Matching execution, implementation, final-render execution, controlled preview, live app action, catalogue/product write, live ingestion/catalog write, DB/schema/generated type change, runtime allowlist expansion, payment/checkout change, broad scoring rewrite, prompt/runtime image-generation behavior change, curtains/textiles candidate generation, thin-pool fix, side-table/storage/media change, lighting change, floor-plan work, production deploy/flag, or Catalog-First coupling is approved.
+
 PR #270 merged at `3a8003c6b01d2cb74c686e8ba85e54bb34f5cac3` after PR Review Agent approval and explicit implementation-agent merge instruction. It completed the PR #269-routed narrow local/dev required-role QA hardening/audit slice for `sofas::anchor_seating`, `coffee_tables::coffee_table`, and `rugs::generous_rug`. The implementation took the audit-hardening path: `required_closest_available` blockers now include deterministic audit details for candidate pool count, rejected candidates/top rejection reasons, weakness reasons, selected-product metadata gaps, and selected-product dimension evidence gaps. Verification claimed and reviewed: `git diff --check`; `pnpm --filter @ritzy-studio/domain exec tsx src/product-matching-confidence.test.ts`; `pnpm --filter @ritzy-studio/domain typecheck`.
 
 No Product Matching execution, validation pass, blind validation, controlled preview, visual-sourcing runtime call, app action, shopping-list refresh/create, catalogue/product mutation, live ingestion/catalog write, DB/schema/generated type change, runtime allowlist expansion, production action, prompt/runtime image-generation behavior change, broad scoring rewrite, curtains/textiles candidate generation, thin-pool fix, side-table/storage/media change, lighting change, final-render execution, floor-plan work, payment/checkout change, or Catalog-First coupling was performed.
@@ -552,7 +558,7 @@ PR #160 completed the docs-only controlled-preview execution-boundary package af
 PR #170 merged to clean stale mailbox state after PR #160 merged. This was docs/mailbox only.
 
 ## Next intended action
-Product Matching Agent: PR #273 is awaiting PR Review Agent verdict for the already-consumed post-PR #270 validation evidence. Do not run another validation pass or open another evidence PR from this route. After PR #273 merges, PM-001 should remain blocked with no active implementation/execution/validation boundary until Sam/Chief routes a fresh exact next slice. Evidence from PR #273 may inform a future request for a narrow local/dev lighting role-fit regression guard/test, but this note is not authorization to implement it.
+PM-001 is blocked pending a fresh exact Sam/Chief route. Do not run another validation pass, Product Matching execution, implementation, final-render execution, controlled preview, live app action, catalogue/product write, live ingestion/catalog write, DB/schema/generated type change, runtime allowlist expansion, payment/checkout change, broad scoring rewrite, prompt/runtime image-generation behavior change, curtains/textiles candidate generation, thin-pool fix, side-table/storage/media change, lighting change, floor-plan work, production deploy/flag, or Catalog-First coupling from the merged PR #273 evidence. The likely smallest next boundary to request is a narrow local/dev lighting role-fit regression guard/test for the `floor or table lighting` chandelier regression, but this note is not authorization to implement it.
 
 PRODUCT_MATCHING_AGENT_ACK: 2026-05-29 - Product Matching Agent acknowledges the PM-001 visual-sourcing timeout/retry/fallback evidence route on branch `codex/pm001-visual-timeout-evidence-impl`, based on latest `origin/main` at `e00f2784cc84f332a462ad5f387f863a486314ad`. Scope accepted: local/dev Product Matching code/tests/docs only for the narrow visual-sourcing timeout/retry/fallback evidence slice; no validation pass or app-flow execution. Stop rules accepted: no Product Matching validation pass, blind validation, app action, controlled preview, visual-sourcing runtime call through the app flow, draft shopping-list write, catalogue/product mutation, live ingestion/catalog write, DB/schema/generated type change, runtime allowlist change, production deploy/flag/default-on activation, prompt/runtime image-generation behavior change, broad scoring rewrite, unrelated product-quality change, payment/checkout, floor-plan work, final-render execution, or Catalog-First runtime coupling.
 
