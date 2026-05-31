@@ -882,8 +882,9 @@ export function composeRoomProductOptions({
           right.match.score + right.affinity - (left.match.score + left.affinity) ||
           left.index - right.index
       );
+    const roleFitMatches = applyLightingRoleFitGuardToRoleMatches(role, categoryMatches);
     const diversifiedMatches = applyRefreshDiversityToRoleMatches({
-      matches: categoryMatches,
+      matches: roleFitMatches,
       role,
       acceptedCategories,
       refreshDiversityHistory
@@ -918,6 +919,22 @@ export function composeRoomProductOptions({
   }
 
   return result;
+}
+
+function applyLightingRoleFitGuardToRoleMatches<T extends { match: RankedProductMatch }>(
+  role: RoomProductRoleSpec,
+  matches: T[]
+) {
+  if (!isFloorOrTableLightingRole(role)) {
+    return matches;
+  }
+
+  const hasEligibleFloorOrTableLamp = matches.some(({ match }) => isFloorOrTableLampCandidate(match));
+  if (!hasEligibleFloorOrTableLamp) {
+    return matches;
+  }
+
+  return matches.filter(({ match }) => !isCeilingLightingFixtureCandidate(match));
 }
 
 function applyRefreshDiversityToRoleMatches({

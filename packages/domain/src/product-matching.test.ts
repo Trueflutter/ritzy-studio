@@ -1081,6 +1081,101 @@ const thinFloorTableLightingPool = buildRoleScopedCandidatePools({
 assert.equal(thinFloorTableLightingPool.pools[0].candidates[0]?.name, "Hahn E14 8-Lights Linen Chandelier");
 assert.equal(thinFloorTableLightingPool.pools[0].rejectionReasons.lighting_role_fixture_mismatch, undefined);
 
+const floorTableLightingOptions = composeRoomProductOptions({
+  ranked: rankProductMatches({
+    roomType: "living room",
+    conceptText: "warm brass table lamp beside a soft neutral sofa",
+    budgetMaxAed: 10000,
+    candidates: [
+      {
+        ...base,
+        id: "00000000-0000-4000-8000-000000000562",
+        name: "Hahn E14 8-Lights Linen Chandelier",
+        categoryNormalized: "lighting",
+        availability: "in stock",
+        priceAed: 950,
+        primaryImageUrl: "https://example.com/hahn-linen-chandelier.jpg",
+        materialTags: ["linen", "metal"]
+      },
+      {
+        ...base,
+        id: "00000000-0000-4000-8000-000000000563",
+        name: "Aged Brass Table Lamp With Linen Shade",
+        categoryNormalized: "lighting",
+        availability: "in stock",
+        priceAed: 750,
+        primaryImageUrl: "https://example.com/aged-brass-table-lamp.jpg",
+        materialTags: ["brass", "linen"]
+      }
+    ]
+  }),
+  roles: [
+    {
+      category: "lighting",
+      label: "floor or table lighting",
+      visualBrief: "aged brass table lamp with linen shade",
+      quantity: 1,
+      priority: "supporting"
+    }
+  ],
+  optionsPerRole: 2
+});
+assert.deepEqual(
+  floorTableLightingOptions[0].options.map((option) => option.name),
+  ["Aged Brass Table Lamp With Linen Shade"]
+);
+const floorTableLightingRows = buildShoppingListItemRows({
+  roleOptions: floorTableLightingOptions,
+  selectedProductIdByRole: new Map([["lighting", floorTableLightingOptions[0].options[0].id]])
+});
+const floorTableLightingSnapshot = buildPersistedSelectionSnapshot({
+  shoppingListId: "shopping-list-lighting",
+  estimatedTotalAed: selectedItemsTotalAed(floorTableLightingRows),
+  sourcePath: "visual",
+  roleOptions: floorTableLightingOptions,
+  itemRows: floorTableLightingRows,
+  sourceSelectedProductIdByCategory: new Map([["lighting", "00000000-0000-4000-8000-000000000562"]])
+});
+assert.equal(
+  floorTableLightingSnapshot.roles[0].selectedProductName,
+  "Aged Brass Table Lamp With Linen Shade"
+);
+assert.equal(
+  floorTableLightingSnapshot.roles[0].optionProductIds.includes("00000000-0000-4000-8000-000000000562"),
+  false
+);
+assert.equal(floorTableLightingSnapshot.roles[0].postProcessingReplacement, true);
+
+const thinFloorTableLightingOptions = composeRoomProductOptions({
+  ranked: rankProductMatches({
+    roomType: "living room",
+    conceptText: "warm soft-neutral living room with layered lighting",
+    budgetMaxAed: 10000,
+    candidates: [
+      {
+        ...base,
+        id: "00000000-0000-4000-8000-000000000564",
+        name: "Hahn E14 8-Lights Linen Chandelier",
+        categoryNormalized: "lighting",
+        availability: "in stock",
+        priceAed: 950,
+        primaryImageUrl: "https://example.com/hahn-linen-chandelier.jpg",
+        materialTags: ["linen", "metal"]
+      }
+    ]
+  }),
+  roles: [
+    {
+      category: "lighting",
+      label: "floor or table lighting",
+      visualBrief: "warm shaded floor or table lamp",
+      quantity: 1,
+      priority: "supporting"
+    }
+  ]
+});
+assert.equal(thinFloorTableLightingOptions[0].options[0]?.name, "Hahn E14 8-Lights Linen Chandelier");
+
 const mediaConsolePool = buildRoleScopedCandidatePools({
   roomType: "living room",
   conceptText: "walnut TV media console below the wall-mounted television",
