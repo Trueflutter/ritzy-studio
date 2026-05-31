@@ -109,16 +109,16 @@ Docs-only, test-only, domain-only, and dry-run-only work may proceed only when t
 ### Ticket PM-001
 
 Owner: Product Matching Agent
-Status: REVIEW_REQUESTED
-Branch: `codex/pm001-post-277-validation-evidence`
-Allowed scope: Docs-only evidence and coordination for the single PR #278-routed local/dev validation pass after PR #277 merged at `fca9ccaecae34d8df7a58fbb42e8cfc9d78a49fb`. The consumed pass used project `4207ade6-2604-4e15-9b05-ffa77531d3d2`, room `75e18e73-cf69-4b2e-b192-009fbc135b38`, concept `d9cc2f82-6d8f-455c-8c8d-e08522e0938c`, Sam local/dev account, localhost/local dev, and existing catalogue rows only. Evidence must record job `112bc70e-0229-4f34-856d-716bb54dd46f`, shopping list `99062356-7a63-4438-bd4b-461cc43c66ba`, selected SKUs, persisted-selection snapshot, visual-sourcing diagnostics, zero/thin pool warnings, closest-available blockers, curtains/textiles status, render/list fidelity limits, and whether PR #277 prevented chandeliers/pendants/ceiling fixtures from persisting for `floor or table lighting`.
+Status: BLOCKED
+Branch: none
+Allowed scope: None until a fresh Sam/Chief route approves the next exact PM-001 local/dev boundary. PR #280 recorded the consumed PR #278-routed local/dev validation pass after PR #277 merged at `fca9ccaecae34d8df7a58fbb42e8cfc9d78a49fb`.
 Forbidden scope: No second validation pass, blind validation, controlled preview, preview QA, production deploy, production flag, live app action, live catalog write, live ingestion, DB/schema/generated type change, runtime allowlist expansion, payment/checkout change, floor-plan work, Catalog-First runtime coupling, production Product Matching execution, default-on production activation, unrelated UI redesign, broad catalogue rewrite, catalogue/product row mutation, broad scoring rewrite, prompt/runtime image-generation behavior change, final-render execution, curtains/textiles candidate generation, thin-pool fixes, side-table/storage/media changes, required sofa/coffee/rug changes, lighting implementation changes, or additional aesthetic-quality implementation.
-Expected next artifact: PR Review Agent strict verdict on PR #280. After the evidence PR merges, PM-001 must stop for a fresh Chief/Sam route before any further Product Matching execution or implementation.
-SLA: Product Matching Agent acknowledged PR #278 after merge, consumed exactly one valid validation pass, opened PR #280, and requested strict review.
-Last architect instruction: PR Review Agent approved PR #278 at `908b39c66a3ce35ebfa2b3b23872ca255c3dedb0` and explicitly instructed the implementation agent to merge and proceed to the single post-#277 validation pass. PR #278 merged at `f4fd37df351c1c3e94784c03fc33be89fa9cd6f3`.
+Expected next artifact: Fresh Sam/Chief route for the next exact PM-001 boundary, or an explicit decision to park PM-001.
+SLA: None while blocked.
+Last architect instruction: PR #280 merged at `8d0863ad8a21cf45cb22bb3d736ac4ec9603d8cc` after strict PR Review Agent approval at unchanged head `78741d7ca6da6d2819b7cab328e0e6fecae21ac0`. The PR recorded the consumed PR #278-routed validation evidence and instructed PM-001 to stop for a fresh Chief/Sam route.
 Agent ack: Product Matching Agent acknowledged the PR #278 route on branch `codex/pm001-post-277-validation-evidence`, confirmed scope/stop rules in PR #278 comment `https://github.com/Trueflutter/ritzy-studio/pull/278#issuecomment-4586643971`, and consumed the single valid validation pass.
-Current PR: #280 (<https://github.com/Trueflutter/ritzy-studio/pull/280>); #278 merged (<https://github.com/Trueflutter/ritzy-studio/pull/278>); #277 merged (<https://github.com/Trueflutter/ritzy-studio/pull/277>)
-Blocker: The PR #278 validation boundary is consumed. No second validation pass or follow-up implementation is approved; after this docs-only evidence PR, PM-001 needs a fresh Chief/Sam route.
+Current PR: none; #280 merged (<https://github.com/Trueflutter/ritzy-studio/pull/280>); #278 merged (<https://github.com/Trueflutter/ritzy-studio/pull/278>); #277 merged (<https://github.com/Trueflutter/ritzy-studio/pull/277>)
+Blocker: `NEXT_PM001_POST_280_BOUNDARY_REQUIRED`
 
 ### Ticket MI-001
 
