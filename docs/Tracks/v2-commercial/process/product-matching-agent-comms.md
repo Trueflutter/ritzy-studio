@@ -1,17 +1,17 @@
 # Product Matching Engine Agent Comms
 
 ## Current PR
-Pending evidence PR on branch `codex/pm001-post-277-validation-evidence`; PR #278 and PR #277 merged.
+PR #280: <https://github.com/Trueflutter/ritzy-studio/pull/280>; PR #278 and PR #277 merged.
 
 ## Current stage
-PM001_POST_277_VALIDATION_EVIDENCE_IN_PROGRESS
+PM001_POST_277_VALIDATION_EVIDENCE_REVIEW_REQUESTED
 
 ## Blockers
 The PR #278-routed post-#277 validation boundary has been consumed. No second validation pass, blind validation, controlled preview, preview QA, browser-click app action, shopping-list refresh/create, visual-sourcing runtime call, catalogue/product row mutation, live write/ingestion, production deploy/flag, DB/schema/generated type change, broad/runtime allowlist expansion, payment/checkout change, broad Product Matching scoring rewrite, prompt/runtime image-generation behavior change, curtains/textiles candidate generation, thin-pool fix, side-table/storage/media change, required sofa/coffee/rug change, floor-plan work, final-render execution, or Catalog-First runtime coupling is approved without a fresh Chief/Sam route.
 
 PR #278 merged at `f4fd37df351c1c3e94784c03fc33be89fa9cd6f3` after PR Review Agent approval and explicit implementation-agent merge instruction. Product Matching Agent acknowledged the route on PR #278 in <https://github.com/Trueflutter/ritzy-studio/pull/278#issuecomment-4586643971>, then ran exactly one valid local/dev validation pass on branch `codex/pm001-post-277-validation-evidence`.
 
-Current required owner action: open one focused docs-only evidence PR and request PR Review Agent strict verdict. After that evidence PR merges, stop for a fresh Chief/Sam route.
+Current required owner action: wait for PR Review Agent strict verdict on PR #280. After that evidence PR merges, stop for a fresh Chief/Sam route.
 
 Validation evidence summary:
 - Job: `112bc70e-0229-4f34-856d-716bb54dd46f` (`succeeded`)
