@@ -1,19 +1,21 @@
 # Product Matching Engine Agent Comms
 
 ## Current PR
-None; PR #280, PR #278, and PR #277 merged.
+PR #283: <https://github.com/Trueflutter/ritzy-studio/pull/283>; PR #282, PR #280, PR #278, and PR #277 merged.
 
 ## Current stage
-PM001_POST_280_BLOCKED_WAITING_FOR_NEXT_BOUNDARY
+PM001_POST_282_HANDOFF_REVIEW_REQUESTED
 
 ## Blockers
-The PR #278-routed post-#277 validation boundary has been consumed. No second validation pass, blind validation, controlled preview, preview QA, browser-click app action, shopping-list refresh/create, visual-sourcing runtime call, catalogue/product row mutation, live write/ingestion, production deploy/flag, DB/schema/generated type change, broad/runtime allowlist expansion, payment/checkout change, broad Product Matching scoring rewrite, prompt/runtime image-generation behavior change, curtains/textiles candidate generation, thin-pool fix, side-table/storage/media change, required sofa/coffee/rug change, floor-plan work, final-render execution, or Catalog-First runtime coupling is approved without a fresh Chief/Sam route.
+PM-001 needs the next exact local/dev boundary after PR #282. No second validation pass, blind validation, controlled preview, preview QA, browser-click app action, shopping-list refresh/create, visual-sourcing runtime call, catalogue/product row mutation, live write/ingestion, production deploy/flag, DB/schema/generated type change, broad/runtime allowlist expansion, payment/checkout change, UI redesign, broad Product Matching scoring rewrite, prompt/runtime image-generation behavior change, curtains/textiles candidate generation, thin-pool fix, side-table/storage/media change, floor-plan work, final-render execution, or Catalog-First runtime coupling is approved without a fresh Chief/Sam route.
+
+PR #282 merged at `c4fd35996a4108dd8ab911590a1372cd375a0d38` after strict PR Review Agent approval at unchanged head `803caed8968e5f7fbdef750b76e1ef6eb202b292`. It completed the narrow local/dev required-role text-fallback status hardening slice: required exact-category deterministic text-fallback selections with score `>= 70` may report `acceptable_match`, while supporting roles and weak required fallback selections remain `closest_available`. Verification reviewed on PR #282 included `git diff --check`, `pnpm --filter @ritzy-studio/web exec tsx app/product-sourcing-text-fallback.test.ts`, and `pnpm --filter @ritzy-studio/web typecheck`.
 
 PR #280 merged at `8d0863ad8a21cf45cb22bb3d736ac4ec9603d8cc` after strict PR Review Agent approval at unchanged head `78741d7ca6da6d2819b7cab328e0e6fecae21ac0`. It recorded the consumed PR #278-routed post-#277 validation evidence.
 
 PR #278 merged at `f4fd37df351c1c3e94784c03fc33be89fa9cd6f3` after PR Review Agent approval and explicit implementation-agent merge instruction. Product Matching Agent acknowledged the route on PR #278 in <https://github.com/Trueflutter/ritzy-studio/pull/278#issuecomment-4586643971>, then ran exactly one valid local/dev validation pass on branch `codex/pm001-post-277-validation-evidence`.
 
-Current required owner action: stop for a fresh Chief/Sam route before any further Product Matching execution, implementation, validation pass, preview QA, final render, live/catalog action, or production action.
+Current required owner action: wait for PR Review Agent strict verdict on PR #283. After the handoff merges, stop for a fresh Chief/Sam route before any further Product Matching execution, implementation, validation pass, preview QA, final render, live/catalog action, or production action.
 
 Validation evidence summary:
 - Job: `112bc70e-0229-4f34-856d-716bb54dd46f` (`succeeded`)
@@ -24,6 +26,8 @@ Validation evidence summary:
 - Evidence file: `docs/Tracks/v2-commercial/product-matching-evals/manual-qa/2026-05-31-pm001-post-277-validation.md`
 - PR #277 lighting guard result: `floor or table lighting` persisted `Frosty Wooden Floor Lamp - 154 cm`, the persisted option pool contained floor/table lamps only, and `Hahn E14 8-lights Linen Chandelier` did not persist.
 - PM-001 remains below the investor-demo bar: sofa/coffee-table/rug still report closest-available quality status, curtains/textiles remain missing/zero-persisted, several support pools are thin, storage/media aesthetic fit remains uncertain, and final render was not executed.
+
+PRODUCT_MATCHING_AGENT_ACK: 2026-05-31 — Product Matching Agent acknowledges the post-#282 docs-only handoff route on branch `codex/pm001-post-282-handoff`, based on `origin/main` at `c4fd35996a4108dd8ab911590a1372cd375a0d38`. Scope accepted: update only the PM-001 board/mailbox handoff to record that PR #282 merged after strict approval and that PM-001 now needs the next exact local/dev boundary. Stop rules accepted: no Product Matching validation, controlled preview, preview QA, live app/catalog action, final render, deploy/flag, DB/schema/generated type changes, payment/checkout, UI redesign, broad scoring rewrite, curtains/textiles generation, thin-pool fixes, side-table/storage/media changes, floor-plan work, or Catalog-First coupling.
 
 PRODUCT_MATCHING_AGENT_ACK: 2026-05-31 — Product Matching Agent acknowledged PR #278 after merge on branch `codex/pm001-post-277-validation-evidence`, based on `origin/main` at `f4fd37df351c1c3e94784c03fc33be89fa9cd6f3`. Scope accepted: exactly one local/dev validation pass for project `4207ade6-2604-4e15-9b05-ffa77531d3d2`, room `75e18e73-cf69-4b2e-b192-009fbc135b38`, concept `d9cc2f82-6d8f-455c-8c8d-e08522e0938c`, Sam local/dev account, localhost/local dev, existing catalogue rows only, with only existing app-flow local/dev concept/job/shopping-list rows required by the validation flow. Stop rules accepted: no second validation pass, controlled preview, preview QA, live app actions, catalogue/product row mutations, live ingestion/catalog writes, production deploys/flags/default-on activation, DB/schema/generated type changes, runtime allowlist expansion, payment/checkout changes, broad scoring rewrites, prompt/runtime image-generation behavior changes, curtains/textiles candidate generation, thin-pool fixes, side-table/storage/media changes, required sofa/coffee/rug changes, floor-plan work, final-render execution, or Catalog-First coupling.
 
@@ -640,7 +644,7 @@ PR #160 completed the docs-only controlled-preview execution-boundary package af
 PR #170 merged to clean stale mailbox state after PR #160 merged. This was docs/mailbox only.
 
 ## Next intended action
-PM-001 is blocked after PR #280 pending a fresh Chief/Sam route. Do not run another validation pass, Product Matching execution, implementation, preview QA, final render, live/catalog action, production action, or resume the old PR #275/#277 lighting guard route without that fresh exact boundary.
+PR #282 merged and this handoff PR records that PM-001 now needs the next exact local/dev boundary. After this handoff PR merges, stop for a fresh Chief/Sam route. Do not run validation, Product Matching execution, implementation, controlled preview, preview QA, final render, live/catalog action, production action, or resume any older PM-001 route without that fresh exact boundary.
 
 PRODUCT_MATCHING_AGENT_ACK: 2026-05-29 - Product Matching Agent acknowledges the PM-001 visual-sourcing timeout/retry/fallback evidence route on branch `codex/pm001-visual-timeout-evidence-impl`, based on latest `origin/main` at `e00f2784cc84f332a462ad5f387f863a486314ad`. Scope accepted: local/dev Product Matching code/tests/docs only for the narrow visual-sourcing timeout/retry/fallback evidence slice; no validation pass or app-flow execution. Stop rules accepted: no Product Matching validation pass, blind validation, app action, controlled preview, visual-sourcing runtime call through the app flow, draft shopping-list write, catalogue/product mutation, live ingestion/catalog write, DB/schema/generated type change, runtime allowlist change, production deploy/flag/default-on activation, prompt/runtime image-generation behavior change, broad scoring rewrite, unrelated product-quality change, payment/checkout, floor-plan work, final-render execution, or Catalog-First runtime coupling.
 
