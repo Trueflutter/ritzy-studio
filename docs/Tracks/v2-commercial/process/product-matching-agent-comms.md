@@ -1,17 +1,17 @@
 # Product Matching Engine Agent Comms
 
 ## Current PR
-Pending implementation PR; branch `codex/pm001-lighting-regression-guard`.
+PR #277: <https://github.com/Trueflutter/ritzy-studio/pull/277>
 
 ## Current stage
-PM001_LIGHTING_ROLE_REGRESSION_GUARD_IN_PROGRESS
+PM001_LIGHTING_ROLE_REGRESSION_GUARD_REVIEW_REQUESTED
 
 ## Blockers
-None while the focused implementation PR is being prepared.
+Waiting for PR Review Agent strict verdict on PR #277.
 
-Product Matching Agent acknowledged the PR #275 route on branch `codex/pm001-lighting-regression-guard` in PR #275 comment <https://github.com/Trueflutter/ritzy-studio/pull/275#issuecomment-4586592270>, confirmed the exact scope and stop rules, and is implementing the narrow local/dev Product Matching domain guard/test.
+Product Matching Agent acknowledged the PR #275 route on branch `codex/pm001-lighting-regression-guard` in PR #275 comment <https://github.com/Trueflutter/ritzy-studio/pull/275#issuecomment-4586592270>, confirmed the exact scope and stop rules, and opened PR #277 for the narrow local/dev Product Matching domain guard/test.
 
-Current required owner action: open one focused implementation PR for PR Review Agent review. If completion requires anything outside the PR #275 route, Product Matching Agent must stop and leave an explicit blocker naming the smallest required boundary.
+Current required owner action: wait for PR Review Agent strict verdict on PR #277. If review requests docs/check fixes, resume only within the PR #275 lighting role-fit regression guard/test boundary.
 
 CHIEF_ARCHITECT_REPLY:
 PM-001 is routed through this docs-only PR after PR #274 merged and PR #273 evidence showed a lighting role-fit regression.
