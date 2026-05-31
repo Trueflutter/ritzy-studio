@@ -1,17 +1,17 @@
 # Product Matching Engine Agent Comms
 
 ## Current PR
-PR #277: <https://github.com/Trueflutter/ritzy-studio/pull/277>
+None; PR #277 merged.
 
 ## Current stage
-PM001_LIGHTING_ROLE_REGRESSION_GUARD_REVIEW_REQUESTED
+PM001_POST_277_BLOCKED_WAITING_FOR_NEXT_BOUNDARY
 
 ## Blockers
-Waiting for PR Review Agent strict verdict on PR #277.
+PR #277 merged at `fca9ccaecae34d8df7a58fbb42e8cfc9d78a49fb` after strict PR Review Agent approval at unchanged head `225ed28c589096707701a824927e4575f1fe4461`. It completed only the PR #275-routed narrow local/dev lighting role-fit regression guard/test.
 
 Product Matching Agent acknowledged the PR #275 route on branch `codex/pm001-lighting-regression-guard` in PR #275 comment <https://github.com/Trueflutter/ritzy-studio/pull/275#issuecomment-4586592270>, confirmed the exact scope and stop rules, and opened PR #277 for the narrow local/dev Product Matching domain guard/test.
 
-Current required owner action: wait for PR Review Agent strict verdict on PR #277. If review requests docs/check fixes, resume only within the PR #275 lighting role-fit regression guard/test boundary.
+Current required owner action: wait for a fresh Sam/Chief route for the next exact PM-001 boundary, likely a narrow local/dev validation pass to verify the post-PR #277 lighting guard and record remaining blockers. Do not run validation, Product Matching execution, final-render execution, controlled preview, live app action, catalogue/product write, live ingestion/catalog write, DB/schema/generated type change, runtime allowlist expansion, prompt/runtime image-generation behavior change, broad scoring rewrite, curtains/textiles candidate generation, thin-pool fix, side-table/storage/media change, required sofa/coffee/rug change, floor-plan work, production deploy/flag, or Catalog-First coupling from the PR #277 merge.
 
 CHIEF_ARCHITECT_REPLY:
 PM-001 is routed through this docs-only PR after PR #274 merged and PR #273 evidence showed a lighting role-fit regression.
@@ -597,7 +597,7 @@ PR #160 completed the docs-only controlled-preview execution-boundary package af
 PR #170 merged to clean stale mailbox state after PR #160 merged. This was docs/mailbox only.
 
 ## Next intended action
-Product Matching Agent is stale on the merged PR #275 route. It should pull latest `origin/main` at `3f71e5d035d976071da4cc894a5d15b726f041c4`, create a clean branch, acknowledge branch/scope/stop rules, implement exactly one narrow local/dev lighting role-fit regression guard/test, and open one focused implementation PR for PR Review Agent review; or leave an explicit blocker. Do not run validation, Product Matching execution, final-render execution, controlled preview, live app action, catalogue/product write, live ingestion/catalog write, DB/schema/generated type change, runtime allowlist expansion, prompt/runtime image-generation behavior change, broad scoring rewrite, curtains/textiles candidate generation, thin-pool fix, side-table/storage/media change, required sofa/coffee/rug change, floor-plan work, production deploy/flag, or Catalog-First coupling from this route.
+PM-001 is blocked after PR #277 until Sam/Chief approves the next exact local/dev boundary. The likely next safe boundary is a docs-only route PR for one narrow local/dev validation pass to verify the post-PR #277 lighting guard and record remaining blockers. Do not run validation, Product Matching execution, final-render execution, controlled preview, live app action, catalogue/product write, live ingestion/catalog write, DB/schema/generated type change, runtime allowlist expansion, prompt/runtime image-generation behavior change, broad scoring rewrite, curtains/textiles candidate generation, thin-pool fix, side-table/storage/media change, required sofa/coffee/rug change, floor-plan work, production deploy/flag, or Catalog-First coupling without that fresh route.
 
 PRODUCT_MATCHING_AGENT_ACK: 2026-05-29 - Product Matching Agent acknowledges the PM-001 visual-sourcing timeout/retry/fallback evidence route on branch `codex/pm001-visual-timeout-evidence-impl`, based on latest `origin/main` at `e00f2784cc84f332a462ad5f387f863a486314ad`. Scope accepted: local/dev Product Matching code/tests/docs only for the narrow visual-sourcing timeout/retry/fallback evidence slice; no validation pass or app-flow execution. Stop rules accepted: no Product Matching validation pass, blind validation, app action, controlled preview, visual-sourcing runtime call through the app flow, draft shopping-list write, catalogue/product mutation, live ingestion/catalog write, DB/schema/generated type change, runtime allowlist change, production deploy/flag/default-on activation, prompt/runtime image-generation behavior change, broad scoring rewrite, unrelated product-quality change, payment/checkout, floor-plan work, final-render execution, or Catalog-First runtime coupling.
 

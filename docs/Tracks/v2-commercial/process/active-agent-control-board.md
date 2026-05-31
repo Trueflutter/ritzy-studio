@@ -109,16 +109,16 @@ Docs-only, test-only, domain-only, and dry-run-only work may proceed only when t
 ### Ticket PM-001
 
 Owner: Product Matching Agent
-Status: REVIEW_REQUESTED
-Branch: `codex/pm001-lighting-regression-guard`
-Allowed scope: After this docs-only route PR is approved and merged, Product Matching Agent may implement exactly one narrow local/dev lighting role-fit regression guard/test for the PR #273 evidence regression where `floor or table lighting` persisted `Hahn E14 8-lights Linen Chandelier`. The implementation must prevent chandeliers/pendants/ceiling fixtures from persisting for `floor or table lighting` after post-processing when eligible floor/table lamps exist, using focused local/dev domain code/tests/docs only.
-Forbidden scope: No validation pass, blind validation, controlled preview, production deploy, production flag, live app action, live catalog write, live ingestion, DB/schema/generated type change, runtime allowlist expansion, payment/checkout change, floor-plan work, Catalog-First runtime coupling, production Product Matching execution, default-on production activation, unrelated UI redesign, broad catalogue rewrite, catalogue/product row mutation, broad scoring rewrite outside this lighting role-fit regression guard/test, prompt/runtime image-generation behavior change, production selection behavior change beyond the narrow local/dev guard/test, final-render execution, curtains/textiles candidate generation, thin-pool fixes, side-table/storage/media changes, required sofa/coffee/rug changes, or additional aesthetic-quality implementation.
-Expected next artifact: PR Review Agent strict verdict on PR #277.
-SLA: Product Matching Agent acknowledged after the stale-SLA follow-up and opened focused implementation PR #277 for review.
-Last architect instruction: PR #275 merged at `3f71e5d035d976071da4cc894a5d15b726f041c4`, routing exactly one narrow local/dev lighting role-fit regression guard/test. Chief routed Product Matching Agent in PR #275 comment `https://github.com/Trueflutter/ritzy-studio/pull/275#issuecomment-4585081135`, then posted stale-SLA follow-up `https://github.com/Trueflutter/ritzy-studio/pull/275#issuecomment-4585165178` after no acknowledgement or implementation PR appeared.
+Status: BLOCKED
+Branch: none
+Allowed scope: None until a fresh Sam/Chief route approves the next exact PM-001 local/dev boundary. PR #277 completed only the PR #275-routed narrow local/dev lighting role-fit regression guard/test.
+Forbidden scope: No validation pass, blind validation, controlled preview, production deploy, production flag, live app action, live catalog write, live ingestion, DB/schema/generated type change, runtime allowlist expansion, payment/checkout change, floor-plan work, Catalog-First runtime coupling, production Product Matching execution, default-on production activation, unrelated UI redesign, broad catalogue rewrite, catalogue/product row mutation, broad scoring rewrite, prompt/runtime image-generation behavior change, final-render execution, curtains/textiles candidate generation, thin-pool fixes, side-table/storage/media changes, required sofa/coffee/rug changes, or additional aesthetic-quality implementation without a fresh exact route.
+Expected next artifact: Fresh Sam/Chief route for the next exact PM-001 boundary, likely a narrow local/dev validation pass to verify the post-PR #277 lighting guard and record remaining blockers; or an explicit decision to park PM-001.
+SLA: None while blocked.
+Last architect instruction: PR #277 merged at `fca9ccaecae34d8df7a58fbb42e8cfc9d78a49fb` after strict PR Review Agent approval at unchanged head `225ed28c589096707701a824927e4575f1fe4461`. The merge completed the PR #275-routed narrow local/dev lighting role-fit regression guard/test only.
 Agent ack: Product Matching Agent acknowledged the PR #275 route on branch `codex/pm001-lighting-regression-guard`, confirmed scope/stop rules in PR #275 comment `https://github.com/Trueflutter/ritzy-studio/pull/275#issuecomment-4586592270`, and opened PR #277 for the focused local/dev lighting role-fit regression guard/test.
-Current PR: #277 (<https://github.com/Trueflutter/ritzy-studio/pull/277>)
-Blocker: waiting for PR Review Agent strict verdict.
+Current PR: none; #277 merged (<https://github.com/Trueflutter/ritzy-studio/pull/277>)
+Blocker: `NEXT_PM001_POST_277_LOCAL_DEV_BOUNDARY_REQUIRED`
 
 ### Ticket MI-001
 
