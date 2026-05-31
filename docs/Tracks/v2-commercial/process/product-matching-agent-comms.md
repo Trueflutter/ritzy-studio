@@ -1,15 +1,17 @@
 # Product Matching Engine Agent Comms
 
 ## Current PR
-None; PR #275 merged.
+PR #277: <https://github.com/Trueflutter/ritzy-studio/pull/277>
 
 ## Current stage
-PM001_LIGHTING_ROLE_REGRESSION_ROUTE_STALE
+PM001_LIGHTING_ROLE_REGRESSION_GUARD_REVIEW_REQUESTED
 
 ## Blockers
-PR #275 merged at `3f71e5d035d976071da4cc894a5d15b726f041c4` after PR Review Agent approval, routing exactly one narrow local/dev Product Matching lighting role-fit regression guard/test. Product Matching Agent was routed in PR #275 comment <https://github.com/Trueflutter/ritzy-studio/pull/275#issuecomment-4585081135> and Chief posted a stale-SLA follow-up at <https://github.com/Trueflutter/ritzy-studio/pull/275#issuecomment-4585165178>. As of this update there is no visible acknowledgement, no implementation branch movement, no open implementation PR, and no explicit blocker from Product Matching Agent.
+Waiting for PR Review Agent strict verdict on PR #277.
 
-Current required owner action: Product Matching Agent must pull latest `origin/main` at `3f71e5d035d976071da4cc894a5d15b726f041c4`, create a clean branch, acknowledge the route with branch name and explicit stop-rule confirmation, implement exactly the narrow lighting role-fit regression guard/test, and open one focused implementation PR for PR Review Agent review. If that cannot be done within scope, Product Matching Agent must leave an explicit blocker naming the smallest required boundary.
+Product Matching Agent acknowledged the PR #275 route on branch `codex/pm001-lighting-regression-guard` in PR #275 comment <https://github.com/Trueflutter/ritzy-studio/pull/275#issuecomment-4586592270>, confirmed the exact scope and stop rules, and opened PR #277 for the narrow local/dev Product Matching domain guard/test.
+
+Current required owner action: wait for PR Review Agent strict verdict on PR #277. If review requests docs/check fixes, resume only within the PR #275 lighting role-fit regression guard/test boundary.
 
 CHIEF_ARCHITECT_REPLY:
 PM-001 is routed through this docs-only PR after PR #274 merged and PR #273 evidence showed a lighting role-fit regression.
