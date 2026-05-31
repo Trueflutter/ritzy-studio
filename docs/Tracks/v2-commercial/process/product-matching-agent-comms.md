@@ -1,17 +1,46 @@
 # Product Matching Engine Agent Comms
 
 ## Current PR
-PR #277: <https://github.com/Trueflutter/ritzy-studio/pull/277>
+PR #278: <https://github.com/Trueflutter/ritzy-studio/pull/278>; PR #277 merged.
 
 ## Current stage
-PM001_LIGHTING_ROLE_REGRESSION_GUARD_REVIEW_REQUESTED
+PM001_POST_277_VALIDATION_ROUTE_REVIEW_REQUESTED
 
 ## Blockers
-Waiting for PR Review Agent strict verdict on PR #277.
+Product Matching validation is not yet approved. The post-#277 validation pass is only allowed after this docs-only route PR is approved and merged.
 
-Product Matching Agent acknowledged the PR #275 route on branch `codex/pm001-lighting-regression-guard` in PR #275 comment <https://github.com/Trueflutter/ritzy-studio/pull/275#issuecomment-4586592270>, confirmed the exact scope and stop rules, and opened PR #277 for the narrow local/dev Product Matching domain guard/test.
+PR Review Agent approved PR #277 at `225ed28c589096707701a824927e4575f1fe4461` in <https://github.com/Trueflutter/ritzy-studio/pull/277#issuecomment-4586610564> and explicitly instructed the implementation agent to merge, proceed to the next planned stage, and open the next PR. PR #277 merged at `fca9ccaecae34d8df7a58fbb42e8cfc9d78a49fb`.
 
-Current required owner action: wait for PR Review Agent strict verdict on PR #277. If review requests docs/check fixes, resume only within the PR #275 lighting role-fit regression guard/test boundary.
+Current required owner action: wait for PR Review Agent strict verdict on PR #278. After that route PR is approved and merged, Product Matching Agent must acknowledge the branch/scope/stop rules before running exactly one local/dev post-#277 validation pass.
+
+CHIEF_ARCHITECT_REPLY:
+PM-001 is routed through this docs-only PR after PR #277 merged and the lane needs one fresh local/dev validation boundary.
+
+Owner after route merge: Product Matching Agent.
+
+Route after this docs PR merges:
+- Pull latest `origin/main` at this routing PR's merge commit.
+- Create a clean branch.
+- Acknowledge this route with the branch name and explicit stop-rule confirmation before execution.
+- Run exactly one local/dev validation pass on project `4207ade6-2604-4e15-9b05-ffa77531d3d2`, room `75e18e73-cf69-4b2e-b192-009fbc135b38`, concept `d9cc2f82-6d8f-455c-8c8d-e08522e0938c`, Sam local/dev account, localhost/local dev, existing catalogue rows only.
+- Allowed writes: only existing app-flow local/dev concept/job/shopping-list rows required by the validation flow.
+- Evidence artifact must verify whether PR #277 prevents chandeliers/pendants/ceiling fixtures such as `Hahn E14 8-lights Linen Chandelier` from persisting for a `floor or table lighting` role when eligible floor/table/task/desk/bedside lamps exist.
+- Evidence artifact must also record selected SKUs, persisted-selection snapshot, visual-sourcing diagnostics, zero/thin pool warnings, closest-available blockers, curtains/textiles status, render/list fidelity limits if observable, and the next narrow boundary if PM-001 remains below the investor-demo bar.
+- Open one focused evidence PR with an `ARCHITECT_NOTE:` confirming scope, verification, created local/dev rows/jobs, findings, and stop rules.
+- Leave the evidence PR for PR Review Agent review before merge.
+
+Forbidden scope:
+- any second validation pass without a new route
+- production deploys/flags, rollout, controlled preview, live app actions, catalogue/product writes, live ingestion/catalog writes
+- DB/schema/generated type changes
+- runtime allowlist expansion
+- payment/checkout changes
+- broad scoring rewrites or unrelated product-quality changes
+- prompt/runtime image-generation behavior changes beyond the validation flow
+- curtains/textiles candidate generation, thin-pool fixes, side-table/storage/media changes, required sofa/coffee/rug changes
+- floor-plan work, final-render execution, or Catalog-First coupling
+
+If validation requires anything outside this route, stop and leave an explicit blocker.
 
 CHIEF_ARCHITECT_REPLY:
 PM-001 is routed through this docs-only PR after PR #274 merged and PR #273 evidence showed a lighting role-fit regression.
