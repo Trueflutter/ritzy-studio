@@ -63,6 +63,13 @@ const roles: RoomProductRoleSpec[] = [
     priority: "required"
   },
   {
+    category: "rugs",
+    label: "generous rug",
+    visualBrief: "soft ivory living room rug",
+    quantity: 1,
+    priority: "required"
+  },
+  {
     category: "side_tables",
     label: "side table",
     visualBrief: "slim accent side table",
@@ -136,6 +143,15 @@ const fallback = buildProductSourcingTextFallbackResult({
       name: "Stone Coffee Table",
       categoryNormalized: "coffee_tables",
       score: 92
+    }),
+    rankedProduct({
+      id: "4c4c4c4c-4444-4444-8444-444444444444",
+      name: "Ivory Textured Living Room Rug",
+      categoryNormalized: "rugs",
+      score: 88,
+      color: "ivory",
+      material: "linen",
+      description: "Soft ivory textured rug for a calm living room."
     }),
     rankedProduct({
       id: "3a3a3a3a-3333-4333-8333-333333333333",
@@ -275,6 +291,7 @@ assert.deepEqual(
   [
     "sofas:main sofa:required",
     "coffee_tables:coffee table:required",
+    "rugs:generous rug:required",
     "side_tables:side table:supporting",
     "wall_art:wall art:supporting",
     "decor:restrained decor:supporting",
@@ -287,8 +304,9 @@ assert.deepEqual(
 assert.deepEqual(
   fallback.selectedProducts.map((selection) => `${selection.category}:${selection.productId}:${selection.matchStatus}`),
   [
-    "sofas:22222222-2222-4222-8222-222222222222:closest_available",
-    "coffee_tables:33333333-3333-4333-8333-333333333333:closest_available",
+    "sofas:22222222-2222-4222-8222-222222222222:acceptable_match",
+    "coffee_tables:33333333-3333-4333-8333-333333333333:acceptable_match",
+    "rugs:4c4c4c4c-4444-4444-8444-444444444444:acceptable_match",
     "side_tables:3b3b3b3b-3333-4333-8333-333333333333:closest_available",
     "wall_art:55555555-5555-4555-8555-555555555555:closest_available",
     "decor:6b6b6b6b-6666-4666-8666-666666666666:closest_available",
@@ -301,8 +319,9 @@ assert.deepEqual(
 assert.deepEqual(
   fallback.roleResults.map((result) => `${result.category}:${result.status}:${result.productId ?? "missing"}`),
   [
-    "sofas:closest_available:22222222-2222-4222-8222-222222222222",
-    "coffee_tables:closest_available:33333333-3333-4333-8333-333333333333",
+    "sofas:acceptable_match:22222222-2222-4222-8222-222222222222",
+    "coffee_tables:acceptable_match:33333333-3333-4333-8333-333333333333",
+    "rugs:acceptable_match:4c4c4c4c-4444-4444-8444-444444444444",
     "side_tables:closest_available:3b3b3b3b-3333-4333-8333-333333333333",
     "wall_art:closest_available:55555555-5555-4555-8555-555555555555",
     "decor:closest_available:6b6b6b6b-6666-4666-8666-666666666666",
@@ -314,4 +333,30 @@ assert.deepEqual(
 );
 assert.deepEqual(fallback.missingRoles, []);
 assert.match(fallback.selectedProducts[0]?.visualMatchReason ?? "", /deterministic text fallback/);
+assert.match(fallback.selectedProducts[0]?.visualMatchReason ?? "", /acceptable threshold/);
 assert.match(fallback.selectedProducts[0]?.mismatchNote ?? "", /without provider visual reasoning/);
+
+const weakRequiredFallback = buildProductSourcingTextFallbackResult({
+  roomType: "living room",
+  conceptTitle: "Thin Required Pool",
+  roles: [
+    {
+      category: "rugs",
+      label: "generous rug",
+      visualBrief: "large neutral rug",
+      quantity: 1,
+      priority: "required"
+    }
+  ],
+  rankedCandidates: [
+    rankedProduct({
+      id: "dddddddd-4444-4444-8444-444444444444",
+      name: "Entry Rug",
+      categoryNormalized: "rugs",
+      score: 54
+    })
+  ],
+  model: "gpt-5-mini"
+});
+assert.equal(weakRequiredFallback.selectedProducts[0]?.matchStatus, "closest_available");
+assert.equal(weakRequiredFallback.roleResults[0]?.status, "closest_available");
