@@ -1,10 +1,10 @@
 # Product Matching Engine Agent Comms
 
 ## Current PR
-PR #283: <https://github.com/Trueflutter/ritzy-studio/pull/283>; PR #282, PR #280, PR #278, and PR #277 merged.
+None. PR #283, PR #282, PR #280, PR #278, and PR #277 merged.
 
 ## Current stage
-PM001_POST_282_HANDOFF_REVIEW_REQUESTED
+PM001_POST_283_BLOCKED_WAITING_FOR_NEXT_BOUNDARY
 
 ## Blockers
 PM-001 needs the next exact local/dev boundary after PR #282. No second validation pass, blind validation, controlled preview, preview QA, browser-click app action, shopping-list refresh/create, visual-sourcing runtime call, catalogue/product row mutation, live write/ingestion, production deploy/flag, DB/schema/generated type change, broad/runtime allowlist expansion, payment/checkout change, UI redesign, broad Product Matching scoring rewrite, prompt/runtime image-generation behavior change, curtains/textiles candidate generation, thin-pool fix, side-table/storage/media change, floor-plan work, final-render execution, or Catalog-First runtime coupling is approved without a fresh Chief/Sam route.
@@ -15,7 +15,7 @@ PR #280 merged at `8d0863ad8a21cf45cb22bb3d736ac4ec9603d8cc` after strict PR Rev
 
 PR #278 merged at `f4fd37df351c1c3e94784c03fc33be89fa9cd6f3` after PR Review Agent approval and explicit implementation-agent merge instruction. Product Matching Agent acknowledged the route on PR #278 in <https://github.com/Trueflutter/ritzy-studio/pull/278#issuecomment-4586643971>, then ran exactly one valid local/dev validation pass on branch `codex/pm001-post-277-validation-evidence`.
 
-Current required owner action: wait for PR Review Agent strict verdict on PR #283. After the handoff merges, stop for a fresh Chief/Sam route before any further Product Matching execution, implementation, validation pass, preview QA, final render, live/catalog action, or production action.
+Current required owner action: stop for a fresh Chief/Sam route before any further Product Matching execution, implementation, validation pass, preview QA, final render, live/catalog action, or production action. PR #283 merged at `99d922176445efd485ad718864a17ae5bb15baaf` after strict PR Review Agent approval at unchanged head `6df375fd9550e4f33b5750279928e3f5dd3356a0` and completed the post-#282 docs-only handoff.
 
 Validation evidence summary:
 - Job: `112bc70e-0229-4f34-856d-716bb54dd46f` (`succeeded`)
@@ -644,7 +644,7 @@ PR #160 completed the docs-only controlled-preview execution-boundary package af
 PR #170 merged to clean stale mailbox state after PR #160 merged. This was docs/mailbox only.
 
 ## Next intended action
-PR #282 merged and this handoff PR records that PM-001 now needs the next exact local/dev boundary. After this handoff PR merges, stop for a fresh Chief/Sam route. Do not run validation, Product Matching execution, implementation, controlled preview, preview QA, final render, live/catalog action, production action, or resume any older PM-001 route without that fresh exact boundary.
+PR #284 records that PR #283 merged the post-#282 handoff and that PM-001 remains blocked pending the next exact Chief/Sam local/dev boundary. After PR #284 merges, stop for a fresh Chief/Sam route. Do not run validation, Product Matching execution, implementation, controlled preview, preview QA, final render, live/catalog action, production action, or resume any older PM-001 route without that fresh exact boundary.
 
 PRODUCT_MATCHING_AGENT_ACK: 2026-05-29 - Product Matching Agent acknowledges the PM-001 visual-sourcing timeout/retry/fallback evidence route on branch `codex/pm001-visual-timeout-evidence-impl`, based on latest `origin/main` at `e00f2784cc84f332a462ad5f387f863a486314ad`. Scope accepted: local/dev Product Matching code/tests/docs only for the narrow visual-sourcing timeout/retry/fallback evidence slice; no validation pass or app-flow execution. Stop rules accepted: no Product Matching validation pass, blind validation, app action, controlled preview, visual-sourcing runtime call through the app flow, draft shopping-list write, catalogue/product mutation, live ingestion/catalog write, DB/schema/generated type change, runtime allowlist change, production deploy/flag/default-on activation, prompt/runtime image-generation behavior change, broad scoring rewrite, unrelated product-quality change, payment/checkout, floor-plan work, final-render execution, or Catalog-First runtime coupling.
 
