@@ -1,17 +1,17 @@
 # Product Matching Engine Agent Comms
 
 ## Current PR
-Pending docs-only post-#277 validation route PR; PR #277 merged.
+PR #278: <https://github.com/Trueflutter/ritzy-studio/pull/278>; PR #277 merged.
 
 ## Current stage
-PM001_POST_277_VALIDATION_ROUTE_IN_PROGRESS
+PM001_POST_277_VALIDATION_ROUTE_REVIEW_REQUESTED
 
 ## Blockers
 Product Matching validation is not yet approved. The post-#277 validation pass is only allowed after this docs-only route PR is approved and merged.
 
 PR Review Agent approved PR #277 at `225ed28c589096707701a824927e4575f1fe4461` in <https://github.com/Trueflutter/ritzy-studio/pull/277#issuecomment-4586610564> and explicitly instructed the implementation agent to merge, proceed to the next planned stage, and open the next PR. PR #277 merged at `fca9ccaecae34d8df7a58fbb42e8cfc9d78a49fb`.
 
-Current required owner action: open one docs-only route PR for PR Review Agent review. After that route PR is approved and merged, Product Matching Agent must acknowledge the branch/scope/stop rules before running exactly one local/dev post-#277 validation pass.
+Current required owner action: wait for PR Review Agent strict verdict on PR #278. After that route PR is approved and merged, Product Matching Agent must acknowledge the branch/scope/stop rules before running exactly one local/dev post-#277 validation pass.
 
 CHIEF_ARCHITECT_REPLY:
 PM-001 is routed through this docs-only PR after PR #277 merged and the lane needs one fresh local/dev validation boundary.

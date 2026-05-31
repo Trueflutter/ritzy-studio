@@ -109,15 +109,15 @@ Docs-only, test-only, domain-only, and dry-run-only work may proceed only when t
 ### Ticket PM-001
 
 Owner: Product Matching Agent
-Status: IN_PROGRESS
+Status: REVIEW_REQUESTED
 Branch: `codex/pm001-post-277-validation-route`
 Allowed scope: After this docs-only route PR is approved and merged, Product Matching Agent may run exactly one local/dev validation pass after PR #277 merged at `fca9ccaecae34d8df7a58fbb42e8cfc9d78a49fb`. The pass must use project `4207ade6-2604-4e15-9b05-ffa77531d3d2`, room `75e18e73-cf69-4b2e-b192-009fbc135b38`, concept `d9cc2f82-6d8f-455c-8c8d-e08522e0938c`, Sam local/dev account, localhost/local dev, and existing catalogue rows only. Evidence must verify whether the post-#277 guard prevents chandeliers/pendants/ceiling fixtures such as `Hahn E14 8-lights Linen Chandelier` from persisting for `floor or table lighting` when eligible floor/table/task/desk/bedside lamps exist, and record selected SKUs, persisted-selection snapshot, visual-sourcing diagnostics, zero/thin pool warnings, closest-available blockers, curtains/textiles status, render/list fidelity limits if observable, and the next narrow boundary if PM-001 remains below the investor-demo bar.
 Forbidden scope: No second validation pass, blind validation, controlled preview, production deploy, production flag, live app action, live catalog write, live ingestion, DB/schema/generated type change, runtime allowlist expansion, payment/checkout change, floor-plan work, Catalog-First runtime coupling, production Product Matching execution, default-on production activation, unrelated UI redesign, broad catalogue rewrite, catalogue/product row mutation beyond local/dev app-flow rows required by the single validation pass, broad scoring rewrite, prompt/runtime image-generation behavior change beyond the validation flow, final-render execution, curtains/textiles candidate generation, thin-pool fixes, side-table/storage/media changes, required sofa/coffee/rug changes, or additional aesthetic-quality implementation.
-Expected next artifact: One docs-only route PR for PR Review Agent review; after merge, Product Matching Agent acknowledgement with branch/scope/stop-rule confirmation before the single validation pass.
-SLA: Product Matching Agent merged PR #277 after strict PR Review Agent approval and opened this branch for the next docs-only validation route.
+Expected next artifact: PR Review Agent strict verdict on PR #278; after merge, Product Matching Agent acknowledgement with branch/scope/stop-rule confirmation before the single validation pass.
+SLA: Product Matching Agent merged PR #277 after strict PR Review Agent approval and opened docs-only route PR #278 for review.
 Last architect instruction: PR Review Agent approved PR #277 at `225ed28c589096707701a824927e4575f1fe4461` and explicitly instructed the implementation agent to merge, proceed to the next planned stage, and open the next PR. PR #277 merged at `fca9ccaecae34d8df7a58fbb42e8cfc9d78a49fb`.
 Agent ack: Product Matching Agent acknowledged the PR #275 route on branch `codex/pm001-lighting-regression-guard`, confirmed scope/stop rules in PR #275 comment `https://github.com/Trueflutter/ritzy-studio/pull/275#issuecomment-4586592270`, opened PR #277 for the focused local/dev lighting role-fit regression guard/test, and merged PR #277 after approval.
-Current PR: pending docs-only post-#277 validation route PR; #277 merged (<https://github.com/Trueflutter/ritzy-studio/pull/277>)
+Current PR: #278 (<https://github.com/Trueflutter/ritzy-studio/pull/278>); #277 merged (<https://github.com/Trueflutter/ritzy-studio/pull/277>)
 Blocker: Product Matching validation is not yet approved; this docs-only route PR must be reviewed and merged before any post-#277 validation pass.
 
 ### Ticket MI-001
