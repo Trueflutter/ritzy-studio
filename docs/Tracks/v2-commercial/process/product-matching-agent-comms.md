@@ -1,17 +1,29 @@
 # Product Matching Engine Agent Comms
 
 ## Current PR
-PR #278: <https://github.com/Trueflutter/ritzy-studio/pull/278>; PR #277 merged.
+Pending evidence PR on branch `codex/pm001-post-277-validation-evidence`; PR #278 and PR #277 merged.
 
 ## Current stage
-PM001_POST_277_VALIDATION_ROUTE_REVIEW_REQUESTED
+PM001_POST_277_VALIDATION_EVIDENCE_IN_PROGRESS
 
 ## Blockers
-Product Matching validation is not yet approved. The post-#277 validation pass is only allowed after this docs-only route PR is approved and merged.
+The PR #278-routed post-#277 validation boundary has been consumed. No second validation pass, blind validation, controlled preview, preview QA, browser-click app action, shopping-list refresh/create, visual-sourcing runtime call, catalogue/product row mutation, live write/ingestion, production deploy/flag, DB/schema/generated type change, broad/runtime allowlist expansion, payment/checkout change, broad Product Matching scoring rewrite, prompt/runtime image-generation behavior change, curtains/textiles candidate generation, thin-pool fix, side-table/storage/media change, required sofa/coffee/rug change, floor-plan work, final-render execution, or Catalog-First runtime coupling is approved without a fresh Chief/Sam route.
 
-PR Review Agent approved PR #277 at `225ed28c589096707701a824927e4575f1fe4461` in <https://github.com/Trueflutter/ritzy-studio/pull/277#issuecomment-4586610564> and explicitly instructed the implementation agent to merge, proceed to the next planned stage, and open the next PR. PR #277 merged at `fca9ccaecae34d8df7a58fbb42e8cfc9d78a49fb`.
+PR #278 merged at `f4fd37df351c1c3e94784c03fc33be89fa9cd6f3` after PR Review Agent approval and explicit implementation-agent merge instruction. Product Matching Agent acknowledged the route on PR #278 in <https://github.com/Trueflutter/ritzy-studio/pull/278#issuecomment-4586643971>, then ran exactly one valid local/dev validation pass on branch `codex/pm001-post-277-validation-evidence`.
 
-Current required owner action: wait for PR Review Agent strict verdict on PR #278. After that route PR is approved and merged, Product Matching Agent must acknowledge the branch/scope/stop rules before running exactly one local/dev post-#277 validation pass.
+Current required owner action: open one focused docs-only evidence PR and request PR Review Agent strict verdict. After that evidence PR merges, stop for a fresh Chief/Sam route.
+
+Validation evidence summary:
+- Job: `112bc70e-0229-4f34-856d-716bb54dd46f` (`succeeded`)
+- Shopping list: `99062356-7a63-4438-bd4b-461cc43c66ba`
+- Shopping-list updated: `2026-05-31T12:14:03.256067+00:00`
+- Item rows: 44
+- Selected rows: 10
+- Evidence file: `docs/Tracks/v2-commercial/product-matching-evals/manual-qa/2026-05-31-pm001-post-277-validation.md`
+- PR #277 lighting guard result: `floor or table lighting` persisted `Frosty Wooden Floor Lamp - 154 cm`, the persisted option pool contained floor/table lamps only, and `Hahn E14 8-lights Linen Chandelier` did not persist.
+- PM-001 remains below the investor-demo bar: sofa/coffee-table/rug still report closest-available quality status, curtains/textiles remain missing/zero-persisted, several support pools are thin, storage/media aesthetic fit remains uncertain, and final render was not executed.
+
+PRODUCT_MATCHING_AGENT_ACK: 2026-05-31 — Product Matching Agent acknowledged PR #278 after merge on branch `codex/pm001-post-277-validation-evidence`, based on `origin/main` at `f4fd37df351c1c3e94784c03fc33be89fa9cd6f3`. Scope accepted: exactly one local/dev validation pass for project `4207ade6-2604-4e15-9b05-ffa77531d3d2`, room `75e18e73-cf69-4b2e-b192-009fbc135b38`, concept `d9cc2f82-6d8f-455c-8c8d-e08522e0938c`, Sam local/dev account, localhost/local dev, existing catalogue rows only, with only existing app-flow local/dev concept/job/shopping-list rows required by the validation flow. Stop rules accepted: no second validation pass, controlled preview, preview QA, live app actions, catalogue/product row mutations, live ingestion/catalog writes, production deploys/flags/default-on activation, DB/schema/generated type changes, runtime allowlist expansion, payment/checkout changes, broad scoring rewrites, prompt/runtime image-generation behavior changes, curtains/textiles candidate generation, thin-pool fixes, side-table/storage/media changes, required sofa/coffee/rug changes, floor-plan work, final-render execution, or Catalog-First coupling.
 
 CHIEF_ARCHITECT_REPLY:
 PM-001 is routed through this docs-only PR after PR #277 merged and the lane needs one fresh local/dev validation boundary.
