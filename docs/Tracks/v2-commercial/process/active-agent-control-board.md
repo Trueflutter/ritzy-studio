@@ -109,16 +109,16 @@ Docs-only, test-only, domain-only, and dry-run-only work may proceed only when t
 ### Ticket PM-001
 
 Owner: Product Matching Agent
-Status: ROUTED
-Branch: pending Product Matching Agent acknowledgement after this route PR merges
+Status: STALE
+Branch: none visible
 Allowed scope: After this docs-only route PR is approved and merged, Product Matching Agent may implement exactly one narrow local/dev lighting role-fit regression guard/test for the PR #273 evidence regression where `floor or table lighting` persisted `Hahn E14 8-lights Linen Chandelier`. The implementation must prevent chandeliers/pendants/ceiling fixtures from persisting for `floor or table lighting` after post-processing when eligible floor/table lamps exist, using focused local/dev domain code/tests/docs only.
 Forbidden scope: No validation pass, blind validation, controlled preview, production deploy, production flag, live app action, live catalog write, live ingestion, DB/schema/generated type change, runtime allowlist expansion, payment/checkout change, floor-plan work, Catalog-First runtime coupling, production Product Matching execution, default-on production activation, unrelated UI redesign, broad catalogue rewrite, catalogue/product row mutation, broad scoring rewrite outside this lighting role-fit regression guard/test, prompt/runtime image-generation behavior change, production selection behavior change beyond the narrow local/dev guard/test, final-render execution, curtains/textiles candidate generation, thin-pool fixes, side-table/storage/media changes, required sofa/coffee/rug changes, or additional aesthetic-quality implementation.
-Expected next artifact: Product Matching Agent acknowledgement with branch/scope/stop-rule confirmation after this route PR merges, then one focused implementation PR for PR Review Agent review.
-SLA: Product Matching Agent must acknowledge within one owner heartbeat after the route PR merges; after acknowledgement, it must show branch/PR/evidence progress or an explicit blocker within 30 minutes.
-Last architect instruction: PR #274 merged at `76391a9c5e55126e0aedc7ba6a0763be1d9e61d1`, returning PM-001 to BLOCKED after PR #273 evidence. Chief now routes exactly one narrow local/dev lighting role-fit regression guard/test because PR #273 showed `Hahn E14 8-lights Linen Chandelier` persisted for `floor or table lighting` even though earlier lighting guard evidence had rejected ceiling fixtures when eligible floor/table lamps existed.
+Expected next artifact: Product Matching Agent acknowledgement with branch/scope/stop-rule confirmation, then one focused implementation PR for PR Review Agent review; or an explicit blocker naming why the route cannot be acknowledged.
+SLA: Missed. Product Matching Agent did not acknowledge within one owner heartbeat after PR #275 merged and did not show branch/PR progress after the stale-SLA follow-up.
+Last architect instruction: PR #275 merged at `3f71e5d035d976071da4cc894a5d15b726f041c4`, routing exactly one narrow local/dev lighting role-fit regression guard/test. Chief routed Product Matching Agent in PR #275 comment `https://github.com/Trueflutter/ritzy-studio/pull/275#issuecomment-4585081135`, then posted stale-SLA follow-up `https://github.com/Trueflutter/ritzy-studio/pull/275#issuecomment-4585165178` after no acknowledgement or implementation PR appeared.
 Agent ack: Product Matching Agent acknowledged the PR #272 route on branch `codex/pm001-post-270-validation`, confirmed stop rules, ran exactly one valid local/dev validation pass, and recorded evidence in `docs/Tracks/v2-commercial/product-matching-evals/manual-qa/2026-05-29-pm001-post-270-validation.md`.
-Current PR: #275 (<https://github.com/Trueflutter/ritzy-studio/pull/275>)
-Blocker: Waiting for PR Review Agent approval and merge of this docs-only route before Product Matching Agent acknowledgement/implementation.
+Current PR: none; #275 merged (<https://github.com/Trueflutter/ritzy-studio/pull/275>)
+Blocker: Product Matching Agent missed acknowledgement/progress SLA for the merged #275 route. Ready prompt: pull latest `origin/main` at `3f71e5d035d976071da4cc894a5d15b726f041c4`, create a clean branch, acknowledge branch/scope/stop rules, implement exactly the lighting role-fit regression guard/test, and open one focused implementation PR; or leave an explicit blocker.
 
 ### Ticket MI-001
 
