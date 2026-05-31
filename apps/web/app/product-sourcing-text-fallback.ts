@@ -9,6 +9,9 @@ import {
 const TEXT_FALLBACK_PROMPT_KEY = "product_sourcing_text_fallback";
 const TEXT_FALLBACK_PROMPT_VERSION = "2026-05-28.1";
 const TEXT_FALLBACK_OPTIONS_PER_ROLE = 6;
+const REQUIRED_TEXT_FALLBACK_ACCEPTABLE_SCORE = 70;
+
+type TextFallbackMatchStatus = SourceProductsFromConceptResult["selectedProducts"][number]["matchStatus"];
 
 export function buildProductSourcingTextFallbackResult({
   roomType,
@@ -54,8 +57,12 @@ export function buildProductSourcingTextFallbackResult({
       continue;
     }
 
+    const matchStatus = textFallbackMatchStatus({ option, role });
     const reason = [
       "Selected by deterministic text fallback after product visual sourcing timed out.",
+      matchStatus === "acceptable_match"
+        ? "Required role has an exact-category text-ranked candidate above the local/dev acceptable threshold."
+        : null,
       `Approved concept: ${conceptContext}.`,
       option.selectionReason
     ]
@@ -67,14 +74,14 @@ export function buildProductSourcingTextFallbackResult({
       category: role.category,
       roleLabel: role.label,
       quantity: role.quantity,
-      matchStatus: "closest_available",
+      matchStatus,
       visualMatchReason: reason,
       mismatchNote: "Selected without provider visual reasoning because the visual sourcing call timed out."
     });
     roleResults.push({
       category: role.category,
       roleLabel: role.label,
-      status: "closest_available",
+      status: matchStatus,
       productId: option.id,
       reason
     });
@@ -114,6 +121,25 @@ function bestFallbackOptionForRole(role: RoleProductOptions) {
       supportFallbackFamilyScore(right, role) - supportFallbackFamilyScore(left, role) ||
       right.score - left.score
   )[0];
+}
+
+function textFallbackMatchStatus({
+  option,
+  role
+}: {
+  option: RankedProductMatch;
+  role: RoomProductRoleSpec;
+}): TextFallbackMatchStatus {
+  if (
+    role.priority === "required" &&
+    option.categoryNormalized === role.category &&
+    option.score >= REQUIRED_TEXT_FALLBACK_ACCEPTABLE_SCORE &&
+    !option.selectionReason.toLowerCase().includes("role brief mismatch")
+  ) {
+    return "acceptable_match";
+  }
+
+  return "closest_available";
 }
 
 function isCredibleSupportFallbackOption(option: RankedProductMatch, role: RoleProductOptions) {
