@@ -106,6 +106,8 @@ Docs-only, test-only, domain-only, and dry-run-only work may proceed only when t
 
 ## Active Tickets
 
+Beta launch cross-lane work is tracked in `docs/Tracks/v2-commercial/process/beta-launch-coordination-board.md`. Read that file after this board when coordinating the Wednesday 2026-06-03 operational beta.
+
 ### Ticket PM-001
 
 Owner: Product Matching Agent
