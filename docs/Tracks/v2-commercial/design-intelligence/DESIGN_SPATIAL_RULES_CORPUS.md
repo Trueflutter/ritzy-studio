@@ -14,16 +14,16 @@ Use these source IDs in the rule cards below.
 | ID | Source | Useful evidence |
 | --- | --- | --- |
 | S1 | [Rayon Design: Living room layout rules](https://www.rayon.design/knowledge-base/living-room/rules) | Living-room circulation, coffee-table spacing, rug anchoring, TV distance, focal-point/framing guidance. |
-| S2 | [Apartment Therapy: Ultimate Decorator's Cheat Sheet](https://www.apartmenttherapy.com/measurements-to-help-you-hang-pictures-arrange-furniture-decorate-your-home-220644) | Practical furniture-spacing thresholds: coffee table distance, walkway width, dining clearance, rug extension, conversation distance, side-table height. |
+| S2 | [Room Sketch 3D: Furniture Spacing Guidelines](https://www.roomsketch3d.com/learn/traffic-flow-spacing/furniture-spacing-guidelines) | Practical furniture-spacing thresholds: coffee table distance, walkway width, dining clearance, conversation distance, side-table height. |
 | S3 | [ADA 2010 Standards: accessible-route width](https://www.ada.gov/law-and-regs/design-standards/2010-stds/) | 36 in / 915 mm accessible-route width as a conservative circulation reference, not a residential design mandate. |
 | S4 | [RTINGS: TV size to distance calculator](https://www.rtings.com/tv/reviews/by-size/size-to-distance-relationship) | Viewing-distance logic based on field of view; 30-degree mixed-use and 40-degree cinema-style references. |
 | S5 | [Rayon Design: Dining room layout rules](https://www.rayon.design/knowledge-base/dining-room/rules) | Dining circulation, table/chair spacing, clearance around table, table-to-kitchen flow, rug/zone treatment. |
-| S6 | [Rensselaer Lighting Research Center: Lighting Pattern Book](https://www.lrc.rpi.edu/programs/patternbook/pdf/School/LightingPatternBookforHomes.pdf) | Residential task/ambient lighting patterns, seating activity support, glare control. |
+| S6 | [U.S. Department of Energy: Lighting Principles and Terms](https://www.energy.gov/energysaver/lighting-principles-and-terms) | Residential lighting uses, including ambient/task/accent lighting, glare, color temperature, and residential CRI guidance. |
 | S7 | [OSHA: Computer workstation components](https://www.osha.gov/etools/computer-workstations/components) | Workstation ergonomics: monitor in front of user, distance, posture, input-device support. |
 | S8 | [Sisterly Interior: Living room interior design in Dubai](https://sisterlyinterior.com/living-room-interior-design-dubai/) | Dubai open-plan living/dining/kitchen context, harsh daylight, storage, zoning, majlis and villa/apartment differences. |
 | S9 | [BG Interior Arabia: Villa space planning in Dubai](https://bginteriorarabia.ae/blog/villa-space-planning-interior-dubai/) | Dubai villa zoning, circulation, focal placement, dining near kitchen, bedroom planning cues. |
-| S10 | [Karnak Home: Modern Arabic majlis design](https://karnakhome.com/blogs/news/modern-arabic-majlis-design) | Majlis seating as formal hospitality layout with perimeter seating, conversation, and guest capacity. |
-| S11 | [Ballard Designs: Rug size guide](https://www.ballarddesigns.com/howtodecorate/2011/10/how-to-choose-the-right-rug/) | Living/dining/bedroom rug anchoring conventions and proportional rug selection. |
+| S10 | [Kat Black Design Studio: Majlis Interior Design Dubai](https://katblackuae.com/majlis-interior-design-dubai/) | UAE majlis as a formal hospitality room with L-shaped/U-shaped perimeter seating, host orientation, and guest-capacity planning. |
+| S11 | [Lowe's: What Is the Right Size Rug?](https://www.lowes.com/pdf/What_is_the_Right_Size_Rug-.pdf) | Living/dining/bedroom rug anchoring conventions and proportional rug selection. |
 
 ## Checkability Definitions
 
@@ -170,7 +170,7 @@ type SpatialIntent = {
 - **Example good layout:** Seating is oriented to enjoy the view while leaving balcony access and curtain stack space open.
 - **Example failure:** Tall furniture blocks a window wall or sofa blocks a balcony door.
 - **Beta-safe implementation note:** Flag as data gap when window/door locations are missing.
-- **Sources:** S6, S8, S9.
+- **Sources:** S8, S9.
 
 ### L10. Living Furniture Scale Fits the Measured Envelope
 
@@ -330,7 +330,7 @@ type SpatialIntent = {
 - **Example good layout:** Pendant or chandelier centers over table and aligns with the dining zone.
 - **Example failure:** Pendant floats between table and sofa or is centered in the room but not on the table.
 - **Beta-safe implementation note:** Manual QA item; hard-check requires fixture coordinates and table coordinates.
-- **Sources:** S5, S6.
+- **Sources:** S5.
 
 ### D4. Dining Rug Fits Pulled-Out Chairs
 
