@@ -65,16 +65,16 @@ Blocker: Remaining V2-006 beta UX evidence can proceed locally; production/deplo
 ### Ticket BL-003 Product Matching Variety And Fit
 
 Owner: Product Matching Agent
-Status: REVIEW_REQUESTED
-Branch: `codex/pm001-recommendation-engine-repair`
-Allowed scope: PR #294 exact boundary only: local/dev domain-only Product Matching role-purity repair based on Sam's 2026-06-01 failed retest and Claude's plan at `docs/Tracks/v2-commercial/product-matching-evals/PM001_RECOMMENDATION_ENGINE_REPAIR_PLAN.md`.
-Forbidden scope: No live app validation, blind validation, controlled preview, production/default-on activation, live app actions, live catalog writes, live ingestion, catalogue/product mutations, DB/schema/generated type changes, runtime allowlist expansion, broad Product Matching rewrite, prompt/runtime image-generation behavior changes, payment/checkout changes, deploys, final-render execution, UI redesign, or Catalog-First coupling.
-Expected next artifact: Strict PR Review Agent verdict on PR #294; Sam manual local QA remains a separate future route.
-SLA: Review-requested; do not start additional Product Matching work until strict review or fresh Sam/Chief route.
-Last architect instruction: Sam's 2026-06-01 local retest after PR #286 found sofa scale mixing, office/task armchairs, repeated cushion/catalogue items, repeated/office coffee tables, bathroom mirrors in living/decor, and weak diversity/class discipline. PR #294 implements the scoped local/dev domain repair and evidence docs; no live validation or production action is approved.
-Agent ack: Product Matching repair completed on branch `codex/pm001-recommendation-engine-repair`; verification recorded in `docs/Tracks/v2-commercial/product-matching-evals/2026-06-01-pm001-recommendation-engine-repair-evidence.md`.
-Current PR: #294 (<https://github.com/Trueflutter/ritzy-studio/pull/294>)
-Blocker: None for review; waiting for strict PR Review Agent verdict on PR #294.
+Status: BLOCKED_WAITING_FOR_SAM_RETEST
+Branch: none
+Allowed scope: Docs-only routing/evidence intake for the post-PR #294 manual local QA stage. No agent implementation, Product Matching execution, app-flow validation, controlled preview, or production action is approved.
+Forbidden scope: No agent-run live app validation, blind validation, controlled preview, production/default-on activation, live app actions, live catalog writes, live ingestion, catalogue/product mutations, DB/schema/generated type changes, runtime allowlist expansion, broad Product Matching rewrite, prompt/runtime image-generation behavior changes, payment/checkout changes, deploys, final-render execution, UI redesign, or Catalog-First coupling.
+Expected next artifact: Sam's post-PR #294 manual local Product Matching beta-readiness retest result, using the checklist in `docs/Tracks/v2-commercial/product-matching-evals/2026-06-01-pm001-recommendation-engine-repair-evidence.md`.
+SLA: Once Sam posts retest evidence, route pass/fail decision or next smallest local/dev boundary within one heartbeat.
+Last architect instruction: PR #294 merged at `9f925f982da32b04271d4a22875879a2cf6c5a0c` after strict approval. It completed the local/dev domain repair for sofa scale, armchair class, coffee-table class/diversity, cushion repetition pressure, mirror room scope, aesthetic ranking, and thin-pool behavior. The next beta-critical stage is Sam manual local QA/evidence; no live validation or production action is approved.
+Agent ack: Product Matching repair completed in PR #294; no further agent implementation is routed.
+Current PR: none; #294 merged (<https://github.com/Trueflutter/ritzy-studio/pull/294>)
+Blocker: Waiting for Sam's manual local post-PR #294 beta-readiness retest result.
 
 ### Ticket BL-004 RE-001 Sourcing Retest
 

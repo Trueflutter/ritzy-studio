@@ -1,29 +1,31 @@
 # Product Matching Engine Agent Comms
 
 ## Current PR
-PR #294 on branch `codex/pm001-recommendation-engine-repair`. PR #286, PR #283, PR #282, PR #280, PR #278, and PR #277 merged.
+No active implementation PR. PR #294 merged at `9f925f982da32b04271d4a22875879a2cf6c5a0c` after strict approval at head `a996971c8ee228cc098d941f26efdd3fa589ef22`. PR #286, PR #283, PR #282, PR #280, PR #278, and PR #277 also merged.
 
 ## Current stage
-PM001_RECOMMENDATION_ENGINE_REPAIR_REVIEW_REQUESTED
+PM001_POST_294_MANUAL_QA_WAITING_FOR_SAM_RETEST
 
 ## Blockers
 Sam's 2026-06-01 local retest after PR #286 found the PM-001 recommendation engine still below the Wednesday 2026-06-03 operational beta bar: sofa recommendations mixed compact/standard sofas with long L-shaped/modular/sectional pieces; armchair recommendations included office/task furniture; the same cushion kept recurring; coffee-table recommendations repeated a tiny subset and included office tables; bathroom mirrors appeared in living-room/decor recommendations; aesthetic/design-quality ranking was weak; and diversity/class discipline was not strong enough.
 
-Claude's source repair plan is saved at `docs/Tracks/v2-commercial/product-matching-evals/PM001_RECOMMENDATION_ENGINE_REPAIR_PLAN.md`.
+PR #294 addressed those failure modes with a local/dev domain-only Product Matching role-purity repair. The committed evidence and Sam manual-QA checklist live at `docs/Tracks/v2-commercial/product-matching-evals/2026-06-01-pm001-recommendation-engine-repair-evidence.md`.
 
-Sam/Chief routed the exact PR #294 local/dev boundary: implement a domain-only Product Matching role-purity repair using match-time role contracts, class/room/size eligibility guards, bounded repetition/diversity safety, deterministic aesthetic ranking signal, focused domain tests, and PM-001 evidence/coordination docs.
+Next planned stage: S7 manual QA/evidence. Sam should run the local Product Matching beta-readiness retest after PR #294 and record whether sofa scale, armchair class, coffee-table class/diversity, cushion repetition, mirror room scope, aesthetic ranking, and thin-pool behavior now meet the beta bar.
 
-Current required owner action: wait for strict PR Review Agent re-review of PR #294 at the new head.
+Current required owner action: wait for Sam's manual local post-PR #294 retest result. If it still shows failures, route the smallest next local/dev domain-only boundary. If it passes, route a docs-only beta decision record.
 
-Stop rules: no Product Matching validation pass through the live app flow, blind validation, controlled preview, preview QA, browser-click app action, shopping-list refresh/create, visual-sourcing runtime call, catalogue/product row mutation, live catalog write, live ingestion, production deploy/flag/default-on activation, DB/schema/generated type change, runtime allowlist expansion, payment/checkout change, UI redesign, broad catalogue rewrite, broad Product Matching rewrite, prompt/runtime image-generation behavior change, final-render execution, floor-plan work, Catalog-First runtime coupling, or unrelated quality change is approved.
+Stop rules: no agent-run Product Matching validation pass through the live app flow, blind validation, controlled preview, preview QA, browser-click app action, shopping-list refresh/create, visual-sourcing runtime call, catalogue/product row mutation, live catalog write, live ingestion, production deploy/flag/default-on activation, DB/schema/generated type change, runtime allowlist expansion, payment/checkout change, UI redesign, broad catalogue rewrite, broad Product Matching rewrite, prompt/runtime image-generation behavior change, final-render execution, floor-plan work, Catalog-First runtime coupling, or unrelated quality change is approved.
 
 Current diagnostic findings:
 - PR #294 adds match-time class tags, room scope, sofa size class, and additive role contract fields.
 - PR #294 hard-filters class, room-scope, and sofa-size mismatches before scoring/diversity in role-scoped pools.
 - PR #294 strengthens diversity signatures/repeat penalties and applies the existing deterministic aesthetic heuristic to role-pool ranking.
-- PR #294 records automated and manual-QA evidence in `docs/Tracks/v2-commercial/product-matching-evals/2026-06-01-pm001-recommendation-engine-repair-evidence.md`.
+- PR #294 records automated evidence and the manual-QA checklist in `docs/Tracks/v2-commercial/product-matching-evals/2026-06-01-pm001-recommendation-engine-repair-evidence.md`.
 
 Verification completed for PR #294: `pnpm --filter @ritzy-studio/domain exec tsx src/product-matching.test.ts`, `pnpm --filter @ritzy-studio/domain typecheck`, `pnpm --filter @ritzy-studio/domain test`, `pnpm typecheck`, `pnpm lint`, `git diff --check`, and conflict-marker scan. The post-rejection routing-only update reran `git diff --check`; implementation verification remains unchanged.
+
+ARCHITECT_NOTE: PR #294 merged at `9f925f982da32b04271d4a22875879a2cf6c5a0c`. PM-001 is now blocked on Sam's post-PR #294 manual local beta-readiness retest result. No additional agent implementation or live validation is routed.
 
 PRODUCT_MATCHING_AGENT_ACK: 2026-06-01 — Product Matching repair branch `codex/pm001-recommendation-engine-repair` acknowledges the PM-001 recommendation-engine repair route for PR #294. Scope accepted: local/dev domain-only Product Matching role-purity repair and coordination docs based on Sam's failed 2026-06-01 retest and Claude's saved plan. Stop rules accepted: no live app validation, controlled preview, preview QA, app action, catalog writes/re-ingestion, catalogue/product mutation, DB/schema/generated type change, production deploy/flag/default-on activation, runtime allowlist expansion, payment/checkout, UI redesign, prompt/runtime image-generation behavior change, broad Product Matching rewrite, final render, floor-plan work, Catalog-First coupling, or unrelated quality change.
 
