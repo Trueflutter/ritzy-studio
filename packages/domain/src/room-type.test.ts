@@ -5,7 +5,8 @@ import {
   canonicalRoomTypeSchema,
   createRoomSchema,
   isCombinedLivingDining,
-  normalizeRoomType
+  normalizeRoomType,
+  roomCreationRoomTypes
 } from ".";
 
 assert.deepEqual(canonicalRoomTypes, [
@@ -15,6 +16,8 @@ assert.deepEqual(canonicalRoomTypes, [
   "Home Office",
   "Living & Dining"
 ]);
+assert.deepEqual(roomCreationRoomTypes, ["Living Room", "Dining Room", "Bedroom", "Home Office"]);
+assert.equal(roomCreationRoomTypes.includes("Living & Dining"), false);
 assert.equal(canonicalRoomTypeSchema.parse("Living & Dining"), "Living & Dining");
 
 const combinedLivingDiningAliases = [

@@ -1,4 +1,4 @@
-import { canonicalRoomTypes } from "@ritzy-studio/domain";
+import { roomCreationRoomTypes } from "@ritzy-studio/domain";
 import {
   ButtonLink,
   DecorativeRule,
@@ -137,7 +137,7 @@ export default async function NewRoomPage({
           <MarketingPanel tone="paper" elevation="flat" className="mt-12 p-8 md:p-12">
             <form action={createRoomAction} className="space-y-2">
               <input name="projectId" type="hidden" value={project.id} />
-              <RoomTypeSelector roomTypes={canonicalRoomTypes} />
+              <RoomTypeSelector roomTypes={roomCreationRoomTypes} />
               <TextInput
                 autoComplete="off"
                 id="name"
