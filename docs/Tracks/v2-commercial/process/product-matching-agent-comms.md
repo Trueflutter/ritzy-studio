@@ -1,15 +1,15 @@
 # Product Matching Engine Agent Comms
 
 ## Current PR
-Pending on branch `codex/pm001-catalogue-variety-diagnostic`. PR #283, PR #282, PR #280, PR #278, and PR #277 merged.
+PR #286 on branch `codex/pm001-catalogue-variety-diagnostic`. PR #283, PR #282, PR #280, PR #278, and PR #277 merged.
 
 ## Current stage
-PM001_CATALOGUE_VARIETY_DIAGNOSTIC_IN_PROGRESS
+PM001_CATALOGUE_VARIETY_DIAGNOSTIC_REVIEW_REQUESTED
 
 ## Blockers
 Sam routed the next exact local/dev PM-001 boundary for Product Matching Agent: investigate repeated/similar catalogues, repeated product selections, and room/style role fit, then add focused diagnostics/tests or one narrow safe fix if clear. No Product Matching validation pass through the live app flow, blind validation, controlled preview, preview QA, browser-click app action, shopping-list refresh/create, visual-sourcing runtime call, catalogue/product row mutation, live write/ingestion, production deploy/flag/default-on activation, DB/schema/generated type change, broad/runtime allowlist expansion, payment/checkout change, UI redesign, broad Product Matching scoring rewrite, prompt/runtime image-generation behavior change, curtains/textiles candidate generation, thin-pool fixes, side-table/storage/media changes, floor-plan work, final-render execution, Catalog-First runtime coupling, or unrelated quality change is approved.
 
-Current required owner action: complete the focused local/dev Product Matching code/tests/docs PR with findings, verification, and stop-rule confirmation, then leave it for PR Review Agent review.
+Current required owner action: wait for PR Review Agent strict verdict on PR #286.
 
 Current diagnostic findings:
 - Latest local manual PM-001 evidence remains `docs/Tracks/v2-commercial/product-matching-evals/manual-qa/2026-05-31-pm001-post-277-validation.md`; no new validation pass was run for this route.
@@ -18,7 +18,7 @@ Current diagnostic findings:
 - Code inspection found one narrow repeated-product-selection cause in `composeRoomProductOptions`: early role options avoided exact color/material/price signatures but could still allow the same product family to dominate a role option pool when variants differed by color, material, or price.
 - The proposed fix keeps top-ranked relevance intact, then prefers distinct product-family signatures for early role options when alternatives exist. It falls back to repeats only when the role pool is genuinely thin.
 
-Verification target for the PR: `pnpm --filter @ritzy-studio/domain exec tsx src/product-matching.test.ts`, `pnpm --filter @ritzy-studio/domain typecheck`, and `git diff --check`.
+Verification completed for PR #286: `pnpm --filter @ritzy-studio/domain exec tsx src/product-matching.test.ts`, `pnpm --filter @ritzy-studio/domain typecheck`, and `git diff --check`.
 
 PRODUCT_MATCHING_AGENT_ACK: 2026-06-01 — Product Matching Agent acknowledged Sam's catalogue-variety and role/product-fit route on branch `codex/pm001-catalogue-variety-diagnostic`, based on `origin/main` at `668b88db9b1e697e6a0a024b82a086932724972f`. Scope accepted: local/dev Product Matching code/tests/docs only; inspect recent PM-001 evidence and Sam test evidence; identify whether repetition is caused by candidate pool limits, scoring weights, role fallback behavior, deterministic fallback, catalogue thinness, or post-processing; add focused regression tests or diagnostics; implement one narrow safe fix only if clear. Stop rules accepted: no validation pass through live app flow, controlled preview, preview QA, production/default-on activation, live catalog writes, catalogue/product mutations, DB/schema/type changes, broad scoring rewrite, prompt/image-generation behavior changes, payment/checkout, deploys, final render, floor-plan work, or Catalog-First coupling.
 

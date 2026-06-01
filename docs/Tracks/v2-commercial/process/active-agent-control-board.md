@@ -109,16 +109,16 @@ Docs-only, test-only, domain-only, and dry-run-only work may proceed only when t
 ### Ticket PM-001
 
 Owner: Product Matching Agent
-Status: IN_PROGRESS
+Status: REVIEW_REQUESTED
 Branch: `codex/pm001-catalogue-variety-diagnostic`
 Allowed scope: Sam routed the next PM-001 local/dev Product Matching code/tests/docs boundary to investigate repeated/similar catalogues, repeated product selections, and room/style role fit after PR #283 merged. Allowed work is limited to inspecting recent PM-001 and Sam test evidence, identifying whether repetition is caused by candidate pool limits, scoring weights, role fallback behavior, deterministic fallback, catalogue thinness, or post-processing, then adding focused local/dev diagnostics or regression tests and one narrow safe Product Matching fix only if clear.
 Forbidden scope: No Product Matching validation pass through the live app flow, blind validation, controlled preview, preview QA, production deploy, production flag/default-on activation, live app action, live catalog write, live ingestion, catalogue/product row mutation, DB/schema/generated type change, runtime allowlist expansion, payment/checkout change, UI redesign, broad catalogue rewrite, broad scoring rewrite, prompt/runtime image-generation behavior change, final-render execution, curtains/textiles candidate generation, thin-pool fixes, side-table/storage/media changes, floor-plan work, Catalog-First runtime coupling, or unrelated quality changes.
-Expected next artifact: One focused Product Matching code/tests/docs PR with `ARCHITECT_NOTE:` findings, verification, and stop-rule confirmation; leave it for PR Review Agent review.
-SLA: Active while the focused PR is prepared.
+Expected next artifact: PR Review Agent strict verdict on PR #286.
+SLA: Active while PR #286 is awaiting review.
 Last architect instruction: Sam's latest beta-readiness concern is repeated/similar catalogues and product selections that do not always match the room/style well. Product Matching Agent must pull latest `origin/main`, create a clean branch, inspect recent PM-001 evidence and latest Sam test evidence, identify the smallest safe local/dev diagnostic or fix boundary for catalogue variety, repeated-product selection, and role/product fit, then open one focused PR only within Product Matching code/tests/docs. PR #283 merged at `99d922176445efd485ad718864a17ae5bb15baaf`; PR #282 merged at `c4fd35996a4108dd8ab911590a1372cd375a0d38`.
 Agent ack: Product Matching Agent acknowledged the fresh Sam route on branch `codex/pm001-catalogue-variety-diagnostic`, based on `origin/main` at `668b88db9b1e697e6a0a024b82a086932724972f`, and accepted the stop rules before work. No validation pass, controlled preview, preview QA, live app/catalog action, catalogue/product mutation, DB/schema/type change, deploy/flag, broad scoring rewrite, prompt/image-generation behavior change, payment/checkout, final render, floor-plan work, or Catalog-First coupling is approved.
-Current PR: pending; #283 merged (<https://github.com/Trueflutter/ritzy-studio/pull/283>); #282 merged (<https://github.com/Trueflutter/ritzy-studio/pull/282>); #280 merged (<https://github.com/Trueflutter/ritzy-studio/pull/280>); #278 merged (<https://github.com/Trueflutter/ritzy-studio/pull/278>); #277 merged (<https://github.com/Trueflutter/ritzy-studio/pull/277>)
-Blocker: None for this routed local/dev Product Matching code/tests/docs diagnostic/fix boundary.
+Current PR: #286 (<https://github.com/Trueflutter/ritzy-studio/pull/286>); #283 merged (<https://github.com/Trueflutter/ritzy-studio/pull/283>); #282 merged (<https://github.com/Trueflutter/ritzy-studio/pull/282>); #280 merged (<https://github.com/Trueflutter/ritzy-studio/pull/280>); #278 merged (<https://github.com/Trueflutter/ritzy-studio/pull/278>); #277 merged (<https://github.com/Trueflutter/ritzy-studio/pull/277>)
+Blocker: Waiting for PR Review Agent strict verdict on PR #286.
 
 ### Ticket MI-001
 

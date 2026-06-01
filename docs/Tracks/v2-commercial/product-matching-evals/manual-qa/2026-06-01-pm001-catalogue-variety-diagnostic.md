@@ -4,6 +4,7 @@ Date: 2026-06-01
 Owner: Product Matching Agent
 Ticket: PM-001
 Branch: `codex/pm001-catalogue-variety-diagnostic`
+PR: #286
 
 ## Boundary
 
