@@ -1,7 +1,7 @@
 # Product Matching Engine Agent Comms
 
 ## Current PR
-Pending focused implementation PR on branch `codex/pm001-alternate-consistency`. PR #294, PR #286, PR #283, PR #282, PR #280, PR #278, and PR #277 merged. PR #295 is the earlier docs-only post-#294 manual-QA route; this branch carries the newer Sam/Claude selected-vs-alternate consistency boundary.
+PR #296 on branch `codex/pm001-alternate-consistency`. PR #294, PR #286, PR #283, PR #282, PR #280, PR #278, and PR #277 merged. PR #295 is the earlier docs-only post-#294 manual-QA route; this branch carries the newer Sam/Claude selected-vs-alternate consistency boundary.
 
 ## Current stage
 PM001_SELECTED_ALTERNATE_CONSISTENCY_REVIEW_REQUESTED
