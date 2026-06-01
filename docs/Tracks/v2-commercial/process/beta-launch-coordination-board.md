@@ -65,16 +65,16 @@ Blocker: Remaining V2-006 beta UX evidence can proceed locally; production/deplo
 ### Ticket BL-003 Product Matching Variety And Fit
 
 Owner: Product Matching Agent
-Status: MERGED_WAITING_FOR_SAM_RETEST
-Branch: none
-Allowed scope: None until Sam's fresh beta-readiness retest result or a fresh Sam/Chief route approves the next exact PM-001 local/dev boundary.
-Forbidden scope: No blind validation, controlled preview, production/default-on activation, live app actions, live catalog writes, catalogue/product mutations, DB/schema/generated type changes, runtime allowlist expansion, broad scoring rewrite, prompt/runtime image-generation behavior changes, payment/checkout changes, deploys, final-render execution, or Catalog-First coupling.
-Expected next artifact: Sam's retest readout after PR #286. If repeated catalogues or poor fit remains, route the smallest next Product Matching local/dev boundary.
-SLA: Once Sam posts retest evidence, route or park within one heartbeat.
-Last architect instruction: PR #286 merged at `51812e2f9748c5ff5131959b7518edc2a73185b6` after strict approval. It diagnosed thin/zero pools plus a narrow current-option post-processing gap, then made early option slots prefer distinct product-family signatures when alternatives exist.
-Agent ack: Product Matching Agent completed the catalogue-variety diagnostic/fix on branch `codex/pm001-catalogue-variety-diagnostic`; PR #286 merged.
-Current PR: none.
-Blocker: Waiting for Sam's latest Product Matching retest result after PR #286.
+Status: REVIEW_REQUESTED
+Branch: `codex/pm001-recommendation-engine-repair`
+Allowed scope: PR #294 exact boundary only: local/dev domain-only Product Matching role-purity repair based on Sam's 2026-06-01 failed retest and Claude's plan at `docs/Tracks/v2-commercial/product-matching-evals/PM001_RECOMMENDATION_ENGINE_REPAIR_PLAN.md`.
+Forbidden scope: No live app validation, blind validation, controlled preview, production/default-on activation, live app actions, live catalog writes, live ingestion, catalogue/product mutations, DB/schema/generated type changes, runtime allowlist expansion, broad Product Matching rewrite, prompt/runtime image-generation behavior changes, payment/checkout changes, deploys, final-render execution, UI redesign, or Catalog-First coupling.
+Expected next artifact: Strict PR Review Agent verdict on PR #294; Sam manual local QA remains a separate future route.
+SLA: Review-requested; do not start additional Product Matching work until strict review or fresh Sam/Chief route.
+Last architect instruction: Sam's 2026-06-01 local retest after PR #286 found sofa scale mixing, office/task armchairs, repeated cushion/catalogue items, repeated/office coffee tables, bathroom mirrors in living/decor, and weak diversity/class discipline. PR #294 implements the scoped local/dev domain repair and evidence docs; no live validation or production action is approved.
+Agent ack: Product Matching repair completed on branch `codex/pm001-recommendation-engine-repair`; verification recorded in `docs/Tracks/v2-commercial/product-matching-evals/2026-06-01-pm001-recommendation-engine-repair-evidence.md`.
+Current PR: #294 (<https://github.com/Trueflutter/ritzy-studio/pull/294>)
+Blocker: None for review; waiting for strict PR Review Agent verdict on PR #294.
 
 ### Ticket BL-004 RE-001 Sourcing Retest
 

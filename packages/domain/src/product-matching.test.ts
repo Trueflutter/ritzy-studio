@@ -8,11 +8,15 @@ import {
   assessAestheticFitForRole,
   composeRoomProductOptions,
   composeRoomProductSet,
+  deriveClassTags,
+  deriveRoomScope,
+  deriveSizeClass,
   enhancedProductRolesForRoom,
   filterSubstitutionCandidates,
   groupShoppingItemsByRole,
   quantityForProductCategory,
   rankProductMatches,
+  roleClassContractForRole,
   renderReferencePriorityForProduct,
   scoreProductCandidateForRole,
   selectedItemsTotalAed,
@@ -46,6 +50,62 @@ const base: ProductMatchCandidate = {
   lastCheckedAt: now,
   dimensions: null
 };
+
+assert.deepEqual(
+  deriveClassTags({
+    ...base,
+    name: "Executive Ergonomic Desk Task Office Chair",
+    categoryNormalized: "armchairs"
+  }),
+  ["desk", "ergonomic", "office", "task"]
+);
+assert.deepEqual(
+  deriveClassTags({
+    ...base,
+    name: "L-Shaped Modular Corner Sofa",
+    categoryNormalized: "sofas"
+  }),
+  ["large_sofa"]
+);
+assert.equal(
+  deriveRoomScope({
+    ...base,
+    name: "Brushed Brass Vanity Mirror",
+    categoryNormalized: "mirrors"
+  }),
+  "bathroom"
+);
+assert.equal(
+  deriveSizeClass({
+    ...base,
+    name: "Victor 2 Seater Sofa",
+    categoryNormalized: "sofas",
+    dimensions: { widthCm: 178, depthCm: 86, heightCm: 93, sourceText: "W 178 x D 86 x H 93 cm" }
+  }),
+  "compact"
+);
+assert.equal(
+  deriveSizeClass({
+    ...base,
+    name: "Gigi Left Corner Sectional Sofa",
+    categoryNormalized: "sofas",
+    dimensions: { widthCm: null, depthCm: 293, heightCm: 73, sourceText: "D 293 x H 73 cm" }
+  }),
+  "large"
+);
+assert.deepEqual(
+  roleClassContractForRole(
+    {
+      category: "armchairs",
+      label: "secondary seating",
+      visualBrief: "soft living-room lounge chairs",
+      quantity: 2,
+      priority: "supporting"
+    },
+    "living room"
+  ).disallowedClasses,
+  ["desk", "dining", "ergonomic", "gaming", "office", "study", "task"]
+);
 
 const ranked = rankProductMatches({
   roomType: "living room",
@@ -290,7 +350,7 @@ const diningChairFallbackOptions = composeRoomProductOptions({
         ...base,
         id: "00000000-0000-4000-8000-000000000312",
         name: "Upholstered Chair",
-        categoryNormalized: "armchairs",
+        categoryNormalized: "chairs",
         priceAed: 700,
         availability: "in stock",
         primaryImageUrl: "https://example.com/chair.jpg",
@@ -704,6 +764,141 @@ assert.deepEqual(
 assert.equal(coffeeTablePool.pools[0].rejectionReasons.coffee_table_role_mismatch, 3);
 assert.ok(coffeeTablePool.pools[0].candidates[0].attributeScore.roleFit > 0);
 
+const classPureLivingPool = buildRoleScopedCandidatePools({
+  roomType: "living room",
+  conceptText:
+    "soft warm living room with a straight ivory sofa, lounge armchairs, a walnut coffee table, and an arched mirror",
+  roles: [
+    {
+      category: "sofas",
+      label: "anchor seating",
+      visualBrief: "straight ivory fabric sofa",
+      quantity: 1,
+      priority: "required"
+    },
+    {
+      category: "armchairs",
+      label: "secondary seating",
+      visualBrief: "soft lounge armchairs",
+      quantity: 2,
+      priority: "supporting"
+    },
+    {
+      category: "coffee_tables",
+      label: "coffee table",
+      visualBrief: "walnut coffee table",
+      quantity: 1,
+      priority: "required"
+    },
+    {
+      category: "mirrors",
+      label: "mirror",
+      visualBrief: "arched living-room mirror",
+      quantity: 1,
+      priority: "supporting"
+    }
+  ],
+  candidates: [
+    {
+      ...base,
+      id: "00000000-0000-4000-8000-000000000590",
+      name: "Ivory 3-Seater Fabric Sofa",
+      categoryNormalized: "sofas",
+      availability: "in stock",
+      primaryImageUrl: "https://example.com/ivory-3-seat-sofa.jpg",
+      colorTags: ["ivory"],
+      materialTags: ["fabric"]
+    },
+    {
+      ...base,
+      id: "00000000-0000-4000-8000-000000000591",
+      name: "Ivory L-Shaped Modular Corner Sofa",
+      categoryNormalized: "sofas",
+      availability: "in stock",
+      primaryImageUrl: "https://example.com/ivory-sectional-sofa.jpg",
+      colorTags: ["ivory"],
+      materialTags: ["fabric"]
+    },
+    {
+      ...base,
+      id: "00000000-0000-4000-8000-000000000592",
+      name: "Cream Boucle Lounge Armchair",
+      categoryNormalized: "armchairs",
+      availability: "in stock",
+      primaryImageUrl: "https://example.com/cream-lounge-armchair.jpg",
+      colorTags: ["cream"],
+      materialTags: ["boucle"]
+    },
+    {
+      ...base,
+      id: "00000000-0000-4000-8000-000000000593",
+      name: "Executive Ergonomic Task Office Chair",
+      categoryNormalized: "armchairs",
+      availability: "in stock",
+      primaryImageUrl: "https://example.com/office-task-chair.jpg"
+    },
+    {
+      ...base,
+      id: "00000000-0000-4000-8000-000000000594",
+      name: "Walnut Round Coffee Table",
+      categoryNormalized: "coffee_tables",
+      availability: "in stock",
+      primaryImageUrl: "https://example.com/walnut-round-coffee-table.jpg",
+      materialTags: ["walnut", "wood"]
+    },
+    {
+      ...base,
+      id: "00000000-0000-4000-8000-000000000595",
+      name: "Office Workstation Table",
+      categoryNormalized: "coffee_tables",
+      availability: "in stock",
+      primaryImageUrl: "https://example.com/office-workstation-table.jpg"
+    },
+    {
+      ...base,
+      id: "00000000-0000-4000-8000-000000000596",
+      name: "Warm Brass Arched Mirror",
+      categoryNormalized: "mirrors",
+      availability: "in stock",
+      primaryImageUrl: "https://example.com/warm-arched-mirror.jpg",
+      materialTags: ["brass"]
+    },
+    {
+      ...base,
+      id: "00000000-0000-4000-8000-000000000597",
+      name: "Bathroom Vanity Mirror Cabinet",
+      categoryNormalized: "mirrors",
+      availability: "in stock",
+      primaryImageUrl: "https://example.com/bathroom-vanity-mirror.jpg"
+    }
+  ],
+  candidatesPerRole: 3
+});
+assert.deepEqual(
+  classPureLivingPool.pools.find((pool) => pool.role.category === "sofas")?.candidates.map((candidate) => candidate.name),
+  ["Ivory 3-Seater Fabric Sofa"]
+);
+assert.equal(classPureLivingPool.pools.find((pool) => pool.role.category === "sofas")?.rejectionReasons.size_class_mismatch, 1);
+assert.deepEqual(
+  classPureLivingPool.pools.find((pool) => pool.role.category === "armchairs")?.candidates.map((candidate) => candidate.name),
+  ["Cream Boucle Lounge Armchair"]
+);
+assert.equal(classPureLivingPool.pools.find((pool) => pool.role.category === "armchairs")?.rejectionReasons.class_mismatch, 1);
+assert.deepEqual(
+  classPureLivingPool.pools.find((pool) => pool.role.category === "coffee_tables")?.candidates.map((candidate) => candidate.name),
+  ["Walnut Round Coffee Table"]
+);
+assert.equal(
+  classPureLivingPool.pools.find((pool) => pool.role.category === "coffee_tables")?.rejectionReasons
+    .coffee_table_role_mismatch,
+  1
+);
+assert.deepEqual(
+  classPureLivingPool.pools.find((pool) => pool.role.category === "mirrors")?.candidates.map((candidate) => candidate.name),
+  ["Warm Brass Arched Mirror"]
+);
+assert.equal(classPureLivingPool.pools.find((pool) => pool.role.category === "mirrors")?.rejectionReasons.room_scope_mismatch, 1);
+
 const badLivingRoomChairAesthetic = assessAestheticFitForRole({
   candidate: {
     ...base,
@@ -965,6 +1160,58 @@ const noisyCoffeeTableAesthetic = assessAestheticFitForRole({
 assert.equal(noisyCoffeeTableAesthetic.unsuitableHero, true);
 assert.ok(
   noisyCoffeeTableAesthetic.weaknessReasons.includes(
+    "noisy coffee table clashes with a patterned or multicolor rug"
+  )
+);
+
+const aestheticRankedCoffeePool = buildRoleScopedCandidatePools({
+  roomType: "living room",
+  conceptText: "timeless quiet living room with a patterned traditional rug and warm walnut accents",
+  roles: [
+    {
+      category: "coffee_tables",
+      label: "coffee table",
+      visualBrief: "quiet round walnut coffee table",
+      quantity: 1,
+      priority: "required"
+    }
+  ],
+  candidates: [
+    {
+      ...base,
+      id: "00000000-0000-4000-8000-000000000598",
+      name: "Striped Statement Coffee Table",
+      description: "Black and white striped unique attention-getter with intricate inlay.",
+      categoryNormalized: "coffee_tables",
+      availability: "in stock",
+      primaryImageUrl: "https://example.com/striped-statement-coffee-table.jpg",
+      colorTags: ["black", "white"],
+      materialTags: ["wood"]
+    },
+    {
+      ...base,
+      id: "00000000-0000-4000-8000-000000000599",
+      name: "Quiet Round Walnut Coffee Table",
+      description: "Simple round walnut coffee table.",
+      categoryNormalized: "coffee_tables",
+      availability: "in stock",
+      primaryImageUrl: "https://example.com/quiet-round-walnut-coffee-table.jpg",
+      materialTags: ["walnut", "wood"]
+    },
+    {
+      ...base,
+      id: "00000000-0000-4000-8000-000000000600",
+      name: "Traditional Patterned Rug",
+      description: "Green multicolor patterned rug.",
+      categoryNormalized: "rugs",
+      availability: "in stock",
+      primaryImageUrl: "https://example.com/traditional-patterned-rug.jpg"
+    }
+  ]
+});
+assert.equal(aestheticRankedCoffeePool.pools[0].candidates[0].name, "Quiet Round Walnut Coffee Table");
+assert.ok(
+  aestheticRankedCoffeePool.pools[0].weaknessReasons.includes(
     "noisy coffee table clashes with a patterned or multicolor rug"
   )
 );

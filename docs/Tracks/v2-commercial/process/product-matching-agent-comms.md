@@ -1,24 +1,31 @@
 # Product Matching Engine Agent Comms
 
 ## Current PR
-PR #286 on branch `codex/pm001-catalogue-variety-diagnostic`. PR #283, PR #282, PR #280, PR #278, and PR #277 merged.
+PR #294 on branch `codex/pm001-recommendation-engine-repair`. PR #286, PR #283, PR #282, PR #280, PR #278, and PR #277 merged.
 
 ## Current stage
-PM001_CATALOGUE_VARIETY_DIAGNOSTIC_REVIEW_REQUESTED
+PM001_RECOMMENDATION_ENGINE_REPAIR_REVIEW_REQUESTED
 
 ## Blockers
-Sam routed the next exact local/dev PM-001 boundary for Product Matching Agent: investigate repeated/similar catalogues, repeated product selections, and room/style role fit, then add focused diagnostics/tests or one narrow safe fix if clear. No Product Matching validation pass through the live app flow, blind validation, controlled preview, preview QA, browser-click app action, shopping-list refresh/create, visual-sourcing runtime call, catalogue/product row mutation, live write/ingestion, production deploy/flag/default-on activation, DB/schema/generated type change, broad/runtime allowlist expansion, payment/checkout change, UI redesign, broad Product Matching scoring rewrite, prompt/runtime image-generation behavior change, curtains/textiles candidate generation, thin-pool fixes, side-table/storage/media changes, floor-plan work, final-render execution, Catalog-First runtime coupling, or unrelated quality change is approved.
+Sam's 2026-06-01 local retest after PR #286 found the PM-001 recommendation engine still below the Wednesday 2026-06-03 operational beta bar: sofa recommendations mixed compact/standard sofas with long L-shaped/modular/sectional pieces; armchair recommendations included office/task furniture; the same cushion kept recurring; coffee-table recommendations repeated a tiny subset and included office tables; bathroom mirrors appeared in living-room/decor recommendations; aesthetic/design-quality ranking was weak; and diversity/class discipline was not strong enough.
 
-Current required owner action: wait for PR Review Agent strict verdict on PR #286.
+Claude's source repair plan is saved at `docs/Tracks/v2-commercial/product-matching-evals/PM001_RECOMMENDATION_ENGINE_REPAIR_PLAN.md`.
+
+Sam/Chief routed the exact PR #294 local/dev boundary: implement a domain-only Product Matching role-purity repair using match-time role contracts, class/room/size eligibility guards, bounded repetition/diversity safety, deterministic aesthetic ranking signal, focused domain tests, and PM-001 evidence/coordination docs.
+
+Current required owner action: wait for strict PR Review Agent re-review of PR #294 at the new head.
+
+Stop rules: no Product Matching validation pass through the live app flow, blind validation, controlled preview, preview QA, browser-click app action, shopping-list refresh/create, visual-sourcing runtime call, catalogue/product row mutation, live catalog write, live ingestion, production deploy/flag/default-on activation, DB/schema/generated type change, runtime allowlist expansion, payment/checkout change, UI redesign, broad catalogue rewrite, broad Product Matching rewrite, prompt/runtime image-generation behavior change, final-render execution, floor-plan work, Catalog-First runtime coupling, or unrelated quality change is approved.
 
 Current diagnostic findings:
-- Latest local manual PM-001 evidence remains `docs/Tracks/v2-commercial/product-matching-evals/manual-qa/2026-05-31-pm001-post-277-validation.md`; no new validation pass was run for this route.
-- The post-PR #277 evidence showed real candidate-pool limits: curtains/textiles had zero persisted options, side/end tables had one persisted option, coffee tables had two persisted options, and decor/storage had four persisted options.
-- The same evidence showed deterministic text fallback remained active because product candidate images were disabled, so remaining repetition and fit issues should be treated as semantic matching, catalogue pool, metadata, deterministic fallback, or post-processing quality issues rather than provider-timeout issues.
-- Code inspection found one narrow repeated-product-selection cause in `composeRoomProductOptions`: early role options avoided exact color/material/price signatures but could still allow the same product family to dominate a role option pool when variants differed by color, material, or price.
-- The proposed fix keeps top-ranked relevance intact, then prefers distinct product-family signatures for early role options when alternatives exist. It falls back to repeats only when the role pool is genuinely thin.
+- PR #294 adds match-time class tags, room scope, sofa size class, and additive role contract fields.
+- PR #294 hard-filters class, room-scope, and sofa-size mismatches before scoring/diversity in role-scoped pools.
+- PR #294 strengthens diversity signatures/repeat penalties and applies the existing deterministic aesthetic heuristic to role-pool ranking.
+- PR #294 records automated and manual-QA evidence in `docs/Tracks/v2-commercial/product-matching-evals/2026-06-01-pm001-recommendation-engine-repair-evidence.md`.
 
-Verification completed for PR #286: `pnpm --filter @ritzy-studio/domain exec tsx src/product-matching.test.ts`, `pnpm --filter @ritzy-studio/domain typecheck`, and `git diff --check`.
+Verification completed for PR #294: `pnpm --filter @ritzy-studio/domain exec tsx src/product-matching.test.ts`, `pnpm --filter @ritzy-studio/domain typecheck`, `pnpm --filter @ritzy-studio/domain test`, `pnpm typecheck`, `pnpm lint`, `git diff --check`, and conflict-marker scan. The post-rejection routing-only update reran `git diff --check`; implementation verification remains unchanged.
+
+PRODUCT_MATCHING_AGENT_ACK: 2026-06-01 — Product Matching repair branch `codex/pm001-recommendation-engine-repair` acknowledges the PM-001 recommendation-engine repair route for PR #294. Scope accepted: local/dev domain-only Product Matching role-purity repair and coordination docs based on Sam's failed 2026-06-01 retest and Claude's saved plan. Stop rules accepted: no live app validation, controlled preview, preview QA, app action, catalog writes/re-ingestion, catalogue/product mutation, DB/schema/generated type change, production deploy/flag/default-on activation, runtime allowlist expansion, payment/checkout, UI redesign, prompt/runtime image-generation behavior change, broad Product Matching rewrite, final render, floor-plan work, Catalog-First coupling, or unrelated quality change.
 
 PRODUCT_MATCHING_AGENT_ACK: 2026-06-01 — Product Matching Agent acknowledged Sam's catalogue-variety and role/product-fit route on branch `codex/pm001-catalogue-variety-diagnostic`, based on `origin/main` at `668b88db9b1e697e6a0a024b82a086932724972f`. Scope accepted: local/dev Product Matching code/tests/docs only; inspect recent PM-001 evidence and Sam test evidence; identify whether repetition is caused by candidate pool limits, scoring weights, role fallback behavior, deterministic fallback, catalogue thinness, or post-processing; add focused regression tests or diagnostics; implement one narrow safe fix only if clear. Stop rules accepted: no validation pass through live app flow, controlled preview, preview QA, production/default-on activation, live catalog writes, catalogue/product mutations, DB/schema/type changes, broad scoring rewrite, prompt/image-generation behavior changes, payment/checkout, deploys, final render, floor-plan work, or Catalog-First coupling.
 
