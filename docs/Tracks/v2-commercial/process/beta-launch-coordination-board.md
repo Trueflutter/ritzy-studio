@@ -51,16 +51,16 @@ Blocker: Parked after merged designer-path QA evidence; fresh Sam/Chief route re
 ### Ticket BL-002 V2-006 Shopping Preview And Unlock UX
 
 Owner: Ritzy Chief Architect
-Status: IN_PROGRESS
-Branch: `codex/v2006-shopping-unlock-beta`
+Status: MERGED_WAITING_FOR_LOCAL_UX_EVIDENCE
+Branch: none
 Allowed scope: Local/dev code/tests/docs for V2-006 beta usability: locked shopping preview, unlocked shopping links, designer subscription bypass expectations, clear paid/unpaid states, and server-side no-link-leakage checks.
 Forbidden scope: No live payment actions, production deploys, production flags, DB/schema/generated type changes unless separately approved, live catalog writes, live ingestion, Product Matching execution, controlled-preview/default-on activation, or retailer attribution promises beyond existing data.
-Expected next artifact: Focused V2-006 local/dev PR for shopping-list locked-preview no-link leakage and beta usability evidence.
-SLA: Active while branch is in progress; open PR or blocker within the next heartbeat.
-Last architect instruction: V2-006 remains `passes=false` in `docs/Tracks/v2-commercial/02_Feature_List.json`; it is the first unfinished V2 commercial feature and beta-critical for designers testing the shopping-list experience. Chief opened branch `codex/v2006-shopping-unlock-beta` to inspect and patch the smallest safe local/dev no-link-leakage boundary.
-Agent ack: Ritzy Chief Architect acknowledged and started branch `codex/v2006-shopping-unlock-beta`.
-Current PR: none.
-Blocker: None for the current local/dev branch; production/deployed payment and smoke actions still require explicit Sam approval.
+Expected next artifact: Local/dev V2-006 beta UX evidence for locked preview, unlocked links, designer bypass/subscription expectations, and Stripe/deployed smoke gates.
+SLA: Route the local/dev evidence/checklist follow-up within the next beta coordination cycle unless Sam chooses to defer V2-006 from Wednesday beta.
+Last architect instruction: PR #292 merged at `37c76573fd5e65c5f4272ed36464bf7e1b78243b` after strict PR Review Agent approval at unchanged head `76aaa2d713b4da1bb7c73b6973cb1f39039d90f4`. It patched the smallest safe no-link-leakage issue by ensuring locked `ProductCard`/detail-drawer client props receive `null` for retailer URL and description while unlocked commerce users retain existing retailer-link behavior.
+Agent ack: Ritzy Chief Architect completed branch `codex/v2006-shopping-unlock-beta`; PR #292 merged.
+Current PR: none; #292 merged (<https://github.com/Trueflutter/ritzy-studio/pull/292>)
+Blocker: Remaining V2-006 beta UX evidence can proceed locally; production/deployed payment and smoke actions still require explicit Sam approval.
 
 ### Ticket BL-003 Product Matching Variety And Fit
 
