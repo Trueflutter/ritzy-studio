@@ -51,16 +51,16 @@ Blocker: Parked after merged designer-path QA evidence; fresh Sam/Chief route re
 ### Ticket BL-002 V2-006 Shopping Preview And Unlock UX
 
 Owner: Ritzy Chief Architect
-Status: ROUTE_READY
-Branch: none
+Status: IN_PROGRESS
+Branch: `codex/v2006-shopping-unlock-beta`
 Allowed scope: Local/dev code/tests/docs for V2-006 beta usability: locked shopping preview, unlocked shopping links, designer subscription bypass expectations, clear paid/unpaid states, and server-side no-link-leakage checks.
 Forbidden scope: No live payment actions, production deploys, production flags, DB/schema/generated type changes unless separately approved, live catalog writes, live ingestion, Product Matching execution, controlled-preview/default-on activation, or retailer attribution promises beyond existing data.
-Expected next artifact: A focused V2-006 implementation or test PR, or an explicit blocker naming the smallest Sam decision needed.
-SLA: Route within the next beta coordination cycle unless Sam chooses to defer V2-006 from Wednesday beta.
-Last architect instruction: V2-006 remains `passes=false` in `docs/Tracks/v2-commercial/02_Feature_List.json`; it is the first unfinished V2 commercial feature and beta-critical for designers testing the shopping-list experience.
-Agent ack: not started.
+Expected next artifact: Focused V2-006 local/dev PR for shopping-list locked-preview no-link leakage and beta usability evidence.
+SLA: Active while branch is in progress; open PR or blocker within the next heartbeat.
+Last architect instruction: V2-006 remains `passes=false` in `docs/Tracks/v2-commercial/02_Feature_List.json`; it is the first unfinished V2 commercial feature and beta-critical for designers testing the shopping-list experience. Chief opened branch `codex/v2006-shopping-unlock-beta` to inspect and patch the smallest safe local/dev no-link-leakage boundary.
+Agent ack: Ritzy Chief Architect acknowledged and started branch `codex/v2006-shopping-unlock-beta`.
 Current PR: none.
-Blocker: Needs Chief route to an implementation agent or explicit Sam decision to defer.
+Blocker: None for the current local/dev branch; production/deployed payment and smoke actions still require explicit Sam approval.
 
 ### Ticket BL-003 Product Matching Variety And Fit
 
