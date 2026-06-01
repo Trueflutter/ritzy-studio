@@ -1846,6 +1846,82 @@ assert.deepEqual(
   ["Cream Fabric Sofa 1", "Green Velvet Sofa", "Cream Fabric Sofa 2"]
 );
 
+const productFamilyDiverseCoffeeTableOptions = composeRoomProductOptions({
+  ranked: rankProductMatches({
+    roomType: "living room",
+    conceptText: "warm living room with a sculptural coffee table",
+    budgetMaxAed: 10000,
+    candidates: [
+      {
+        ...base,
+        id: "00000000-0000-4000-8000-000000000412",
+        name: "Baku Coffee Table Low",
+        retailerName: "Same Retailer",
+        categoryNormalized: "coffee_tables",
+        priceAed: 900,
+        availability: "in stock",
+        primaryImageUrl: "https://example.com/baku-low.jpg",
+        colorTags: ["white"],
+        materialTags: ["wood"]
+      },
+      {
+        ...base,
+        id: "00000000-0000-4000-8000-000000000413",
+        name: "Baku Coffee Table Tall",
+        retailerName: "Same Retailer",
+        categoryNormalized: "coffee_tables",
+        priceAed: 1500,
+        availability: "in stock",
+        primaryImageUrl: "https://example.com/baku-tall.jpg",
+        colorTags: ["ivory"],
+        materialTags: ["oak"]
+      },
+      {
+        ...base,
+        id: "00000000-0000-4000-8000-000000000414",
+        name: "Baku Coffee Table Round",
+        retailerName: "Same Retailer",
+        categoryNormalized: "coffee_tables",
+        priceAed: 3200,
+        availability: "in stock",
+        primaryImageUrl: "https://example.com/baku-round.jpg",
+        colorTags: ["beige"],
+        materialTags: ["walnut"]
+      },
+      {
+        ...base,
+        id: "00000000-0000-4000-8000-000000000415",
+        name: "Theo Coffee Table Walnut",
+        retailerName: "Same Retailer",
+        categoryNormalized: "coffee_tables",
+        priceAed: 1800,
+        availability: "in stock",
+        primaryImageUrl: "https://example.com/theo-walnut.jpg",
+        colorTags: ["walnut"],
+        materialTags: ["wood"]
+      },
+      {
+        ...base,
+        id: "00000000-0000-4000-8000-000000000416",
+        name: "Marble Nesting Coffee Table",
+        retailerName: "Different Retailer",
+        categoryNormalized: "coffee_tables",
+        priceAed: 2200,
+        availability: "in stock",
+        primaryImageUrl: "https://example.com/marble-nesting.jpg",
+        colorTags: ["ivory"],
+        materialTags: ["marble"]
+      }
+    ]
+  }),
+  roles: [{ category: "coffee_tables", label: "coffee table", visualBrief: null, quantity: 1, priority: "required" }],
+  optionsPerRole: 3
+});
+assert.deepEqual(
+  productFamilyDiverseCoffeeTableOptions[0].options.map((option) => option.name),
+  ["Baku Coffee Table Low", "Theo Coffee Table Walnut", "Marble Nesting Coffee Table"]
+);
+
 const refreshDiverseSofaOptions = composeRoomProductOptions({
   ranked: rankProductMatches({
     roomType: "living room",

@@ -2182,22 +2182,35 @@ function diverseRoleMatches(
 ) {
   const selected: Array<{ match: RankedProductMatch; index: number; affinity: number }> = [];
   const seenSignatures = new Set<string>();
+  const seenFamilies = new Set<string>();
   const shortlist = matches.slice(0, Math.max(limit * 4, limit));
 
   for (const candidate of shortlist) {
+    const signature = diversitySignature(candidate.match);
+    const family = refreshDiversitySignature(candidate.match);
+
     if (selected.length === 0) {
       selected.push(candidate);
-      seenSignatures.add(diversitySignature(candidate.match));
+      seenSignatures.add(signature);
+      if (family.length > 0) {
+        seenFamilies.add(family);
+      }
       continue;
     }
 
-    const signature = diversitySignature(candidate.match);
-    if (seenSignatures.has(signature) && selected.length < Math.min(limit, 3)) {
+    const shouldPreferDistinctEarlyOptions = selected.length < Math.min(limit, 3);
+    if (
+      shouldPreferDistinctEarlyOptions &&
+      (seenSignatures.has(signature) || (family.length > 0 && seenFamilies.has(family)))
+    ) {
       continue;
     }
 
     selected.push(candidate);
     seenSignatures.add(signature);
+    if (family.length > 0) {
+      seenFamilies.add(family);
+    }
 
     if (selected.length >= limit) {
       return selected;
