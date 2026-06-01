@@ -146,6 +146,7 @@ export * from "./catalog-first-dry-run-fixture-report";
 export * from "./product-matching-confidence";
 export * from "./measurement-intelligence";
 export * from "./product-matching-dimensions";
+export * from "./spatial-design-rules";
 export * from "./product-matching-evidence";
 export * from "./product-matching-freshness";
 export * from "./product-matching-pool-diversity";
