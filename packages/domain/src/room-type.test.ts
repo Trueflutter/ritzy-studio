@@ -24,8 +24,10 @@ const combinedLivingDiningAliases = [
   "Living & Dining",
   "living and dining",
   "living/dining",
+  "Living / Dining",
   "living-dining",
   "living dining",
+  "living dining hall",
   "open plan living dining",
   "open-plan living and dining"
 ] as const;

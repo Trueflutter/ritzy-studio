@@ -35,6 +35,29 @@ assert.equal(roleById("living_room", "coffee_table").category, "coffee_tables");
 assert.equal(roleById("living_room", "tv_media_console").category, "storage");
 assert.equal(roleById("living_room", "lighting").category, "lighting");
 
+assert.deepEqual(roleIds("living_dining"), [
+  "sofa",
+  "rug",
+  "coffee_table",
+  "dining_table",
+  "dining_chairs",
+  "tv_media_console",
+  "sideboard_console",
+  "lighting",
+  "cushions"
+]);
+assert.equal(roleById("living_dining", "sofa").category, "sofas");
+assert.equal(roleById("living_dining", "dining_table").category, "dining_tables");
+assert.equal(roleById("living_dining", "dining_chairs").category, "chairs");
+assert.equal(roleById("living_dining", "tv_media_console").category, "storage");
+assert.equal(roleById("living_dining", "sideboard_console").category, "storage");
+assert.equal(roleById("living_dining", "lighting").category, "lighting");
+assert.equal(roleById("living_dining", "rug").category, "rugs");
+assert.equal(roleById("living_dining", "sofa").required, true);
+assert.equal(roleById("living_dining", "dining_table").required, true);
+assert.equal(roleById("living_dining", "dining_chairs").required, true);
+assert.equal(roleById("living_dining", "lighting").quantity, 2);
+
 assert.deepEqual(roleIds("dining_room"), ["dining_table", "dining_chairs", "lighting", "sideboard_console"]);
 assert.equal(roleById("dining_room", "dining_table").category, "dining_tables");
 assert.equal(roleById("dining_room", "dining_chairs").category, "chairs");
@@ -67,6 +90,11 @@ assert.equal(normalizeCatalogFirstRoomType("living room"), "living_room");
 assert.equal(normalizeCatalogFirstRoomType("  living-room  "), "living_room");
 assert.equal(normalizeCatalogFirstRoomType("lounge"), "living_room");
 assert.equal(normalizeCatalogFirstRoomType("family room"), "living_room");
+assert.equal(normalizeCatalogFirstRoomType("Living & Dining"), "living_dining");
+assert.equal(normalizeCatalogFirstRoomType("living and dining"), "living_dining");
+assert.equal(normalizeCatalogFirstRoomType("Living / Dining"), "living_dining");
+assert.equal(normalizeCatalogFirstRoomType("living-dining"), "living_dining");
+assert.equal(normalizeCatalogFirstRoomType("living dining hall"), "living_dining");
 assert.equal(normalizeCatalogFirstRoomType("dining_room"), "dining_room");
 assert.equal(normalizeCatalogFirstRoomType("Dining Room"), "dining_room");
 assert.equal(normalizeCatalogFirstRoomType("dining area"), "dining_room");
@@ -82,6 +110,7 @@ assert.throws(() => normalizeCatalogFirstRoomType("bathroom"), /Unsupported cata
 
 for (const [input, roomType] of [
   ["Living Room", "living_room"],
+  ["Living & Dining", "living_dining"],
   ["dining area", "dining_room"],
   ["primary bedroom", "bedroom"],
   ["study", "home_office"]
@@ -162,6 +191,31 @@ const livingBundle = assembleCatalogFirstBundle({
 assert.equal(livingBundle.bundle?.items.find((bundleItem) => bundleItem.roleId === "lighting")?.quantity, 2);
 assert.equal(livingBundle.bundle?.items.find((bundleItem) => bundleItem.roleId === "cushions")?.quantity, 4);
 assert.equal(livingBundle.bundle?.totalAed, 8000 + 2400 + 1800 + 3200 + 900 * 2 + 250 * 4);
+
+const combinedLivingDiningBundle = assembleCatalogFirstBundle({
+  roomType: "living_dining",
+  tier: "premium",
+  roles: catalogFirstRolesForRoom("living_dining"),
+  budgetMaxAed: 35000,
+  candidateItemsByRoleId: {
+    sofa: [item("sofa", 8000)],
+    rug: [item("rug", 2400)],
+    coffee_table: [item("coffee_table", 1800)],
+    dining_table: [item("dining_table", 5000)],
+    dining_chairs: [item("dining_chairs", 700)],
+    tv_media_console: [item("tv_media_console", 3200)],
+    sideboard_console: [item("sideboard_console", 3600)],
+    lighting: [item("lighting", 1200)],
+    cushions: [item("cushions", 250)]
+  }
+});
+assert.deepEqual(combinedLivingDiningBundle.missingRequiredRoleIds, []);
+assert.equal(combinedLivingDiningBundle.bundle?.items.find((bundleItem) => bundleItem.roleId === "dining_chairs")?.quantity, 6);
+assert.equal(combinedLivingDiningBundle.bundle?.items.find((bundleItem) => bundleItem.roleId === "lighting")?.quantity, 2);
+assert.equal(
+  combinedLivingDiningBundle.bundle?.totalAed,
+  8000 + 2400 + 1800 + 5000 + 700 * 6 + 3200 + 3600 + 1200 * 2 + 250 * 4
+);
 
 const optionalMissingBundle = assembleCatalogFirstBundle({
   roomType: "living_room",

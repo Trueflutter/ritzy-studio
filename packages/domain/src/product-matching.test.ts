@@ -15,6 +15,7 @@ import {
   filterSubstitutionCandidates,
   groupShoppingItemsByRole,
   quantityForProductCategory,
+  productRolesForRoom,
   rankProductMatches,
   roleClassContractForRole,
   renderReferencePriorityForProduct,
@@ -252,6 +253,112 @@ assert.deepEqual(
   ["sofas", "armchairs", "coffee_tables", "rugs", "wall_art", "sofas"]
 );
 assert.equal(quantityForProductCategory("living room", "armchairs"), 2);
+
+const combinedRoles = productRolesForRoom("Living & Dining");
+assert.deepEqual(
+  combinedRoles.map((role) => role.category),
+  [
+    "sofas",
+    "dining_tables",
+    "chairs",
+    "armchairs",
+    "coffee_tables",
+    "rugs",
+    "storage",
+    "lighting",
+    "wall_art",
+    "decor"
+  ]
+);
+assert.equal(combinedRoles.find((role) => role.category === "sofas")?.required, true);
+assert.equal(combinedRoles.find((role) => role.category === "dining_tables")?.required, true);
+assert.equal(combinedRoles.find((role) => role.category === "chairs")?.quantity, 6);
+assert.equal(quantityForProductCategory("Living & Dining", "sofas"), 1);
+assert.equal(quantityForProductCategory("Living & Dining", "dining_tables"), 1);
+assert.equal(quantityForProductCategory("Living & Dining", "chairs"), 6);
+
+const combinedEnhancedRoles = enhancedProductRolesForRoom("living dining hall");
+assert.equal(combinedEnhancedRoles.find((role) => role.category === "sofas")?.label, "living-zone sofa or sectional");
+assert.equal(combinedEnhancedRoles.find((role) => role.category === "dining_tables")?.label, "dining table");
+assert.equal(combinedEnhancedRoles.find((role) => role.category === "chairs")?.label, "dining chairs");
+assert.equal(combinedEnhancedRoles.filter((role) => role.category === "rugs").length, 1);
+assert.equal(combinedEnhancedRoles.filter((role) => role.category === "lighting").length, 1);
+
+const combinedRanked = rankProductMatches({
+  roomType: "Living & Dining",
+  conceptText: "open plan living dining hall with sofa, dining table, dining chairs, coffee table and rug",
+  budgetMaxAed: 20000,
+  candidates: [
+    {
+      ...base,
+      id: "00000000-0000-4000-8000-000000000040",
+      name: "Hall Sofa",
+      categoryNormalized: "sofas",
+      priceAed: 5200,
+      primaryImageUrl: "https://example.com/hall-sofa.jpg",
+      availability: "in stock"
+    },
+    {
+      ...base,
+      id: "00000000-0000-4000-8000-000000000041",
+      name: "Dining Table",
+      categoryNormalized: "dining_tables",
+      priceAed: 4300,
+      primaryImageUrl: "https://example.com/dining-table.jpg",
+      availability: "in stock"
+    },
+    {
+      ...base,
+      id: "00000000-0000-4000-8000-000000000042",
+      name: "Dining Chairs",
+      categoryNormalized: "chairs",
+      priceAed: 700,
+      primaryImageUrl: "https://example.com/dining-chairs.jpg",
+      availability: "in stock"
+    },
+    {
+      ...base,
+      id: "00000000-0000-4000-8000-000000000043",
+      name: "Coffee Table",
+      categoryNormalized: "coffee_tables",
+      priceAed: 1000,
+      primaryImageUrl: "https://example.com/coffee-table-combined.jpg",
+      availability: "in stock"
+    },
+    {
+      ...base,
+      id: "00000000-0000-4000-8000-000000000044",
+      name: "Dining Pendant",
+      categoryNormalized: "lighting",
+      priceAed: 1400,
+      primaryImageUrl: "https://example.com/dining-pendant.jpg",
+      availability: "in stock"
+    },
+    {
+      ...base,
+      id: "00000000-0000-4000-8000-000000000045",
+      name: "Bedroom Bed",
+      categoryNormalized: "beds",
+      priceAed: 3500,
+      primaryImageUrl: "https://example.com/bed.jpg",
+      availability: "in stock"
+    }
+  ]
+});
+assert.deepEqual(new Set(combinedRanked.map((candidate) => candidate.categoryNormalized)), new Set([
+  "sofas",
+  "dining_tables",
+  "chairs",
+  "coffee_tables",
+  "lighting"
+]));
+assert.equal(combinedRanked.some((candidate) => candidate.categoryNormalized === "beds"), false);
+
+const combinedKit = composeRoomProductSet({ ranked: combinedRanked, roomType: "Living & Dining", limit: 5 });
+assert.deepEqual(
+  combinedKit.map((candidate) => candidate.categoryNormalized),
+  ["sofas", "dining_tables", "chairs", "coffee_tables", "lighting"]
+);
 
 // --- PR B: role option pools ----------------------------------------------
 
