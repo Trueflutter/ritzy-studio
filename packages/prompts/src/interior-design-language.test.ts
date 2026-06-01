@@ -36,6 +36,9 @@ assert.match(roomDesignLanguage("living room"), /arranged for conversation/);
 assert.match(roomDesignLanguage("living room"), /primary seating must be placed on a different wall or zone/);
 assert.match(roomDesignLanguage("living room"), /TV\/media wall and primary sofa must not be on the same wall/);
 assert.match(roomDesignLanguage("living room"), /sofa seat\/front should face the TV\/media wall or declared focal point/);
+assert.match(roomDesignLanguage("living room"), /primary sofa should remain parallel to the focal wall/);
+assert.match(roomDesignLanguage("living room"), /Do not cant or angle the primary sofa diagonally/);
+assert.match(roomDesignLanguage("living room"), /sectional or L-shaped sofa, its long run should be parallel to the focal wall/);
 assert.match(roomDesignLanguage("living room"), /Accent chairs should angle inward toward the sofa\/focal-point axis/);
 assert.match(roomDesignLanguage("family lounge"), /generously sized rug/);
 assert.match(roomDesignLanguage("dining room"), /chair spacing and pull-out clearance/);
@@ -47,7 +50,11 @@ assert.match(roomDesignLanguage("entry hall"), /high-end editorial residential i
 assert.match(roomBlueprintDefaultsLanguage("living room"), /primary sofa or sectional placed on a separate opposite wall\/zone/);
 assert.match(roomBlueprintDefaultsLanguage("living room"), /must not be on the same wall/);
 assert.match(roomBlueprintDefaultsLanguage("living room"), /avoid sofa-under-TV placement/);
+assert.match(roomBlueprintDefaultsLanguage("living room"), /staying square to the room grid/);
 assert.match(roomSpatialPlacementGuardrailLanguage("living room") ?? "", /different wall or zone/);
+assert.match(roomSpatialPlacementGuardrailLanguage("living room") ?? "", /parallel to the focal wall/);
+assert.match(roomSpatialPlacementGuardrailLanguage("living room") ?? "", /Do not cant or angle the primary sofa diagonally/);
+assert.match(roomSpatialPlacementGuardrailLanguage("living room") ?? "", /sectional or L-shaped sofa, its long run should be parallel to the focal wall/);
 assert.equal(roomSpatialPlacementGuardrailLanguage("dining room"), null);
 
 assert.match(sourceRoomPreservationLanguage("living room"), /Preserve the uploaded source room/);
