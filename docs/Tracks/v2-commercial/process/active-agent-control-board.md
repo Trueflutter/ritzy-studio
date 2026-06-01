@@ -153,14 +153,14 @@ Blocker: Waiting for explicit Sam/Chief routing.
 Owner: Resilience Engineer_Product I...
 Status: PARKED
 Branch: none
-Allowed scope: Claude/local retest follow-through only after pulling latest `origin/main` with PR #200 and restarting the dev server. If product sourcing still fails, collect the newest `ai_jobs` evidence and request a fresh RE-001 route.
+Allowed scope: None while parked after the completed local/dev retest. A future route may allow a narrow timeout/performance follow-up or beta launch smoke-test evidence.
 Forbidden scope: No DB migrations, generated DB types, Product Matching controlled-preview configuration/execution, runtime allowlist expansion, Product Matching Engine V1 activation, live catalog writes, draft shopping-list writes except the existing successful sourcing path, payment/checkout changes, deploys, UI redesign, prompt/schema changes unless narrowly required for the fallback and explicitly called out for review, broad sourcing architecture changes, or Catalog-First runtime coupling unless a new ticket explicitly routes that scope.
-Expected next artifact: Claude/local retest result. If product sourcing still fails, include the newest `ai_jobs.error_message`, runtime, `productSourcingAiPayload`, `productImagePreflight`, `productImagePreflightGate`, `providerImageDownloadFailure`, `productMatchingEngineEnabled`, model, and whether `productSourcingTextFallbackUsed` was recorded.
-SLA: None while parked pending retest.
-Last architect instruction: PR #200 merged at `9313ca6`. It adds the bounded deterministic text fallback for Product Sourcing timeouts, preserves the existing shopping-list path, and does not widen Product Matching, controlled preview, catalog/live writes, schema/types, deploys, payment/checkout, UI, or Catalog-First scope. Pull latest main, restart the dev server, and retest product/catalogue sourcing.
-Agent ack: #200 was the acknowledgement and implementation artifact for the third-pass RE-001 route.
+Expected next artifact: None while parked. If Sam/Chief needs beta performance hardening, route a fresh exact boundary for the 45s visual-sourcing timeout/fallback behavior.
+SLA: None while parked after completed retest.
+Last architect instruction: RE-001 local/dev retest follow-through completed on latest `origin/main` at `668b88d`, including PR #200 merge commit `9313ca6d8c422932c87eb59e1f0c33e9faea7fd1`. Product/catalogue sourcing succeeded through the existing local app path, returned `303` to shopping list, and updated shopping list `99062356-7a63-4438-bd4b-461cc43c66ba` with 30 item rows and 5 selected rows. Evidence row: `ai_jobs` `540fb2d7-a3f4-47fc-9c85-d36033b8823e`, `status=succeeded`, runtime `45043ms`, request elapsed `52025ms`, `productMatchingEngineEnabled=false`, `productSourcingTextFallbackUsed=true`, reason `initial_visual_sourcing_timeout`. This clears the stale retest blocker but leaves the 45s timeout/text-fallback path as a beta performance risk, not a sourcing failure.
+Agent ack: Resilience Engineer completed the routed retest on branch `codex/re001-local-retest-followthrough` and left an `ARCHITECT_NOTE:` on PR #200: <https://github.com/Trueflutter/ritzy-studio/pull/200#issuecomment-4589235314>.
 Current PR: none; #200 merged (<https://github.com/Trueflutter/ritzy-studio/pull/200>)
-Blocker: Waiting for Claude/local retest on latest main.
+Blocker: Parked after successful local/dev retest; fresh Sam/Chief route required for any timeout/performance follow-up.
 
 ### Ticket CI-001
 
