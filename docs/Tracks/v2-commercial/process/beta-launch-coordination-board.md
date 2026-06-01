@@ -37,16 +37,16 @@ Do not perform any of these without explicit Sam approval:
 ### Ticket BL-001 Designer Path QA
 
 Owner: Sam-created Designer Path QA Agent
-Status: ROUTE_READY
-Branch: none
+Status: REVIEW_REQUESTED
+Branch: `codex/designer-path-qa-evidence`
 Allowed scope: Local/dev end-to-end designer-path QA, docs-only evidence, and one narrow local/dev fix PR if a beta-blocking issue is found.
 Forbidden scope: No production deploys, production flags, live payment actions, live catalog writes, live ingestion, DB/schema/generated type changes, controlled-preview expansion, Product Matching default-on activation, runtime allowlist expansion, broad UI redesign, or payment/checkout architecture changes.
-Expected next artifact: `ARCHITECT_NOTE:` or PR documenting designer login/onboarding, designer mode selection, project creation, room creation, photo upload, brief/questions/style/inspiration flow, concept generation path, product matching/shopping-list path, presentation/client-facing path, navigation, subscription/paywall expectations, and P0/P1/P2 blockers.
-SLA: Acknowledge within one heartbeat after Sam creates the agent session; evidence, PR, or blocker within 30 minutes after acknowledgement.
-Last architect instruction: Sam asked whether to create a new chat session; Chief Architect confirmed yes and provided the stricter Designer Path QA Agent prompt.
-Agent ack: waiting for Sam-created agent session.
-Current PR: none.
-Blocker: Waiting for the Designer Path QA Agent session to be created and prompted.
+Expected next artifact: PR Review Agent strict verdict on PR #288.
+SLA: Active while PR #288 is awaiting review.
+Last architect instruction: Designer Path QA Agent completed local/dev designer-path evidence on latest `origin/main`, covering login/onboarding, designer mode, project/room creation, photo evidence, brief/questions/style/inspiration, concept generation, product matching, locked shopping list, designer plan paywall, and room preview. The PR calls out a P2 concept completion spinner observation for review.
+Agent ack: Designer Path QA Agent opened PR #288 with docs evidence and screenshot assets.
+Current PR: #288 (<https://github.com/Trueflutter/ritzy-studio/pull/288>)
+Blocker: Waiting for PR Review Agent strict verdict on PR #288.
 
 ### Ticket BL-002 V2-006 Shopping Preview And Unlock UX
 
@@ -65,30 +65,30 @@ Blocker: Needs Chief route to an implementation agent or explicit Sam decision t
 ### Ticket BL-003 Product Matching Variety And Fit
 
 Owner: Product Matching Agent
-Status: WAITING_FOR_SAM_TEST
+Status: MERGED_WAITING_FOR_SAM_RETEST
 Branch: none
-Allowed scope: After Sam's morning retest, local/dev diagnostics, tests, and one narrow fix PR focused on repeated/similar catalogues, repeated-product selection, and role/product fit.
+Allowed scope: None until Sam's fresh beta-readiness retest result or a fresh Sam/Chief route approves the next exact PM-001 local/dev boundary.
 Forbidden scope: No blind validation, controlled preview, production/default-on activation, live app actions, live catalog writes, catalogue/product mutations, DB/schema/generated type changes, runtime allowlist expansion, broad scoring rewrite, prompt/runtime image-generation behavior changes, payment/checkout changes, deploys, final-render execution, or Catalog-First coupling.
-Expected next artifact: Sam's retest readout. If the concern reproduces, route Product Matching Agent with the prepared variety/fit prompt.
+Expected next artifact: Sam's retest readout after PR #286. If repeated catalogues or poor fit remains, route the smallest next Product Matching local/dev boundary.
 SLA: Once Sam posts retest evidence, route or park within one heartbeat.
-Last architect instruction: Sam's key concern is that recent Product Matching tests produced similar catalogues again and again, with products not always matching.
-Agent ack: not routed for this new concern yet.
+Last architect instruction: PR #286 merged at `51812e2f9748c5ff5131959b7518edc2a73185b6` after strict approval. It diagnosed thin/zero pools plus a narrow current-option post-processing gap, then made early option slots prefer distinct product-family signatures when alternatives exist.
+Agent ack: Product Matching Agent completed the catalogue-variety diagnostic/fix on branch `codex/pm001-catalogue-variety-diagnostic`; PR #286 merged.
 Current PR: none.
-Blocker: Waiting for Sam's latest Product Matching retest result.
+Blocker: Waiting for Sam's latest Product Matching retest result after PR #286.
 
 ### Ticket BL-004 RE-001 Sourcing Retest
 
 Owner: Resilience Engineer_Product I...
-Status: EVIDENCE_REPORTED
+Status: MERGED
 Branch: `codex/re001-local-retest-followthrough`
 Allowed scope: None unless Sam/Chief routes a fresh timeout/performance follow-up.
 Forbidden scope: Same as RE-001 in the active control board.
-Expected next artifact: PR #285 review/merge for durable board/evidence update, then no further RE-001 action unless routed.
-SLA: PR #285 should be reviewed/merged or fixed promptly.
-Last architect instruction: RE-001 reported the retest passed on latest `origin/main`; product/catalogue sourcing succeeded but still used text fallback after a roughly 45s visual-sourcing timeout.
+Expected next artifact: None unless Sam/Chief routes a fresh timeout/performance follow-up.
+SLA: None while parked after PR #285 merged.
+Last architect instruction: PR #285 merged at `8c7c1b5b3ae9dfa118d0f1e2c9a75f4d36aa4ad6`, recording that RE-001 retest passed on latest `origin/main`; product/catalogue sourcing succeeded but still used text fallback after a roughly 45s visual-sourcing timeout.
 Agent ack: complete.
-Current PR: #285 `docs: record RE-001 retest followthrough`
-Blocker: Needs PR Review Agent review for PR #285.
+Current PR: none; #285 merged (<https://github.com/Trueflutter/ritzy-studio/pull/285>)
+Blocker: Parked after successful local/dev retest; fresh Sam/Chief route required for timeout/performance follow-up.
 
 ### Ticket BL-005 Stripe And Deployment Smoke
 
