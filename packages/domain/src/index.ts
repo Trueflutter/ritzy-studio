@@ -15,12 +15,37 @@ export const roomStatusSchema = z.enum([
   "complete"
 ]);
 
-export const canonicalRoomTypes = ["Living Room", "Dining Room", "Bedroom", "Home Office"] as const;
+export const roomCreationRoomTypes = [
+  "Living Room",
+  "Dining Room",
+  "Bedroom",
+  "Home Office"
+] as const;
+
+export const canonicalRoomTypes = [
+  ...roomCreationRoomTypes,
+  "Living & Dining"
+] as const;
 
 export const canonicalRoomTypeSchema = z.enum(canonicalRoomTypes);
 
+export function isCombinedLivingDining(value: string): boolean {
+  const normalized = value
+    .trim()
+    .toLowerCase()
+    .replace(/&/g, " and ")
+    .replace(/[/_-]/g, " ")
+    .replace(/\s+/g, " ");
+
+  return /\bliving\b/.test(normalized) && /\bdining\b/.test(normalized);
+}
+
 export function normalizeRoomType(roomType: string) {
   const normalized = roomType.trim().toLowerCase();
+
+  if (isCombinedLivingDining(roomType)) {
+    return "Living & Dining";
+  }
 
   if (
     [
