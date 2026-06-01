@@ -1,15 +1,15 @@
 # Product Matching Engine Agent Comms
 
 ## Current PR
-PR #296 on branch `codex/pm001-alternate-consistency`. PR #294, PR #286, PR #283, PR #282, PR #280, PR #278, and PR #277 merged. PR #295 is the earlier docs-only post-#294 manual-QA route; this branch carries the newer Sam/Claude selected-vs-alternate consistency boundary.
+Pending focused docs-only route PR on branch `codex/pm001-post-296-manual-qa-route`. PR #296, PR #294, PR #286, PR #283, PR #282, PR #280, PR #278, and PR #277 merged. PR #295 is the earlier docs-only post-#294 manual-QA route; it is stale/superseded by #296's newer routing and should not merge unchanged.
 
 ## Current stage
-PM001_SELECTED_ALTERNATE_CONSISTENCY_REVIEW_REQUESTED
+PM001_POST_296_MANUAL_QA_ROUTE_REVIEW_REQUESTED
 
 ## Blockers
-Sam's post-PR #294 QA found selected/default product quality substantially improved: selected items now align with the generated design. The remaining inconsistency is inside the same visible role group: alternate options can still look stale/generic because final option composition and refresh/substitution paths use the flat global `visualRanked` / `rankProductMatches` stream instead of the same role-scoped candidate pool and role contract path that protects selected/default products.
+PR #296 merged at `410f820c66b9a28efc43adf151dea81a79de6246` after strict approval at head `25e34f4cd7782d8b2109c68eeeb1fc11b6354b6a`. It fixed the selected-vs-alternate consistency gap after PR #294 by routing visible alternates and replacement paths through role-scoped pools and the same design-fit envelope.
 
-Current required owner action: strict PR Review Agent review of the selected-vs-alternate consistency PR after it opens.
+Current required owner action: strict PR Review Agent review of the docs-only post-#296 manual-QA route PR. After it merges, Sam should run the local Product Matching beta-readiness retest using `docs/Tracks/v2-commercial/product-matching-evals/2026-06-01-pm001-post-296-manual-qa-route.md`.
 
 Stop rules: no Product Matching validation pass through the live app flow, blind validation, controlled preview, preview QA, browser-click app action, shopping-list refresh/create, visual-sourcing runtime call, catalogue/product row mutation, live catalog write, live ingestion, production deploy/flag/default-on activation, DB/schema/generated type change, runtime allowlist expansion, payment/checkout change, UI redesign, broad catalogue rewrite, broad Product Matching rewrite, prompt/runtime image-generation behavior change, final-render execution, floor-plan work, Catalog-First runtime coupling, or unrelated quality change is approved.
 
@@ -20,8 +20,11 @@ Current diagnostic findings:
 - Selected options are moved to option slot 0 before shopping-list rows are persisted.
 - Refresh, find-more, and substitution paths now build replacements from a role-scoped pool using the persisted role label, role visual brief, room, budget, and measurements.
 - Evidence is recorded in `docs/Tracks/v2-commercial/product-matching-evals/2026-06-01-pm001-selected-alternate-consistency-evidence.md`.
+- Manual QA route and checklist are recorded in `docs/Tracks/v2-commercial/product-matching-evals/2026-06-01-pm001-post-296-manual-qa-route.md`.
 
 Verification completed: `pnpm --filter @ritzy-studio/domain exec tsx src/product-matching.test.ts`, `pnpm --filter @ritzy-studio/domain typecheck`, `pnpm --filter @ritzy-studio/web typecheck`, and `git diff --check`.
+
+PRODUCT_MATCHING_AGENT_ACK: 2026-06-01 — Product Matching Agent acknowledges the post-PR #296 manual-QA route on branch `codex/pm001-post-296-manual-qa-route`, based on `origin/main` at PR #296 merge `410f820c66b9a28efc43adf151dea81a79de6246`. Scope accepted: docs-only route/evidence-intake update for Sam's manual local Product Matching beta-readiness retest after the selected-vs-alternate consistency fix. Stop rules accepted: no live app validation by an agent, controlled preview, preview QA, app action, shopping-list refresh/create by an agent, catalog writes/re-ingestion, catalogue/product mutation, DB/schema/generated type change, production deploy/flag/default-on activation, runtime allowlist expansion, payment/checkout, UI redesign, prompt/runtime image-generation behavior change, broad Product Matching rewrite, final render, floor-plan work, Catalog-First coupling, or unrelated quality change.
 
 PRODUCT_MATCHING_AGENT_ACK: 2026-06-01 — Product Matching Agent acknowledges Sam's selected-vs-alternate consistency route on branch `codex/pm001-alternate-consistency`, based on `origin/main` at PR #294 merge `9f925f982da32b04271d4a22875879a2cf6c5a0c`. Scope accepted: local/dev Product Matching option-composition code/tests/docs only; make visible alternates use the same role-scoped candidate pool, role contracts, room/class/size filters, and design-fit envelope as selected/default products; preserve selected item as slot 0; cover initial options plus reject/refresh/find-more/substitution paths where they shared the weak flat-ranker issue. Stop rules accepted: no live app validation, controlled preview, preview QA, app action, catalog writes/re-ingestion, catalogue/product mutation, DB/schema/generated type change, production deploy/flag/default-on activation, runtime allowlist expansion, payment/checkout, UI redesign, prompt/runtime image-generation behavior change, broad Product Matching rewrite, final render, floor-plan work, Catalog-First coupling, or unrelated quality change.
 
