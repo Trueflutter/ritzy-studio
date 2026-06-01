@@ -37,16 +37,16 @@ Do not perform any of these without explicit Sam approval:
 ### Ticket BL-001 Designer Path QA
 
 Owner: Sam-created Designer Path QA Agent
-Status: REVIEW_REQUESTED
+Status: MERGED
 Branch: `codex/designer-path-qa-evidence`
-Allowed scope: Local/dev end-to-end designer-path QA, docs-only evidence, and one narrow local/dev fix PR if a beta-blocking issue is found.
+Allowed scope: None unless Sam/Chief routes a fresh follow-up for the P2 concept completion spinner observation, native file-picker gap, or another designer-path beta blocker.
 Forbidden scope: No production deploys, production flags, live payment actions, live catalog writes, live ingestion, DB/schema/generated type changes, controlled-preview expansion, Product Matching default-on activation, runtime allowlist expansion, broad UI redesign, or payment/checkout architecture changes.
-Expected next artifact: PR Review Agent strict verdict on PR #288.
-SLA: Active while PR #288 is awaiting review.
-Last architect instruction: Designer Path QA Agent completed local/dev designer-path evidence on latest `origin/main`, covering login/onboarding, designer mode, project/room creation, photo evidence, brief/questions/style/inspiration, concept generation, product matching, locked shopping list, designer plan paywall, and room preview. The PR calls out a P2 concept completion spinner observation for review.
-Agent ack: Designer Path QA Agent opened PR #288 with docs evidence and screenshot assets.
-Current PR: #288 (<https://github.com/Trueflutter/ritzy-studio/pull/288>)
-Blocker: Waiting for PR Review Agent strict verdict on PR #288.
+Expected next artifact: None unless Sam/Chief routes a fresh designer-path follow-up.
+SLA: None while merged and parked.
+Last architect instruction: PR #288 merged at `65610546508e616c814aab8c167f4b0d20b53002` after strict PR Review Agent approval at unchanged head `541e95c739d0e455b166f532a056947f4ae1ca85`. The local/dev evidence covered login/onboarding, designer mode, project/room creation, photo evidence, brief/questions/style/inspiration, concept generation, product matching, locked shopping list, designer plan paywall, and room preview. The P2 concept completion spinner observation and native file-picker gap remain follow-up candidates only; no production deploy, live payment action, live catalog write/ingestion, controlled preview expansion, final-render execution, DB/schema/type change, or runtime flag change was authorized.
+Agent ack: Designer Path QA Agent opened and updated PR #288; strict review approved it after the EOF whitespace fix and rebase onto PR #287.
+Current PR: none; #288 merged (<https://github.com/Trueflutter/ritzy-studio/pull/288>)
+Blocker: Parked after merged designer-path QA evidence; fresh Sam/Chief route required for any follow-up fix.
 
 ### Ticket BL-002 V2-006 Shopping Preview And Unlock UX
 
