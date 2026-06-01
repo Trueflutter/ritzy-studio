@@ -145,10 +145,10 @@ Allowed scope: None while parked. A future ticket may allow docs-only investor p
 Forbidden scope: No user/private floor-plan assets, raw copyrighted floor-plan storage/display, OCR/vendor/parser integrations, production data work, runtime UI/app-action wiring, DB/schema/generated type changes, live writes, deploys, or feature flags.
 Expected next artifact: None while parked.
 SLA: None while parked.
-Last architect instruction: The lane is parked after investor proof notes unless Sam/Chief explicitly routes a safe docs-only or dry-run-only next artifact.
-Agent ack: not required while parked
-Current PR: none
-Blocker: Waiting for explicit Sam/Chief routing.
+Last architect instruction: The lane is parked after investor proof notes unless Sam/Chief explicitly routes a safe docs-only or dry-run-only next artifact. The Floor Plan Model Agent completed a docs-only beta readiness check for the Wednesday 2026-06-03 operational beta and found no beta-critical floor-plan model blocker; the designer path depends on manual room measurements and optional reference-only floor-plan upload, not parser/OCR/model output.
+Agent ack: Floor Plan Model Agent completed the docs-only beta readiness check on branch `codex/floor-plan-beta-readiness-check`; evidence lives in `docs/Tracks/v2-commercial/floor-plan-model/2026-06-01-beta-readiness-check.md`.
+Current PR: #289 (<https://github.com/Trueflutter/ritzy-studio/pull/289>) is the docs-only beta readiness evidence PR; after it merges FP-001 remains parked.
+Blocker: Waiting for explicit Sam/Chief routing for any further floor-plan/model work.
 
 ### Ticket RE-001
 
