@@ -903,11 +903,15 @@ export type ShoppingRoleGroup<T> = {
 export function composeRoomProductOptions({
   ranked,
   roles,
+  roleScopedPools = [],
+  roomType = null,
   optionsPerRole = 3,
   refreshDiversityHistory = []
 }: {
   ranked: RankedProductMatch[];
   roles: RoomProductRoleSpec[];
+  roleScopedPools?: RoleScopedCandidatePool[];
+  roomType?: string | null;
   optionsPerRole?: number;
   refreshDiversityHistory?: ProductRefreshDiversityHistory[];
 }): RoleProductOptions[] {
@@ -917,9 +921,11 @@ export function composeRoomProductOptions({
 
   for (const role of roles) {
     const options: RankedProductMatch[] = [];
-    const contract = roleClassContractForRole(role);
+    const contract = roleClassContractForRole(role, roomType);
     const acceptedCategories = new Set(contract.allowedCategories);
-    const categoryMatches = ranked
+    const pool = roleScopedPoolForRole(roleScopedPools, role);
+    const sourceMatches = pool?.candidates ?? ranked;
+    const categoryMatches = sourceMatches
       .map((match, index) => ({
         match,
         index,
@@ -931,6 +937,8 @@ export function composeRoomProductOptions({
         ({ match }) =>
           Boolean(match.categoryNormalized && acceptedCategories.has(match.categoryNormalized)) &&
           !classTagsConflictWithRole(match, contract) &&
+          !roomScopeConflictsWithRole(match, contract) &&
+          !(role.category === "coffee_tables" && coffeeTableRoleMismatchReason(match)) &&
           !sizeClassConflictsWithRole(match, contract)
       )
       .sort(
@@ -975,6 +983,23 @@ export function composeRoomProductOptions({
   }
 
   return result;
+}
+
+function roleScopedPoolForRole(pools: RoleScopedCandidatePool[], role: RoomProductRoleSpec) {
+  if (pools.length === 0) {
+    return null;
+  }
+
+  const exact = pools.find(
+    (pool) =>
+      pool.role.category === role.category &&
+      normalizePhraseText(pool.role.label) === normalizePhraseText(role.label)
+  );
+  if (exact) {
+    return exact;
+  }
+
+  return pools.find((pool) => pool.role.category === role.category) ?? null;
 }
 
 function applyLightingRoleFitGuardToRoleMatches<T extends { match: RankedProductMatch }>(
@@ -1445,10 +1470,6 @@ function diversityPenalty(candidate: RoleScopedRankedProductMatch, selected: Rol
 
     if (productNameSignature(candidate.name) === productNameSignature(selectedCandidate.name)) {
       nextPenalty += 60;
-    }
-
-    if (diversitySignature(candidate) === diversitySignature(selectedCandidate)) {
-      nextPenalty += 70;
     }
 
     const candidateFamily = refreshDiversitySignature(candidate);
@@ -2503,17 +2524,14 @@ function diverseRoleMatches(
   limit: number
 ) {
   const selected: Array<{ match: RankedProductMatch; index: number; affinity: number }> = [];
-  const seenSignatures = new Set<string>();
   const seenFamilies = new Set<string>();
   const shortlist = matches.slice(0, Math.max(limit * 4, limit));
 
   for (const candidate of shortlist) {
-    const signature = diversitySignature(candidate.match);
     const family = refreshDiversitySignature(candidate.match);
 
     if (selected.length === 0) {
       selected.push(candidate);
-      seenSignatures.add(signature);
       if (family.length > 0) {
         seenFamilies.add(family);
       }
@@ -2521,15 +2539,11 @@ function diverseRoleMatches(
     }
 
     const shouldPreferDistinctEarlyOptions = selected.length < Math.min(limit, 3);
-    if (
-      shouldPreferDistinctEarlyOptions &&
-      (seenSignatures.has(signature) || (family.length > 0 && seenFamilies.has(family)))
-    ) {
+    if (shouldPreferDistinctEarlyOptions && family.length > 0 && seenFamilies.has(family)) {
       continue;
     }
 
     selected.push(candidate);
-    seenSignatures.add(signature);
     if (family.length > 0) {
       seenFamilies.add(family);
     }
@@ -2552,33 +2566,6 @@ function diverseRoleMatches(
   }
 
   return selected;
-}
-
-function diversitySignature(match: RankedProductMatch) {
-  const price = match.salePriceAed ?? match.priceAed ?? 0;
-  const priceBand = price < 1000 ? "low" : price < 3000 ? "mid" : "high";
-  const colors =
-    [
-      ...new Set(
-        [...(match.colorTags ?? []), match.color]
-          .filter(Boolean)
-          .map((value) => String(value).toLowerCase())
-      )
-    ]
-      .sort()
-      .join("+") || "unknown-color";
-  const materials = [
-    ...new Set(
-      [...(match.materialTags ?? []), match.material]
-        .filter(Boolean)
-        .map((value) => String(value).toLowerCase())
-    )
-  ]
-    .sort()
-    .join("+") || "unknown-material";
-  const size = match.categoryNormalized === "sofas" ? deriveSizeClass(match) : "na";
-
-  return `${match.categoryNormalized ?? "uncategorized"}:${priceBand}:${size}:${colors}:${materials}`;
 }
 
 function refreshDiversitySignature({

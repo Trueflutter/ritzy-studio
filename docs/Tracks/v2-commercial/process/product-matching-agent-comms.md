@@ -1,29 +1,29 @@
 # Product Matching Engine Agent Comms
 
 ## Current PR
-PR #294 on branch `codex/pm001-recommendation-engine-repair`. PR #286, PR #283, PR #282, PR #280, PR #278, and PR #277 merged.
+PR #296 on branch `codex/pm001-alternate-consistency`. PR #294, PR #286, PR #283, PR #282, PR #280, PR #278, and PR #277 merged. PR #295 is the earlier docs-only post-#294 manual-QA route; this branch carries the newer Sam/Claude selected-vs-alternate consistency boundary.
 
 ## Current stage
-PM001_RECOMMENDATION_ENGINE_REPAIR_REVIEW_REQUESTED
+PM001_SELECTED_ALTERNATE_CONSISTENCY_REVIEW_REQUESTED
 
 ## Blockers
-Sam's 2026-06-01 local retest after PR #286 found the PM-001 recommendation engine still below the Wednesday 2026-06-03 operational beta bar: sofa recommendations mixed compact/standard sofas with long L-shaped/modular/sectional pieces; armchair recommendations included office/task furniture; the same cushion kept recurring; coffee-table recommendations repeated a tiny subset and included office tables; bathroom mirrors appeared in living-room/decor recommendations; aesthetic/design-quality ranking was weak; and diversity/class discipline was not strong enough.
+Sam's post-PR #294 QA found selected/default product quality substantially improved: selected items now align with the generated design. The remaining inconsistency is inside the same visible role group: alternate options can still look stale/generic because final option composition and refresh/substitution paths use the flat global `visualRanked` / `rankProductMatches` stream instead of the same role-scoped candidate pool and role contract path that protects selected/default products.
 
-Claude's source repair plan is saved at `docs/Tracks/v2-commercial/product-matching-evals/PM001_RECOMMENDATION_ENGINE_REPAIR_PLAN.md`.
-
-Sam/Chief routed the exact PR #294 local/dev boundary: implement a domain-only Product Matching role-purity repair using match-time role contracts, class/room/size eligibility guards, bounded repetition/diversity safety, deterministic aesthetic ranking signal, focused domain tests, and PM-001 evidence/coordination docs.
-
-Current required owner action: wait for strict PR Review Agent re-review of PR #294 at the new head.
+Current required owner action: strict PR Review Agent review of the selected-vs-alternate consistency PR after it opens.
 
 Stop rules: no Product Matching validation pass through the live app flow, blind validation, controlled preview, preview QA, browser-click app action, shopping-list refresh/create, visual-sourcing runtime call, catalogue/product row mutation, live catalog write, live ingestion, production deploy/flag/default-on activation, DB/schema/generated type change, runtime allowlist expansion, payment/checkout change, UI redesign, broad catalogue rewrite, broad Product Matching rewrite, prompt/runtime image-generation behavior change, final-render execution, floor-plan work, Catalog-First runtime coupling, or unrelated quality change is approved.
 
 Current diagnostic findings:
-- PR #294 adds match-time class tags, room scope, sofa size class, and additive role contract fields.
-- PR #294 hard-filters class, room-scope, and sofa-size mismatches before scoring/diversity in role-scoped pools.
-- PR #294 strengthens diversity signatures/repeat penalties and applies the existing deterministic aesthetic heuristic to role-pool ranking.
-- PR #294 records automated and manual-QA evidence in `docs/Tracks/v2-commercial/product-matching-evals/2026-06-01-pm001-recommendation-engine-repair-evidence.md`.
+- Final initial alternates now compose from role-scoped option pools when Product Matching Engine V1 is enabled.
+- Compose-time filters now apply room-scope and coffee-table role mismatch checks in addition to class/category/size checks.
+- Diversity no longer forces color/material drift merely to look different; it prefers different product families while staying inside the same design envelope.
+- Selected options are moved to option slot 0 before shopping-list rows are persisted.
+- Refresh, find-more, and substitution paths now build replacements from a role-scoped pool using the persisted role label, role visual brief, room, budget, and measurements.
+- Evidence is recorded in `docs/Tracks/v2-commercial/product-matching-evals/2026-06-01-pm001-selected-alternate-consistency-evidence.md`.
 
-Verification completed for PR #294: `pnpm --filter @ritzy-studio/domain exec tsx src/product-matching.test.ts`, `pnpm --filter @ritzy-studio/domain typecheck`, `pnpm --filter @ritzy-studio/domain test`, `pnpm typecheck`, `pnpm lint`, `git diff --check`, and conflict-marker scan. The post-rejection routing-only update reran `git diff --check`; implementation verification remains unchanged.
+Verification completed: `pnpm --filter @ritzy-studio/domain exec tsx src/product-matching.test.ts`, `pnpm --filter @ritzy-studio/domain typecheck`, `pnpm --filter @ritzy-studio/web typecheck`, and `git diff --check`.
+
+PRODUCT_MATCHING_AGENT_ACK: 2026-06-01 — Product Matching Agent acknowledges Sam's selected-vs-alternate consistency route on branch `codex/pm001-alternate-consistency`, based on `origin/main` at PR #294 merge `9f925f982da32b04271d4a22875879a2cf6c5a0c`. Scope accepted: local/dev Product Matching option-composition code/tests/docs only; make visible alternates use the same role-scoped candidate pool, role contracts, room/class/size filters, and design-fit envelope as selected/default products; preserve selected item as slot 0; cover initial options plus reject/refresh/find-more/substitution paths where they shared the weak flat-ranker issue. Stop rules accepted: no live app validation, controlled preview, preview QA, app action, catalog writes/re-ingestion, catalogue/product mutation, DB/schema/generated type change, production deploy/flag/default-on activation, runtime allowlist expansion, payment/checkout, UI redesign, prompt/runtime image-generation behavior change, broad Product Matching rewrite, final render, floor-plan work, Catalog-First coupling, or unrelated quality change.
 
 PRODUCT_MATCHING_AGENT_ACK: 2026-06-01 — Product Matching repair branch `codex/pm001-recommendation-engine-repair` acknowledges the PM-001 recommendation-engine repair route for PR #294. Scope accepted: local/dev domain-only Product Matching role-purity repair and coordination docs based on Sam's failed 2026-06-01 retest and Claude's saved plan. Stop rules accepted: no live app validation, controlled preview, preview QA, app action, catalog writes/re-ingestion, catalogue/product mutation, DB/schema/generated type change, production deploy/flag/default-on activation, runtime allowlist expansion, payment/checkout, UI redesign, prompt/runtime image-generation behavior change, broad Product Matching rewrite, final render, floor-plan work, Catalog-First coupling, or unrelated quality change.
 

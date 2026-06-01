@@ -15,6 +15,7 @@ import {
   createRoomSchema,
   designBriefSchema,
   assessAestheticFitForRole,
+  buildRoleScopedCandidatePools,
   buildProductSourcingRuntimePlan,
   buildShoppingListItemRows,
   buildPersistedSelectionSnapshot,
@@ -2786,11 +2787,31 @@ export async function groundProductsAction(formData: FormData) {
 
   const visualRankedById = new Map(visualRanked.map((match) => [match.id, match]));
   const optionsPerRole = localSkuFidelityMode ? LOCAL_SKU_FIDELITY_CANDIDATES_PER_ROLE : 6;
+  const roleScopedOptionPools = productMatchingEngineEnabled
+    ? buildRoleScopedCandidatePools({
+        roomType: room.room_type,
+        conceptText: visualConceptText,
+        roles,
+        candidates: matchingCandidates,
+        budgetMaxAed: project.budget_max_aed,
+        roomMeasurements: measurements
+          ? {
+              wallLengthCm: measurements.wall_length_cm,
+              roomDepthCm: measurements.room_depth_cm
+            }
+          : null,
+        candidatesPerRole: Math.max(optionsPerRole * 2, optionsPerRole)
+      }).pools.map((pool) =>
+        localSkuFidelityMode ? rerankRolePoolForAestheticFit(pool, room.room_type, visualConceptText) : pool
+      )
+    : [];
   const roleOptions = ensureLocalSkuFidelitySupportOptions({
     roleOptions: polishRoleOptionsForAestheticDemo({
       roleOptions: composeRoomProductOptions({
         ranked: visualRanked,
         roles,
+        roleScopedPools: roleScopedOptionPools,
+        roomType: room.room_type,
         // Store a reserve beyond the three shown, so rejecting an option reveals a
         // replacement instantly with no catalog round-trip.
         optionsPerRole,
@@ -3079,8 +3100,21 @@ export async function groundProductsAction(formData: FormData) {
     }
   }
 
+  const selectedFirstRoleOptions = roleOptions.map((role) => {
+    const selectedId = selectedProductIdByRole.get(role.category);
+    const selectedOption = selectedId ? role.options.find((option) => option.id === selectedId) : undefined;
+    if (!selectedOption || role.options[0]?.id === selectedOption.id) {
+      return role;
+    }
+
+    return {
+      ...role,
+      options: [selectedOption, ...role.options.filter((option) => option.id !== selectedOption.id)]
+    };
+  });
+
   const itemRows = buildShoppingListItemRows({
-    roleOptions,
+    roleOptions: selectedFirstRoleOptions,
     selectedProductIdByRole,
     reasonFor: (match) => {
       const sourceSelection = sourceSelectionsById.get(match.id);
@@ -3165,7 +3199,7 @@ export async function groundProductsAction(formData: FormData) {
             shoppingListId,
             estimatedTotalAed: estimatedTotal,
             sourcePath: productSourcingTextFallbackUsed ? "text_fallback" : "visual",
-            roleOptions,
+            roleOptions: selectedFirstRoleOptions,
             itemRows,
             sourceSelectedProductIdByCategory,
             conceptAnchorProductIdByCategory
@@ -3302,9 +3336,11 @@ export async function substituteProductAction(formData: FormData) {
     selectedProductIds: (selectedItems ?? []).map((selected) => selected.product_id)
   });
 
-  const ranked = rankProductMatches({
+  const conceptText = `${concept.title}\n${concept.description ?? ""}`;
+  const role = shoppingListRoleSpecFromRow(item);
+  const ranked = roleScopedShoppingAlternates({
     roomType: room.room_type,
-    conceptText: `${concept.title}\n${concept.description ?? ""}`,
+    conceptText,
     budgetMaxAed: project.budget_max_aed,
     roomMeasurements: measurements
       ? {
@@ -3312,7 +3348,10 @@ export async function substituteProductAction(formData: FormData) {
           roomDepthCm: measurements.room_depth_cm
         }
       : null,
-    candidates: alternatives
+    role,
+    candidates: alternatives,
+    excludeProductIds: new Set([currentCandidate.id]),
+    limit: 1
   });
   const replacement = ranked[0];
 
@@ -3555,19 +3594,26 @@ export async function refreshShoppingOptionsAction(input: {
     .map(productToMatchCandidate)
     .filter((candidate): candidate is ProductMatchCandidate => Boolean(candidate));
 
-  const ranked = rankProductMatches({
+  const conceptText = `${concept.title}\n${concept.description ?? ""}`;
+  const role = shoppingListRoleSpecFromRow({
+    category,
+    role_label: template.role_label,
+    role_visual_brief: template.role_visual_brief,
+    role_priority: template.role_priority,
+    role_quantity: template.role_quantity
+  });
+  const fresh = roleScopedShoppingAlternates({
     roomType: room.room_type,
-    conceptText: `${concept.title}\n${concept.description ?? ""}`,
+    conceptText,
     budgetMaxAed: project.budget_max_aed,
     roomMeasurements: measurements
       ? { wallLengthCm: measurements.wall_length_cm, roomDepthCm: measurements.room_depth_cm }
       : null,
-    candidates
+    role,
+    candidates,
+    excludeProductIds: usedProductIds,
+    limit: 2
   });
-
-  const fresh = ranked
-    .filter((match) => match.categoryNormalized === category && !usedProductIds.has(match.id))
-    .slice(0, 2);
 
   if (fresh.length === 0) {
     return;
@@ -3704,19 +3750,26 @@ export async function findMoreShoppingOptionsAction(input: {
     .map(productToMatchCandidate)
     .filter((candidate): candidate is ProductMatchCandidate => Boolean(candidate));
 
-  const ranked = rankProductMatches({
+  const conceptText = `${concept.title}\n${concept.description ?? ""}`;
+  const role = shoppingListRoleSpecFromRow({
+    category,
+    role_label: template.role_label,
+    role_visual_brief: template.role_visual_brief,
+    role_priority: template.role_priority,
+    role_quantity: template.role_quantity
+  });
+  const fresh = roleScopedShoppingAlternates({
     roomType: room.room_type,
-    conceptText: `${concept.title}\n${concept.description ?? ""}`,
+    conceptText,
     budgetMaxAed: project.budget_max_aed,
     roomMeasurements: measurements
       ? { wallLengthCm: measurements.wall_length_cm, roomDepthCm: measurements.room_depth_cm }
       : null,
-    candidates
+    role,
+    candidates,
+    excludeProductIds: usedProductIds,
+    limit: 3
   });
-
-  const fresh = ranked
-    .filter((match) => match.categoryNormalized === category && !usedProductIds.has(match.id))
-    .slice(0, 3);
 
   if (fresh.length > 0) {
     const rows = fresh.map((match, index) => {
@@ -4874,6 +4927,60 @@ function roleScopedCandidatesForLocalSkuFidelityPlan(pools: RoleScopedCandidateP
   }
 
   return selected.slice(0, limit);
+}
+
+function shoppingListRoleSpecFromRow(row: {
+  category: string | null;
+  role_label?: string | null;
+  role_visual_brief?: string | null;
+  role_priority?: string | null;
+  role_quantity?: number | null;
+}): RoomProductRoleSpec {
+  const label = row.role_label || row.category || "product option";
+  return {
+    category: normalizeSourcingCategory(row.category ?? "", label),
+    label,
+    visualBrief: row.role_visual_brief ?? null,
+    quantity: Math.max(1, row.role_quantity ?? 1),
+    priority: row.role_priority === "required" ? "required" : "supporting"
+  };
+}
+
+function roleScopedShoppingAlternates({
+  roomType,
+  conceptText,
+  budgetMaxAed,
+  roomMeasurements,
+  role,
+  candidates,
+  excludeProductIds,
+  limit
+}: {
+  roomType: string;
+  conceptText: string;
+  budgetMaxAed: number | null;
+  roomMeasurements: {
+    wallLengthCm: number | null;
+    roomDepthCm: number | null;
+  } | null;
+  role: RoomProductRoleSpec;
+  candidates: ProductMatchCandidate[];
+  excludeProductIds: Set<string>;
+  limit: number;
+}): RankedProductMatch[] {
+  const pool = buildRoleScopedCandidatePools({
+    roomType,
+    conceptText,
+    roles: [role],
+    candidates,
+    budgetMaxAed,
+    roomMeasurements,
+    candidatesPerRole: Math.max(limit * 4, limit)
+  }).pools[0];
+
+  return (pool?.candidates ?? [])
+    .filter((candidate) => !excludeProductIds.has(candidate.id))
+    .slice(0, Math.max(1, limit));
 }
 
 function rankMatchesForLocalSkuFidelity({

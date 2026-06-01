@@ -2090,7 +2090,105 @@ const diverseSofaOptions = composeRoomProductOptions({
 });
 assert.deepEqual(
   diverseSofaOptions[0].options.map((option) => option.name),
-  ["Cream Fabric Sofa 1", "Green Velvet Sofa", "Cream Fabric Sofa 2"]
+  ["Cream Fabric Sofa 1", "Cream Fabric Sofa 2", "Green Velvet Sofa"]
+);
+
+const greenSofaRole = {
+  category: "sofas",
+  label: "anchor seating",
+  visualBrief: "sage green velvet standard sofa aligned to the generated living-room concept",
+  quantity: 1,
+  priority: "required" as const
+};
+const greenSofaCandidates: ProductMatchCandidate[] = [
+  {
+    ...base,
+    id: "00000000-0000-4000-8000-000000000417",
+    name: "Olive Velvet Sofa",
+    retailerName: "Curated Retailer",
+    categoryNormalized: "sofas",
+    priceAed: 5200,
+    availability: "in stock",
+    primaryImageUrl: "https://example.com/olive-velvet-sofa.jpg",
+    colorTags: ["olive", "green"],
+    materialTags: ["velvet"],
+    styleTags: ["contemporary"],
+    dimensions: { widthCm: 225, depthCm: 96, heightCm: 78, sourceText: "W 225 x D 96 x H 78 cm" }
+  },
+  {
+    ...base,
+    id: "00000000-0000-4000-8000-000000000418",
+    name: "Sage Velvet Sofa",
+    retailerName: "Different Retailer",
+    categoryNormalized: "sofas",
+    priceAed: 5400,
+    availability: "in stock",
+    primaryImageUrl: "https://example.com/sage-velvet-sofa.jpg",
+    colorTags: ["sage", "green"],
+    materialTags: ["velvet"],
+    styleTags: ["contemporary"],
+    dimensions: { widthCm: 232, depthCm: 98, heightCm: 80, sourceText: "W 232 x D 98 x H 80 cm" }
+  },
+  {
+    ...base,
+    id: "00000000-0000-4000-8000-000000000419",
+    name: "Familiar Grey White Sofa",
+    retailerName: "Generic Retailer",
+    categoryNormalized: "sofas",
+    priceAed: 5100,
+    availability: "in stock",
+    primaryImageUrl: "https://example.com/grey-white-sofa.jpg",
+    colorTags: ["grey", "white"],
+    materialTags: ["fabric"],
+    styleTags: ["contemporary"],
+    dimensions: { widthCm: 220, depthCm: 94, heightCm: 80, sourceText: "W 220 x D 94 x H 80 cm" }
+  },
+  {
+    ...base,
+    id: "00000000-0000-4000-8000-000000000420",
+    name: "Moss Green Modular Corner Sofa",
+    retailerName: "Curated Retailer",
+    categoryNormalized: "sofas",
+    priceAed: 5600,
+    availability: "in stock",
+    primaryImageUrl: "https://example.com/moss-modular-sofa.jpg",
+    colorTags: ["moss", "green"],
+    materialTags: ["velvet"],
+    styleTags: ["contemporary"],
+    dimensions: { widthCm: 320, depthCm: 170, heightCm: 78, sourceText: "W 320 x D 170 x H 78 cm" }
+  }
+];
+const greenSofaRolePools = buildRoleScopedCandidatePools({
+  roomType: "living room",
+  conceptText: "generated concept shows a sage green velvet sofa with a calm contemporary palette",
+  roles: [greenSofaRole],
+  candidates: greenSofaCandidates,
+  budgetMaxAed: 10000,
+  candidatesPerRole: 4
+}).pools;
+const greenSofaOptions = composeRoomProductOptions({
+  ranked: rankProductMatches({
+    roomType: "living room",
+    conceptText: "generated concept shows a sage green velvet sofa with a calm contemporary palette",
+    budgetMaxAed: 10000,
+    candidates: greenSofaCandidates
+  }),
+  roles: [greenSofaRole],
+  roleScopedPools: greenSofaRolePools,
+  roomType: "living room",
+  optionsPerRole: 2
+});
+assert.deepEqual(
+  greenSofaOptions[0].options.map((option) => option.name),
+  ["Sage Velvet Sofa", "Olive Velvet Sofa"]
+);
+assert.equal(
+  greenSofaOptions[0].options.some((option) => option.name === "Familiar Grey White Sofa"),
+  false
+);
+assert.equal(
+  greenSofaOptions[0].options.some((option) => option.name.includes("Modular Corner")),
+  false
 );
 
 const productFamilyDiverseCoffeeTableOptions = composeRoomProductOptions({
