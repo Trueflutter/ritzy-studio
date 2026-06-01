@@ -138,8 +138,8 @@ export default async function ShoppingListPage({
         dimensionsLabel:
           dimensions?.source_text ??
           dimensionsText(dimensions?.width_cm, dimensions?.depth_cm, dimensions?.height_cm),
-        description: product?.description ?? null,
-        retailerUrl: product?.canonical_url ?? null,
+        description: commerceUnlocked ? (product?.description ?? null) : null,
+        retailerUrl: commerceUnlocked ? (product?.canonical_url ?? null) : null,
         warning
       }
     };
