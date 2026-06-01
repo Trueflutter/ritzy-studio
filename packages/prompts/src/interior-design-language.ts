@@ -11,6 +11,11 @@ const livingRoomFocalPlacementGuardrail = [
   "For TV/media focal rooms, the TV/media wall and primary sofa must not be on the same wall.",
   "Place the primary sofa opposite the TV/media wall, or on a perpendicular adjacent wall when source-room constraints require it.",
   "The sofa seat/front should face the TV/media wall or declared focal point across the rug and coffee-table zone.",
+  "The primary sofa should remain parallel to the focal wall and square to the rug and room grid.",
+  "The sofa back should read parallel to the TV/media wall, not rotated diagonally into the room.",
+  "Do not cant or angle the primary sofa diagonally just for dynamic composition.",
+  "If the anchor is a sectional or L-shaped sofa, its long run should be parallel to the focal wall, with the chaise or return toward the room interior.",
+  "The coffee table should align square to the sofa and focal wall.",
   "Accent chairs should angle inward toward the sofa/focal-point axis.",
   "If the source room makes TV-first placement impossible, preserve architecture, make the focal-point assumption explicit, and avoid sofa-under-TV placement."
 ].join(" ");
@@ -36,7 +41,7 @@ const roomLanguage: Record<RitzyRoomType, string> = {
 
 const roomBlueprintLanguage: Record<RitzyRoomType, string> = {
   living: [
-    "Ritzy living room blueprint: assume a complete Dubai living room includes a TV/media focal wall with an elegant media console and a primary sofa or sectional placed on a separate opposite wall/zone, or on a perpendicular adjacent wall when constraints require it, facing the TV/media wall across the rug and coffee-table zone.",
+    "Ritzy living room blueprint: assume a complete Dubai living room includes a TV/media focal wall with an elegant media console and a primary sofa or sectional placed on a separate opposite wall/zone, or on a perpendicular adjacent wall when constraints require it, facing the TV/media wall across the rug and coffee-table zone while staying square to the room grid.",
     "The TV/media wall and primary sofa must not be on the same wall; do not place the sofa directly under or against the TV/media wall facing away from it.",
     "Complete the seating group with secondary seating angled inward toward the sofa/focal-point axis, coffee table, generous rug, side tables, layered lamps or sconces, wall art or mirror/wall treatment, cushions, throws, greenery, and edited decor.",
     "Do not omit the TV/media layer unless the brief explicitly asks for no TV, a formal TV-free salon, a protected existing media wall, or a source-room constraint makes it impossible.",
