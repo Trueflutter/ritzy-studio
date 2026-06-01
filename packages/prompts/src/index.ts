@@ -6,6 +6,7 @@ export {
   productRoleLanguage,
   roomBlueprintDefaultsLanguage,
   roomDesignLanguage,
+  roomSpatialPlacementGuardrailLanguage,
   sourceRoomPreservationLanguage,
   styleDesignLanguage,
   styleDesignModules,

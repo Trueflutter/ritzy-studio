@@ -6,9 +6,22 @@ export type RitzyStyleModule = {
   fragment: string;
 };
 
+const livingRoomFocalPlacementGuardrail = [
+  "Spatial placement rule: the primary seating must be placed on a different wall or zone from the focal point and oriented toward it.",
+  "For TV/media focal rooms, the TV/media wall and primary sofa must not be on the same wall.",
+  "Place the primary sofa opposite the TV/media wall, or on a perpendicular adjacent wall when source-room constraints require it.",
+  "The sofa seat/front should face the TV/media wall or declared focal point across the rug and coffee-table zone.",
+  "Accent chairs should angle inward toward the sofa/focal-point axis.",
+  "If the source room makes TV-first placement impossible, preserve architecture, make the focal-point assumption explicit, and avoid sofa-under-TV placement."
+].join(" ");
+
 const roomLanguage: Record<RitzyRoomType, string> = {
   living:
-    "Design the living room as a layered editorial residential seating group: sofa and lounge chairs arranged for conversation, anchored by a generously sized rug, usable coffee table and side tables, full-height window treatment where visible, layered warm lighting, scaled artwork or focal wall, and restrained styled surfaces with books, ceramics, tray, branches, and tactile cushions. Make it collected-not-matched, materially rich, and residential in scale.",
+    [
+      "Design the living room as a layered editorial residential seating group: sofa and lounge chairs arranged for conversation, anchored by a generously sized rug, usable coffee table and side tables, full-height window treatment where visible, layered warm lighting, scaled artwork or focal wall, and restrained styled surfaces with books, ceramics, tray, branches, and tactile cushions.",
+      livingRoomFocalPlacementGuardrail,
+      "Make it collected-not-matched, materially rich, and residential in scale."
+    ].join(" "),
   dining:
     "Design a residential dining room around a properly scaled table, realistic chair spacing and pull-out clearance, a sculptural over-table fixture centered on the table, layered warm secondary lighting, and a sideboard or wall focal point where space allows. Use restrained tablescape styling, tactile materials, and residential hosting realism; choose a rug only if it can support pulled-out chairs.",
   bedroom:
@@ -23,9 +36,11 @@ const roomLanguage: Record<RitzyRoomType, string> = {
 
 const roomBlueprintLanguage: Record<RitzyRoomType, string> = {
   living: [
-    "Ritzy living room blueprint: assume a complete Dubai living room includes a TV/media focal wall and media console by default, plus sofa or sectional, secondary seating, coffee table, generous rug, side tables, layered lamps or sconces, wall art or mirror/wall treatment, cushions, throws, greenery, and edited decor.",
+    "Ritzy living room blueprint: assume a complete Dubai living room includes a TV/media focal wall with an elegant media console and a primary sofa or sectional placed on a separate opposite wall/zone, or on a perpendicular adjacent wall when constraints require it, facing the TV/media wall across the rug and coffee-table zone.",
+    "The TV/media wall and primary sofa must not be on the same wall; do not place the sofa directly under or against the TV/media wall facing away from it.",
+    "Complete the seating group with secondary seating angled inward toward the sofa/focal-point axis, coffee table, generous rug, side tables, layered lamps or sconces, wall art or mirror/wall treatment, cushions, throws, greenery, and edited decor.",
     "Do not omit the TV/media layer unless the brief explicitly asks for no TV, a formal TV-free salon, a protected existing media wall, or a source-room constraint makes it impossible.",
-    "Treat the TV and console as residential and elegant: widescreen TV, refined low console or built-in media unit, concealed cable logic, calm styling, and proportionate placement rather than a showroom electronics wall."
+    "Treat the TV and console as residential and elegant: widescreen TV, refined low console or built-in media unit, concealed cable logic, calm styling, and proportionate placement rather than a showroom electronics wall. If TV-first placement is impossible, preserve architecture, state the focal-point assumption in the concept, and avoid sofa-under-TV placement."
   ].join(" "),
   dining: [
     "Ritzy dining room blueprint: assume a complete dining room includes a correctly scaled dining table, enough dining chairs for the implied household/hosting count, an over-table pendant or chandelier, sideboard/credenza or console where wall space allows, wall art or mirror/wall treatment, restrained table styling, and warm secondary lighting.",
@@ -146,6 +161,10 @@ export function roomDesignLanguage(roomType: string) {
 
 export function roomBlueprintDefaultsLanguage(roomType: string) {
   return roomBlueprintLanguage[resolveRoomType(roomType)];
+}
+
+export function roomSpatialPlacementGuardrailLanguage(roomType: string) {
+  return resolveRoomType(roomType) === "living" ? livingRoomFocalPlacementGuardrail : null;
 }
 
 export function styleDesignLanguage(styleSlugs: string[]) {
