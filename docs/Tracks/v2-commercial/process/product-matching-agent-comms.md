@@ -1,7 +1,7 @@
 # Product Matching Engine Agent Comms
 
 ## Current PR
-Pending focused docs-only route PR on branch `codex/pm001-post-296-manual-qa-route`. PR #296, PR #294, PR #286, PR #283, PR #282, PR #280, PR #278, and PR #277 merged. PR #295 is the earlier docs-only post-#294 manual-QA route; it is stale/superseded by #296's newer routing and should not merge unchanged.
+PR #297 on branch `codex/pm001-post-296-manual-qa-route`. PR #296, PR #294, PR #286, PR #283, PR #282, PR #280, PR #278, and PR #277 merged. PR #295 is the earlier docs-only post-#294 manual-QA route; it is stale/superseded by #296's newer routing and should not merge unchanged.
 
 ## Current stage
 PM001_POST_296_MANUAL_QA_ROUTE_REVIEW_REQUESTED
