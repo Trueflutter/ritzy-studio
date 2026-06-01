@@ -78,6 +78,10 @@ import {
   productSourcingRetryFallbackEvidenceForStrategy,
   productSourcingVisualStrategy
 } from "./product-sourcing-visual-strategy";
+import {
+  inspirationAnalysisContinueDecision,
+  INSPIRATION_ANALYSIS_CONTINUE_FAILURE_MESSAGE
+} from "./inspiration-analysis-continue";
 
 const PRODUCT_SOURCING_AI_TIMEOUT_MS = 45_000;
 const PRODUCT_MATCHING_CATALOG_LIMIT = 1500;
@@ -187,6 +191,10 @@ type StructuredBriefJson = Record<string, unknown> & {
   measurements?: unknown;
   inspirationAnalysis?: unknown;
 };
+
+type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
+type ServiceSupabaseClient = ReturnType<typeof createServiceClient>;
+type InspirationAnalysisAsset = { storage_path: string };
 
 function structuredBriefJson(value: unknown): StructuredBriefJson {
   return value && typeof value === "object" && !Array.isArray(value)
@@ -1192,6 +1200,22 @@ export async function saveDesignBriefAction(formData: FormData) {
 
   await supabase.from("rooms").update({ status: "briefing" }).eq("id", parsed.roomId);
 
+  if (briefStep === "inspiration") {
+    try {
+      await ensureInspirationAnalysisBeforeDetails({
+        roomId: parsed.roomId,
+        supabase,
+        userId: user.id
+      });
+    } catch {
+      redirect(
+        `${briefRootPath}/inspiration?message=${encodeURIComponent(
+          INSPIRATION_ANALYSIS_CONTINUE_FAILURE_MESSAGE
+        )}`
+      );
+    }
+  }
+
   if (briefStep !== "details") {
     revalidatePath(briefRootPath);
     redirect(redirectPath);
@@ -1456,6 +1480,31 @@ export async function analyzeInspirationAction(roomId: string) {
     throw new Error("Room not found.");
   }
 
+  await analyzeAndWriteInspirationForRoom({
+    roomId,
+    serviceSupabase: createServiceClient(),
+    supabase,
+    userId: user.id
+  });
+}
+
+async function ensureInspirationAnalysisBeforeDetails({
+  roomId,
+  supabase,
+  userId
+}: {
+  roomId: string;
+  supabase: SupabaseServerClient;
+  userId: string;
+}) {
+  const { data: existingBrief } = await supabase
+    .from("design_briefs")
+    .select("structured_json")
+    .eq("room_id", roomId)
+    .order("updated_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
   const { data: inspirationAssets = [] } = await supabase
     .from("room_assets")
     .select("storage_path")
@@ -1464,9 +1513,45 @@ export async function analyzeInspirationAction(roomId: string) {
     .order("created_at", { ascending: true })
     .limit(6);
 
+  const decision = inspirationAnalysisContinueDecision({
+    inspirationAssetCount: inspirationAssets?.length ?? 0,
+    structuredJson: existingBrief?.structured_json
+  });
+
+  if (decision !== "run_analysis") {
+    return;
+  }
+
+  await analyzeAndWriteInspirationForRoom({
+    inspirationAssets: inspirationAssets ?? [],
+    requireSignedUrls: true,
+    roomId,
+    serviceSupabase: createServiceClient(),
+    supabase,
+    userId
+  });
+}
+
+async function analyzeAndWriteInspirationForRoom({
+  inspirationAssets,
+  requireSignedUrls = false,
+  roomId,
+  serviceSupabase,
+  supabase,
+  userId
+}: {
+  inspirationAssets?: InspirationAnalysisAsset[];
+  requireSignedUrls?: boolean;
+  roomId: string;
+  serviceSupabase: ServiceSupabaseClient;
+  supabase: SupabaseServerClient;
+  userId: string;
+}) {
+  const assets = inspirationAssets ?? (await listInspirationAnalysisAssets({ roomId, supabase }));
+
   const signedUrls = (
     await Promise.all(
-      (inspirationAssets ?? []).map(async (asset) => {
+      assets.map(async (asset) => {
         const { data } = await supabase.storage
           .from("room-assets")
           .createSignedUrl(asset.storage_path, 60 * 30);
@@ -1477,14 +1562,16 @@ export async function analyzeInspirationAction(roomId: string) {
   ).filter((url): url is string => Boolean(url));
 
   if (signedUrls.length === 0) {
+    if (requireSignedUrls && assets.length > 0) {
+      throw new Error("Inspiration images could not be prepared for analysis.");
+    }
     return;
   }
 
-  const serviceSupabase = createServiceClient();
   const { data: job, error: jobError } = await serviceSupabase
     .from("ai_jobs")
     .insert({
-      user_id: user.id,
+      user_id: userId,
       room_id: roomId,
       job_type: "inspiration_analysis",
       status: "running",
@@ -1552,6 +1639,24 @@ export async function analyzeInspirationAction(roomId: string) {
 
     throw error;
   }
+}
+
+async function listInspirationAnalysisAssets({
+  roomId,
+  supabase
+}: {
+  roomId: string;
+  supabase: SupabaseServerClient;
+}): Promise<InspirationAnalysisAsset[]> {
+  const { data: inspirationAssets = [] } = await supabase
+    .from("room_assets")
+    .select("storage_path")
+    .eq("room_id", roomId)
+    .eq("asset_type", "inspiration_image")
+    .order("created_at", { ascending: true })
+    .limit(6);
+
+  return inspirationAssets ?? [];
 }
 
 export async function generateInitialConceptAction(formData: FormData) {
