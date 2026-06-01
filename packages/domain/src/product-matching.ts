@@ -60,6 +60,52 @@ export type RoomProductRole = {
   visualBrief?: string;
 };
 
+export const canonicalProductCategories = [
+  "armchairs",
+  "bedding",
+  "beds",
+  "chairs",
+  "coffee_tables",
+  "curtains",
+  "decor",
+  "desks",
+  "dining_tables",
+  "headboards",
+  "lighting",
+  "mirrors",
+  "office_chairs",
+  "rugs",
+  "side_tables",
+  "storage",
+  "stools",
+  "towels",
+  "wall_art"
+] as const;
+
+export type CanonicalCategory = (typeof canonicalProductCategories)[number];
+export type ClassTag =
+  | "bathroom"
+  | "bedroom"
+  | "desk"
+  | "dining"
+  | "ergonomic"
+  | "gaming"
+  | "large_sofa"
+  | "office"
+  | "outdoor"
+  | "study"
+  | "task";
+export type RoomScope = "bathroom" | "bedroom" | "dining" | "living" | "office" | "outdoor" | "general";
+export type ProductSizeClass = "compact" | "standard" | "large" | "unknown";
+export type RoleSizeClass = "compact" | "standard" | "large" | "any";
+
+export type RoleClassContract = {
+  allowedCategories: readonly string[];
+  disallowedClasses: readonly ClassTag[];
+  sizeClass?: RoleSizeClass;
+  roomScope?: RoomScope;
+};
+
 export type ProductRoleImportance = "anchor" | "supporting" | "styling";
 export type ProductRoleInclusion = "always" | "space_allows" | "catalog_supports" | "brief_mentions";
 
@@ -726,6 +772,10 @@ export type RoomProductRoleSpec = {
   visualBrief: string | null;
   quantity: number;
   priority: "required" | "supporting";
+  allowedCategories?: readonly string[];
+  disallowedClasses?: readonly ClassTag[];
+  sizeClass?: RoleSizeClass;
+  roomScope?: RoomScope;
 };
 
 export type RoleProductOptions = RoomProductRoleSpec & {
@@ -867,7 +917,8 @@ export function composeRoomProductOptions({
 
   for (const role of roles) {
     const options: RankedProductMatch[] = [];
-    const acceptedCategories = categoriesForRole(role.category);
+    const contract = roleClassContractForRole(role);
+    const acceptedCategories = new Set(contract.allowedCategories);
     const categoryMatches = ranked
       .map((match, index) => ({
         match,
@@ -876,7 +927,12 @@ export function composeRoomProductOptions({
           roleVisualAffinity(match, role.visualBrief) +
           (match.categoryNormalized === role.category ? 0 : -18)
       }))
-      .filter(({ match }) => Boolean(match.categoryNormalized && acceptedCategories.has(match.categoryNormalized)))
+      .filter(
+        ({ match }) =>
+          Boolean(match.categoryNormalized && acceptedCategories.has(match.categoryNormalized)) &&
+          !classTagsConflictWithRole(match, contract) &&
+          !sizeClassConflictsWithRole(match, contract)
+      )
       .sort(
         (left, right) =>
           right.match.score + right.affinity - (left.match.score + left.affinity) ||
@@ -1078,7 +1134,7 @@ export function buildRoleScopedCandidatePools({
   candidates,
   budgetMaxAed = null,
   roomMeasurements = null,
-  candidatesPerRole = 8
+  candidatesPerRole = 12
 }: {
   roomType: string;
   conceptText: string;
@@ -1121,7 +1177,7 @@ export function buildProductSourcingRuntimePlan({
   candidates,
   budgetMaxAed = null,
   roomMeasurements = null,
-  candidatesPerRole = 6,
+  candidatesPerRole = 8,
   flatCandidateLimit = 36
 }: {
   engineEnabled: boolean;
@@ -1247,15 +1303,23 @@ function buildRolePool({
 
     const baseMatch = scoreCandidate(candidate, tokensFor(`${request.roomType} ${request.conceptText}`), preferredCategories, request);
     const fit = scoreProductCandidateForRole({ candidate, role, conceptText: request.conceptText });
+    const aestheticFit = assessAestheticFitForRole({
+      candidate,
+      role,
+      roomType: request.roomType,
+      conceptText: request.conceptText,
+      companionCandidates: request.candidates
+    });
+    const roleScore = fit.total + aestheticFit.scoreAdjustment;
     scored.push({
       match: {
         ...baseMatch,
-        score: Number((baseMatch.score + fit.total).toFixed(3)),
-        selectionReason: [baseMatch.selectionReason, ...fit.reasons].join("; "),
+        score: Number((baseMatch.score + roleScore).toFixed(3)),
+        selectionReason: [baseMatch.selectionReason, ...fit.reasons, ...aestheticFit.reasons].join("; "),
         attributeScore: fit
       },
-      roleScore: fit.total,
-      weaknesses: fit.weaknessReasons
+      roleScore,
+      weaknesses: [...fit.weaknessReasons, ...aestheticFit.weaknessReasons]
     });
   }
 
@@ -1383,6 +1447,16 @@ function diversityPenalty(candidate: RoleScopedRankedProductMatch, selected: Rol
       nextPenalty += 60;
     }
 
+    if (diversitySignature(candidate) === diversitySignature(selectedCandidate)) {
+      nextPenalty += 70;
+    }
+
+    const candidateFamily = refreshDiversitySignature(candidate);
+    const selectedFamily = refreshDiversitySignature(selectedCandidate);
+    if (candidateFamily.length > 0 && candidateFamily === selectedFamily) {
+      nextPenalty += 85;
+    }
+
     if (productPriceBand(candidate) === productPriceBand(selectedCandidate)) {
       nextPenalty += 2;
     }
@@ -1442,16 +1516,251 @@ function defaultRoleSpecsForRoom(roomType: string): RoomProductRoleSpec[] {
   }));
 }
 
+export function roleClassContractForRole(
+  role: RoomProductRoleSpec,
+  roomType?: string | null
+): RoleClassContract {
+  const roleText = normalizePhraseText(`${role.category} ${role.label} ${role.visualBrief ?? ""}`);
+  const roomScope = role.roomScope ?? (roomType ? roomScopeForRoomType(roomType) : undefined);
+  let allowedCategories = role.allowedCategories
+    ? [...role.allowedCategories]
+    : Array.from(legacyCategoriesForRole(role.category));
+
+  if (roomType) {
+    if (role.category === "office_chairs") {
+      allowedCategories = ["office_chairs", "chairs"];
+    } else if (role.category === "armchairs") {
+      allowedCategories = ["armchairs", "chairs"];
+    } else if (role.category === "chairs" && roleText.includes("dining")) {
+      allowedCategories = ["chairs"];
+    } else {
+      allowedCategories = [role.category];
+    }
+  } else if (role.category === "chairs" && roleText.includes("dining")) {
+    allowedCategories = ["chairs"];
+  }
+
+  const disallowedClasses = new Set<ClassTag>(role.disallowedClasses ?? []);
+
+  if (role.category === "armchairs" && roomScope !== "office") {
+    ["desk", "dining", "ergonomic", "gaming", "office", "study", "task"].forEach((classTag) =>
+      disallowedClasses.add(classTag as ClassTag)
+    );
+  }
+
+  if (role.category === "coffee_tables") {
+    ["desk", "dining", "office", "study", "task"].forEach((classTag) =>
+      disallowedClasses.add(classTag as ClassTag)
+    );
+  }
+
+  if (role.category === "decor" && roomScope !== "bathroom") {
+    disallowedClasses.add("bathroom");
+  }
+
+  if (role.category === "sofas" && roomScope !== "outdoor") {
+    disallowedClasses.add("outdoor");
+  }
+
+  return {
+    allowedCategories,
+    disallowedClasses: Array.from(disallowedClasses),
+    roomScope,
+    sizeClass: role.sizeClass ?? inferredRoleSizeClass(role)
+  };
+}
+
+export function deriveClassTags(candidate: ProductMatchCandidate): ClassTag[] {
+  const tokens = candidateSearchTokens(candidate);
+  const phrase = normalizePhraseText(
+    [candidate.name, candidate.description, candidate.categoryNormalized, candidate.color, candidate.material]
+      .filter(Boolean)
+      .join(" ")
+  );
+  const tags = new Set<ClassTag>();
+
+  if (hasAnyToken(tokens, ["bath", "bathroom", "ensuite", "shower", "vanity", "washroom"]) || /\bwc\b/.test(phrase)) {
+    tags.add("bathroom");
+  }
+  if (hasAnyToken(tokens, ["bedroom", "bedside", "nightstand"])) {
+    tags.add("bedroom");
+  }
+  if (hasAnyToken(tokens, ["desk", "workstation", "computer"])) {
+    tags.add("desk");
+  }
+  if (hasAnyToken(tokens, ["dining", "dinner"])) {
+    tags.add("dining");
+  }
+  if (hasAnyToken(tokens, ["ergonomic", "ergonomics"])) {
+    tags.add("ergonomic");
+  }
+  if (hasAnyToken(tokens, ["gaming", "gamer"])) {
+    tags.add("gaming");
+  }
+  if (
+    hasAnyToken(tokens, ["chaise", "corner", "modular", "sectional"]) ||
+    phrase.includes("l shaped") ||
+    phrase.includes("l shape") ||
+    phrase.includes("l-shaped") ||
+    phrase.includes("u shaped") ||
+    phrase.includes("u-shaped")
+  ) {
+    tags.add("large_sofa");
+  }
+  if (hasAnyToken(tokens, ["executive", "office", "operator", "visitor"])) {
+    tags.add("office");
+  }
+  if (hasAnyToken(tokens, ["garden", "outdoor", "patio", "terrace"])) {
+    tags.add("outdoor");
+  }
+  if (hasAnyToken(tokens, ["study"])) {
+    tags.add("study");
+  }
+  if (hasAnyToken(tokens, ["adjustable", "task"])) {
+    tags.add("task");
+  }
+
+  return Array.from(tags);
+}
+
+export function deriveRoomScope(candidate: ProductMatchCandidate): RoomScope {
+  const classTags = deriveClassTags(candidate);
+  const tokens = candidateSearchTokens(candidate);
+
+  if (classTags.includes("bathroom")) {
+    return "bathroom";
+  }
+  if (classTags.includes("outdoor")) {
+    return "outdoor";
+  }
+  if (classTags.some((tag) => ["desk", "ergonomic", "gaming", "office", "study", "task"].includes(tag))) {
+    return "office";
+  }
+  if (classTags.includes("dining")) {
+    return "dining";
+  }
+  if (classTags.includes("bedroom")) {
+    return "bedroom";
+  }
+  if (hasAnyToken(tokens, ["living", "lounge", "sofa"])) {
+    return "living";
+  }
+
+  return "general";
+}
+
+export function deriveSizeClass(candidate: ProductMatchCandidate): ProductSizeClass {
+  const tokens = candidateSearchTokens(candidate);
+  const phrase = normalizePhraseText(`${candidate.name} ${candidate.description ?? ""}`);
+  const largestHorizontalDimension =
+    candidate.dimensions?.widthCm || candidate.dimensions?.depthCm
+      ? Math.max(candidate.dimensions?.widthCm ?? 0, candidate.dimensions?.depthCm ?? 0)
+      : null;
+
+  if (
+    deriveClassTags(candidate).includes("large_sofa") ||
+    /(?:sectional|modular|corner|chaise)/.test(phrase)
+  ) {
+    return "large";
+  }
+
+  if (
+    hasAnyToken(tokens, ["loveseat", "single"]) ||
+    /(?:1|2|one|two)[-\s.]*seater/.test(phrase) ||
+    (largestHorizontalDimension !== null && largestHorizontalDimension < 190)
+  ) {
+    return "compact";
+  }
+
+  if (
+    /(?:3|4|three|four)[-\s.]*seater/.test(phrase) ||
+    (largestHorizontalDimension !== null && largestHorizontalDimension >= 190)
+  ) {
+    return "standard";
+  }
+
+  return "unknown";
+}
+
+function roomScopeForRoomType(roomType: string): RoomScope {
+  const key = enhancedRoomRoleKey(roomType);
+  if (key === "default") {
+    return "general";
+  }
+  return key;
+}
+
+function inferredRoleSizeClass(role: RoomProductRoleSpec): RoleSizeClass | undefined {
+  if (role.category !== "sofas") {
+    return undefined;
+  }
+
+  const roleText = normalizePhraseText(`${role.category} ${role.label} ${role.visualBrief ?? ""}`);
+  if (
+    roleText.includes("chaise") ||
+    roleText.includes("corner") ||
+    roleText.includes("modular") ||
+    roleText.includes("sectional") ||
+    roleText.includes("l shaped") ||
+    roleText.includes("l-shaped")
+  ) {
+    return "large";
+  }
+
+  if (roleText.includes("loveseat") || /(?:1|2|one|two)[-\s.]*seater/.test(roleText)) {
+    return "compact";
+  }
+
+  return "standard";
+}
+
+function classTagsConflictWithRole(candidate: ProductMatchCandidate, contract: RoleClassContract) {
+  const classTags = deriveClassTags(candidate);
+  return contract.disallowedClasses.some((classTag) => classTags.includes(classTag));
+}
+
+function roomScopeConflictsWithRole(candidate: ProductMatchCandidate, contract: RoleClassContract) {
+  if (!contract.roomScope) {
+    return false;
+  }
+
+  if (!["curtains", "decor", "lighting", "mirrors", "towels", "wall_art"].includes(candidate.categoryNormalized ?? "")) {
+    return false;
+  }
+
+  const candidateScope = deriveRoomScope(candidate);
+  return candidateScope !== "general" && candidateScope !== contract.roomScope;
+}
+
+function sizeClassConflictsWithRole(candidate: ProductMatchCandidate, contract: RoleClassContract) {
+  if (!contract.sizeClass || contract.sizeClass === "any" || candidate.categoryNormalized !== "sofas") {
+    return false;
+  }
+
+  const candidateSizeClass = deriveSizeClass(candidate);
+  if (candidateSizeClass === "unknown") {
+    return false;
+  }
+
+  if (contract.sizeClass === "standard") {
+    return candidateSizeClass === "large";
+  }
+
+  return candidateSizeClass !== contract.sizeClass;
+}
+
 function roleGateRejectionReason(
   candidate: ProductMatchCandidate,
   role: RoomProductRoleSpec,
   request: ProductMatchRequest
 ) {
+  const contract = roleClassContractForRole(role, request.roomType);
+
   if (!candidate.primaryImageUrl) {
     return "missing_image";
   }
 
-  if (!candidate.categoryNormalized || !scopedCategoriesForProductRole(role).has(candidate.categoryNormalized)) {
+  if (!candidate.categoryNormalized || !contract.allowedCategories.includes(candidate.categoryNormalized)) {
     return "category_mismatch";
   }
 
@@ -1460,6 +1769,19 @@ function roleGateRejectionReason(
     if (coffeeTableMismatch) {
       return coffeeTableMismatch;
     }
+  }
+
+  const classTags = deriveClassTags(candidate);
+  if (contract.disallowedClasses.some((classTag) => classTags.includes(classTag))) {
+    return "class_mismatch";
+  }
+
+  if (roomScopeConflictsWithRole(candidate, contract)) {
+    return "room_scope_mismatch";
+  }
+
+  if (sizeClassConflictsWithRole(candidate, contract)) {
+    return "size_class_mismatch";
   }
 
   const availability = candidate.availability?.toLowerCase() ?? "";
@@ -2235,10 +2557,28 @@ function diverseRoleMatches(
 function diversitySignature(match: RankedProductMatch) {
   const price = match.salePriceAed ?? match.priceAed ?? 0;
   const priceBand = price < 1000 ? "low" : price < 3000 ? "mid" : "high";
-  const color = match.colorTags[0] ?? match.color ?? "unknown-color";
-  const material = match.materialTags[0] ?? match.material ?? "unknown-material";
+  const colors =
+    [
+      ...new Set(
+        [...(match.colorTags ?? []), match.color]
+          .filter(Boolean)
+          .map((value) => String(value).toLowerCase())
+      )
+    ]
+      .sort()
+      .join("+") || "unknown-color";
+  const materials = [
+    ...new Set(
+      [...(match.materialTags ?? []), match.material]
+        .filter(Boolean)
+        .map((value) => String(value).toLowerCase())
+    )
+  ]
+    .sort()
+    .join("+") || "unknown-material";
+  const size = match.categoryNormalized === "sofas" ? deriveSizeClass(match) : "na";
 
-  return `${match.categoryNormalized ?? "uncategorized"}:${priceBand}:${color}:${material}`;
+  return `${match.categoryNormalized ?? "uncategorized"}:${priceBand}:${size}:${colors}:${materials}`;
 }
 
 function refreshDiversitySignature({
@@ -2286,6 +2626,10 @@ function refreshDiversitySignature({
 }
 
 function categoriesForRole(category: string) {
+  return legacyCategoriesForRole(category);
+}
+
+function legacyCategoriesForRole(category: string) {
   const categories = new Set([category]);
 
   if (category === "chairs") {
@@ -2301,19 +2645,7 @@ function categoriesForRole(category: string) {
 }
 
 export function scopedCategoriesForProductRole(role: RoomProductRoleSpec) {
-  const categories = new Set([role.category]);
-  const roleText = `${role.category} ${role.label} ${role.visualBrief ?? ""}`.toLowerCase();
-
-  if (role.category === "chairs" && !roleText.includes("dining")) {
-    categories.add("armchairs");
-  }
-
-  if (role.category === "office_chairs") {
-    categories.add("chairs");
-    categories.add("armchairs");
-  }
-
-  return categories;
+  return new Set(roleClassContractForRole(role).allowedCategories);
 }
 
 function stableCandidateTieBreak(leftId: string, rightId: string) {
