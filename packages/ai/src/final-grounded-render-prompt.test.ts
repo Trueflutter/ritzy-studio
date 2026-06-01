@@ -18,6 +18,9 @@ const basePrompt = buildFinalGroundedRenderPrompt({
 
 assert.match(basePrompt, /Selected concept: Quiet Gallery Lounge/);
 assert.match(basePrompt, /Selected catalog products:/);
+assert.match(basePrompt, /primary seating must be placed on a different wall or zone/);
+assert.match(basePrompt, /TV\/media wall and primary sofa must not be on the same wall/);
+assert.match(basePrompt, /sofa-under-TV placement/);
 assert.match(basePrompt, /Ritzy enhanced image styling layer/);
 assert.match(basePrompt, /editorial residential photography/);
 assert.match(basePrompt, /high-end but livable Dubai villa or townhouse/);
@@ -50,6 +53,8 @@ const v2Prompt = buildFinalGroundedRenderPrompt({
 assert.match(v2Prompt, /Ritzy final render language v2/);
 assert.match(v2Prompt, /source room as the architectural anchor/);
 assert.match(v2Prompt, /arranged for conversation/);
+assert.match(v2Prompt, /primary seating must be placed on a different wall or zone/);
+assert.match(v2Prompt, /sofa seat\/front should face the TV\/media wall or declared focal point/);
 assert.match(v2Prompt, /commerce-critical visual references/);
 assert.match(v2Prompt, /highest-priority anchor items/);
 assert.match(v2Prompt, /silhouettes, color families, materials, proportions/);

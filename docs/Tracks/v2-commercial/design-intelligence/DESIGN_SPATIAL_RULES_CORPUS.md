@@ -55,16 +55,16 @@ type SpatialIntent = {
 
 ## Living Room Rules
 
-### L1. Primary Seating Addresses the Focal Point
+### L1. Primary Seating Sits Apart From and Faces the Focal Point
 
 - **Room type:** Living room; combined living zone.
-- **Design rationale:** A living room needs a hierarchy. The main sofa should clearly relate to the selected focal point, whether that is the TV/media wall, view, fireplace, art/display wall, or conversation center. This is the anchor fix for Sam's issue.
+- **Design rationale:** A living room needs a hierarchy and a correct spatial relationship. The main sofa should be on a different wall or zone from the selected focal point and oriented toward it, whether that is the TV/media wall, view, fireplace, art/display wall, or conversation center. This is the anchor fix for Sam's issue and specifically guards against sofa-under-TV placement.
 - **Checkability:** Vision-QA-only.
 - **Required inputs:** `focalPoint`, `seatingPriority`, known/assumed focal wall, sofa/chair placement in the render.
 - **Suggested clarifying question:** "What should the main seating face first: TV/media wall, view/window, fireplace, art/display wall, or conversation?"
 - **Suggested structured field:** `spatialIntent.focalPoint`; `spatialIntent.focalPointConfidence`.
-- **Example good layout:** Sofa faces the TV/media wall; chairs angle toward the sofa and coffee table so TV viewing and conversation both read clearly.
-- **Example failure:** Sofa floats sideways to the media wall while accent chairs face unrelated directions; the room has nice furniture but no primary relationship.
+- **Example good layout:** Sofa sits opposite the TV/media wall, or on a perpendicular adjacent wall if constrained, and faces the TV/media wall across the rug/coffee-table zone; chairs angle toward the sofa and focal-point axis.
+- **Example failure:** Sofa is placed directly against or under the TV/media wall, facing away from the TV; the room has nice furniture but the primary seating/focal-point relationship is inverted.
 - **Beta-safe implementation note:** Guarantee focal-point capture and produce a warning/assumption if skipped. Do not claim this is hard-checked until wall/furniture positions exist.
 - **Sources:** S1, S2, S8, S9.
 

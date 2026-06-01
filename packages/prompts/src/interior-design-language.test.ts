@@ -4,7 +4,9 @@ import {
   finalRenderProductFidelityLanguage,
   globalPhotorealismLanguage,
   productRoleLanguage,
+  roomBlueprintDefaultsLanguage,
   roomDesignLanguage,
+  roomSpatialPlacementGuardrailLanguage,
   sourceRoomPreservationLanguage,
   styleDesignLanguage,
   styleDesignModules
@@ -31,11 +33,22 @@ assert.deepEqual(
 );
 
 assert.match(roomDesignLanguage("living room"), /arranged for conversation/);
+assert.match(roomDesignLanguage("living room"), /primary seating must be placed on a different wall or zone/);
+assert.match(roomDesignLanguage("living room"), /TV\/media wall and primary sofa must not be on the same wall/);
+assert.match(roomDesignLanguage("living room"), /sofa seat\/front should face the TV\/media wall or declared focal point/);
+assert.match(roomDesignLanguage("living room"), /Accent chairs should angle inward toward the sofa\/focal-point axis/);
 assert.match(roomDesignLanguage("family lounge"), /generously sized rug/);
 assert.match(roomDesignLanguage("dining room"), /chair spacing and pull-out clearance/);
 assert.match(roomDesignLanguage("primary bedroom"), /credible bed wall/);
 assert.match(roomDesignLanguage("ensuite bathroom"), /fixed fixtures/);
-assert.match(roomDesignLanguage("study"), /high-end editorial residential interior photography/);
+assert.match(roomDesignLanguage("study"), /proper desk placement/);
+assert.match(roomDesignLanguage("entry hall"), /high-end editorial residential interior photography/);
+
+assert.match(roomBlueprintDefaultsLanguage("living room"), /primary sofa or sectional placed on a separate opposite wall\/zone/);
+assert.match(roomBlueprintDefaultsLanguage("living room"), /must not be on the same wall/);
+assert.match(roomBlueprintDefaultsLanguage("living room"), /avoid sofa-under-TV placement/);
+assert.match(roomSpatialPlacementGuardrailLanguage("living room") ?? "", /different wall or zone/);
+assert.equal(roomSpatialPlacementGuardrailLanguage("dining room"), null);
 
 assert.match(sourceRoomPreservationLanguage("living room"), /Preserve the uploaded source room/);
 assert.doesNotMatch(sourceRoomPreservationLanguage("living room"), /plumbing locations/);
@@ -68,6 +81,7 @@ assert.match(productRoleLanguage("living room"), /anchor seating/);
 assert.match(productRoleLanguage("dining room"), /over-table lighting/);
 assert.match(productRoleLanguage("bedroom"), /bedside tables/);
 assert.match(productRoleLanguage("bathroom"), /without moving plumbing/);
-assert.match(productRoleLanguage("office"), /Do not force every layer/);
+assert.match(productRoleLanguage("office"), /ergonomic task chair/);
+assert.match(productRoleLanguage("entry hall"), /Do not force every layer/);
 
 console.log("interior design language tests passed");
