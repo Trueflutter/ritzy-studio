@@ -1,15 +1,15 @@
 # Product Matching Engine Agent Comms
 
 ## Current PR
-PR #297 on branch `codex/pm001-post-296-manual-qa-route`. PR #296, PR #294, PR #286, PR #283, PR #282, PR #280, PR #278, and PR #277 merged. PR #295 is the earlier docs-only post-#294 manual-QA route; it is stale/superseded by #296's newer routing and should not merge unchanged.
+None. PR #297 merged at `6f894c7406589afd2fdaf0f0786938597d9858fe`; PR #296, PR #294, PR #286, PR #283, PR #282, PR #280, PR #278, and PR #277 also merged. PR #295 is the earlier docs-only post-#294 manual-QA route; it is closed stale/superseded by #296/#297's newer routing and should not be revived or merged unchanged.
 
 ## Current stage
-PM001_POST_296_MANUAL_QA_ROUTE_REVIEW_REQUESTED
+PM001_POST_296_BLOCKED_WAITING_FOR_SAM_MANUAL_RETEST
 
 ## Blockers
 PR #296 merged at `410f820c66b9a28efc43adf151dea81a79de6246` after strict approval at head `25e34f4cd7782d8b2109c68eeeb1fc11b6354b6a`. It fixed the selected-vs-alternate consistency gap after PR #294 by routing visible alternates and replacement paths through role-scoped pools and the same design-fit envelope.
 
-Current required owner action: strict PR Review Agent review of the docs-only post-#296 manual-QA route PR. After it merges, Sam should run the local Product Matching beta-readiness retest using `docs/Tracks/v2-commercial/product-matching-evals/2026-06-01-pm001-post-296-manual-qa-route.md`.
+Current required owner action: Sam should run the local Product Matching beta-readiness retest using `docs/Tracks/v2-commercial/product-matching-evals/2026-06-01-pm001-post-296-manual-qa-route.md`. If Sam's retest passes, route a docs-only beta decision/readiness record. If it fails, route the smallest exact local/dev boundary based on the observed failure.
 
 Stop rules: no Product Matching validation pass through the live app flow, blind validation, controlled preview, preview QA, browser-click app action, shopping-list refresh/create, visual-sourcing runtime call, catalogue/product row mutation, live catalog write, live ingestion, production deploy/flag/default-on activation, DB/schema/generated type change, runtime allowlist expansion, payment/checkout change, UI redesign, broad catalogue rewrite, broad Product Matching rewrite, prompt/runtime image-generation behavior change, final-render execution, floor-plan work, Catalog-First runtime coupling, or unrelated quality change is approved.
 
