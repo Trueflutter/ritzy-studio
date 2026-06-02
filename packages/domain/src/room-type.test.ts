@@ -16,8 +16,14 @@ assert.deepEqual(canonicalRoomTypes, [
   "Home Office",
   "Living & Dining"
 ]);
-assert.deepEqual(roomCreationRoomTypes, ["Living Room", "Dining Room", "Bedroom", "Home Office"]);
-assert.equal(roomCreationRoomTypes.includes("Living & Dining"), false);
+assert.deepEqual(roomCreationRoomTypes, [
+  "Living Room",
+  "Dining Room",
+  "Bedroom",
+  "Home Office",
+  "Living & Dining"
+]);
+assert.equal(roomCreationRoomTypes.includes("Living & Dining"), true);
 assert.equal(canonicalRoomTypeSchema.parse("Living & Dining"), "Living & Dining");
 
 const combinedLivingDiningAliases = [
@@ -59,6 +65,14 @@ assert.equal(
     roomType: "parlor"
   }).roomType,
   "Living Room"
+);
+assert.equal(
+  createRoomSchema.parse({
+    projectId: "00000000-0000-4000-8000-000000000000",
+    name: "Open hall",
+    roomType: "Living & Dining"
+  }).roomType,
+  "Living & Dining"
 );
 
 assert.throws(() => normalizeRoomType("kitchen"));

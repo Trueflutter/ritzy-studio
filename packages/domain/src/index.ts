@@ -19,13 +19,11 @@ export const roomCreationRoomTypes = [
   "Living Room",
   "Dining Room",
   "Bedroom",
-  "Home Office"
-] as const;
-
-export const canonicalRoomTypes = [
-  ...roomCreationRoomTypes,
+  "Home Office",
   "Living & Dining"
 ] as const;
+
+export const canonicalRoomTypes = roomCreationRoomTypes;
 
 export const canonicalRoomTypeSchema = z.enum(canonicalRoomTypes);
 
