@@ -2,6 +2,10 @@ type RoomTypeSelectorProps = {
   roomTypes: readonly string[];
 };
 
+const roomTypeDisplayLabels: Record<string, string> = {
+  "Living & Dining": "Living Room + Dining Room (Hall)"
+};
+
 export function RoomTypeSelector({ roomTypes }: RoomTypeSelectorProps) {
   return (
     <fieldset className="mb-9">
@@ -11,9 +15,14 @@ export function RoomTypeSelector({ roomTypes }: RoomTypeSelectorProps) {
         </span>
       </legend>
       <div className="grid gap-3 sm:grid-cols-2">
-        {roomTypes.map((roomType) => (
+        {roomTypes.map((roomType) => {
+          const isCombinedHall = roomType === "Living & Dining";
+
+          return (
           <label
-            className="group relative block cursor-pointer border border-line bg-surface p-5 transition-colors duration-micro ease-standard hover:border-ink"
+            className={`group relative block cursor-pointer border border-line bg-surface p-5 transition-colors duration-micro ease-standard hover:border-ink ${
+              isCombinedHall ? "sm:col-span-2" : ""
+            }`}
             key={roomType}
           >
             <input
@@ -24,11 +33,12 @@ export function RoomTypeSelector({ roomTypes }: RoomTypeSelectorProps) {
               value={roomType}
             />
             <span className="block font-display text-display-xs font-light italic text-ink">
-              {roomType}
+              {roomTypeDisplayLabels[roomType] ?? roomType}
             </span>
             <span className="pointer-events-none absolute inset-0 border border-transparent transition-colors duration-micro ease-standard peer-checked:border-ink" />
           </label>
-        ))}
+          );
+        })}
       </div>
     </fieldset>
   );
