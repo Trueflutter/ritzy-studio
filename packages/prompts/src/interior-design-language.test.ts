@@ -40,6 +40,19 @@ assert.match(roomDesignLanguage("living room"), /primary sofa should remain para
 assert.match(roomDesignLanguage("living room"), /Do not cant or angle the primary sofa diagonally/);
 assert.match(roomDesignLanguage("living room"), /sectional or L-shaped sofa, its long run should be parallel to the focal wall/);
 assert.match(roomDesignLanguage("living room"), /Accent chairs should angle inward toward the sofa\/focal-point axis/);
+for (const combinedAlias of ["Living & Dining", "Living / Dining", "living dining hall"]) {
+  const combinedDesignLanguage = roomDesignLanguage(combinedAlias);
+  assert.match(combinedDesignLanguage, /one open-plan Living & Dining hall/);
+  assert.match(combinedDesignLanguage, /living zone/);
+  assert.match(combinedDesignLanguage, /dining zone/);
+  assert.match(combinedDesignLanguage, /Preserve clear circulation between the living and dining zones/);
+  assert.match(combinedDesignLanguage, /primary seating must be placed on a different wall or zone/);
+  assert.match(combinedDesignLanguage, /TV\/media wall and primary sofa must not be on the same wall/);
+  assert.match(combinedDesignLanguage, /primary sofa should remain parallel to the focal wall/);
+  assert.match(combinedDesignLanguage, /dining table/);
+  assert.match(combinedDesignLanguage, /dining chairs/);
+  assert.match(combinedDesignLanguage, /over-table lighting/);
+}
 assert.match(roomDesignLanguage("family lounge"), /generously sized rug/);
 assert.match(roomDesignLanguage("dining room"), /chair spacing and pull-out clearance/);
 assert.match(roomDesignLanguage("primary bedroom"), /credible bed wall/);
@@ -51,10 +64,17 @@ assert.match(roomBlueprintDefaultsLanguage("living room"), /primary sofa or sect
 assert.match(roomBlueprintDefaultsLanguage("living room"), /must not be on the same wall/);
 assert.match(roomBlueprintDefaultsLanguage("living room"), /avoid sofa-under-TV placement/);
 assert.match(roomBlueprintDefaultsLanguage("living room"), /staying square to the room grid/);
+assert.match(roomBlueprintDefaultsLanguage("Living & Dining"), /two coordinated zones/);
+assert.match(roomBlueprintDefaultsLanguage("Living & Dining"), /protected circulation spine/);
+assert.match(roomBlueprintDefaultsLanguage("Living & Dining"), /sofa should face the focal wall/);
+assert.match(roomBlueprintDefaultsLanguage("Living & Dining"), /dining chairs/);
+assert.match(roomBlueprintDefaultsLanguage("Living & Dining"), /centered over-table pendant or chandelier/);
 assert.match(roomSpatialPlacementGuardrailLanguage("living room") ?? "", /different wall or zone/);
 assert.match(roomSpatialPlacementGuardrailLanguage("living room") ?? "", /parallel to the focal wall/);
 assert.match(roomSpatialPlacementGuardrailLanguage("living room") ?? "", /Do not cant or angle the primary sofa diagonally/);
 assert.match(roomSpatialPlacementGuardrailLanguage("living room") ?? "", /sectional or L-shaped sofa, its long run should be parallel to the focal wall/);
+assert.match(roomSpatialPlacementGuardrailLanguage("Living & Dining") ?? "", /different wall or zone/);
+assert.match(roomSpatialPlacementGuardrailLanguage("Living & Dining") ?? "", /parallel to the focal wall/);
 assert.equal(roomSpatialPlacementGuardrailLanguage("dining room"), null);
 
 assert.match(sourceRoomPreservationLanguage("living room"), /Preserve the uploaded source room/);
@@ -85,6 +105,11 @@ assert.match(finalRenderProductFidelityLanguage(), /Do not substitute/);
 assert.match(finalRenderProductFidelityLanguage(), /do not imply exact product accuracy/);
 
 assert.match(productRoleLanguage("living room"), /anchor seating/);
+assert.match(productRoleLanguage("Living & Dining"), /living-zone sofa or sectional/);
+assert.match(productRoleLanguage("Living & Dining"), /dining table/);
+assert.match(productRoleLanguage("Living & Dining"), /dining chairs/);
+assert.match(productRoleLanguage("Living & Dining"), /centered over-table lighting/);
+assert.match(productRoleLanguage("Living & Dining"), /not source it as plain living only/);
 assert.match(productRoleLanguage("dining room"), /over-table lighting/);
 assert.match(productRoleLanguage("bedroom"), /bedside tables/);
 assert.match(productRoleLanguage("bathroom"), /without moving plumbing/);

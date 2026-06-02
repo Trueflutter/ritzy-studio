@@ -112,6 +112,7 @@ export type ProductRoleInclusion = "always" | "space_allows" | "catalog_supports
 export type EnhancedRoomProductRole = RoomProductRole & {
   importance: ProductRoleImportance;
   includeWhen: ProductRoleInclusion;
+  roomScope?: RoomScope;
 };
 
 export type ProductRenderReferenceCandidate = {
@@ -167,6 +168,20 @@ const ignoredMatchTokens = new Set([
 ]);
 
 const roomCategoryHints: Record<string, string[]> = {
+  living_dining: [
+    "sofas",
+    "dining_tables",
+    "chairs",
+    "armchairs",
+    "coffee_tables",
+    "rugs",
+    "storage",
+    "lighting",
+    "side_tables",
+    "wall_art",
+    "mirrors",
+    "decor"
+  ],
   living: [
     "sofas",
     "armchairs",
@@ -197,6 +212,18 @@ const roomCategoryHints: Record<string, string[]> = {
 };
 
 const roomProductRoles: Record<string, RoomProductRole[]> = {
+  living_dining: [
+    { category: "sofas", label: "living-zone sofa or sectional", quantity: 1, required: true },
+    { category: "dining_tables", label: "dining table", quantity: 1, required: true },
+    { category: "chairs", label: "dining chairs", quantity: 6, required: true },
+    { category: "armchairs", label: "secondary seating", quantity: 2, required: false },
+    { category: "coffee_tables", label: "coffee table", quantity: 1, required: true },
+    { category: "rugs", label: "zoned rug", quantity: 1, required: true },
+    { category: "storage", label: "media console and sideboard storage", quantity: 2, required: false },
+    { category: "lighting", label: "layered lighting including over-table lighting", quantity: 2, required: false },
+    { category: "wall_art", label: "wall art or mirror", quantity: 1, required: false },
+    { category: "decor", label: "decor accent", quantity: 2, required: false }
+  ],
   living: [
     { category: "sofas", label: "anchor seating", quantity: 1, required: true },
     { category: "armchairs", label: "accent chairs", quantity: 2, required: true },
@@ -234,6 +261,109 @@ const roomProductRoles: Record<string, RoomProductRole[]> = {
 };
 
 const enhancedRoomProductRoles: Record<string, EnhancedRoomProductRole[]> = {
+  living_dining: [
+    {
+      category: "sofas",
+      label: "living-zone sofa or sectional",
+      quantity: 1,
+      required: true,
+      importance: "anchor",
+      includeWhen: "always",
+      roomScope: "living"
+    },
+    {
+      category: "dining_tables",
+      label: "dining table",
+      quantity: 1,
+      required: true,
+      importance: "anchor",
+      includeWhen: "always",
+      roomScope: "dining"
+    },
+    {
+      category: "chairs",
+      label: "dining chairs",
+      quantity: 6,
+      required: true,
+      importance: "anchor",
+      includeWhen: "always",
+      roomScope: "dining"
+    },
+    {
+      category: "coffee_tables",
+      label: "living-zone coffee table",
+      quantity: 1,
+      required: true,
+      importance: "anchor",
+      includeWhen: "always",
+      roomScope: "living"
+    },
+    {
+      category: "rugs",
+      label: "zoned rug foundation",
+      quantity: 1,
+      required: true,
+      importance: "anchor",
+      includeWhen: "always"
+    },
+    {
+      category: "armchairs",
+      label: "secondary seating",
+      quantity: 2,
+      required: false,
+      importance: "supporting",
+      includeWhen: "space_allows",
+      roomScope: "living"
+    },
+    {
+      category: "storage",
+      label: "TV media console and sideboard storage",
+      quantity: 2,
+      required: false,
+      importance: "supporting",
+      includeWhen: "catalog_supports"
+    },
+    {
+      category: "lighting",
+      label: "living lighting and centered over-table lighting",
+      quantity: 2,
+      required: false,
+      importance: "supporting",
+      includeWhen: "catalog_supports"
+    },
+    {
+      category: "wall_art",
+      label: "wall art or focal wall",
+      quantity: 1,
+      required: false,
+      importance: "supporting",
+      includeWhen: "catalog_supports"
+    },
+    {
+      category: "mirrors",
+      label: "mirror",
+      quantity: 1,
+      required: false,
+      importance: "supporting",
+      includeWhen: "brief_mentions"
+    },
+    {
+      category: "curtains",
+      label: "curtains or textile layer",
+      quantity: 1,
+      required: false,
+      importance: "styling",
+      includeWhen: "catalog_supports"
+    },
+    {
+      category: "decor",
+      label: "restrained decor for both zones",
+      quantity: 2,
+      required: false,
+      importance: "styling",
+      includeWhen: "catalog_supports"
+    }
+  ],
   living: [
     { category: "sofas", label: "anchor seating", quantity: 1, required: true, importance: "anchor", includeWhen: "always" },
     { category: "armchairs", label: "secondary seating", quantity: 2, required: false, importance: "anchor", includeWhen: "space_allows" },
@@ -425,6 +555,9 @@ function normalizeDesiredRoles(roles: RoomProductRole[] | undefined) {
 
 export function productRolesForRoom(roomType: string) {
   const lower = roomType.toLowerCase();
+  if (isCombinedLivingDiningRoomType(lower)) {
+    return roomProductRoles.living_dining;
+  }
   const match = Object.entries(roomProductRoles).find(([key]) => lower.includes(key));
   return match?.[1] ?? roomProductRoles.default;
 }
@@ -588,6 +721,9 @@ function scoreCandidate(
 
 function categoriesForRoom(roomType: string) {
   const lower = roomType.toLowerCase();
+  if (isCombinedLivingDiningRoomType(lower)) {
+    return roomCategoryHints.living_dining;
+  }
   const match = Object.entries(roomCategoryHints).find(([key]) => lower.includes(key));
   return match?.[1] ?? roomCategoryHints.default;
 }
@@ -619,6 +755,10 @@ function categoryPriority(category: string) {
 
 function enhancedRoomRoleKey(roomType: string) {
   const lower = roomType.toLowerCase();
+
+  if (isCombinedLivingDiningRoomType(lower)) {
+    return "living_dining";
+  }
 
   if (lower.includes("living") || lower.includes("lounge") || lower.includes("family")) {
     return "living";
@@ -1533,7 +1673,8 @@ function defaultRoleSpecsForRoom(roomType: string): RoomProductRoleSpec[] {
     label: role.label,
     visualBrief: role.visualBrief ?? null,
     quantity: role.quantity,
-    priority: role.required ? "required" : "supporting"
+    priority: role.required ? "required" : "supporting",
+    roomScope: role.roomScope
   }));
 }
 
@@ -1703,12 +1844,26 @@ export function deriveSizeClass(candidate: ProductMatchCandidate): ProductSizeCl
   return "unknown";
 }
 
-function roomScopeForRoomType(roomType: string): RoomScope {
+function roomScopeForRoomType(roomType: string): RoomScope | undefined {
   const key = enhancedRoomRoleKey(roomType);
+  if (key === "living_dining") {
+    return undefined;
+  }
   if (key === "default") {
     return "general";
   }
   return key;
+}
+
+function isCombinedLivingDiningRoomType(value: string) {
+  const normalized = value
+    .trim()
+    .toLowerCase()
+    .replace(/&/g, " and ")
+    .replace(/[/_-]/g, " ")
+    .replace(/\s+/g, " ");
+
+  return /\bliving\b/.test(normalized) && /\bdining\b/.test(normalized);
 }
 
 function inferredRoleSizeClass(role: RoomProductRoleSpec): RoleSizeClass | undefined {

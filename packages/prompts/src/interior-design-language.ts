@@ -1,4 +1,11 @@
-export type RitzyRoomType = "living" | "dining" | "bedroom" | "bathroom" | "office" | "default";
+export type RitzyRoomType =
+  | "living"
+  | "living_dining"
+  | "dining"
+  | "bedroom"
+  | "bathroom"
+  | "office"
+  | "default";
 
 export type RitzyStyleModule = {
   slug: string;
@@ -27,6 +34,14 @@ const roomLanguage: Record<RitzyRoomType, string> = {
       livingRoomFocalPlacementGuardrail,
       "Make it collected-not-matched, materially rich, and residential in scale."
     ].join(" "),
+  living_dining:
+    [
+      "Design one open-plan Living & Dining hall as two coordinated zones within a single cohesive residential room, not as separate rooms or a generic living room.",
+      "The living zone should include a primary sofa or sectional, secondary seating, coffee table, rug, media/storage layer, warm lighting, and edited decor.",
+      livingRoomFocalPlacementGuardrail,
+      "The dining zone should include a properly scaled dining table, dining chairs, sculptural over-table lighting centered on the table, believable chair pull-out clearance, and a sideboard, credenza, or console where circulation and wall space allow.",
+      "Preserve clear circulation between the living and dining zones with a readable shared walkway, coordinated palette, distinct lighting/rug logic per zone, and no furniture blocking movement through the hall."
+    ].join(" "),
   dining:
     "Design a residential dining room around a properly scaled table, realistic chair spacing and pull-out clearance, a sculptural over-table fixture centered on the table, layered warm secondary lighting, and a sideboard or wall focal point where space allows. Use restrained tablescape styling, tactile materials, and residential hosting realism; choose a rug only if it can support pulled-out chairs.",
   bedroom:
@@ -46,6 +61,13 @@ const roomBlueprintLanguage: Record<RitzyRoomType, string> = {
     "Complete the seating group with secondary seating angled inward toward the sofa/focal-point axis, coffee table, generous rug, side tables, layered lamps or sconces, wall art or mirror/wall treatment, cushions, throws, greenery, and edited decor.",
     "Do not omit the TV/media layer unless the brief explicitly asks for no TV, a formal TV-free salon, a protected existing media wall, or a source-room constraint makes it impossible.",
     "Treat the TV and console as residential and elegant: widescreen TV, refined low console or built-in media unit, concealed cable logic, calm styling, and proportionate placement rather than a showroom electronics wall. If TV-first placement is impossible, preserve architecture, state the focal-point assumption in the concept, and avoid sofa-under-TV placement."
+  ].join(" "),
+  living_dining: [
+    "Ritzy combined Living & Dining hall blueprint: plan one open-plan hall with two coordinated zones and a protected circulation spine between them.",
+    "Living zone: include a TV/media focal wall or declared focal point with a refined media/storage layer, primary sofa or sectional placed on a separate opposite wall/zone or perpendicular adjacent wall when constraints require it, secondary seating, coffee table, generous rug, side tables where space allows, layered lighting, wall art or mirror/wall treatment, cushions, and edited decor.",
+    "The TV/media wall and primary sofa must not be on the same wall; the sofa should face the focal wall across the rug and coffee-table zone, stay parallel to the focal wall, remain square to the rug and room grid, and avoid diagonal canting unless the source room makes a square arrangement impossible.",
+    "Dining zone: include a correctly scaled dining table, dining chairs, centered over-table pendant or chandelier, realistic pull-out clearance, sideboard/credenza/dining console where wall space allows, restrained table styling, and warm secondary lighting.",
+    "Keep the two zones visibly related through palette, material rhythm, and lighting temperature while preserving distinct functional anchors and a clear route between living seating, dining chairs, doors, windows, and any balcony or corridor openings."
   ].join(" "),
   dining: [
     "Ritzy dining room blueprint: assume a complete dining room includes a correctly scaled dining table, enough dining chairs for the implied household/hosting count, an over-table pendant or chandelier, sideboard/credenza or console where wall space allows, wall art or mirror/wall treatment, restrained table styling, and warm secondary lighting.",
@@ -169,7 +191,8 @@ export function roomBlueprintDefaultsLanguage(roomType: string) {
 }
 
 export function roomSpatialPlacementGuardrailLanguage(roomType: string) {
-  return resolveRoomType(roomType) === "living" ? livingRoomFocalPlacementGuardrail : null;
+  const resolved = resolveRoomType(roomType);
+  return resolved === "living" || resolved === "living_dining" ? livingRoomFocalPlacementGuardrail : null;
 }
 
 export function styleDesignLanguage(styleSlugs: string[]) {
@@ -223,6 +246,10 @@ export function finalRenderProductFidelityLanguage() {
 export function productRoleLanguage(roomType: string) {
   const resolved = resolveRoomType(roomType);
 
+  if (resolved === "living_dining") {
+    return "Consider combined Living & Dining product roles from the Ritzy blueprint: living-zone sofa or sectional, secondary seating, coffee table, generous rug, TV/media console or built-in media storage, layered floor/table lighting, dining table, dining chairs, centered over-table lighting, sideboard/credenza/dining console where wall space allows, wall art or mirror, curtains/textiles when visible and catalog-supported, and restrained decor. Preserve clear circulation between the living and dining zones; do not source it as plain living only.";
+  }
+
   if (resolved === "living") {
     return "Consider layered living room product roles from the Ritzy blueprint: anchor seating, secondary seating, coffee table, side/end tables, generous rug, TV/media console or built-in media unit by default, floor/table lighting, wall art or mirror, curtains/textiles when catalog supports them, and cushions/decor.";
   }
@@ -274,6 +301,10 @@ function bathroomPreservationDetail(roomType: string) {
 function resolveRoomType(roomType: string): RitzyRoomType {
   const normalized = roomType.toLowerCase();
 
+  if (isCombinedLivingDiningRoomType(normalized)) {
+    return "living_dining";
+  }
+
   if (normalized.includes("living") || normalized.includes("lounge") || normalized.includes("family")) {
     return "living";
   }
@@ -301,4 +332,15 @@ function resolveRoomType(roomType: string): RitzyRoomType {
   }
 
   return "default";
+}
+
+function isCombinedLivingDiningRoomType(value: string) {
+  const normalized = value
+    .trim()
+    .toLowerCase()
+    .replace(/&/g, " and ")
+    .replace(/[/_-]/g, " ")
+    .replace(/\s+/g, " ");
+
+  return /\bliving\b/.test(normalized) && /\bdining\b/.test(normalized);
 }

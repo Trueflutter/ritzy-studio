@@ -12,6 +12,17 @@ const expectedSpecsByRoom: Record<CatalogFirstRoomType, ReturnType<typeof catalo
     { category: "lighting", label: "lighting", visualBrief: null, quantity: 2, priority: "supporting" },
     { category: "decor", label: "cushions", visualBrief: null, quantity: 4, priority: "supporting" }
   ],
+  living_dining: [
+    { category: "sofas", label: "living-zone sofa", visualBrief: null, quantity: 1, priority: "required" },
+    { category: "rugs", label: "zoned rug", visualBrief: null, quantity: 1, priority: "required" },
+    { category: "coffee_tables", label: "coffee table", visualBrief: null, quantity: 1, priority: "required" },
+    { category: "dining_tables", label: "dining table", visualBrief: null, quantity: 1, priority: "required" },
+    { category: "chairs", label: "dining chairs", visualBrief: null, quantity: 6, priority: "required" },
+    { category: "storage", label: "TV/media console", visualBrief: null, quantity: 1, priority: "supporting" },
+    { category: "storage", label: "sideboard/console", visualBrief: null, quantity: 1, priority: "supporting" },
+    { category: "lighting", label: "layered and over-table lighting", visualBrief: null, quantity: 2, priority: "supporting" },
+    { category: "decor", label: "cushions", visualBrief: null, quantity: 4, priority: "supporting" }
+  ],
   dining_room: [
     { category: "dining_tables", label: "dining table", visualBrief: null, quantity: 1, priority: "required" },
     { category: "chairs", label: "dining chairs", visualBrief: null, quantity: 6, priority: "required" },

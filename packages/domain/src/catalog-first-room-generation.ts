@@ -1,4 +1,4 @@
-export type CatalogFirstRoomType = "living_room" | "dining_room" | "bedroom" | "home_office";
+export type CatalogFirstRoomType = "living_room" | "living_dining" | "dining_room" | "bedroom" | "home_office";
 
 export type ProductBundleTier = "budget" | "premium";
 
@@ -81,6 +81,37 @@ export const catalogFirstRoomBundleBlueprints = {
     role("living_room", "lighting", "lighting", "lighting", 2, false, "supporting", "catalog_supports"),
     role("living_room", "cushions", "cushions", "decor", 4, false, "styling", "catalog_supports")
   ],
+  living_dining: [
+    role("living_dining", "sofa", "living-zone sofa", "sofas", 1, true, "anchor", "always"),
+    role("living_dining", "rug", "zoned rug", "rugs", 1, true, "anchor", "always"),
+    role("living_dining", "coffee_table", "coffee table", "coffee_tables", 1, true, "anchor", "always"),
+    role("living_dining", "dining_table", "dining table", "dining_tables", 1, true, "anchor", "always"),
+    role("living_dining", "dining_chairs", "dining chairs", "chairs", 6, true, "anchor", "always"),
+    role(
+      "living_dining",
+      "tv_media_console",
+      "TV/media console",
+      "storage",
+      1,
+      false,
+      "supporting",
+      "catalog_supports",
+      ["storage", "media_units", "tv_units"]
+    ),
+    role(
+      "living_dining",
+      "sideboard_console",
+      "sideboard/console",
+      "storage",
+      1,
+      false,
+      "supporting",
+      "catalog_supports",
+      ["storage", "sideboards", "consoles"]
+    ),
+    role("living_dining", "lighting", "layered and over-table lighting", "lighting", 2, false, "supporting", "catalog_supports"),
+    role("living_dining", "cushions", "cushions", "decor", 4, false, "styling", "catalog_supports")
+  ],
   dining_room: [
     role("dining_room", "dining_table", "dining table", "dining_tables", 1, true, "anchor", "always"),
     role("dining_room", "dining_chairs", "dining chairs", "chairs", 6, true, "anchor", "always"),
@@ -120,6 +151,10 @@ export function catalogFirstRolesForRoom(roomType: CatalogFirstRoomType): readon
 export function normalizeCatalogFirstRoomType(roomType: string | CatalogFirstRoomType): CatalogFirstRoomType {
   const normalized = roomType.trim().toLowerCase().replace(/[\s-]+/g, "_");
 
+  if (isCombinedLivingDiningRoomType(roomType)) {
+    return "living_dining";
+  }
+
   if (normalized === "living_room" || normalized === "living" || normalized === "lounge" || normalized === "family_room") {
     return "living_room";
   }
@@ -143,6 +178,17 @@ export function normalizeCatalogFirstRoomType(roomType: string | CatalogFirstRoo
   }
 
   throw new Error(`Unsupported catalog-first room type: ${roomType}`);
+}
+
+function isCombinedLivingDiningRoomType(value: string) {
+  const normalized = value
+    .trim()
+    .toLowerCase()
+    .replace(/&/g, " and ")
+    .replace(/[/_-]/g, " ")
+    .replace(/\s+/g, " ");
+
+  return /\bliving\b/.test(normalized) && /\bdining\b/.test(normalized);
 }
 
 export function catalogFirstBlueprintForRoom(roomType: string | CatalogFirstRoomType): CatalogFirstRoomBlueprint {
