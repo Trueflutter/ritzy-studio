@@ -1209,7 +1209,7 @@ export async function saveDesignBriefAction(formData: FormData) {
       });
     } catch {
       redirect(
-        `${briefRootPath}/inspiration?message=${encodeURIComponent(
+        `${redirectPath}?message=${encodeURIComponent(
           INSPIRATION_ANALYSIS_CONTINUE_FAILURE_MESSAGE
         )}`
       );
