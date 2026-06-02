@@ -27,6 +27,16 @@ const livingRoomFocalPlacementGuardrail = [
   "If the source room makes TV-first placement impossible, preserve architecture, make the focal-point assumption explicit, and avoid sofa-under-TV placement."
 ].join(" ");
 
+const combinedHallZoningGuardrail = [
+  "Hall zoning rule: resolve the open-plan hall as a living zone anchored to the TV/media focal wall plus a clearly separate dining zone; never merge them into one undivided furniture band facing the same direction.",
+  "Anchor the living zone first: place the primary sofa parallel to and facing the TV/media wall across the rug; do not run the sofa down the long axis of the hall parallel to a side or window wall.",
+  "Place the dining zone on the opposite side of the sofa from the TV (behind the sofa back), or at the far end of the hall away from the living seating; never beside the sofa in the same TV-facing band, and never between the sofa and the TV.",
+  "Mark the boundary with a divider behind the sofa: a sofa-back console or credenza, low shelving, a slatted or partial screen, or a planter line, so the sofa back reads as the edge between the living and dining zones.",
+  "Give each zone its own floor and ceiling anchor: a living rug under the seating group and a dining rug or defined floor under the table, with a pendant or chandelier centered over the dining table and separate ambient or lamp lighting over the living zone.",
+  "Keep one clear circulation spine along one side of the hall linking entry, living seating, and dining; do not route the main walkway through the seating core or between the sofa and the TV.",
+  "If the hall is too narrow to seat dining behind the sofa, place dining at the far end on the same axis, still divided from the living zone, and state the zoning assumption in the concept."
+].join(" ");
+
 const roomLanguage: Record<RitzyRoomType, string> = {
   living:
     [
@@ -37,6 +47,7 @@ const roomLanguage: Record<RitzyRoomType, string> = {
   living_dining:
     [
       "Design one open-plan Living & Dining hall as two coordinated zones within a single cohesive residential room, not as separate rooms or a generic living room.",
+      combinedHallZoningGuardrail,
       "The living zone should include a primary sofa or sectional, secondary seating, coffee table, rug, media/storage layer, warm lighting, and edited decor.",
       livingRoomFocalPlacementGuardrail,
       "The dining zone should include a properly scaled dining table, dining chairs, sculptural over-table lighting centered on the table, believable chair pull-out clearance, and a sideboard, credenza, or console where circulation and wall space allow.",
@@ -64,6 +75,7 @@ const roomBlueprintLanguage: Record<RitzyRoomType, string> = {
   ].join(" "),
   living_dining: [
     "Ritzy combined Living & Dining hall blueprint: plan one open-plan hall with two coordinated zones and a protected circulation spine between them.",
+    combinedHallZoningGuardrail,
     "Living zone: include a TV/media focal wall or declared focal point with a refined media/storage layer, primary sofa or sectional placed on a separate opposite wall/zone or perpendicular adjacent wall when constraints require it, secondary seating, coffee table, generous rug, side tables where space allows, layered lighting, wall art or mirror/wall treatment, cushions, and edited decor.",
     "The TV/media wall and primary sofa must not be on the same wall; the sofa should face the focal wall across the rug and coffee-table zone, stay parallel to the focal wall, remain square to the rug and room grid, and avoid diagonal canting unless the source room makes a square arrangement impossible.",
     "Dining zone: include a correctly scaled dining table, dining chairs, centered over-table pendant or chandelier, realistic pull-out clearance, sideboard/credenza/dining console where wall space allows, restrained table styling, and warm secondary lighting.",

@@ -46,6 +46,10 @@ for (const combinedAlias of ["Living & Dining", "Living / Dining", "living dinin
   assert.match(combinedDesignLanguage, /living zone/);
   assert.match(combinedDesignLanguage, /dining zone/);
   assert.match(combinedDesignLanguage, /Preserve clear circulation between the living and dining zones/);
+  assert.match(combinedDesignLanguage, /resolve the open-plan hall as a living zone anchored to the TV\/media focal wall/);
+  assert.match(combinedDesignLanguage, /do not run the sofa down the long axis of the hall/);
+  assert.match(combinedDesignLanguage, /opposite side of the sofa from the TV \(behind the sofa back\)/);
+  assert.match(combinedDesignLanguage, /Mark the boundary with a divider behind the sofa/);
   assert.match(combinedDesignLanguage, /primary seating must be placed on a different wall or zone/);
   assert.match(combinedDesignLanguage, /TV\/media wall and primary sofa must not be on the same wall/);
   assert.match(combinedDesignLanguage, /primary sofa should remain parallel to the focal wall/);
@@ -69,6 +73,9 @@ assert.match(roomBlueprintDefaultsLanguage("Living & Dining"), /protected circul
 assert.match(roomBlueprintDefaultsLanguage("Living & Dining"), /sofa should face the focal wall/);
 assert.match(roomBlueprintDefaultsLanguage("Living & Dining"), /dining chairs/);
 assert.match(roomBlueprintDefaultsLanguage("Living & Dining"), /centered over-table pendant or chandelier/);
+assert.match(roomBlueprintDefaultsLanguage("Living & Dining"), /do not run the sofa down the long axis of the hall/);
+assert.match(roomBlueprintDefaultsLanguage("Living & Dining"), /opposite side of the sofa from the TV \(behind the sofa back\)/);
+assert.match(roomBlueprintDefaultsLanguage("Living & Dining"), /Mark the boundary with a divider behind the sofa/);
 assert.match(roomSpatialPlacementGuardrailLanguage("living room") ?? "", /different wall or zone/);
 assert.match(roomSpatialPlacementGuardrailLanguage("living room") ?? "", /parallel to the focal wall/);
 assert.match(roomSpatialPlacementGuardrailLanguage("living room") ?? "", /Do not cant or angle the primary sofa diagonally/);
