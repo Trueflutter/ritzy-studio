@@ -10,18 +10,18 @@ import {
 } from ".";
 
 assert.deepEqual(canonicalRoomTypes, [
+  "Living & Dining",
   "Living Room",
   "Dining Room",
   "Bedroom",
-  "Home Office",
-  "Living & Dining"
+  "Home Office"
 ]);
 assert.deepEqual(roomCreationRoomTypes, [
+  "Living & Dining",
   "Living Room",
   "Dining Room",
   "Bedroom",
-  "Home Office",
-  "Living & Dining"
+  "Home Office"
 ]);
 assert.equal(roomCreationRoomTypes.includes("Living & Dining"), true);
 assert.equal(canonicalRoomTypeSchema.parse("Living & Dining"), "Living & Dining");
