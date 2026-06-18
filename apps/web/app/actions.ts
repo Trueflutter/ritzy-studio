@@ -103,6 +103,8 @@ const CATALOGUE_GROUNDED_CONCEPT_REFERENCE_IMAGE_BLOCK_MESSAGE =
   "We found catalogue pieces for this room, but their reference images are not ready yet. Try again in a moment.";
 const LOCAL_SKU_FIDELITY_CANDIDATES_PER_ROLE = 18;
 const LOCAL_SKU_FIDELITY_RENDER_REFERENCE_LIMIT = 12;
+const INTERNAL_PILOT_SIGNUP_MESSAGE =
+  "Internal pilot. Only ritzyinteriors.com email domains currently permitted";
 
 function productReferenceOrderingV2Enabled() {
   return process.env.RITZY_PRODUCT_REFERENCE_ORDERING_V2_ENABLED === "true";
@@ -365,20 +367,31 @@ export async function signUpAction(formData: FormData) {
   const email = String(formData.get("email") ?? "").trim();
   const password = String(formData.get("password") ?? "");
   const name = optionalString(formData, "name");
+
+  if (!email.toLowerCase().endsWith("@ritzyinteriors.com")) {
+    redirect(`/login?message=${encodeURIComponent(INTERNAL_PILOT_SIGNUP_MESSAGE)}`);
+  }
+
   const supabase = await createClient();
 
-  const { error } = await supabase.auth.signUp({
-    email,
-    password,
-    options: {
-      data: {
-        name
+  const signUpResult = await supabase.auth
+    .signUp({
+      email,
+      password,
+      options: {
+        data: {
+          name
+        }
       }
-    }
-  });
+    })
+    .catch(() => null);
 
-  if (error) {
-    redirect(`/login?message=${encodeURIComponent(error.message)}`);
+  if (!signUpResult) {
+    redirect(`/login?message=${encodeURIComponent(INTERNAL_PILOT_SIGNUP_MESSAGE)}`);
+  }
+
+  if (signUpResult.error) {
+    redirect(`/login?message=${encodeURIComponent(signUpResult.error.message)}`);
   }
 
   revalidatePath("/", "layout");
