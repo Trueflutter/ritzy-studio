@@ -2552,4 +2552,47 @@ assert.ok(
     .some((option) => ["Stone 4-Seater Sofa Grey White", "Rio 4-Seater Sofa Beige"].includes(option.name))
 );
 
+// Cross-project demotion: a product already selected in another of the user's
+// rooms ranks below an otherwise-equal fresh alternative, in both the global
+// ranker and the role-scoped pools, but is still eligible for thin pools.
+const usedSofaId = "00000000-0000-4000-8000-000000000501";
+const freshSofaId = "00000000-0000-4000-8000-000000000502";
+const twinSofas: ProductMatchCandidate[] = [usedSofaId, freshSofaId].map((id, index) => ({
+  ...base,
+  id,
+  name: index === 0 ? "Twin Sofa A Ivory Fabric" : "Twin Sofa B Ivory Fabric",
+  categoryNormalized: "sofas",
+  priceAed: 4200,
+  availability: "in stock",
+  primaryImageUrl: "https://example.com/twin-sofa.jpg",
+  colorTags: ["ivory"],
+  materialTags: ["fabric"],
+  styleTags: ["contemporary"]
+}));
+
+const demotedRanked = rankProductMatches({
+  roomType: "living room",
+  conceptText: "warm ivory contemporary living room",
+  candidates: twinSofas,
+  recentlyUsedProductIds: [usedSofaId]
+});
+assert.equal(demotedRanked[0].id, freshSofaId);
+assert.ok(demotedRanked.some((match) => match.id === usedSofaId), "used product stays eligible");
+assert.ok(
+  demotedRanked
+    .find((match) => match.id === usedSofaId)
+    ?.warnings.some((warning) => warning.includes("another of your rooms"))
+);
+
+const demotedPools = buildRoleScopedCandidatePools({
+  roomType: "living room",
+  conceptText: "warm ivory contemporary living room",
+  roles: [
+    { category: "sofas", label: "anchor seating", visualBrief: null, quantity: 1, priority: "required" }
+  ],
+  candidates: twinSofas,
+  recentlyUsedProductIds: [usedSofaId]
+});
+assert.equal(demotedPools.pools[0].candidates[0]?.id, freshSofaId);
+
 console.log("product matching tests passed");

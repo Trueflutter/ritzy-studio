@@ -114,6 +114,35 @@ function productReferenceOrderingV2Enabled() {
 
 const CONCEPT_VIEW_KEYS: ConceptViewKey[] = ["reverse_wide", "anchor_detail"];
 
+// Product ids the user has already kept in OTHER rooms. Matching demotes (not
+// excludes) them so the same anchor pieces stop reappearing across projects
+// while thin pools can still fall back to them.
+async function recentlyUsedProductIdsForUser({
+  serviceSupabase,
+  userId,
+  excludeRoomId
+}: {
+  serviceSupabase: ReturnType<typeof createServiceClient>;
+  userId: string;
+  excludeRoomId: string;
+}): Promise<string[]> {
+  const { data, error } = await serviceSupabase
+    .from("shopping_list_items")
+    .select(
+      "product_id, shopping_list:shopping_lists!inner(room_id, room:rooms!inner(project:projects!inner(owner_user_id)))"
+    )
+    .eq("shopping_list.room.project.owner_user_id", userId)
+    .neq("shopping_list.room_id", excludeRoomId)
+    .eq("status", "selected")
+    .limit(600);
+
+  if (error || !data) {
+    return [];
+  }
+
+  return Array.from(new Set(data.map((row) => row.product_id).filter(Boolean)));
+}
+
 // Generates the additional camera angles for a stored concept and records them as
 // concept-linked room assets. Runs inside after(): view failures must never fail
 // the concept itself, so each view is best-effort.
@@ -2315,6 +2344,11 @@ export async function groundProductsAction(formData: FormData) {
     roomType: room.room_type
   });
   const productMatchingEngineEnabled = productMatchingPreview.enabled;
+  const recentlyUsedProductIds = await recentlyUsedProductIdsForUser({
+    serviceSupabase,
+    userId: user.id,
+    excludeRoomId: roomId
+  });
   const candidatesPerRole = localSkuFidelityMode ? LOCAL_SKU_FIDELITY_CANDIDATES_PER_ROLE : 6;
   const flatCandidateLimit = localSkuFidelityMode
     ? Math.max(72, blueprintRoles.length * candidatesPerRole)
@@ -2325,6 +2359,7 @@ export async function groundProductsAction(formData: FormData) {
     conceptText: baseConceptText,
     roles: blueprintRoles,
     candidates: matchingCandidates,
+    recentlyUsedProductIds,
     budgetMaxAed: project.budget_max_aed,
     roomMeasurements: measurements
       ? {
@@ -2712,6 +2747,7 @@ export async function groundProductsAction(formData: FormData) {
   const baseVisualRanked = rankProductMatches({
     roomType: room.room_type,
     conceptText: visualConceptText,
+    recentlyUsedProductIds,
     budgetMaxAed: project.budget_max_aed,
     roomMeasurements: measurements
       ? {
@@ -2754,6 +2790,7 @@ export async function groundProductsAction(formData: FormData) {
       conceptText: visualConceptText,
       roles: retryRoles,
       candidates: matchingCandidates,
+      recentlyUsedProductIds,
       budgetMaxAed: project.budget_max_aed,
       roomMeasurements: measurements
         ? {
@@ -3030,6 +3067,7 @@ export async function groundProductsAction(formData: FormData) {
         conceptText: visualConceptText,
         roles,
         candidates: matchingCandidates,
+        recentlyUsedProductIds,
         budgetMaxAed: project.budget_max_aed,
         roomMeasurements: measurements
           ? {
