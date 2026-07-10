@@ -151,6 +151,9 @@ export type GenerateInitialConceptInput = {
     primaryImageUrl?: string | null;
     imageBytes?: Buffer | null;
     imageMimeType?: string | null;
+    // Downscaled data URL for vision inputs; imageBytes stay full-res for
+    // image-generation references.
+    visionImageUrl?: string | null;
   }>;
   inspirationImageUrls?: string[];
   // Data URL of the uploaded floor plan image, when one exists. Read by the
@@ -314,6 +317,7 @@ export type SourceProductsFromConceptInput = {
   conceptImageDetail?: ProductSourcingImageDetail;
   candidateImageLimit?: number;
   candidateImageDetail?: ProductSourcingImageDetail;
+  candidateImageDataUrls?: Record<string, string>;
 };
 
 export type ProductVisualMatchStatus =
@@ -891,28 +895,16 @@ async function generateEvolinkImage({
   }
 
   const startedAt = Date.now();
-  const missingRequired = references.filter(
-    (reference) => reference.required && !publicReferenceUrl(reference.url)
-  );
-
-  if (missingRequired.length > 0) {
-    throw new Error(
-      `Evolink image generation is missing publicly fetchable URLs for required references (${missingRequired
-        .map((reference) => reference.name)
-        .join(", ")}); falling back to a byte-based provider.`
-    );
-  }
-
+  // Prefer real public URLs (small request payloads); inline bytes as data URLs
+  // otherwise. Verified live: the API accepts data URLs, so a required
+  // reference (the room, the approved concept) can never be silently dropped.
   const referenceUrls = references
-    .map((reference) => publicReferenceUrl(reference.url))
-    .filter((url): url is string => Boolean(url))
+    .map(
+      (reference) =>
+        publicReferenceUrl(reference.url) ??
+        `data:${normalizeImageMimeType(reference.mimeType)};base64,${reference.bytes.toString("base64")}`
+    )
     .slice(0, EVOLINK_MAX_REFERENCE_URLS);
-
-  if (references.length > 0 && referenceUrls.length === 0) {
-    throw new Error(
-      "Evolink image generation requires URL-based references, but none of the provided references carried a URL."
-    );
-  }
 
   const headers = {
     Authorization: `Bearer ${apiKey}`,
@@ -1030,6 +1022,7 @@ export async function generateClarifyingQuestions(
         ].join("\n");
 
   const response = await client.responses.create({
+    max_output_tokens: 4000,
     model: env.OPENAI_TEXT_MODEL,
     input: [
       {
@@ -1085,6 +1078,7 @@ export async function analyzeInspirationImages(
   const client = new OpenAI({ apiKey: env.OPENAI_API_KEY });
 
   const response = await client.responses.create({
+    max_output_tokens: 4000,
     model: env.OPENAI_TEXT_MODEL,
     input: [
       {
@@ -1181,12 +1175,14 @@ export async function sourceProductsFromConcept(
           .join("\n")
       : "No role-scoped pools supplied. Use the expected product roles and candidate list.";
   const candidateImageContent = productSourcingCandidateImageContent(input.candidates, {
+    imageDataUrls: input.candidateImageDataUrls,
     candidateLimit,
     candidateImageLimit: input.candidateImageLimit,
     detail: input.candidateImageDetail
   });
 
   const response = await client.responses.create({
+    max_output_tokens: 32000,
     model: env.OPENAI_TEXT_MODEL,
     input: [
       {
@@ -1250,18 +1246,22 @@ export function productSourcingCandidateImageContent(
   {
     candidateLimit = 36,
     candidateImageLimit = candidateLimit,
-    detail = "high"
+    detail = "high",
+    imageDataUrls
   }: {
     candidateLimit?: number;
     candidateImageLimit?: number;
     detail?: ProductSourcingImageDetail;
+    // Downscaled data URLs by candidate id; preferred over provider-side URL
+    // downloads, which flake on rate-limited CDNs and non-public hosts.
+    imageDataUrls?: Record<string, string>;
   } = {}
 ) {
   const imageLimit = Math.max(0, Math.min(candidateLimit, candidateImageLimit));
 
   return candidates
     .slice(0, candidateLimit)
-    .filter((candidate) => candidate.primaryImageUrl)
+    .filter((candidate) => imageDataUrls?.[candidate.id] || candidate.primaryImageUrl)
     .slice(0, imageLimit)
     .flatMap((candidate) => [
       {
@@ -1270,7 +1270,7 @@ export function productSourcingCandidateImageContent(
       },
       {
         type: "input_image" as const,
-        image_url: candidate.primaryImageUrl as string,
+        image_url: imageDataUrls?.[candidate.id] ?? (candidate.primaryImageUrl as string),
         detail
       }
     ]);
@@ -1600,7 +1600,7 @@ function catalogueProductDirectionContent(
       ].join("\n")
     },
     ...products
-      .filter((product) => product.primaryImageUrl)
+      .filter((product) => product.visionImageUrl || product.imageBytes || product.primaryImageUrl)
       .flatMap((product, index) => [
         {
           type: "input_text" as const,
@@ -1608,7 +1608,13 @@ function catalogueProductDirectionContent(
         },
         {
           type: "input_image" as const,
-          image_url: product.primaryImageUrl as string,
+          // Prefer inlined images: vision providers cannot fetch non-public
+          // storage hosts, and remote CDNs rate-limit provider-side downloads.
+          image_url:
+            product.visionImageUrl ??
+            (product.imageBytes && product.imageMimeType
+              ? `data:${product.imageMimeType};base64,${product.imageBytes.toString("base64")}`
+              : (product.primaryImageUrl as string)),
           detail: "low" as const
         }
       ])
@@ -1636,6 +1642,7 @@ export async function generateInitialConcept(
   };
 
   const directionResponse = await client.responses.create({
+    max_output_tokens: 24000,
     model: env.OPENAI_TEXT_MODEL,
     input: [
       {
@@ -1881,6 +1888,7 @@ export async function extractConceptImagePalette(
   const client = new OpenAI({ apiKey: env.OPENAI_API_KEY });
 
   const response = await client.responses.create({
+    max_output_tokens: 4000,
     model: env.OPENAI_TEXT_MODEL,
     input: [
       {
@@ -1955,6 +1963,7 @@ export async function assessRenderSpatialQuality(
     .join(" ");
 
   const response = await client.responses.create({
+    max_output_tokens: 4000,
     model: env.OPENAI_TEXT_MODEL,
     input: [
       {
@@ -2025,6 +2034,7 @@ export async function generateConceptRevision(
   };
 
   const directionResponse = await client.responses.create({
+    max_output_tokens: 24000,
     model: env.OPENAI_TEXT_MODEL,
     input: [
       {
@@ -2125,6 +2135,7 @@ export async function generateProductEnrichment(
   const sourceHash = createProductEnrichmentSourceHash(parsedInput);
 
   const response = await client.responses.create({
+    max_output_tokens: 8000,
     model: env.OPENAI_TEXT_MODEL,
     input: [
       {

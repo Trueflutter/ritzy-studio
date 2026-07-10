@@ -64,7 +64,41 @@ const imageManifest = JSON.parse(readFileSync(resolve(seedDir, "image-manifest.j
 
 const supabase = createClient(url, serviceRoleKey);
 
+const FIXTURE_BUCKET = "fixture-product-images";
+
+// Re-host the AI-generated product shots in local storage so matching and
+// render-reference fetches never depend on an external CDN's rate limits.
+async function rehostImage(sku: string, sourceUrl: string): Promise<string | null> {
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      const response = await fetch(sourceUrl, { headers: { "user-agent": "curl/8.7.1" } });
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+      const bytes = Buffer.from(await response.arrayBuffer());
+      const path = `${sku}.png`;
+      const { error } = await supabase.storage
+        .from(FIXTURE_BUCKET)
+        .upload(path, bytes, { contentType: "image/png", upsert: true });
+      if (error) {
+        throw new Error(error.message);
+      }
+      return supabase.storage.from(FIXTURE_BUCKET).getPublicUrl(path).data.publicUrl;
+    } catch (error) {
+      if (attempt === 2) {
+        console.error(`rehost failed for ${sku}:`, error);
+        return null;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+    }
+  }
+  return null;
+}
+
 async function main() {
+  await supabase.storage.createBucket(FIXTURE_BUCKET, { public: true }).catch(() => {
+    // Bucket already exists on re-runs.
+  });
   const { data: retailer, error: retailerError } = await supabase
     .from("retailers")
     .upsert(
@@ -86,7 +120,8 @@ async function main() {
   let missingImages: string[] = [];
 
   for (const product of catalog.products) {
-    const imageUrl = imageManifest[product.sku] ?? null;
+    const sourceImageUrl = imageManifest[product.sku] ?? null;
+    const imageUrl = sourceImageUrl ? await rehostImage(product.sku, sourceImageUrl) : null;
     if (!imageUrl) missingImages.push(product.sku);
 
     const { data: row, error } = await supabase
