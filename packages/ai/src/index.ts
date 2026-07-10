@@ -15,6 +15,9 @@ import {
   conceptProductSourcingPrompt,
   conceptProductSourcingResponseSchema,
   conceptRevisionPrompt,
+  conceptViewCameraLanguage,
+  conceptViewConsistencyLanguage,
+  type ConceptViewKey,
   finalRenderProductFidelityLanguage,
   globalPhotorealismLanguage,
   initialConceptJsonSchema,
@@ -1627,6 +1630,88 @@ export async function generateInitialConcept(
     concept: direction.concept,
     imageBase64: imageResult.imageBase64,
     revisedPrompt: imageResult.revisedPrompt ?? null
+  };
+}
+
+export type GenerateConceptViewInput = {
+  roomType: string;
+  viewKey: ConceptViewKey;
+  conceptTitle: string;
+  conceptDescription?: string | null;
+  conceptGenerationPrompt?: string | null;
+  heroImageBytes: Buffer;
+  heroImageMimeType: string;
+  heroImageUrl?: string | null;
+};
+
+export type GenerateConceptViewResult = {
+  viewKey: ConceptViewKey;
+  promptVersion: string;
+  imageProvider: ImageProvider;
+  imageModel: string;
+  imageLatencySeconds: number;
+  imageFallbackUsed: boolean;
+  imageFallbackError?: string | null;
+  imageBase64: string;
+};
+
+export const CONCEPT_VIEW_PROMPT_VERSION = "concept-view.2026-07-10.1";
+
+export function buildConceptViewPrompt(input: {
+  roomType: string;
+  viewKey: ConceptViewKey;
+  conceptTitle: string;
+  conceptDescription?: string | null;
+  conceptGenerationPrompt?: string | null;
+}) {
+  return [
+    conceptViewConsistencyLanguage(),
+    "",
+    conceptViewCameraLanguage(input.roomType, input.viewKey),
+    "",
+    `Approved concept: ${input.conceptTitle}`,
+    input.conceptDescription ? `Concept notes: ${input.conceptDescription}` : null,
+    input.conceptGenerationPrompt
+      ? `The room was designed to this brief; use it only to keep the design identical, never to redesign: ${input.conceptGenerationPrompt}`
+      : null,
+    "",
+    globalPhotorealismLanguage(),
+    "Do not add text labels, prices, product names, or retailer claims."
+  ]
+    .filter((line): line is string => line !== null)
+    .join("\n");
+}
+
+export async function generateConceptView(
+  input: GenerateConceptViewInput
+): Promise<GenerateConceptViewResult> {
+  const env = parseServerEnv(process.env);
+  const client = new OpenAI({ apiKey: env.OPENAI_API_KEY });
+  const prompt = buildConceptViewPrompt(input);
+
+  const imageResult = await generateImageWithConfiguredProvider({
+    client,
+    prompt,
+    references: [
+      {
+        bytes: input.heroImageBytes,
+        mimeType: input.heroImageMimeType,
+        name: "approved-concept",
+        url: input.heroImageUrl ?? null
+      }
+    ],
+    noImageErrorMessage: "Concept view generation returned no image data."
+  });
+
+  return {
+    viewKey: input.viewKey,
+    promptVersion: CONCEPT_VIEW_PROMPT_VERSION,
+    imageProvider: imageResult.provider,
+    imageModel: imageResult.model,
+    imageLatencySeconds: imageResult.latencySeconds,
+    imageFallbackUsed: imageResult.fallbackUsed,
+    imageFallbackError: imageResult.error ?? null,
+    imageBase64: imageResult.imageBase64
   };
 }
 

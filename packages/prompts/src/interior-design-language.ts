@@ -285,6 +285,57 @@ export function productRoleLanguage(roomType: string) {
   return "Consider layered product roles that materially define the room: anchor furniture, supporting furniture, rug/textiles, lighting, art or mirror, storage where useful, and restrained decor. Do not force every layer into every room.";
 }
 
+export type ConceptViewKey = "reverse_wide" | "anchor_detail";
+
+const anchorGroupLanguage: Record<RitzyRoomType, string> = {
+  living: "the seating group: the primary sofa, coffee table, and accent seating composed over the rug",
+  living_dining:
+    "the living-zone seating group: the primary sofa, coffee table, and accent seating composed over the living rug, with the dining zone readable beyond it",
+  dining: "the dining group: the dining table, its chairs, and the centered over-table fixture",
+  bedroom: "the bed wall: the bed, headboard, bedside tables, and bedside lighting over the rug",
+  bathroom: "the vanity wall: the vanity, mirror, and lighting composition",
+  office: "the work setup: the desk, task chair, and shelving or storage behind it",
+  default: "the room's main furniture group"
+};
+
+const reverseWideLanguage: Record<RitzyRoomType, string> = {
+  living:
+    "The camera now stands at the far end of the room near the window or focal wall, looking back across the seating group toward the wall the first photo was taken from, so the previously unseen side of the room is now visible.",
+  living_dining:
+    "The camera now stands in the dining zone, looking back across the divider and the living seating group toward where the first photo was taken, so the dining table, its chairs, and the zone boundary are now the foreground and the living zone reads beyond them.",
+  dining:
+    "The camera now stands on the opposite side of the dining table from the first photo, looking back across the table toward the previously unseen side of the room, with the sideboard or serving wall now visible.",
+  bedroom:
+    "The camera now stands beside the window or the wall facing the bed, looking back at the bed wall straight on, so the full headboard composition and both bedside tables are visible.",
+  bathroom:
+    "The camera now faces the previously unseen wall of the bathroom, keeping the same fixtures and finishes visible from the new side.",
+  office:
+    "The camera now stands behind or beside the desk position, looking back toward the entry side of the room, so the desk setup is seen from its other side and the previously unseen wall is visible.",
+  default:
+    "The camera now stands at the opposite end of the room, looking back toward where the first photo was taken, so the previously unseen side of the room is visible."
+};
+
+export function conceptViewCameraLanguage(roomType: string, viewKey: ConceptViewKey) {
+  const resolved = resolveRoomType(roomType);
+
+  if (viewKey === "reverse_wide") {
+    return reverseWideLanguage[resolved];
+  }
+
+  return `The camera moves to a closer three-quarter composition of ${anchorGroupLanguage[resolved]}, at standing eye height, composing it as the clear subject of the frame with realistic perspective.`;
+}
+
+export function conceptViewConsistencyLanguage() {
+  return [
+    "The reference image is the approved design concept for this room. Produce another photograph of THE SAME designed room.",
+    "Every piece of furniture, every material, every color, the rug pattern, the lighting fixtures, the wall treatment, the curtains, and the decor must be kept identical to the reference image.",
+    "Do not introduce new furniture, remove existing pieces, change upholstery colors or materials, or restyle the room in any way.",
+    "Keep the same architecture: the same walls, window positions, door positions, ceiling, and flooring as the reference image, seen from the new camera position with physically plausible perspective.",
+    "Keep the same lighting mood, daylight direction, and warm layered lighting as the reference image.",
+    "This must read as a second photograph of the identical physical room taken moments later, not a new design or a variation."
+  ].join(" ");
+}
+
 function resolveStyleSlugs(styleSlugs: string[]) {
   const resolved: string[] = [];
 
