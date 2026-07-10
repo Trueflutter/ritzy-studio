@@ -1,0 +1,329 @@
+{
+  "generatedAt": "2026-05-21T09:13:24.521Z",
+  "sourceRoom": "docs/smoke-screenshots/2026-05-19-ritzy-remediation/source-test-room-image.png",
+  "productReferences": [
+    {
+      "id": "homecentre-narissa-sofa",
+      "role": "Anchor sofa",
+      "url": "https://www.homecentre.com/ae/en/buy-narissa-3-seater-fabric-sofa/p/168425236",
+      "imageUrl": "https://media.homecentre.com/i/homecentre/168425236-168425236-HC20112025_01-2100.jpg"
+    },
+    {
+      "id": "homecentre-kyra-armchair",
+      "role": "Accent chair",
+      "url": "https://www.homecentre.com/ae/en/buy-kyra-fabric-armchair/p/168656379",
+      "imageUrl": "https://media.homecentre.com/i/homecentre/168656379-168656379-HC14012026_01-2100.jpg"
+    },
+    {
+      "id": "homecentre-prado-dining-table",
+      "role": "Dining/product color-material stress reference",
+      "url": "https://www.homecentre.com/ae/en/buy-prado-6-seater-ceramic-top-dining-table/p/168507809",
+      "imageUrl": "https://media.homecentre.com/i/homecentre/168507809-168507809-HC28012026_01-2100.jpg"
+    }
+  ],
+  "runs": [
+    {
+      "scenario": "dining-room-concept",
+      "provider": "openai",
+      "model": "gpt-image-2",
+      "status": "completed",
+      "promptPath": "docs/Research/image-model-bakeoff/prompts/dining-room-concept.md",
+      "inputReferences": [
+        "docs/smoke-screenshots/2026-05-19-ritzy-remediation/source-test-room-image.png"
+      ],
+      "outputPath": "docs/Research/image-model-bakeoff/outputs/dining-room-concept--openai--gpt-image-2.png",
+      "startTime": "2026-05-21T07:38:15.804Z",
+      "endTime": "2026-05-21T07:40:34.303Z",
+      "latencySeconds": 138.5,
+      "estimatedCostUsd": null,
+      "notes": "Cost unresolved: this local run used the repo-configured gpt-image-2 model, but current official OpenAI pricing/model docs list GPT Image 1.5 / GPT Image 1 / gpt-image-1-mini rather than gpt-image-2. The image edit response did not expose usage for this model."
+    },
+    {
+      "scenario": "dining-room-concept",
+      "provider": "vertex-gemini",
+      "model": "gemini-2.5-flash-image",
+      "status": "completed",
+      "promptPath": "docs/Research/image-model-bakeoff/prompts/dining-room-concept.md",
+      "inputReferences": [
+        "docs/smoke-screenshots/2026-05-19-ritzy-remediation/source-test-room-image.png"
+      ],
+      "outputPath": "docs/Research/image-model-bakeoff/outputs/dining-room-concept--vertex--gemini-2.5-flash-image.png",
+      "startTime": "2026-05-21T09:02:46.678Z",
+      "endTime": "2026-05-21T09:03:00.237Z",
+      "latencySeconds": 13.56,
+      "estimatedCostUsd": null,
+      "notes": "Vertex Gemini image run with the same image-reference bundle used for the OpenAI run. Cost is left unresolved in the manifest and should be checked against Cloud Billing for this isolated project."
+    },
+    {
+      "scenario": "dining-room-concept",
+      "provider": "vertex-gemini",
+      "model": "gemini-3-pro-image-preview",
+      "status": "completed",
+      "promptPath": "docs/Research/image-model-bakeoff/prompts/dining-room-concept.md",
+      "inputReferences": [
+        "docs/smoke-screenshots/2026-05-19-ritzy-remediation/source-test-room-image.png"
+      ],
+      "outputPath": "docs/Research/image-model-bakeoff/outputs/dining-room-concept--vertex--gemini-3-pro-image-preview.png",
+      "startTime": "2026-05-21T09:05:41.650Z",
+      "endTime": "2026-05-21T09:06:17.324Z",
+      "latencySeconds": 35.67,
+      "estimatedCostUsd": null,
+      "notes": "Vertex Gemini image run with the same image-reference bundle used for the OpenAI run. Cost is left unresolved in the manifest and should be checked against Cloud Billing for this isolated project."
+    },
+    {
+      "scenario": "dining-room-concept",
+      "provider": "vertex-gemini",
+      "model": "gemini-3.1-flash-image-preview",
+      "status": "completed",
+      "promptPath": "docs/Research/image-model-bakeoff/prompts/dining-room-concept.md",
+      "inputReferences": [
+        "docs/smoke-screenshots/2026-05-19-ritzy-remediation/source-test-room-image.png"
+      ],
+      "outputPath": "docs/Research/image-model-bakeoff/outputs/dining-room-concept--vertex--gemini-3.1-flash-image-preview.png",
+      "startTime": "2026-05-21T09:12:52.542Z",
+      "endTime": "2026-05-21T09:13:06.721Z",
+      "latencySeconds": 14.18,
+      "estimatedCostUsd": null,
+      "notes": "Vertex Gemini image run with the same image-reference bundle used for the OpenAI run. Cost is left unresolved in the manifest and should be checked against Cloud Billing for this isolated project."
+    },
+    {
+      "scenario": "dining-room-concept",
+      "provider": "vertex-imagen",
+      "model": "imagen-4.0-fast-generate-001",
+      "status": "completed",
+      "promptPath": "docs/Research/image-model-bakeoff/prompts/dining-room-concept.md",
+      "inputReferences": [],
+      "outputPath": "docs/Research/image-model-bakeoff/outputs/dining-room-concept--vertex--imagen-4.0-fast-generate-001.png",
+      "startTime": "2026-05-21T08:36:52.585Z",
+      "endTime": "2026-05-21T08:36:58.788Z",
+      "latencySeconds": 6.2,
+      "estimatedCostUsd": 0.02,
+      "notes": "Text-to-image Vertex Imagen run. This produces comparable visual evidence, but it is not apples-to-apples for Ritzy source-room/reference-image editing because Imagen 4 Fast/Standard do not support that workflow."
+    },
+    {
+      "scenario": "dining-room-concept",
+      "provider": "vertex-imagen",
+      "model": "imagen-4.0-generate-001",
+      "status": "completed",
+      "promptPath": "docs/Research/image-model-bakeoff/prompts/dining-room-concept.md",
+      "inputReferences": [],
+      "outputPath": "docs/Research/image-model-bakeoff/outputs/dining-room-concept--vertex--imagen-4.0-generate-001.png",
+      "startTime": "2026-05-21T08:36:58.790Z",
+      "endTime": "2026-05-21T08:37:08.277Z",
+      "latencySeconds": 9.49,
+      "estimatedCostUsd": 0.04,
+      "notes": "Text-to-image Vertex Imagen run. This produces comparable visual evidence, but it is not apples-to-apples for Ritzy source-room/reference-image editing because Imagen 4 Fast/Standard do not support that workflow."
+    },
+    {
+      "scenario": "final-grounded-render",
+      "provider": "openai",
+      "model": "gpt-image-2",
+      "status": "completed",
+      "promptPath": "docs/Research/image-model-bakeoff/prompts/final-grounded-render.md",
+      "inputReferences": [
+        "docs/smoke-screenshots/2026-05-19-ritzy-remediation/source-test-room-image.png",
+        "apps/web/public/landing-hero.webp",
+        "docs/Research/image-model-bakeoff/inputs/homecentre-narissa-sofa.jpg",
+        "docs/Research/image-model-bakeoff/inputs/homecentre-kyra-armchair.jpg",
+        "docs/Research/image-model-bakeoff/inputs/homecentre-prado-dining-table.jpg"
+      ],
+      "outputPath": "docs/Research/image-model-bakeoff/outputs/final-grounded-render--openai--gpt-image-2.png",
+      "startTime": "2026-05-21T07:41:46.384Z",
+      "endTime": "2026-05-21T07:44:21.314Z",
+      "latencySeconds": 154.93,
+      "estimatedCostUsd": null,
+      "notes": "Cost unresolved: this local run used the repo-configured gpt-image-2 model, but current official OpenAI pricing/model docs list GPT Image 1.5 / GPT Image 1 / gpt-image-1-mini rather than gpt-image-2. The image edit response did not expose usage for this model."
+    },
+    {
+      "scenario": "final-grounded-render",
+      "provider": "vertex-gemini",
+      "model": "gemini-2.5-flash-image",
+      "status": "completed",
+      "promptPath": "docs/Research/image-model-bakeoff/prompts/final-grounded-render.md",
+      "inputReferences": [
+        "docs/smoke-screenshots/2026-05-19-ritzy-remediation/source-test-room-image.png",
+        "apps/web/public/landing-hero.webp",
+        "docs/Research/image-model-bakeoff/inputs/product-reference-contact-sheet.jpg"
+      ],
+      "outputPath": "docs/Research/image-model-bakeoff/outputs/final-grounded-render--vertex--gemini-2.5-flash-image.png",
+      "startTime": "2026-05-21T09:03:00.239Z",
+      "endTime": "2026-05-21T09:03:14.487Z",
+      "latencySeconds": 14.25,
+      "estimatedCostUsd": null,
+      "notes": "Vertex Gemini image run with the same image-reference bundle used for the OpenAI run. Cost is left unresolved in the manifest and should be checked against Cloud Billing for this isolated project."
+    },
+    {
+      "scenario": "final-grounded-render",
+      "provider": "vertex-gemini",
+      "model": "gemini-3-pro-image-preview",
+      "status": "completed",
+      "promptPath": "docs/Research/image-model-bakeoff/prompts/final-grounded-render.md",
+      "inputReferences": [
+        "docs/smoke-screenshots/2026-05-19-ritzy-remediation/source-test-room-image.png",
+        "apps/web/public/landing-hero.webp",
+        "docs/Research/image-model-bakeoff/inputs/product-reference-contact-sheet.jpg"
+      ],
+      "outputPath": "docs/Research/image-model-bakeoff/outputs/final-grounded-render--vertex--gemini-3-pro-image-preview.png",
+      "startTime": "2026-05-21T09:06:17.326Z",
+      "endTime": "2026-05-21T09:06:45.203Z",
+      "latencySeconds": 27.88,
+      "estimatedCostUsd": null,
+      "notes": "Vertex Gemini image run with the same image-reference bundle used for the OpenAI run. Cost is left unresolved in the manifest and should be checked against Cloud Billing for this isolated project."
+    },
+    {
+      "scenario": "final-grounded-render",
+      "provider": "vertex-gemini",
+      "model": "gemini-3.1-flash-image-preview",
+      "status": "completed",
+      "promptPath": "docs/Research/image-model-bakeoff/prompts/final-grounded-render.md",
+      "inputReferences": [
+        "docs/smoke-screenshots/2026-05-19-ritzy-remediation/source-test-room-image.png",
+        "apps/web/public/landing-hero.webp",
+        "docs/Research/image-model-bakeoff/inputs/product-reference-contact-sheet.jpg"
+      ],
+      "outputPath": "docs/Research/image-model-bakeoff/outputs/final-grounded-render--vertex--gemini-3.1-flash-image-preview.png",
+      "startTime": "2026-05-21T09:13:06.723Z",
+      "endTime": "2026-05-21T09:13:24.509Z",
+      "latencySeconds": 17.79,
+      "estimatedCostUsd": null,
+      "notes": "Vertex Gemini image run with the same image-reference bundle used for the OpenAI run. Cost is left unresolved in the manifest and should be checked against Cloud Billing for this isolated project."
+    },
+    {
+      "scenario": "final-grounded-render",
+      "provider": "vertex-imagen",
+      "model": "imagen-4.0-fast-generate-001",
+      "status": "completed",
+      "promptPath": "docs/Research/image-model-bakeoff/prompts/final-grounded-render.md",
+      "inputReferences": [],
+      "outputPath": "docs/Research/image-model-bakeoff/outputs/final-grounded-render--vertex--imagen-4.0-fast-generate-001.png",
+      "startTime": "2026-05-21T08:37:08.279Z",
+      "endTime": "2026-05-21T08:37:13.649Z",
+      "latencySeconds": 5.37,
+      "estimatedCostUsd": 0.02,
+      "notes": "Text-to-image Vertex Imagen run. This produces comparable visual evidence, but it is not apples-to-apples for Ritzy source-room/reference-image editing because Imagen 4 Fast/Standard do not support that workflow."
+    },
+    {
+      "scenario": "final-grounded-render",
+      "provider": "vertex-imagen",
+      "model": "imagen-4.0-generate-001",
+      "status": "completed",
+      "promptPath": "docs/Research/image-model-bakeoff/prompts/final-grounded-render.md",
+      "inputReferences": [],
+      "outputPath": "docs/Research/image-model-bakeoff/outputs/final-grounded-render--vertex--imagen-4.0-generate-001.png",
+      "startTime": "2026-05-21T08:37:13.649Z",
+      "endTime": "2026-05-21T08:37:20.231Z",
+      "latencySeconds": 6.58,
+      "estimatedCostUsd": 0.04,
+      "notes": "Text-to-image Vertex Imagen run. This produces comparable visual evidence, but it is not apples-to-apples for Ritzy source-room/reference-image editing because Imagen 4 Fast/Standard do not support that workflow."
+    },
+    {
+      "scenario": "living-room-concept",
+      "provider": "openai",
+      "model": "gpt-image-2",
+      "status": "completed",
+      "promptPath": "docs/Research/image-model-bakeoff/prompts/living-room-concept.md",
+      "inputReferences": [
+        "docs/smoke-screenshots/2026-05-19-ritzy-remediation/source-test-room-image.png"
+      ],
+      "outputPath": "docs/Research/image-model-bakeoff/outputs/living-room-concept--openai--gpt-image-2.png",
+      "startTime": "2026-05-21T07:35:28.589Z",
+      "endTime": "2026-05-21T07:38:15.801Z",
+      "latencySeconds": 167.21,
+      "estimatedCostUsd": null,
+      "notes": "Cost unresolved: this local run used the repo-configured gpt-image-2 model, but current official OpenAI pricing/model docs list GPT Image 1.5 / GPT Image 1 / gpt-image-1-mini rather than gpt-image-2. The image edit response did not expose usage for this model."
+    },
+    {
+      "scenario": "living-room-concept",
+      "provider": "vertex-gemini",
+      "model": "gemini-2.5-flash-image",
+      "status": "completed",
+      "promptPath": "docs/Research/image-model-bakeoff/prompts/living-room-concept.md",
+      "inputReferences": [
+        "docs/smoke-screenshots/2026-05-19-ritzy-remediation/source-test-room-image.png"
+      ],
+      "outputPath": "docs/Research/image-model-bakeoff/outputs/living-room-concept--vertex--gemini-2.5-flash-image.png",
+      "startTime": "2026-05-21T09:00:59.808Z",
+      "endTime": "2026-05-21T09:01:13.122Z",
+      "latencySeconds": 13.31,
+      "estimatedCostUsd": null,
+      "notes": "Vertex Gemini image run with the same image-reference bundle used for the OpenAI run. Cost is left unresolved in the manifest and should be checked against Cloud Billing for this isolated project."
+    },
+    {
+      "scenario": "living-room-concept",
+      "provider": "vertex-gemini",
+      "model": "gemini-3-pro-image-preview",
+      "status": "completed",
+      "promptPath": "docs/Research/image-model-bakeoff/prompts/living-room-concept.md",
+      "inputReferences": [
+        "docs/smoke-screenshots/2026-05-19-ritzy-remediation/source-test-room-image.png"
+      ],
+      "outputPath": "docs/Research/image-model-bakeoff/outputs/living-room-concept--vertex--gemini-3-pro-image-preview.png",
+      "startTime": "2026-05-21T09:04:49.450Z",
+      "endTime": "2026-05-21T09:05:41.648Z",
+      "latencySeconds": 52.2,
+      "estimatedCostUsd": null,
+      "notes": "Vertex Gemini image run with the same image-reference bundle used for the OpenAI run. Cost is left unresolved in the manifest and should be checked against Cloud Billing for this isolated project."
+    },
+    {
+      "scenario": "living-room-concept",
+      "provider": "vertex-gemini",
+      "model": "gemini-3.1-flash-image",
+      "status": "error",
+      "promptPath": "docs/Research/image-model-bakeoff/prompts/living-room-concept.md",
+      "inputReferences": [
+        "docs/smoke-screenshots/2026-05-19-ritzy-remediation/source-test-room-image.png"
+      ],
+      "outputPath": null,
+      "startTime": "2026-05-21T08:23:24.541Z",
+      "endTime": "2026-05-21T08:23:26.708Z",
+      "latencySeconds": 2.17,
+      "estimatedCostUsd": null,
+      "notes": "Vertex Gemini image generation/edit call failed.",
+      "error": "Publisher Model `projects/ritzy-studio/locations/us-central1/publishers/google/models/gemini-3.1-flash-image` was not found or your project does not have access to it. Please ensure you are using a valid model version. For more information, see: https://cloud.google.com/vertex-ai/generative-ai/docs/learn/model-versions"
+    },
+    {
+      "scenario": "living-room-concept",
+      "provider": "vertex-gemini",
+      "model": "gemini-3.1-flash-image-preview",
+      "status": "completed",
+      "promptPath": "docs/Research/image-model-bakeoff/prompts/living-room-concept.md",
+      "inputReferences": [
+        "docs/smoke-screenshots/2026-05-19-ritzy-remediation/source-test-room-image.png"
+      ],
+      "outputPath": "docs/Research/image-model-bakeoff/outputs/living-room-concept--vertex--gemini-3.1-flash-image-preview.png",
+      "startTime": "2026-05-21T09:11:40.394Z",
+      "endTime": "2026-05-21T09:11:56.742Z",
+      "latencySeconds": 16.35,
+      "estimatedCostUsd": null,
+      "notes": "Vertex Gemini image run with the same image-reference bundle used for the OpenAI run. Cost is left unresolved in the manifest and should be checked against Cloud Billing for this isolated project."
+    },
+    {
+      "scenario": "living-room-concept",
+      "provider": "vertex-imagen",
+      "model": "imagen-4.0-fast-generate-001",
+      "status": "completed",
+      "promptPath": "docs/Research/image-model-bakeoff/prompts/living-room-concept.md",
+      "inputReferences": [],
+      "outputPath": "docs/Research/image-model-bakeoff/outputs/living-room-concept--vertex--imagen-4.0-fast-generate-001.png",
+      "startTime": "2026-05-21T08:22:26.271Z",
+      "endTime": "2026-05-21T08:22:32.770Z",
+      "latencySeconds": 6.5,
+      "estimatedCostUsd": 0.02,
+      "notes": "Text-to-image Vertex Imagen run. This produces comparable visual evidence, but it is not apples-to-apples for Ritzy source-room/reference-image editing because Imagen 4 Fast/Standard do not support that workflow."
+    },
+    {
+      "scenario": "living-room-concept",
+      "provider": "vertex-imagen",
+      "model": "imagen-4.0-generate-001",
+      "status": "completed",
+      "promptPath": "docs/Research/image-model-bakeoff/prompts/living-room-concept.md",
+      "inputReferences": [],
+      "outputPath": "docs/Research/image-model-bakeoff/outputs/living-room-concept--vertex--imagen-4.0-generate-001.png",
+      "startTime": "2026-05-21T08:22:32.770Z",
+      "endTime": "2026-05-21T08:22:41.026Z",
+      "latencySeconds": 8.26,
+      "estimatedCostUsd": 0.04,
+      "notes": "Text-to-image Vertex Imagen run. This produces comparable visual evidence, but it is not apples-to-apples for Ritzy source-room/reference-image editing because Imagen 4 Fast/Standard do not support that workflow."
+    }
+  ]
+}
