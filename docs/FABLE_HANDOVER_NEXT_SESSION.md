@@ -1,10 +1,12 @@
 # Handover: next session (written by Fable, 2026-07-10 end of session 2)
 
 Read order for the incoming instance: `docs/FABLE_HANDOFF.md` (original brief) →
-`docs/FABLE_PROGRESS.md` (full session log, newest at bottom) → this file. Branch:
-`fable/beta-world-class`, PR #310 (open, all review findings addressed; second Codex review was
-stale — see PR comments). NEVER merge without Ayo. Conventional commits, trailer
+`docs/FABLE_PROGRESS.md` (full session log, newest at bottom) → this file. PR #310 is MERGED to
+main (all Codex findings addressed across three review rounds); start by branching fresh off
+latest `origin/main`. NEVER merge without Ayo. Conventional commits, trailer
 `Co-Authored-By: <your model name> <noreply@anthropic.com>`. Stage files by name.
+Production/preview Vercel env is set (all five Evolink/matching vars verified Production+Preview);
+the merge triggers the deployment that picks them up — verify it went green before anything else.
 
 ## Where things stand (verified, not aspirational)
 

@@ -276,7 +276,9 @@ async function generateAndStoreConceptViews({
     await serviceSupabase
       .from("ai_jobs")
       .update({
-        status: failed.length === CONCEPT_VIEW_KEYS.length ? "failed" : "succeeded",
+        // Any missing view is a failed job: partial success must stay visible
+        // and retryable by status, not silently ship a one-view concept.
+        status: failed.length > 0 ? "failed" : "succeeded",
         completed_at: new Date().toISOString(),
         error_message: failed.length > 0 ? failed.map((outcome) => `${outcome.viewKey}: ${outcome.error}`).join("; ") : null,
         output_summary: { conceptId, outcomes }
