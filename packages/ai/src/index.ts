@@ -39,12 +39,15 @@ import { readFile } from "node:fs/promises";
 import OpenAI, { toFile } from "openai";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-type ImageProvider = "gemini" | "openai";
+type ImageProvider = "gemini" | "openai" | "evolink";
 
 type ImageGenerationReference = {
   bytes: Buffer;
   mimeType: string;
   name: string;
+  // Publicly fetchable URL for the same image (signed Storage URL or retailer CDN URL).
+  // Required by URL-based providers such as Evolink; byte-based providers ignore it.
+  url?: string | null;
 };
 
 type ImageGenerationAttempt = {
@@ -208,8 +211,10 @@ export type GenerateFinalGroundedRenderInput = {
   roomType: string;
   roomPhotoBytes: Buffer;
   roomPhotoMimeType: string;
+  roomPhotoUrl?: string | null;
   conceptImageBytes?: Buffer | null;
   conceptImageMimeType?: string | null;
+  conceptImageUrl?: string | null;
   conceptTitle: string;
   conceptDescription?: string | null;
   products: Array<{
@@ -223,6 +228,7 @@ export type GenerateFinalGroundedRenderInput = {
     dimensions?: string | null;
     imageBytes?: Buffer | null;
     imageMimeType?: string | null;
+    imageUrl?: string | null;
   }>;
 };
 
@@ -548,6 +554,36 @@ async function generateImageWithConfiguredProvider({
 }): Promise<ImageGenerationAttempt> {
   const env = parseServerEnv(process.env);
 
+  if (env.RITZY_IMAGE_PROVIDER === "evolink") {
+    const startedAt = Date.now();
+
+    try {
+      return await generateEvolinkImage({
+        prompt,
+        references,
+        model: env.EVOLINK_IMAGE_MODEL,
+        apiKey: env.EVOLINK_API_KEY,
+        quality: env.EVOLINK_IMAGE_QUALITY
+      });
+    } catch (error) {
+      const fallbackError = formatImageGenerationError(error);
+      const fallbackAttempt = await generateOpenAiImage({
+        client,
+        prompt,
+        references,
+        model: env.OPENAI_IMAGE_MODEL,
+        noImageErrorMessage
+      });
+
+      return {
+        ...fallbackAttempt,
+        latencySeconds: secondsSince(startedAt),
+        fallbackUsed: true,
+        error: fallbackError
+      };
+    }
+  }
+
   if (env.RITZY_IMAGE_PROVIDER === "gemini") {
     const startedAt = Date.now();
 
@@ -726,6 +762,145 @@ async function generateGeminiImage({
   } finally {
     clearTimeout(timeout);
   }
+}
+
+const EVOLINK_API_BASE = "https://api.evolink.ai";
+const EVOLINK_POLL_INTERVAL_MS = 3_000;
+const EVOLINK_POLL_TIMEOUT_MS = 300_000;
+const EVOLINK_MAX_REFERENCE_URLS = 14;
+
+type EvolinkTaskResponse = {
+  id?: string;
+  status?: "pending" | "processing" | "completed" | "failed" | string;
+  results?: string[];
+  error?: { message?: string } | string | null;
+  fail_reason?: string | null;
+};
+
+async function generateEvolinkImage({
+  prompt,
+  references,
+  model,
+  apiKey,
+  quality
+}: {
+  prompt: string;
+  references: ImageGenerationReference[];
+  model: string;
+  apiKey?: string;
+  quality: "1K" | "2K" | "4K";
+}): Promise<ImageGenerationAttempt> {
+  if (!apiKey) {
+    throw new Error("EVOLINK_API_KEY is required for Evolink image generation.");
+  }
+
+  const startedAt = Date.now();
+  const referenceUrls = references
+    .map((reference) => reference.url)
+    .filter((url): url is string => Boolean(url))
+    .slice(0, EVOLINK_MAX_REFERENCE_URLS);
+
+  if (references.length > 0 && referenceUrls.length === 0) {
+    throw new Error(
+      "Evolink image generation requires URL-based references, but none of the provided references carried a URL."
+    );
+  }
+
+  const headers = {
+    Authorization: `Bearer ${apiKey}`,
+    "Content-Type": "application/json"
+  };
+
+  const submitResponse = await fetch(`${EVOLINK_API_BASE}/v1/images/generations`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      model,
+      prompt,
+      size: "16:9",
+      quality,
+      ...(referenceUrls.length > 0 ? { image_urls: referenceUrls } : {})
+    })
+  });
+
+  const submitPayload = (await submitResponse.json().catch(() => null)) as EvolinkTaskResponse | null;
+
+  if (!submitResponse.ok || !submitPayload?.id) {
+    throw new Error(
+      evolinkErrorMessage(submitPayload) ??
+        `Evolink image generation submit failed with HTTP ${submitResponse.status}.`
+    );
+  }
+
+  const deadline = startedAt + EVOLINK_POLL_TIMEOUT_MS;
+
+  while (Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, EVOLINK_POLL_INTERVAL_MS));
+
+    const pollResponse = await fetch(`${EVOLINK_API_BASE}/v1/tasks/${encodeURIComponent(submitPayload.id)}`, {
+      method: "GET",
+      headers
+    });
+    const task = (await pollResponse.json().catch(() => null)) as EvolinkTaskResponse | null;
+
+    if (!pollResponse.ok) {
+      throw new Error(
+        evolinkErrorMessage(task) ?? `Evolink task polling failed with HTTP ${pollResponse.status}.`
+      );
+    }
+
+    if (task?.status === "failed") {
+      throw new Error(evolinkErrorMessage(task) ?? "Evolink image generation failed.");
+    }
+
+    if (task?.status === "completed") {
+      const resultUrl = task.results?.[0];
+
+      if (!resultUrl) {
+        throw new Error("Evolink image generation completed without a result image URL.");
+      }
+
+      const imageResponse = await fetch(resultUrl);
+
+      if (!imageResponse.ok) {
+        throw new Error(`Evolink result image download failed with HTTP ${imageResponse.status}.`);
+      }
+
+      const imageBase64 = Buffer.from(await imageResponse.arrayBuffer()).toString("base64");
+
+      return {
+        provider: "evolink",
+        model,
+        imageBase64,
+        revisedPrompt: null,
+        latencySeconds: secondsSince(startedAt),
+        fallbackUsed: false,
+        error: null
+      };
+    }
+  }
+
+  throw new Error(`Evolink image generation timed out after ${EVOLINK_POLL_TIMEOUT_MS / 1000} seconds.`);
+}
+
+function evolinkErrorMessage(payload: EvolinkTaskResponse | null): string | null {
+  if (!payload) {
+    return null;
+  }
+
+  if (typeof payload.error === "string" && payload.error) {
+    return `Evolink: ${payload.error}`;
+  }
+
+  if (payload.error && typeof payload.error === "object" && payload.error.message) {
+    return `Evolink: ${payload.error.message}`;
+  }
+
+  if (payload.fail_reason) {
+    return `Evolink: ${payload.fail_reason}`;
+  }
+
+  return null;
 }
 
 export async function generateClarifyingQuestions(
@@ -1418,7 +1593,8 @@ export async function generateInitialConcept(
     .map((product, index) => ({
       bytes: product.imageBytes as Buffer,
       mimeType: product.imageMimeType as string,
-      name: `catalogue-product-${index}`
+      name: `catalogue-product-${index}`,
+      url: product.primaryImageUrl ?? null
     }));
 
   const imageResult = await generateImageWithConfiguredProvider({
@@ -1428,7 +1604,8 @@ export async function generateInitialConcept(
       {
         bytes: input.roomPhotoBytes,
         mimeType: input.roomPhotoMimeType,
-        name: "room"
+        name: "room",
+        url: input.roomPhotoUrl
       },
       ...catalogueReferences
     ],
@@ -1525,7 +1702,8 @@ export async function generateConceptRevision(
       {
         bytes: input.roomPhotoBytes,
         mimeType: input.roomPhotoMimeType,
-        name: "room"
+        name: "room",
+        url: input.roomPhotoUrl
       }
     ],
     noImageErrorMessage: "OpenAI image revision returned no image data."
@@ -1753,7 +1931,8 @@ export async function generateFinalGroundedRender(
     .map((product, index) => ({
       bytes: product.imageBytes as Buffer,
       mimeType: product.imageMimeType as string,
-      name: `product-${index}`
+      name: `product-${index}`,
+      url: product.imageUrl ?? null
     }));
   const productSummary = input.products
     .map((product, index) =>
@@ -1787,14 +1966,16 @@ export async function generateFinalGroundedRender(
       {
         bytes: input.roomPhotoBytes,
         mimeType: input.roomPhotoMimeType,
-        name: "room"
+        name: "room",
+        url: input.roomPhotoUrl ?? null
       },
       ...(input.conceptImageBytes && input.conceptImageMimeType
         ? [
             {
               bytes: input.conceptImageBytes,
               mimeType: input.conceptImageMimeType,
-              name: "concept"
+              name: "concept",
+              url: input.conceptImageUrl ?? null
             }
           ]
         : []),

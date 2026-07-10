@@ -110,6 +110,21 @@ function productReferenceOrderingV2Enabled() {
   return process.env.RITZY_PRODUCT_REFERENCE_ORDERING_V2_ENABLED === "true";
 }
 
+function configuredImageProvider() {
+  return process.env.RITZY_IMAGE_PROVIDER ?? "openai";
+}
+
+function configuredImageModel() {
+  const provider = configuredImageProvider();
+  if (provider === "evolink") {
+    return process.env.EVOLINK_IMAGE_MODEL ?? "gemini-3.1-flash-image-preview";
+  }
+  if (provider === "gemini") {
+    return process.env.GEMINI_IMAGE_MODEL ?? "gemini-3.1-flash-image-preview";
+  }
+  return process.env.OPENAI_IMAGE_MODEL ?? "gpt-image-2";
+}
+
 function productMatchingEngineV1Enabled() {
   return process.env.RITZY_PRODUCT_MATCHING_ENGINE_V1_ENABLED === "true";
 }
@@ -1877,12 +1892,8 @@ export async function generateInitialConceptAction(formData: FormData) {
       room_id: roomId,
       job_type: "initial_concept_generation",
       status: "running",
-      provider: process.env.RITZY_IMAGE_PROVIDER ?? "openai",
-      model: `${process.env.OPENAI_TEXT_MODEL ?? "gpt-5-mini"} + ${
-        (process.env.RITZY_IMAGE_PROVIDER ?? "openai") === "gemini"
-          ? (process.env.GEMINI_IMAGE_MODEL ?? "gemini-3.1-flash-image-preview")
-          : (process.env.OPENAI_IMAGE_MODEL ?? "gpt-image-2")
-      }`,
+      provider: configuredImageProvider(),
+      model: `${process.env.OPENAI_TEXT_MODEL ?? "gpt-5-mini"} + ${configuredImageModel()}`,
       prompt_version: null,
       input_summary: {
         roomId,
@@ -4158,16 +4169,27 @@ export async function generateFinalRenderAction(formData: FormData) {
             priceAed: item.unit_price_aed,
             dimensions,
             imageBytes: image?.bytes ?? null,
-            imageMimeType: image?.mimeType ?? null
+            imageMimeType: image?.mimeType ?? null,
+            imageUrl: product.primary_image_url ?? null
           };
         })
       );
+      const { data: signedRoomPhotoForRender } = await serviceSupabase.storage
+        .from("room-assets")
+        .createSignedUrl(roomPhoto.storage_path, 60 * 30);
+      const { data: signedConceptImageForRender } = conceptImageAsset?.storage_path
+        ? await serviceSupabase.storage
+            .from("generated-renders")
+            .createSignedUrl(conceptImageAsset.storage_path, 60 * 30)
+        : { data: null };
       const result = await generateFinalGroundedRender({
         roomType: room.room_type,
         roomPhotoBytes: Buffer.from(await roomBlob.arrayBuffer()),
         roomPhotoMimeType: roomPhoto.mime_type,
+        roomPhotoUrl: signedRoomPhotoForRender?.signedUrl ?? null,
         conceptImageBytes: conceptBlob ? Buffer.from(await conceptBlob.arrayBuffer()) : null,
         conceptImageMimeType: conceptImageAsset?.mime_type ?? null,
+        conceptImageUrl: signedConceptImageForRender?.signedUrl ?? null,
         conceptTitle: concept.title,
         conceptDescription: concept.description,
         products: productsForRender
@@ -4368,12 +4390,8 @@ export async function reviseConceptAction(formData: FormData) {
       room_id: roomId,
       job_type: "concept_revision",
       status: "running",
-      provider: process.env.RITZY_IMAGE_PROVIDER ?? "openai",
-      model: `${process.env.OPENAI_TEXT_MODEL ?? "gpt-5-mini"} + ${
-        (process.env.RITZY_IMAGE_PROVIDER ?? "openai") === "gemini"
-          ? (process.env.GEMINI_IMAGE_MODEL ?? "gemini-3.1-flash-image-preview")
-          : (process.env.OPENAI_IMAGE_MODEL ?? "gpt-image-2")
-      }`,
+      provider: configuredImageProvider(),
+      model: `${process.env.OPENAI_TEXT_MODEL ?? "gpt-5-mini"} + ${configuredImageModel()}`,
       prompt_version: null,
       input_summary: {
         roomId,
