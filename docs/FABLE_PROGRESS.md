@@ -239,3 +239,31 @@ PRODUCT_SOURCING_AI_TIMEOUT_MS vs Evolink latency or trim candidate images.
   fails). 2XL: 405. The One: adapter works but is dry-run-only by compliance gate. Catalog depth
   work likely needs either the hosted DB's existing catalog or a headless-browser ingestion
   approach; do not burn time on plain-fetch scraping.
+
+## 2026-07-10 (session 3 — Opus 4.8, verifying the merged beta on production)
+
+### PRODUCTION WAS DOWN — sharp native module 500 (PR #311, hotfix)
+Branched `fable/beta-e2e-hosted` off origin/main. First action per brief: verify the #310
+production deploy. It is BROKEN. `/` and the entire authenticated flow return 500; `/login`
+returns 200 (it does not import the actions module). Runtime log root cause:
+
+    Could not load the "sharp" module using the linux-x64 runtime
+    ERR_DLOPEN_FAILED: libvips-cpp.so.8.18.3: cannot open shared object file
+
+`sharp` (new to the live path this release, for vision-input downscaling) is auto-externalized
+by Next, so it is `require`d at runtime. In this pnpm monorepo sharp + its platform packages
+(`@img/sharp-linux-x64`, `@img/sharp-libvips-linux-x64` carrying the `.so`) hoist to the repo-root
+`.pnpm` store, OUTSIDE `apps/web`. Next output-file-tracing defaults to the project dir and
+dropped those native files from the deployed function. Fix: set `outputFileTracingRoot` to the
+monorepo root in `apps/web/next.config.ts` (the fix Next's own monorepo docs prescribe).
+
+Verified on the PREVIEW deployment (linux-x64, identical runtime): after the fix the sharp DLOPEN
+error is GONE. Preview then 500s on a DIFFERENT, pre-existing, preview-scoped issue — Supabase
+public vars (`NEXT_PUBLIC_SUPABASE_URL`/`ANON_KEY`) are scoped Production-only, so preview has no
+Supabase client. Production has all required vars at Production scope (confirmed via
+`vercel env ls`; Supabase URL/anon/service-role, OpenAI, Stripe, Evolink; no `OPENAI_BASE_URL`),
+so merging #311 restores production. Awaiting Ayo's merge approval, then confirm prod `/` != 500.
+
+TRAP for the next instance: sharp works locally (macOS native binary) and in `pnpm build`, so
+green local checks do NOT catch this. It only manifests on the linux Vercel function. Any new
+native/optional-binary dependency needs a preview-deploy smoke test, not just `pnpm check`.

@@ -5,6 +5,12 @@ import path from "node:path";
 config({ path: path.resolve(process.cwd(), "../../.env.local") });
 
 const nextConfig: NextConfig = {
+  // pnpm hoists native deps (sharp + its @img/sharp-libvips-linux-x64 .so) to the
+  // repo-root .pnpm store, outside apps/web. Tracing defaults to the project dir and
+  // drops those files from the deployed function, so sharp fails to dlopen libvips at
+  // runtime and every server route that imports it 500s. Root the trace at the monorepo
+  // so the platform binaries are bundled into the Vercel function.
+  outputFileTracingRoot: path.resolve(process.cwd(), "../../"),
   images: {
     remotePatterns: [
       {
