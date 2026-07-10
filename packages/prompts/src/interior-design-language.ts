@@ -285,6 +285,74 @@ export function productRoleLanguage(roomType: string) {
   return "Consider layered product roles that materially define the room: anchor furniture, supporting furniture, rug/textiles, lighting, art or mirror, storage where useful, and restrained decor. Do not force every layer into every room.";
 }
 
+// Structured spatial intent captured by the brief. Mirrors the domain's
+// SpatialIntent shape without importing across packages.
+export type SpatialPromptIntent = {
+  focalPoint?: string;
+  seatingPriority?: string;
+  diningSeatCount?: number | null;
+  mustKeepClear?: readonly string[];
+};
+
+const focalPointLanguage: Record<string, string> = {
+  tv_media_wall:
+    "The user confirmed the TV/media wall is the primary focal point: orient the primary seating to face it across the rug and coffee-table zone.",
+  view_window:
+    "The user confirmed the window view is the primary focal point: orient seating to share the view without blocking access or daylight, and do not force a TV wall into the composition.",
+  fireplace:
+    "The user confirmed the fireplace is the primary focal point: anchor the seating group on it and treat any media layer as secondary.",
+  art_display_wall:
+    "The user confirmed an art or display wall is the primary focal point: compose the seating toward it and give that wall a gallery-caliber treatment.",
+  conversation:
+    "The user confirmed conversation is the priority over any screen or wall: arrange seating as an inward-facing group around a shared center, with no piece orphaned outside the circle."
+};
+
+const seatingPriorityLanguage: Record<string, string> = {
+  tv_viewing:
+    "Seating priority: comfortable TV viewing. Keep the primary sofa square to the media wall at a sensible viewing distance.",
+  conversation:
+    "Seating priority: entertaining and conversation. Chairs and sofa address a shared center; no seat should require turning around to talk.",
+  family_lounging:
+    "Seating priority: relaxed family lounging. Favor deep, generous seating and soft layering over formality.",
+  formal_hosting:
+    "Seating priority: formal hosting. Compose a composed, symmetric seating group with generous guest seating and polished styling.",
+  majlis_hosting:
+    "Seating priority: majlis-style hosting. Provide generous continuous seating along the walls oriented to the room's center, hosting density over minimalism, while keeping the arrangement tailored and contemporary."
+};
+
+// Additive spatial guidance derived from the user's structured planning
+// answers. Slotted into the existing concept/render language compositions.
+export function spatialLayoutLanguage(roomType: string, intent?: SpatialPromptIntent | null) {
+  const resolved = resolveRoomType(roomType);
+  const parts: string[] = [];
+
+  if (intent?.focalPoint && focalPointLanguage[intent.focalPoint]) {
+    parts.push(focalPointLanguage[intent.focalPoint]);
+  }
+
+  if (intent?.seatingPriority && seatingPriorityLanguage[intent.seatingPriority]) {
+    parts.push(seatingPriorityLanguage[intent.seatingPriority]);
+  }
+
+  if (
+    (resolved === "living_dining" || resolved === "dining") &&
+    typeof intent?.diningSeatCount === "number" &&
+    intent.diningSeatCount > 0
+  ) {
+    parts.push(
+      `The dining table must seat ${intent.diningSeatCount} with realistic chair spacing and pull-out clearance; do not render a different seat count.`
+    );
+  }
+
+  if (intent?.mustKeepClear && intent.mustKeepClear.length > 0) {
+    parts.push(
+      `Keep these areas completely clear of furniture and decor, exactly as the user asked: ${intent.mustKeepClear.join("; ")}.`
+    );
+  }
+
+  return parts.length > 0 ? parts.join(" ") : null;
+}
+
 export type ConceptViewKey = "reverse_wide" | "anchor_detail";
 
 const anchorGroupLanguage: Record<RitzyRoomType, string> = {

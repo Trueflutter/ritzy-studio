@@ -8,6 +8,7 @@ import {
   roomDesignLanguage,
   roomSpatialPlacementGuardrailLanguage,
   sourceRoomPreservationLanguage,
+  spatialLayoutLanguage,
   styleDesignLanguage,
   styleDesignModules
 } from ".";
@@ -122,5 +123,28 @@ assert.match(productRoleLanguage("bedroom"), /bedside tables/);
 assert.match(productRoleLanguage("bathroom"), /without moving plumbing/);
 assert.match(productRoleLanguage("office"), /ergonomic task chair/);
 assert.match(productRoleLanguage("entry hall"), /Do not force every layer/);
+
+// Spatial layout language: intent-conditional fragments are additive and only
+// appear when the user actually answered.
+assert.equal(spatialLayoutLanguage("living room", null), null);
+assert.equal(spatialLayoutLanguage("living room", { focalPoint: "unknown" }), null);
+const viewFocal = spatialLayoutLanguage("living room", {
+  focalPoint: "view_window",
+  seatingPriority: "conversation"
+});
+assert.match(viewFocal ?? "", /window view is the primary focal point/);
+assert.match(viewFocal ?? "", /entertaining and conversation/i);
+assert.match(
+  spatialLayoutLanguage("Living & Dining", { diningSeatCount: 8 }) ?? "",
+  /seat 8 with realistic chair spacing/
+);
+assert.match(
+  spatialLayoutLanguage("living room", { mustKeepClear: ["balcony door"] }) ?? "",
+  /balcony door/
+);
+assert.match(
+  spatialLayoutLanguage("living room", { seatingPriority: "majlis_hosting" }) ?? "",
+  /majlis/i
+);
 
 console.log("interior design language tests passed");

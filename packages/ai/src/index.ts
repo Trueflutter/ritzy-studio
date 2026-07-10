@@ -32,6 +32,8 @@ import {
   roomDesignLanguage,
   roomSpatialPlacementGuardrailLanguage,
   sourceRoomPreservationLanguage,
+  spatialLayoutLanguage,
+  type SpatialPromptIntent,
   styleDesignLanguage,
   inspirationAnalysisJsonSchema,
   inspirationAnalysisPrompt,
@@ -135,6 +137,9 @@ export type GenerateInitialConceptInput = {
     imageMimeType?: string | null;
   }>;
   inspirationImageUrls?: string[];
+  // Data URL of the uploaded floor plan image, when one exists. Read by the
+  // direction model for layout reasoning; never used as a render reference.
+  floorPlanImageUrl?: string | null;
   styleSlugs?: string[];
   styleNotes?: string | null;
   colorNotes?: string | null;
@@ -146,6 +151,7 @@ export type GenerateInitialConceptInput = {
     question: string;
     answer: string;
   }>;
+  spatialIntent?: SpatialPromptIntent | null;
   measurements?: {
     wallLengthCm?: number | null;
     roomDepthCm?: number | null;
@@ -225,6 +231,7 @@ export type GenerateFinalGroundedRenderInput = {
   conceptImageUrl?: string | null;
   conceptTitle: string;
   conceptDescription?: string | null;
+  spatialIntent?: SpatialPromptIntent | null;
   products: Array<{
     name: string;
     retailerName: string;
@@ -375,6 +382,23 @@ function enhancedRitzyInteriorStylingLanguage({
   ].join("\n");
 }
 
+function roomMeasurementsLanguage(measurements?: {
+  wallLengthCm?: number | null;
+  roomDepthCm?: number | null;
+  ceilingHeightCm?: number | null;
+} | null) {
+  if (!measurements?.wallLengthCm || !measurements.roomDepthCm) {
+    return null;
+  }
+
+  return [
+    `The real room measures approximately ${Math.round(measurements.wallLengthCm)} cm along the main wall and ${Math.round(
+      measurements.roomDepthCm
+    )} cm deep${measurements.ceilingHeightCm ? ` with a ${Math.round(measurements.ceilingHeightCm)} cm ceiling` : ""}.`,
+    "Keep every furniture piece, rug, and clearance physically plausible for these dimensions; do not compress or stretch the room."
+  ].join(" ");
+}
+
 export function buildInitialConceptSystemPrompt({
   roomType,
   styleSlugs = [],
@@ -409,7 +433,9 @@ export function buildInitialConceptImagePrompt({
   catalogueProductSummary,
   styleSlugs = [],
   useInteriorPromptV2 = false,
-  strictSourceRoomPreservation = false
+  strictSourceRoomPreservation = false,
+  spatialIntent = null,
+  measurements = null
 }: {
   generationPrompt: string;
   roomType: string;
@@ -418,6 +444,12 @@ export function buildInitialConceptImagePrompt({
   styleSlugs?: string[];
   useInteriorPromptV2?: boolean;
   strictSourceRoomPreservation?: boolean;
+  spatialIntent?: SpatialPromptIntent | null;
+  measurements?: {
+    wallLengthCm?: number | null;
+    roomDepthCm?: number | null;
+    ceilingHeightCm?: number | null;
+  } | null;
 }) {
   if (!useInteriorPromptV2) {
     return [
@@ -430,6 +462,8 @@ export function buildInitialConceptImagePrompt({
       "Preserve visible architecture, walls, windows, doors, ceiling details, AC vents, sockets, built-ins, and fixed bathroom fixtures where present.",
       strictSourceRoomPreservation ? strictSourceRoomPreservationLanguage() : null,
       roomBlueprintDefaultsLanguage(roomType),
+      spatialLayoutLanguage(roomType, spatialIntent),
+      roomMeasurementsLanguage(measurements),
       enhancedRitzyInteriorStylingLanguage({ mode: "initial-concept" }),
       catalogueProductSummary
         ? [
@@ -458,6 +492,8 @@ export function buildInitialConceptImagePrompt({
     strictSourceRoomPreservation ? strictSourceRoomPreservationLanguage() : null,
     roomDesignLanguage(roomType),
     roomBlueprintDefaultsLanguage(roomType),
+    spatialLayoutLanguage(roomType, spatialIntent),
+    roomMeasurementsLanguage(measurements),
     styleDesignLanguage(styleSlugs),
     globalPhotorealismLanguage(),
     enhancedRitzyInteriorStylingLanguage({ mode: "initial-concept" }),
@@ -482,7 +518,8 @@ export function buildFinalGroundedRenderPrompt({
   hasConceptImage,
   productSummary,
   useFinalRenderPromptV2 = false,
-  strictSourceRoomPreservation = false
+  strictSourceRoomPreservation = false,
+  spatialIntent = null
 }: {
   roomType: string;
   conceptTitle: string;
@@ -490,6 +527,7 @@ export function buildFinalGroundedRenderPrompt({
   hasConceptImage?: boolean;
   productSummary: string;
   useFinalRenderPromptV2?: boolean;
+  spatialIntent?: SpatialPromptIntent | null;
   strictSourceRoomPreservation?: boolean;
 }) {
   if (!useFinalRenderPromptV2) {
@@ -498,6 +536,7 @@ export function buildFinalGroundedRenderPrompt({
       "",
       sourceRoomPreservationLanguage(roomType),
       roomSpatialPlacementGuardrailLanguage(roomType),
+      spatialLayoutLanguage(roomType, spatialIntent),
       strictSourceRoomPreservation ? strictSourceRoomPreservationLanguage() : null,
       `Selected concept: ${conceptTitle}`,
       conceptDescription ? `Concept notes: ${conceptDescription}` : null,
@@ -527,6 +566,7 @@ export function buildFinalGroundedRenderPrompt({
     sourceRoomPreservationLanguage(roomType),
     strictSourceRoomPreservation ? strictSourceRoomPreservationLanguage() : null,
     roomDesignLanguage(roomType),
+    spatialLayoutLanguage(roomType, spatialIntent),
     globalPhotorealismLanguage(),
     finalRenderProductFidelityLanguage(),
     enhancedRitzyInteriorStylingLanguage({ mode: "final-grounded-render" }),
@@ -1582,6 +1622,19 @@ export async function generateInitialConcept(
             image_url: input.roomPhotoUrl,
             detail: "high"
           },
+          ...(input.floorPlanImageUrl
+            ? [
+                {
+                  type: "input_text" as const,
+                  text: "The next image is the room's floor plan. Use it to understand the room's true footprint, door and window positions, and circulation before deciding the furniture layout. Reference it in the layout logic of your generation prompt."
+                },
+                {
+                  type: "input_image" as const,
+                  image_url: input.floorPlanImageUrl,
+                  detail: "high" as const
+                }
+              ]
+            : []),
           ...catalogueProductDirectionContent(input.catalogueProducts ?? []),
           ...(input.inspirationImageUrls ?? []).flatMap((imageUrl, index) => [
             {
@@ -1617,7 +1670,9 @@ export async function generateInitialConcept(
       : null,
     styleSlugs: input.styleSlugs,
     useInteriorPromptV2,
-    strictSourceRoomPreservation: localStrictSourceRoomPreservationEnabled()
+    strictSourceRoomPreservation: localStrictSourceRoomPreservationEnabled(),
+    spatialIntent: input.spatialIntent ?? null,
+    measurements: input.measurements ?? null
   });
   const catalogueReferences = (input.catalogueProducts ?? [])
     .filter((product) => product.imageBytes && product.imageMimeType)
@@ -2137,7 +2192,8 @@ export async function generateFinalGroundedRender(
     hasConceptImage,
     productSummary,
     useFinalRenderPromptV2,
-    strictSourceRoomPreservation: localStrictSourceRoomPreservationEnabled()
+    strictSourceRoomPreservation: localStrictSourceRoomPreservationEnabled(),
+    spatialIntent: input.spatialIntent ?? null
   });
 
   const imageResult = await generateImageWithConfiguredProvider({

@@ -10,11 +10,13 @@ export {
   roomDesignLanguage,
   roomSpatialPlacementGuardrailLanguage,
   sourceRoomPreservationLanguage,
+  spatialLayoutLanguage,
   styleDesignLanguage,
   styleDesignModules,
   type ConceptViewKey,
   type RitzyRoomType,
-  type RitzyStyleModule
+  type RitzyStyleModule,
+  type SpatialPromptIntent
 } from "./interior-design-language";
 
 export const clarifyingQuestionsPrompt = {

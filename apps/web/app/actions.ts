@@ -24,7 +24,10 @@ import {
   buildPersistedSelectionSnapshot,
   composeRoomProductOptions,
   conceptPaletteMatchingText,
+  deriveSpatialDesignerWarnings,
+  normalizeCatalogFirstRoomType,
   parseConceptImagePalette,
+  parseSpatialIntent,
   filterSubstitutionCandidates,
   enhancedProductRolesForRoom,
   normalizeProductMatchRoleResultCategory,
@@ -316,6 +319,7 @@ type StructuredBriefJson = Record<string, unknown> & {
   visualPreferences?: unknown;
   measurements?: unknown;
   inspirationAnalysis?: unknown;
+  spatialIntent?: unknown;
 };
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
@@ -1277,6 +1281,30 @@ export async function saveDesignBriefAction(formData: FormData) {
     };
   }
 
+  if (
+    formData.has("focalPoint") ||
+    formData.has("seatingPriority") ||
+    formData.has("diningSeatCount") ||
+    formData.has("mustKeepClear")
+  ) {
+    const existingIntent =
+      structuredJson.spatialIntent && typeof structuredJson.spatialIntent === "object"
+        ? (structuredJson.spatialIntent as Record<string, unknown>)
+        : {};
+    const diningSeatCountRaw = optionalNumber(formData, "diningSeatCount");
+    structuredJson.spatialIntent = {
+      ...existingIntent,
+      ...(formData.has("focalPoint") ? { focalPoint: optionalString(formData, "focalPoint") ?? null } : {}),
+      ...(formData.has("seatingPriority")
+        ? { seatingPriority: optionalString(formData, "seatingPriority") ?? null }
+        : {}),
+      ...(formData.has("diningSeatCount") ? { diningSeatCount: diningSeatCountRaw ?? null } : {}),
+      ...(formData.has("mustKeepClear")
+        ? { mustKeepClear: optionalString(formData, "mustKeepClear") ?? null }
+        : {})
+    };
+  }
+
   const briefPayload: Database["public"]["Tables"]["design_briefs"]["Update"] & {
     room_id: string;
   } = {
@@ -1931,6 +1959,18 @@ export async function generateInitialConceptAction(formData: FormData) {
     redirect(`${redirectPath}?message=${encodeURIComponent("The room photo could not be prepared for generation.")}`);
   }
 
+  const { data: floorPlanAsset } = await supabase
+    .from("room_assets")
+    .select("storage_path, mime_type")
+    .eq("room_id", roomId)
+    .eq("asset_type", "floor_plan")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const floorPlanImageUrl = floorPlanAsset?.mime_type?.startsWith("image/")
+    ? await storageImageDataUrl(supabase, "room-assets", floorPlanAsset.storage_path, floorPlanAsset.mime_type)
+    : null;
+
   const { data: measurements } = await supabase
     .from("room_measurements")
     .select("*")
@@ -1939,13 +1979,31 @@ export async function generateInitialConceptAction(formData: FormData) {
     .limit(1)
     .maybeSingle();
 
-  if (!measurements || !hasRequiredRoomSize(measurements)) {
-    redirect(
-      `/projects/${projectId}/rooms/${roomId}/brief/details?message=${encodeURIComponent(
-        "Add the room measurements before generating a design. This keeps furniture sizing honest."
-      )}`
-    );
-  }
+  // Measurements no longer hard-gate generation: a user who just wants to snap a
+  // photo still gets a concept, with the missing-scale assumption recorded and
+  // surfaced instead of a dead end.
+  const measurementsMissing = !measurements || !hasRequiredRoomSize(measurements);
+
+  const spatialIntent = parseSpatialIntent(designBrief.structured_json, room.room_type);
+  const spatialWarnings = deriveSpatialDesignerWarnings({
+    roomType: normalizeCatalogFirstRoomType(room.room_type),
+    intent: spatialIntent,
+    measurements: measurements
+      ? {
+          wallLengthCm: measurements.wall_length_cm,
+          roomDepthCm: measurements.room_depth_cm,
+          ceilingHeightCm: measurements.ceiling_height_cm,
+          source: measurements.source,
+          confidence: measurements.confidence
+        }
+      : null
+  });
+  const spatialAssumptions = [
+    ...(spatialIntent.assumptions ?? []),
+    ...(measurementsMissing
+      ? ["Room measurements were not provided; furniture scale is directional until dimensions are added."]
+      : [])
+  ];
 
   const { data: answeredQuestions = [] } = await supabase
     .from("clarifying_questions")
@@ -2040,6 +2098,13 @@ export async function generateInitialConceptAction(formData: FormData) {
       roomPhotoMimeType: roomPhoto.mime_type,
       catalogueProducts,
       inspirationImageUrls: signedInspirationUrls,
+      floorPlanImageUrl,
+      spatialIntent: {
+        focalPoint: spatialIntent.focalPoint,
+        seatingPriority: spatialIntent.seatingPriority,
+        diningSeatCount: spatialIntent.diningSeatCount,
+        mustKeepClear: spatialIntent.mustKeepClear
+      },
       styleSlugs: likedStyleSlugsFromStructuredBrief(designBrief.structured_json),
       styleNotes: designBrief.style_notes,
       colorNotes: designBrief.color_notes,
@@ -2097,7 +2162,13 @@ export async function generateInitialConceptAction(formData: FormData) {
         description: [
           result.concept.rationale,
           "",
-          `Uncertainty: ${result.concept.uncertaintyNote}`
+          `Uncertainty: ${[
+            result.concept.uncertaintyNote,
+            ...spatialAssumptions,
+            ...spatialWarnings
+              .filter((warning) => warning.code !== "spatial_geometry_missing")
+              .map((warning) => warning.message)
+          ].join(" ")}`
         ].join("\n"),
         status: "generated"
       })
@@ -4360,8 +4431,22 @@ export async function generateFinalRenderAction(formData: FormData) {
             .from("generated-renders")
             .createSignedUrl(conceptImageAsset.storage_path, 60 * 30)
         : { data: null };
+      const { data: renderDesignBrief } = await serviceSupabase
+        .from("design_briefs")
+        .select("structured_json")
+        .eq("room_id", roomId)
+        .order("updated_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      const renderSpatialIntent = parseSpatialIntent(renderDesignBrief?.structured_json, room.room_type);
       const result = await generateFinalGroundedRender({
         roomType: room.room_type,
+        spatialIntent: {
+          focalPoint: renderSpatialIntent.focalPoint,
+          seatingPriority: renderSpatialIntent.seatingPriority,
+          diningSeatCount: renderSpatialIntent.diningSeatCount,
+          mustKeepClear: renderSpatialIntent.mustKeepClear
+        },
         roomPhotoBytes: Buffer.from(await roomBlob.arrayBuffer()),
         roomPhotoMimeType: roomPhoto.mime_type,
         roomPhotoUrl: signedRoomPhotoForRender?.signedUrl ?? null,
