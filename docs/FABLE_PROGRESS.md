@@ -317,4 +317,30 @@ the avoid-purple/red brief. 2 extra camera views generated (concept_views succee
 demote (-24) but do not exclude from the option pool; consider hard-excluding avoid-colors from
 alternates, not just selections.
 
-Remaining E2E step: final grounded render (was next).
+**Final render — E2E COMPLETE + durability finding.** The render engine works against hosted +
+Evolink Gemini: `render_jobs` succeeded with `spatialQaVerdict = pass`, 1 asset. BUT the render
+runs in an in-request `after()` that does NOT survive client disconnect. First attempt (harness
+clicked the button then closed the browser 6s later): ZERO server-side Evolink activity, job stuck
+`running` forever. Second attempt with the browser kept alive on /presentation: completed in ~90s.
+Worse, the dedup guard treats a stuck `running` job as "Final render is already running" and
+BLOCKS every retry for 15 minutes (staleness heuristic) — so a beta user who closes the tab after
+triggering gets a permanently-stuck render with no recourse for 15 min. This is queue item 5
+(render durability) with a concrete repro; the fix is a durable/background-safe render (not tied to
+the request) + a user-visible retry affordance. Repro: `scripts/dev-harness/render-alive.mjs`.
+
+**Budget adherence ignores quantity (finding).** The selected list's per-UNIT sum is AED 38,448
+(< 40,000 budget), but the Stilo armchair has quantity 2, so the real furniture total (line totals)
+is AED 44,118 — ~10% OVER budget, and this is what the presentation shows. The budget gate should
+use qty x price (line_total_aed), not unit prices.
+
+### Full E2E result (queue item 1 — DONE)
+signup -> onboarding -> project -> room -> photo (real furnished living room) -> brief -> 5
+clarifying questions -> concept (Gemini, architecture preserved, on-brief, avoid-color held) -> 2
+consistent camera views -> sourcing/matching (budget-adherent per-unit, class-correct,
+palette-coherent) -> final grounded render (succeeded, spatial QA pass). The definition-of-done
+pipeline works against the real 3,309-product catalogue. Fix shipped: image-fetch timeout (#313).
+Findings queued: render durability (item 5, high), budget-with-quantity, avoid-colors-in-alternates,
+sibling PRODUCT_SOURCING_IMAGE_PREFLIGHT_TIMEOUT_MS, grounding brittleness (one role blocks all).
+
+Env note: `.env.local` left pointed at HOSTED Supabase for this run (backup in the session
+scratchpad `env.local.backup`); revert to local when done with hosted verification.

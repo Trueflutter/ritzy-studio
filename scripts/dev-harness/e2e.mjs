@@ -271,6 +271,21 @@ async function sourcing() {
   console.log("sourcing/matching ->", page.url());
 }
 
+async function render() {
+  // "Generate the grounded render" kicks off an in-request after() task (final render + spatial
+  // QA). Click it; completion is polled separately from render_jobs (read-ai-job.mjs / poll).
+  await page.goto(`${BASE}/projects/${state.projectId}/rooms/${state.roomId}/product-matching`, {
+    waitUntil: "domcontentloaded"
+  });
+  await dismissDevOverlay();
+  const btn = page.getByRole("button", { name: /Generate final render|Regenerate render/i });
+  await btn.first().waitFor({ state: "visible", timeout: 20000 });
+  await btn.first().click();
+  await page.waitForTimeout(6000);
+  await shot("16-render-triggered");
+  console.log("final render triggered from", page.url());
+}
+
 async function briefStep(name, fill = async () => {}) {
   await dismissDevOverlay();
   await fill();
@@ -303,6 +318,7 @@ try {
   else if (stage === "brief-questions") await briefQuestions(process.argv[3]);
   else if (stage === "concept") await concept();
   else if (stage === "sourcing") await sourcing();
+  else if (stage === "render") await render();
   else console.log("unknown stage");
 } catch (error) {
   console.error("STAGE FAILED:", error.message);
