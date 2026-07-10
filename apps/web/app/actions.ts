@@ -3,6 +3,7 @@
 import {
   analyzeInspirationImages,
   generateClarifyingQuestions,
+  extractConceptImagePalette,
   generateConceptRevision,
   generateConceptView,
   generateFinalGroundedRender,
@@ -22,6 +23,8 @@ import {
   buildShoppingListItemRows,
   buildPersistedSelectionSnapshot,
   composeRoomProductOptions,
+  conceptPaletteMatchingText,
+  parseConceptImagePalette,
   filterSubstitutionCandidates,
   enhancedProductRolesForRoom,
   normalizeProductMatchRoleResultCategory,
@@ -2228,7 +2231,7 @@ export async function groundProductsAction(formData: FormData) {
 
   const { data: concept } = await supabase
     .from("concepts")
-    .select("id, title, description, status, generation_job_id, primary_image_asset:room_assets(*)")
+    .select("id, title, description, status, generation_job_id, palette_json, primary_image_asset:room_assets(*)")
     .eq("id", conceptId)
     .eq("room_id", roomId)
     .single();
@@ -2336,6 +2339,31 @@ export async function groundProductsAction(formData: FormData) {
     );
   }
 
+  // Aesthetic coherence is scored against the palette of the concept image as
+  // rendered (extracted once, cached on the concept row), not only against the
+  // concept's text tokens. Extraction failure degrades to text-only matching.
+  let conceptPalette = parseConceptImagePalette(concept.palette_json);
+  if (!conceptPalette) {
+    try {
+      const paletteResult = await extractConceptImagePalette({
+        imageUrl: conceptSignedImage.signedUrl
+      });
+      conceptPalette = paletteResult.palette;
+      await serviceSupabase
+        .from("concepts")
+        .update({ palette_json: conceptPalette })
+        .eq("id", concept.id);
+    } catch (error) {
+      console.error("Concept palette extraction failed; matching falls back to text tokens.", error);
+    }
+  }
+  const conceptPaletteText = conceptPalette ? conceptPaletteMatchingText(conceptPalette) : null;
+  const paletteGroundedConceptText = conceptPaletteText
+    ? `${baseConceptText}
+${conceptPaletteText}`
+    : baseConceptText;
+  const conceptAvoidColorTags = conceptPalette?.avoidColors ?? [];
+
   const productMatchingPreview = productMatchingEngineV1EnabledForRequest({
     projectId,
     roomId,
@@ -2356,10 +2384,11 @@ export async function groundProductsAction(formData: FormData) {
   const sourcingPlan = buildProductSourcingRuntimePlan({
     engineEnabled: productMatchingEngineEnabled,
     roomType: room.room_type,
-    conceptText: baseConceptText,
+    conceptText: paletteGroundedConceptText,
     roles: blueprintRoles,
     candidates: matchingCandidates,
     recentlyUsedProductIds,
+    avoidColorTags: conceptAvoidColorTags,
     budgetMaxAed: project.budget_max_aed,
     roomMeasurements: measurements
       ? {
@@ -2372,7 +2401,7 @@ export async function groundProductsAction(formData: FormData) {
   });
   const sourcingPools = localSkuFidelityMode
     ? sourcingPlan.roleScopedPools.map((pool) =>
-        rerankRolePoolForAestheticFit(pool, room.room_type, baseConceptText)
+        rerankRolePoolForAestheticFit(pool, room.room_type, paletteGroundedConceptText)
       )
     : sourcingPlan.roleScopedPools;
   const sourcingCandidates = localSkuFidelityMode
@@ -2715,7 +2744,7 @@ export async function groundProductsAction(formData: FormData) {
     );
   }
   const visualConceptText = [
-    baseConceptText,
+    paletteGroundedConceptText,
     ...(sourcingResult?.needs.map(
       (need) => `${need.roleLabel}: ${need.visualBrief}`
     ) ?? [])
@@ -2748,6 +2777,7 @@ export async function groundProductsAction(formData: FormData) {
     roomType: room.room_type,
     conceptText: visualConceptText,
     recentlyUsedProductIds,
+    avoidColorTags: conceptAvoidColorTags,
     budgetMaxAed: project.budget_max_aed,
     roomMeasurements: measurements
       ? {
@@ -2791,6 +2821,7 @@ export async function groundProductsAction(formData: FormData) {
       roles: retryRoles,
       candidates: matchingCandidates,
       recentlyUsedProductIds,
+      avoidColorTags: conceptAvoidColorTags,
       budgetMaxAed: project.budget_max_aed,
       roomMeasurements: measurements
         ? {
@@ -3068,6 +3099,7 @@ export async function groundProductsAction(formData: FormData) {
         roles,
         candidates: matchingCandidates,
         recentlyUsedProductIds,
+        avoidColorTags: conceptAvoidColorTags,
         budgetMaxAed: project.budget_max_aed,
         roomMeasurements: measurements
           ? {

@@ -112,6 +112,60 @@ export const inspirationAnalysisJsonSchema = {
 
 export type InspirationAnalysisResponse = z.infer<typeof inspirationAnalysisResponseSchema>;
 
+export const conceptPalettePrompt = {
+  key: "concept.palette_extraction",
+  version: "2026-07-10.1",
+  system: [
+    "You are Ritzy Studio's interior palette analyst.",
+    "Read the generated interior concept image and report the palette AS RENDERED, not as briefed.",
+    "Use lowercase canonical color-family tokens where possible: black, blue, brown, camel, tan, charcoal, cream, ivory, beige, taupe, oatmeal, sand, green, sage, olive, grey, red, terracotta, rust, burgundy, white, gold, brass, bronze, walnut, oak, purple, orange, pink.",
+    "Use lowercase canonical material tokens where possible: linen, boucle, velvet, leather, chenille, wool, fabric, wood, walnut, oak, marble, travertine, stone, glass, brass, bronze, metal, plaster, ceramic, rattan, jute.",
+    "dominantColors: the 2-4 color families that define large surfaces and anchor furniture.",
+    "accentColors: the 1-4 color families used in smaller doses (decor, art, plants, metal finishes).",
+    "dominantMaterials: the 2-6 material families that visibly define the room.",
+    "avoidColors: 1-4 color families that would clash with this palette if a product carried them."
+  ].join("\n")
+} as const;
+
+export const conceptPaletteResponseSchema = z.object({
+  dominantColors: z.array(z.string().min(2).max(30)).min(1).max(4),
+  accentColors: z.array(z.string().min(2).max(30)).max(4),
+  dominantMaterials: z.array(z.string().min(2).max(30)).min(1).max(6),
+  avoidColors: z.array(z.string().min(2).max(30)).max(4)
+});
+
+export const conceptPaletteJsonSchema = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    dominantColors: {
+      type: "array",
+      minItems: 1,
+      maxItems: 4,
+      items: { type: "string", minLength: 2, maxLength: 30 }
+    },
+    accentColors: {
+      type: "array",
+      maxItems: 4,
+      items: { type: "string", minLength: 2, maxLength: 30 }
+    },
+    dominantMaterials: {
+      type: "array",
+      minItems: 1,
+      maxItems: 6,
+      items: { type: "string", minLength: 2, maxLength: 30 }
+    },
+    avoidColors: {
+      type: "array",
+      maxItems: 4,
+      items: { type: "string", minLength: 2, maxLength: 30 }
+    }
+  },
+  required: ["dominantColors", "accentColors", "dominantMaterials", "avoidColors"]
+} as const;
+
+export type ConceptPaletteResponse = z.infer<typeof conceptPaletteResponseSchema>;
+
 export const initialConceptPrompt = {
   key: "concept.initial_room_analysis",
   version: "2026-05-04.1",

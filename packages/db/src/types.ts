@@ -169,6 +169,7 @@ export type Database = {
           design_brief_id: string
           generation_job_id: string | null
           id: string
+          palette_json: Json | null
           parent_concept_id: string | null
           primary_image_asset_id: string | null
           room_id: string
@@ -182,6 +183,7 @@ export type Database = {
           design_brief_id: string
           generation_job_id?: string | null
           id?: string
+          palette_json?: Json | null
           parent_concept_id?: string | null
           primary_image_asset_id?: string | null
           room_id: string
@@ -195,6 +197,7 @@ export type Database = {
           design_brief_id?: string
           generation_job_id?: string | null
           id?: string
+          palette_json?: Json | null
           parent_concept_id?: string | null
           primary_image_asset_id?: string | null
           room_id?: string

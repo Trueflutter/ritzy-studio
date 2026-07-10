@@ -8,6 +8,8 @@ import {
   assessAestheticFitForRole,
   composeRoomProductOptions,
   composeRoomProductSet,
+  conceptPaletteMatchingText,
+  parseConceptImagePalette,
   deriveClassTags,
   deriveRoomScope,
   deriveSizeClass,
@@ -2594,5 +2596,45 @@ const demotedPools = buildRoleScopedCandidatePools({
   recentlyUsedProductIds: [usedSofaId]
 });
 assert.equal(demotedPools.pools[0].candidates[0]?.id, freshSofaId);
+
+// Concept-image palette: serialization excludes avoid colors, the parser
+// round-trips stored JSON, and avoid-color candidates are demoted.
+const palette = {
+  dominantColors: ["ivory", "taupe"],
+  accentColors: ["brass"],
+  dominantMaterials: ["linen", "travertine"],
+  avoidColors: ["purple"]
+};
+const paletteText = conceptPaletteMatchingText(palette);
+assert.ok(paletteText?.includes("ivory, taupe"));
+assert.ok(paletteText?.includes("brass"));
+assert.ok(paletteText?.includes("linen, travertine"));
+assert.equal(paletteText?.includes("purple"), false, "avoid colors must not enter matching text");
+assert.deepEqual(parseConceptImagePalette(palette), palette);
+assert.equal(parseConceptImagePalette({ dominantColors: [] }), null);
+assert.equal(parseConceptImagePalette("nonsense"), null);
+
+const purpleSofaId = "00000000-0000-4000-8000-000000000503";
+const paletteRanked = rankProductMatches({
+  roomType: "living room",
+  conceptText: "warm ivory contemporary living room",
+  candidates: [
+    { ...twinSofas[1] },
+    {
+      ...twinSofas[0],
+      id: purpleSofaId,
+      name: "Royal Statement Sofa",
+      color: "purple",
+      colorTags: ["purple"]
+    }
+  ],
+  avoidColorTags: ["purple"]
+});
+assert.equal(paletteRanked[0].id, freshSofaId);
+assert.ok(
+  paletteRanked
+    .find((match) => match.id === purpleSofaId)
+    ?.warnings.some((warning) => warning.includes("outside the concept palette"))
+);
 
 console.log("product matching tests passed");

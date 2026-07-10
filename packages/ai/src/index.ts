@@ -15,6 +15,9 @@ import {
   conceptProductSourcingPrompt,
   conceptProductSourcingResponseSchema,
   conceptRevisionPrompt,
+  conceptPaletteJsonSchema,
+  conceptPalettePrompt,
+  conceptPaletteResponseSchema,
   conceptViewCameraLanguage,
   conceptViewConsistencyLanguage,
   type ConceptViewKey,
@@ -1740,6 +1743,71 @@ export async function generateConceptView(
     imageFallbackUsed: imageResult.fallbackUsed,
     imageFallbackError: imageResult.error ?? null,
     imageBase64: imageResult.imageBase64
+  };
+}
+
+export type ExtractConceptImagePaletteInput = {
+  // Data URL or fetchable URL of the generated concept image.
+  imageUrl: string;
+};
+
+export type ExtractConceptImagePaletteResult = {
+  promptKey: string;
+  promptVersion: string;
+  model: string;
+  palette: {
+    dominantColors: string[];
+    accentColors: string[];
+    dominantMaterials: string[];
+    avoidColors: string[];
+  };
+};
+
+export async function extractConceptImagePalette(
+  input: ExtractConceptImagePaletteInput
+): Promise<ExtractConceptImagePaletteResult> {
+  const env = parseServerEnv(process.env);
+  const client = new OpenAI({ apiKey: env.OPENAI_API_KEY });
+
+  const response = await client.responses.create({
+    model: env.OPENAI_TEXT_MODEL,
+    input: [
+      {
+        role: "system",
+        content: conceptPalettePrompt.system
+      },
+      {
+        role: "user",
+        content: [
+          {
+            type: "input_text",
+            text: "Extract the rendered palette of this interior design concept image."
+          },
+          {
+            type: "input_image",
+            image_url: input.imageUrl,
+            detail: "low"
+          }
+        ]
+      }
+    ],
+    text: {
+      format: {
+        type: "json_schema",
+        name: "ritzy_concept_palette",
+        schema: conceptPaletteJsonSchema,
+        strict: true
+      }
+    }
+  });
+
+  const palette = conceptPaletteResponseSchema.parse(JSON.parse(response.output_text));
+
+  return {
+    promptKey: conceptPalettePrompt.key,
+    promptVersion: conceptPalettePrompt.version,
+    model: env.OPENAI_TEXT_MODEL,
+    palette
   };
 }
 
