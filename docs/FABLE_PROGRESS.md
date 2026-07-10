@@ -204,7 +204,23 @@ selected picks mostly palette-coherent; palette_json cached on concept.
 6. Evolink balance: image generation reserves credits; 402 "insufficient balance" was topped up
    by Ayo mid-session. Cost telemetry worth adding later.
 
-### OPEN QUALITY BUG (top priority next session)
+### RESOLVED (was: open quality bug) — the purple-sofa anchor
+Fixed and live-verified in three steps: (1) avoid-color phrases ("avoid purple") no longer read
+as positive cue tokens (stripped + enforced via avoidColorTags); (2) anchor-loop skips are now
+recorded as warnings (the silent skip was hiding the mechanism); (3) instrumentation showed the
+real veto: style-module prose ("curved forms") gave the straight-armed ivory sofa a silhouette
+"conflict" that hasHardCatalogueGroundingContradiction escalated into a hard skip — silhouette
+reasons are now soft-only. Fresh-room verification: anchors = Ivory Linen sofa, Ivory Boucle
+armchair, Walnut coffee table, Natural Jute rug. Exactly on-brief.
+
+### Full E2E completed through FINAL RENDER + QA
+Final grounded render succeeded via Evolink Gemini with spatialQaVerdict=pass, [] issues. The
+render reproduced every shopping-list product faithfully (truth separation held). Remaining
+known-soft spots: visual sourcing timed out once (text fallback engaged as designed — tune
+PRODUCT_SOURCING_AI_TIMEOUT_MS vs gateway latency); concept image prompt is near Evolink's
+4000-token image-prompt cap (render prompt was slimmed; concept prompt worth auditing).
+
+### FORMER open bug notes (kept for history)
 The catalogue-grounding ANCHOR loop picked the Royal Purple Vega sofa (attribute score 36, with
 "colour cue lacks positive catalogue evidence") as the concept anchor even though the pool ranked
 ivory/camel sofas far higher (240/166) and the brief said "avoid purple". The anchor then
