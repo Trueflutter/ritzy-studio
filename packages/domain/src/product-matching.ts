@@ -672,13 +672,15 @@ function avoidColorMatches(candidate: ProductMatchCandidate, avoidColorTags?: st
   // Expand each avoid tag into its color family when the vocabulary knows it;
   // tags outside the family map (e.g. "purple") still match as literal tokens.
   const avoidTokens = new Set(
-    avoidColorTags.flatMap((tag) => {
-      const lower = tag.toLowerCase();
-      const familyMembers = Object.entries(colorFamilies)
-        .filter(([family, members]) => family === lower || members.includes(lower))
-        .flatMap(([family, members]) => [family, ...members]);
-      return [lower, ...familyMembers];
-    })
+    avoidColorTags
+      .flatMap((tag) => tag.toLowerCase().split(/[^a-z]+/))
+      .filter(Boolean)
+      .flatMap((lower) => {
+        const familyMembers = Object.entries(colorFamilies)
+          .filter(([family, members]) => family === lower || members.includes(lower))
+          .flatMap(([family, members]) => [family, ...members]);
+        return [lower, ...familyMembers];
+      })
   );
 
   const candidateColorTokens = [candidate.color ?? "", ...candidate.colorTags]
