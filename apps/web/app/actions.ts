@@ -5259,6 +5259,9 @@ async function buildCatalogueGroundedConceptPlan({
     for (const candidate of pool.candidates) {
       let aestheticScoreAdjustment = 0;
       if (hasHardCatalogueGroundingContradiction(candidate.attributeScore.weaknessReasons)) {
+        warnings.push(
+          `${pool.role.label}: skipped ${candidate.name} on hard cue contradiction (${candidate.attributeScore.weaknessReasons.join("; ")}).`
+        );
         continue;
       }
 
@@ -5700,6 +5703,14 @@ async function refineSelectedCatalogueProductsForAestheticFit({
 function hasHardCatalogueGroundingContradiction(weaknessReasons: string[]) {
   return weaknessReasons.some((reason) => {
     const lower = reason.toLowerCase();
+    // Silhouette language is a soft styling preference (often sourced from
+    // style-module prose like "curved forms"); it already costs score and must
+    // never veto the top palette-and-category-correct anchor. Hard vetoes are
+    // reserved for genuine contradictions: wrong class, clashing color family,
+    // impossible dimensions, unavailable stock.
+    if (lower.includes("silhouette")) {
+      return false;
+    }
     return (
       lower.includes("conflicts") ||
       lower.includes("mismatch") ||
