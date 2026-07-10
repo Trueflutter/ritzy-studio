@@ -177,10 +177,11 @@ export const renderSpatialQaPrompt = {
     "Checks:",
     "- focalOrientation: primary seating (or bed/desk for those rooms) addresses the room's focal point; seating is not turned away from it. Use not_applicable when the room type has no seating-focal relationship.",
     "- anchorAlignment: the primary sofa/bed/table reads parallel to its wall and square to the rug and room grid, not canted diagonally without an architectural reason.",
-    "- scalePlausibility: furniture sizes and clearances are physically believable for the room; no giant rugs, doll furniture, blocked doors, or impossible walkways.",
+    "- scalePlausibility: furniture sizes and clearances are physically believable for the room; no giant rugs, doll furniture, blocked doors, or impossible walkways. An area rug must anchor its furniture group (at least the front legs of the seating on it); a rug floating like a bath mat near the coffee table is a fail.",
     "- compositionIntegrity: no warped furniture, floating objects, impossible reflections, duplicated limbs of furniture, or visible AI artifacts a client would notice.",
     "- zoning (combined living+dining only, else not_applicable): living and dining read as two coherent zones with a clear boundary and circulation, dining never between the sofa and its focal wall.",
-    "verdict: pass when a professional would present this image; warn for real but presentable flaws; regenerate for faux pas a client would reject (wrong orientation, canted anchor, broken scale, obvious artifacts).",
+    "Judge strictly, as if your name goes on the presentation. When a check is genuinely borderline, mark the check fail and let the verdict be warn rather than silently passing it.",
+    "verdict: pass when a professional would present this image as-is; warn for real but presentable flaws; regenerate for faux pas a client would reject (wrong orientation, clearly canted anchor, broken or missing rug anchoring, broken scale, obvious artifacts).",
     "issues: short, specific, designer-voiced descriptions of each failed check. Empty when everything passes."
   ].join("\n")
 } as const;
