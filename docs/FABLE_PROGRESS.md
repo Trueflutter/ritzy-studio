@@ -116,6 +116,52 @@ file top to bottom. Newest entries at the bottom. Keep this file updated after e
   reverse_wide + anchor_detail views after the hero lands; concepts page shows the pair.
   POC evidence: docs/Tracks/v2-commercial/fable-evidence/2026-07-10-multiangle-poc/.
 
+### Spatial intelligence wired (committed)
+- Brief details: room-planning section (focal point, seating priority, dining seats,
+  must-keep-clear) -> design_briefs.structured_json.spatialIntent; layout mode derives from the
+  chosen room type. Measurements now Strongly Recommended, not a hard gate — skipping records a
+  directional-scale assumption instead of dead-ending.
+- `parseSpatialIntent`/`spatialLayoutModeForRoomType` (domain), `spatialLayoutLanguage`
+  (prompts) injected into concept image prompt + both final-render variants; real measurements
+  now reach the image model; floor plan image feeds the direction model as a vision input.
+- `deriveSpatialDesignerWarnings` runs pre-generation; assumptions/warnings land in the
+  concept's What we assumed section.
+
+### Multi-photo in (committed)
+- Concept generation consumes up to 3 room photos (all to the direction model, 2 extra as
+  generation references, prompt anchors on photo 1's perspective). Photos page guides
+  corner-by-corner capture.
+
+### Post-render spatial QA (committed + live-calibrated)
+- `assessRenderSpatialQuality` (focal orientation, anchor alignment/anti-cant, scale+rug
+  anchoring, composition integrity, combined zoning) with strict-judgment rubric. Final render
+  regenerates once on a hard fail with QA issues as corrective prompt lines; verdict stored on
+  render_jobs.input_summary (spatialQaVerdict/Issues/Regenerated).
+- Rubric calibrated against the real renderer via the Evolink harness: good concept passes; a
+  deliberately under-scaled bath-mat rug fails with a precise issue (was a false negative
+  before tightening). Evidence: fable-evidence/2026-07-10-multiangle-poc/qa-flawed-rug-sample.png.
+
+### Verification state (end of Fable session 1)
+- `pnpm check` (lint+typecheck+build) green; all package tests green.
+- Runtime-verified against the real Gemini renderer via direct harness: multi-angle consistency,
+  palette extraction, spatial QA rubric.
+- NOT yet runtime-verified through the app UI: everything past the brief (concept -> matching ->
+  render), because the OpenAI key is out of quota and hosted Supabase is gone (see BLOCKERS).
+  The local stack (supabase + seeded catalog + Playwright driver) is ready to run the moment
+  quota/routing is resolved: `node <scratchpad>/e2e.mjs` stages, or rebuild from
+  scripts/local-catalog-seed.
+
+### Suggested next steps for the next session
+1. Resolve BLOCKERS 1-3 with Ayo, then run the full E2E (Playwright driver stages exist) and
+   fix whatever the real flow surfaces; screenshot evidence into fable-evidence/.
+2. Flip RITZY_PRODUCT_MATCHING_ENGINE_V1_ENABLED default after validating on the real catalog.
+3. Final-render durability (after()+15min staleness is fragile) — consider a queue or at
+   minimum idempotent retry; then multi-angle for the final render (generateConceptView pattern
+   applies directly; presentation UI already renders view assets for concepts).
+4. Concept-hero QA surface (verdict recorded for renders only today).
+5. Catalog depth: needs hosted DB back or a headless-browser ingestion approach (plain fetch is
+   bot-blocked for Home Centre/Danube/IKEA/2XL).
+
 ### Retailer scraping status (for catalog depth work)
 - Home Centre, Danube, IKEA AE: 403 (TLS-fingerprint bot protection — even browser UA via curl
   fails). 2XL: 405. The One: adapter works but is dry-run-only by compliance gate. Catalog depth
