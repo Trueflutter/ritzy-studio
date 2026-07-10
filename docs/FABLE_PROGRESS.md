@@ -279,3 +279,42 @@ TRAP for the next instance: sharp works locally (macOS native binary) and in `pn
 green local checks do NOT catch this. It only manifests on the linux Vercel function. Any new
 native/optional-binary dependency needs a preview-deploy smoke test that reaches the code path
 (preview MUST have Supabase env, or it dies in middleware first and masks the real error).
+
+### HOSTED E2E against the real 3,309-product catalog (queue item 1)
+Ran the FULL flow in the local app pointed at hosted Supabase (`.env.local` swapped to hosted;
+Evolink for text+images; real Gemini renderer). Playwright harness `scripts/dev-harness/e2e.mjs`
+extended with the missing stages: `signup`, `brief-details`, `brief-questions`, `concept`,
+`sourcing` (+ `photos` upload race fixed — it closed the browser mid-upload).
+
+Test account: hosted signup is gated to `@ritzyinteriors.com` AND hosted Supabase has email
+confirmation ON, so UI signup lands back on /login with no session. Created a pre-confirmed test
+user via the admin API (`create-hosted-test-user.mjs`, email_confirm:true). Preview/local both
+reach the app. Room photo used: a real furnished living room
+(`docs/Design/inspiration-sample-candidates/lr-02...jpg`).
+
+**FINDING + FIX (production-affecting): concept generation blocked on large catalogue images.**
+Against the real catalog, `initial_concept_generation` failed with the user-facing "we need a
+little more catalogue evidence" — NOT a taste/catalog-depth problem. Root cause (from
+`ai_jobs.input_summary.catalogueGrounding.warnings`): every RUG candidate was "skipped ... without
+a fetchable reference image". Home Centre media-CDN images are 2-3 MB; the grounding image fetch
+timed out at `CATALOGUE_GROUNDED_CONCEPT_IMAGE_FETCH_TIMEOUT_MS = 2_500`ms. Rugs have the largest
+images so ALL candidates timed out → the required rug role produced no anchor → the WHOLE concept
+was blocked. This hits production identically (same code/catalog/timeout). Fix: raised to 12_000ms
+(actions.ts). The grounding loop breaks on the first fetchable candidate, so the happy path stays
+fast; only the pathological all-fail case is slower. After the fix the concept generated cleanly.
+BRITTLENESS (noted, not yet fixed): one required anchor role with no fetchable image hard-blocks
+the entire concept — it should degrade gracefully (text-anchor the role, or proceed without it).
+Also worth auditing the sibling `PRODUCT_SOURCING_IMAGE_PREFLIGHT_TIMEOUT_MS = 2_500` (same class).
+
+**Concept quality (verified with eyes):** "Cognac Calm Living – Organic Contemporary with
+Scandinavian Warmth" — preserved the source room's architecture (clerestory windows, framed door,
+wood floors), on-brief warm-neutral/cognac/walnut/sage, editorial photography feel, and RESPECTED
+the avoid-purple/red brief. 2 extra camera views generated (concept_views succeeded).
+
+**Matching quality (real catalog):** sourcing succeeded; selected shopping list is budget-adherent
+(AED 38,448 < 40,000), class-correct, palette-coherent (all cognac/neutral). MINOR FINDING: a
+"Cigar Lounge Armchair, Red" survives as an ALTERNATE despite "avoid ... bright red" — avoid-colors
+demote (-24) but do not exclude from the option pool; consider hard-excluding avoid-colors from
+alternates, not just selections.
+
+Remaining E2E step: final grounded render (was next).
