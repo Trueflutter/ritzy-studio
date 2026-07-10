@@ -110,6 +110,8 @@ export type AnalyzeInspirationImagesResult = {
 export type GenerateInitialConceptInput = {
   roomType: string;
   roomPhotoUrl: string;
+  // Publicly fetchable URL for URL-based image providers; roomPhotoUrl may be a data URL.
+  roomPhotoReferenceUrl?: string | null;
   roomPhotoBytes: Buffer;
   roomPhotoMimeType: string;
   catalogueProducts?: Array<{
@@ -767,6 +769,30 @@ async function generateGeminiImage({
   }
 }
 
+// URL-based image providers can only fetch real, publicly reachable URLs. Data
+// URLs (used for vision-model inputs) and localhost storage URLs are excluded so
+// the provider fails fast into its byte-based fallback instead of erroring mid-task.
+function publicReferenceUrl(url: string | null | undefined) {
+  if (!url) {
+    return null;
+  }
+
+  if (url.startsWith("data:")) {
+    return null;
+  }
+
+  try {
+    const parsed = new URL(url);
+    if (parsed.hostname === "localhost" || parsed.hostname === "127.0.0.1") {
+      return null;
+    }
+  } catch {
+    return null;
+  }
+
+  return url;
+}
+
 const EVOLINK_API_BASE = "https://api.evolink.ai";
 const EVOLINK_POLL_INTERVAL_MS = 3_000;
 const EVOLINK_POLL_TIMEOUT_MS = 300_000;
@@ -799,7 +825,7 @@ async function generateEvolinkImage({
 
   const startedAt = Date.now();
   const referenceUrls = references
-    .map((reference) => reference.url)
+    .map((reference) => publicReferenceUrl(reference.url))
     .filter((url): url is string => Boolean(url))
     .slice(0, EVOLINK_MAX_REFERENCE_URLS);
 
@@ -1608,7 +1634,7 @@ export async function generateInitialConcept(
         bytes: input.roomPhotoBytes,
         mimeType: input.roomPhotoMimeType,
         name: "room",
-        url: input.roomPhotoUrl
+        url: publicReferenceUrl(input.roomPhotoReferenceUrl ?? input.roomPhotoUrl)
       },
       ...catalogueReferences
     ],
@@ -1632,6 +1658,8 @@ export async function generateInitialConcept(
     revisedPrompt: imageResult.revisedPrompt ?? null
   };
 }
+
+export type { ConceptViewKey };
 
 export type GenerateConceptViewInput = {
   roomType: string;
@@ -1788,7 +1816,7 @@ export async function generateConceptRevision(
         bytes: input.roomPhotoBytes,
         mimeType: input.roomPhotoMimeType,
         name: "room",
-        url: input.roomPhotoUrl
+        url: publicReferenceUrl(input.roomPhotoReferenceUrl ?? input.roomPhotoUrl)
       }
     ],
     noImageErrorMessage: "OpenAI image revision returned no image data."

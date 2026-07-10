@@ -1336,13 +1336,9 @@ export async function saveDesignBriefAction(formData: FormData) {
 
   const signedInspirationUrls = (
     await Promise.all(
-      (inspirationAssets ?? []).map(async (asset) => {
-        const { data } = await supabase.storage
-          .from("room-assets")
-          .createSignedUrl(asset.storage_path, 60 * 30);
-
-        return data?.signedUrl ?? null;
-      })
+      (inspirationAssets ?? []).map((asset) =>
+        storageImageDataUrl(supabase, "room-assets", asset.storage_path)
+      )
     )
   ).filter((url): url is string => Boolean(url));
 
@@ -1637,6 +1633,30 @@ async function ensureInspirationAnalysisBeforeDetails({
   });
 }
 
+// AI vision calls receive storage images as data URLs instead of signed URLs:
+// signed URLs can expire mid-flow and are unreachable from the provider when the
+// storage host is not public (e.g. local development). The bytes are small and
+// already one storage read away.
+async function storageImageDataUrl(
+  client: ServiceSupabaseClient | SupabaseServerClient,
+  bucket: string,
+  path: string,
+  mimeType?: string | null
+) {
+  const { data, error } = await client.storage.from(bucket).download(path);
+  if (error || !data) {
+    return null;
+  }
+
+  const buffer = Buffer.from(await data.arrayBuffer());
+  const contentType = mimeType ?? (data.type || "image/jpeg");
+  return `data:${contentType};base64,${buffer.toString("base64")}`;
+}
+
+function bytesToDataUrl(bytes: Buffer, mimeType: string) {
+  return `data:${mimeType};base64,${bytes.toString("base64")}`;
+}
+
 async function analyzeAndWriteInspirationForRoom({
   inspirationAssets,
   requireSignedUrls = false,
@@ -1656,13 +1676,7 @@ async function analyzeAndWriteInspirationForRoom({
 
   const signedUrls = (
     await Promise.all(
-      assets.map(async (asset) => {
-        const { data } = await supabase.storage
-          .from("room-assets")
-          .createSignedUrl(asset.storage_path, 60 * 30);
-
-        return data?.signedUrl ?? null;
-      })
+      assets.map((asset) => storageImageDataUrl(supabase, "room-assets", asset.storage_path))
     )
   ).filter((url): url is string => Boolean(url));
 
@@ -1871,13 +1885,9 @@ export async function generateInitialConceptAction(formData: FormData) {
 
   const signedInspirationUrls = (
     await Promise.all(
-      (inspirationAssets ?? []).map(async (asset) => {
-        const { data } = await supabase.storage
-          .from("room-assets")
-          .createSignedUrl(asset.storage_path, 60 * 30);
-
-        return data?.signedUrl ?? null;
-      })
+      (inspirationAssets ?? []).map((asset) =>
+        storageImageDataUrl(supabase, "room-assets", asset.storage_path)
+      )
     )
   ).filter((url): url is string => Boolean(url));
 
@@ -1992,7 +2002,8 @@ export async function generateInitialConceptAction(formData: FormData) {
     const photoBytes = Buffer.from(await photoBlob.arrayBuffer());
     const result = await generateInitialConcept({
       roomType: room.room_type,
-      roomPhotoUrl: signedPhoto.signedUrl,
+      roomPhotoUrl: bytesToDataUrl(photoBytes, roomPhoto.mime_type),
+      roomPhotoReferenceUrl: signedPhoto.signedUrl,
       roomPhotoBytes: photoBytes,
       roomPhotoMimeType: roomPhoto.mime_type,
       catalogueProducts,
@@ -2279,11 +2290,15 @@ export async function groundProductsAction(formData: FormData) {
   const conceptImageAsset = Array.isArray(concept.primary_image_asset)
     ? concept.primary_image_asset[0]
     : concept.primary_image_asset;
-  const { data: conceptSignedImage } = conceptImageAsset?.storage_path
-    ? await serviceSupabase.storage
-        .from("generated-renders")
-        .createSignedUrl(conceptImageAsset.storage_path, 60 * 30)
-    : { data: null };
+  const conceptImageVisionUrl = conceptImageAsset?.storage_path
+    ? await storageImageDataUrl(
+        serviceSupabase,
+        "generated-renders",
+        conceptImageAsset.storage_path,
+        conceptImageAsset.mime_type
+      )
+    : null;
+  const conceptSignedImage = conceptImageVisionUrl ? { signedUrl: conceptImageVisionUrl } : null;
   if (!conceptSignedImage?.signedUrl) {
     redirect(
       `${redirectPath}?message=${encodeURIComponent(
@@ -4500,10 +4515,12 @@ export async function reviseConceptAction(formData: FormData) {
   }
 
   try {
+    const revisionPhotoBytes = Buffer.from(await photoBlob.arrayBuffer());
     const result = await generateConceptRevision({
       roomType: room.room_type,
-      roomPhotoUrl: signedPhoto.signedUrl,
-      roomPhotoBytes: Buffer.from(await photoBlob.arrayBuffer()),
+      roomPhotoUrl: bytesToDataUrl(revisionPhotoBytes, roomPhoto.mime_type),
+      roomPhotoReferenceUrl: signedPhoto.signedUrl,
+      roomPhotoBytes: revisionPhotoBytes,
       roomPhotoMimeType: roomPhoto.mime_type,
       styleNotes: designBrief.style_notes,
       colorNotes: designBrief.color_notes,
