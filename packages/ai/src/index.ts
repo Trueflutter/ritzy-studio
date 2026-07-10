@@ -119,6 +119,14 @@ export type GenerateInitialConceptInput = {
   roomPhotoReferenceUrl?: string | null;
   roomPhotoBytes: Buffer;
   roomPhotoMimeType: string;
+  // Additional photos of the SAME room from other corners. They give the model
+  // real spatial coverage instead of hallucinating occluded walls from one frame.
+  additionalRoomPhotos?: Array<{
+    url: string;
+    referenceUrl?: string | null;
+    bytes: Buffer;
+    mimeType: string;
+  }>;
   catalogueProducts?: Array<{
     name: string;
     retailerName: string;
@@ -435,7 +443,8 @@ export function buildInitialConceptImagePrompt({
   useInteriorPromptV2 = false,
   strictSourceRoomPreservation = false,
   spatialIntent = null,
-  measurements = null
+  measurements = null,
+  additionalRoomPhotoCount = 0
 }: {
   generationPrompt: string;
   roomType: string;
@@ -445,6 +454,7 @@ export function buildInitialConceptImagePrompt({
   useInteriorPromptV2?: boolean;
   strictSourceRoomPreservation?: boolean;
   spatialIntent?: SpatialPromptIntent | null;
+  additionalRoomPhotoCount?: number;
   measurements?: {
     wallLengthCm?: number | null;
     roomDepthCm?: number | null;
@@ -455,7 +465,9 @@ export function buildInitialConceptImagePrompt({
     return [
       generationPrompt,
       "",
-      "Use the uploaded room photo as the base image.",
+      additionalRoomPhotoCount > 0
+        ? `The first ${additionalRoomPhotoCount + 1} input images are photos of the SAME room from different corners. Use the FIRST photo's camera perspective as the base image; use the other angles only to understand the room's true walls, openings, and proportions.`
+        : "Use the uploaded room photo as the base image.",
       hasInspirationImages
         ? "Use the uploaded inspiration images as style references for palette, materials, atmosphere, and composition. Do not reproduce them exactly."
         : null,
@@ -484,7 +496,9 @@ export function buildInitialConceptImagePrompt({
   return [
     generationPrompt,
     "",
-    "Use the uploaded room photo as the base image.",
+    additionalRoomPhotoCount > 0
+        ? `The first ${additionalRoomPhotoCount + 1} input images are photos of the SAME room from different corners. Use the FIRST photo's camera perspective as the base image; use the other angles only to understand the room's true walls, openings, and proportions.`
+        : "Use the uploaded room photo as the base image.",
     hasInspirationImages
       ? "Use the uploaded inspiration images as style references for palette, materials, atmosphere, and composition. Do not reproduce them exactly."
       : null,
@@ -1622,6 +1636,17 @@ export async function generateInitialConcept(
             image_url: input.roomPhotoUrl,
             detail: "high"
           },
+          ...(input.additionalRoomPhotos ?? []).flatMap((photo, index) => [
+            {
+              type: "input_text" as const,
+              text: `Additional photo ${index + 2} of the SAME room from another corner. Use it to understand walls, openings, and proportions that the first photo cannot see.`
+            },
+            {
+              type: "input_image" as const,
+              image_url: photo.url,
+              detail: "high" as const
+            }
+          ]),
           ...(input.floorPlanImageUrl
             ? [
                 {
@@ -1672,7 +1697,8 @@ export async function generateInitialConcept(
     useInteriorPromptV2,
     strictSourceRoomPreservation: localStrictSourceRoomPreservationEnabled(),
     spatialIntent: input.spatialIntent ?? null,
-    measurements: input.measurements ?? null
+    measurements: input.measurements ?? null,
+    additionalRoomPhotoCount: input.additionalRoomPhotos?.length ?? 0
   });
   const catalogueReferences = (input.catalogueProducts ?? [])
     .filter((product) => product.imageBytes && product.imageMimeType)
@@ -1694,6 +1720,12 @@ export async function generateInitialConcept(
         name: "room",
         url: publicReferenceUrl(input.roomPhotoReferenceUrl ?? input.roomPhotoUrl)
       },
+      ...(input.additionalRoomPhotos ?? []).slice(0, 2).map((photo, index) => ({
+        bytes: photo.bytes,
+        mimeType: photo.mimeType,
+        name: `room-angle-${index + 2}`,
+        url: publicReferenceUrl(photo.referenceUrl ?? photo.url)
+      })),
       ...catalogueReferences
     ],
     noImageErrorMessage: "OpenAI image generation returned no image data."

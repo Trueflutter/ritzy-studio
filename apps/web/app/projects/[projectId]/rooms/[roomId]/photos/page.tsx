@@ -98,8 +98,13 @@ export default async function RoomPhotosPage({
           {room.name === room.room_type ? null : ` · ${room.room_type}`}
         </p>
         <p className="mt-3 max-w-[62ch] font-body text-body-s text-ink-secondary">
-          Use a current room photo, or an empty-room photo if you want the system to ignore existing
-          furniture.
+          Two or three photos from different corners give the design real spatial coverage — walls
+          and openings one frame cannot see. Empty-room photos read the space most accurately; a
+          furnished room works too, and existing furniture will be redesigned.
+        </p>
+        <p className="mt-2 max-w-[62ch] font-body text-caption font-medium uppercase tracking-wider text-ink-muted">
+          01 · stand in a corner, capture the widest view — 02 · cross the room, shoot back — 03 ·
+          optional: the wall the first photo missed
         </p>
 
         {message ? (

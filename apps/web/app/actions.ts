@@ -1901,14 +1901,15 @@ export async function generateInitialConceptAction(formData: FormData) {
     redirect(`${redirectPath}?message=${encodeURIComponent("Initial concept already generated.")}`);
   }
 
-  const { data: roomPhoto } = await supabase
+  const { data: roomPhotos = [] } = await supabase
     .from("room_assets")
     .select("*")
     .eq("room_id", roomId)
     .eq("asset_type", "room_photo")
     .order("created_at", { ascending: true })
-    .limit(1)
-    .maybeSingle();
+    .limit(3);
+  const roomPhoto = roomPhotos?.[0] ?? null;
+  const additionalRoomPhotoAssets = (roomPhotos ?? []).slice(1);
 
   if (!roomPhoto) {
     redirect(`/projects/${projectId}/rooms/${roomId}/photos`);
@@ -1958,6 +1959,29 @@ export async function generateInitialConceptAction(formData: FormData) {
   if (!signedPhoto?.signedUrl || downloadError || !photoBlob) {
     redirect(`${redirectPath}?message=${encodeURIComponent("The room photo could not be prepared for generation.")}`);
   }
+
+  const additionalRoomPhotos = (
+    await Promise.all(
+      additionalRoomPhotoAssets.map(async (asset) => {
+        const { data: blob, error: blobError } = await supabase.storage
+          .from("room-assets")
+          .download(asset.storage_path);
+        if (blobError || !blob) {
+          return null;
+        }
+        const bytes = Buffer.from(await blob.arrayBuffer());
+        const { data: signed } = await supabase.storage
+          .from("room-assets")
+          .createSignedUrl(asset.storage_path, 60 * 30);
+        return {
+          url: bytesToDataUrl(bytes, asset.mime_type),
+          referenceUrl: signed?.signedUrl ?? null,
+          bytes,
+          mimeType: asset.mime_type
+        };
+      })
+    )
+  ).filter((photo): photo is NonNullable<typeof photo> => Boolean(photo));
 
   const { data: floorPlanAsset } = await supabase
     .from("room_assets")
@@ -2096,6 +2120,7 @@ export async function generateInitialConceptAction(formData: FormData) {
       roomPhotoReferenceUrl: signedPhoto.signedUrl,
       roomPhotoBytes: photoBytes,
       roomPhotoMimeType: roomPhoto.mime_type,
+      additionalRoomPhotos,
       catalogueProducts,
       inspirationImageUrls: signedInspirationUrls,
       floorPlanImageUrl,
