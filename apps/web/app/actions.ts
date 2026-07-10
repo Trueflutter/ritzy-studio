@@ -3,10 +3,15 @@
 import {
   analyzeInspirationImages,
   generateClarifyingQuestions,
+  assessRenderSpatialQuality,
+  extractConceptImagePalette,
   generateConceptRevision,
+  generateConceptView,
   generateFinalGroundedRender,
   generateInitialConcept,
-  sourceProductsFromConcept
+  sourceProductsFromConcept,
+  spatialQaCorrectionLanguage,
+  type ConceptViewKey
 } from "@ritzy-studio/ai";
 import type { Database } from "@ritzy-studio/db";
 import {
@@ -20,6 +25,11 @@ import {
   buildShoppingListItemRows,
   buildPersistedSelectionSnapshot,
   composeRoomProductOptions,
+  conceptPaletteMatchingText,
+  deriveSpatialDesignerWarnings,
+  normalizeCatalogFirstRoomType,
+  parseConceptImagePalette,
+  parseSpatialIntent,
   filterSubstitutionCandidates,
   enhancedProductRolesForRoom,
   normalizeProductMatchRoleResultCategory,
@@ -51,6 +61,7 @@ import { productMatchingControlledPreviewGate } from "@ritzy-studio/config";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { after } from "next/server";
+import sharp from "sharp";
 
 import { createServiceClient } from "@/lib/supabase/service";
 import { createClient } from "@/lib/supabase/server";
@@ -108,6 +119,187 @@ const INTERNAL_PILOT_SIGNUP_MESSAGE =
 
 function productReferenceOrderingV2Enabled() {
   return process.env.RITZY_PRODUCT_REFERENCE_ORDERING_V2_ENABLED === "true";
+}
+
+const CONCEPT_VIEW_KEYS: ConceptViewKey[] = ["reverse_wide", "anchor_detail"];
+
+// Downscaled data URLs for the candidate images an AI sourcing call will see.
+// Fetched app-side (with retry) so the vision provider never has to download
+// from rate-limited retailer CDNs or non-public storage hosts.
+async function sourcingCandidateImageDataUrls(
+  candidates: Array<{ id: string; primaryImageUrl?: string | null }>,
+  limit: number
+): Promise<Record<string, string>> {
+  const entries = await Promise.all(
+    candidates.slice(0, limit).map(async (candidate) => {
+      if (!candidate.primaryImageUrl) {
+        return null;
+      }
+      const image = await fetchRemoteImage(candidate.primaryImageUrl);
+      if (!image) {
+        return null;
+      }
+      return [candidate.id, await visionImageDataUrl(image.bytes, image.mimeType)] as const;
+    })
+  );
+  return Object.fromEntries(entries.filter((entry): entry is [string, string] => Boolean(entry)));
+}
+
+// Product ids the user has already kept in OTHER rooms. Matching demotes (not
+// excludes) them so the same anchor pieces stop reappearing across projects
+// while thin pools can still fall back to them.
+async function recentlyUsedProductIdsForUser({
+  serviceSupabase,
+  userId,
+  excludeRoomId
+}: {
+  serviceSupabase: ReturnType<typeof createServiceClient>;
+  userId: string;
+  excludeRoomId: string;
+}): Promise<string[]> {
+  const { data, error } = await serviceSupabase
+    .from("shopping_list_items")
+    .select(
+      "product_id, shopping_list:shopping_lists!inner(room_id, room:rooms!inner(project:projects!inner(owner_user_id)))"
+    )
+    .eq("shopping_list.room.project.owner_user_id", userId)
+    .neq("shopping_list.room_id", excludeRoomId)
+    .eq("status", "selected")
+    .limit(600);
+
+  if (error || !data) {
+    return [];
+  }
+
+  return Array.from(new Set(data.map((row) => row.product_id).filter(Boolean)));
+}
+
+// Generates the additional camera angles for a stored concept and records them as
+// concept-linked room assets. Runs inside after(): view failures must never fail
+// the concept itself, so each view is best-effort.
+async function generateAndStoreConceptViews({
+  serviceSupabase,
+  userId,
+  roomId,
+  conceptId,
+  roomType,
+  conceptTitle,
+  conceptDescription,
+  conceptGenerationPrompt,
+  heroImageBytes,
+  heroImageStoragePath
+}: {
+  serviceSupabase: ReturnType<typeof createServiceClient>;
+  userId: string;
+  roomId: string;
+  conceptId: string;
+  roomType: string;
+  conceptTitle: string;
+  conceptDescription?: string | null;
+  conceptGenerationPrompt?: string | null;
+  heroImageBytes: Buffer;
+  heroImageStoragePath: string;
+}) {
+  const { data: signedHero } = await serviceSupabase.storage
+    .from("generated-renders")
+    .createSignedUrl(heroImageStoragePath, 60 * 30);
+
+  // Tracked as an ai_job so silent failures are observable and retryable; the
+  // two views generate in parallel to stay well inside the task lifetime.
+  const { data: viewsJob } = await serviceSupabase
+    .from("ai_jobs")
+    .insert({
+      user_id: userId,
+      room_id: roomId,
+      job_type: "concept_views",
+      status: "running",
+      provider: configuredImageProvider(),
+      model: configuredImageModel(),
+      input_summary: { conceptId, viewKeys: CONCEPT_VIEW_KEYS }
+    })
+    .select("id")
+    .single();
+
+  const outcomes = await Promise.all(
+    CONCEPT_VIEW_KEYS.map(async (viewKey) => {
+      try {
+        const view = await generateConceptView({
+          roomType,
+          viewKey,
+          conceptTitle,
+          conceptDescription,
+          conceptGenerationPrompt,
+          heroImageBytes,
+          heroImageMimeType: "image/png",
+          heroImageUrl: signedHero?.signedUrl ?? null
+        });
+        const viewPath = `${userId}/${roomId}/${conceptId}-${viewKey}.png`;
+        const { error: uploadError } = await serviceSupabase.storage
+          .from("generated-renders")
+          .upload(viewPath, Buffer.from(view.imageBase64, "base64"), {
+            contentType: "image/png",
+            upsert: true
+          });
+
+        if (uploadError) {
+          throw new Error(uploadError.message);
+        }
+
+        const { error: assetError } = await serviceSupabase.from("room_assets").insert({
+          room_id: roomId,
+          asset_type: "concept_render",
+          storage_path: viewPath,
+          mime_type: "image/png",
+          is_primary: false,
+          concept_id: conceptId,
+          view_key: viewKey
+        });
+
+        if (assetError) {
+          throw new Error(assetError.message);
+        }
+
+        return { viewKey, ok: true as const, provider: view.imageProvider, fallbackUsed: view.imageFallbackUsed };
+      } catch (error) {
+        console.error(`Concept view generation failed (${viewKey}, concept ${conceptId}):`, error);
+        return {
+          viewKey,
+          ok: false as const,
+          error: error instanceof Error ? error.message : "Concept view generation failed."
+        };
+      }
+    })
+  );
+
+  if (viewsJob) {
+    const failed = outcomes.filter((outcome) => !outcome.ok);
+    await serviceSupabase
+      .from("ai_jobs")
+      .update({
+        // Any missing view is a failed job: partial success must stay visible
+        // and retryable by status, not silently ship a one-view concept.
+        status: failed.length > 0 ? "failed" : "succeeded",
+        completed_at: new Date().toISOString(),
+        error_message: failed.length > 0 ? failed.map((outcome) => `${outcome.viewKey}: ${outcome.error}`).join("; ") : null,
+        output_summary: { conceptId, outcomes }
+      })
+      .eq("id", viewsJob.id);
+  }
+}
+
+function configuredImageProvider() {
+  return process.env.RITZY_IMAGE_PROVIDER ?? "openai";
+}
+
+function configuredImageModel() {
+  const provider = configuredImageProvider();
+  if (provider === "evolink") {
+    return process.env.EVOLINK_IMAGE_MODEL ?? "gemini-3.1-flash-image-preview";
+  }
+  if (provider === "gemini") {
+    return process.env.GEMINI_IMAGE_MODEL ?? "gemini-3.1-flash-image-preview";
+  }
+  return process.env.OPENAI_IMAGE_MODEL ?? "gpt-image-2";
 }
 
 function productMatchingEngineV1Enabled() {
@@ -192,6 +384,7 @@ type StructuredBriefJson = Record<string, unknown> & {
   visualPreferences?: unknown;
   measurements?: unknown;
   inspirationAnalysis?: unknown;
+  spatialIntent?: unknown;
 };
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
@@ -1153,6 +1346,30 @@ export async function saveDesignBriefAction(formData: FormData) {
     };
   }
 
+  if (
+    formData.has("focalPoint") ||
+    formData.has("seatingPriority") ||
+    formData.has("diningSeatCount") ||
+    formData.has("mustKeepClear")
+  ) {
+    const existingIntent =
+      structuredJson.spatialIntent && typeof structuredJson.spatialIntent === "object"
+        ? (structuredJson.spatialIntent as Record<string, unknown>)
+        : {};
+    const diningSeatCountRaw = optionalNumber(formData, "diningSeatCount");
+    structuredJson.spatialIntent = {
+      ...existingIntent,
+      ...(formData.has("focalPoint") ? { focalPoint: optionalString(formData, "focalPoint") ?? null } : {}),
+      ...(formData.has("seatingPriority")
+        ? { seatingPriority: optionalString(formData, "seatingPriority") ?? null }
+        : {}),
+      ...(formData.has("diningSeatCount") ? { diningSeatCount: diningSeatCountRaw ?? null } : {}),
+      ...(formData.has("mustKeepClear")
+        ? { mustKeepClear: optionalString(formData, "mustKeepClear") ?? null }
+        : {})
+    };
+  }
+
   const briefPayload: Database["public"]["Tables"]["design_briefs"]["Update"] & {
     room_id: string;
   } = {
@@ -1244,13 +1461,9 @@ export async function saveDesignBriefAction(formData: FormData) {
 
   const signedInspirationUrls = (
     await Promise.all(
-      (inspirationAssets ?? []).map(async (asset) => {
-        const { data } = await supabase.storage
-          .from("room-assets")
-          .createSignedUrl(asset.storage_path, 60 * 30);
-
-        return data?.signedUrl ?? null;
-      })
+      (inspirationAssets ?? []).map((asset) =>
+        storageImageDataUrl(supabase, "room-assets", asset.storage_path)
+      )
     )
   ).filter((url): url is string => Boolean(url));
 
@@ -1545,6 +1758,45 @@ async function ensureInspirationAnalysisBeforeDetails({
   });
 }
 
+// AI vision calls receive storage images as data URLs instead of signed URLs:
+// signed URLs can expire mid-flow and are unreachable from the provider when the
+// storage host is not public (e.g. local development). The bytes are small and
+// already one storage read away.
+async function storageImageDataUrl(
+  client: ServiceSupabaseClient | SupabaseServerClient,
+  bucket: string,
+  path: string,
+  mimeType?: string | null
+) {
+  const { data, error } = await client.storage.from(bucket).download(path);
+  if (error || !data) {
+    return null;
+  }
+
+  const buffer = Buffer.from(await data.arrayBuffer());
+  const contentType = mimeType ?? (data.type || "image/jpeg");
+  return visionImageDataUrl(buffer, contentType);
+}
+
+function bytesToDataUrl(bytes: Buffer, mimeType: string) {
+  return `data:${mimeType};base64,${bytes.toString("base64")}`;
+}
+
+// Vision models tile images at ~1k px; sending multi-megabyte originals only
+// adds cost, latency, and gateway cost-estimate rejections. Downscale for
+// vision inputs; image-GENERATION references keep original bytes.
+async function visionImageDataUrl(bytes: Buffer, mimeType: string) {
+  try {
+    const resized = await sharp(bytes)
+      .resize(1024, 1024, { fit: "inside", withoutEnlargement: true })
+      .jpeg({ quality: 78 })
+      .toBuffer();
+    return `data:image/jpeg;base64,${resized.toString("base64")}`;
+  } catch {
+    return bytesToDataUrl(bytes, mimeType);
+  }
+}
+
 async function analyzeAndWriteInspirationForRoom({
   inspirationAssets,
   requireSignedUrls = false,
@@ -1564,13 +1816,7 @@ async function analyzeAndWriteInspirationForRoom({
 
   const signedUrls = (
     await Promise.all(
-      assets.map(async (asset) => {
-        const { data } = await supabase.storage
-          .from("room-assets")
-          .createSignedUrl(asset.storage_path, 60 * 30);
-
-        return data?.signedUrl ?? null;
-      })
+      assets.map((asset) => storageImageDataUrl(supabase, "room-assets", asset.storage_path))
     )
   ).filter((url): url is string => Boolean(url));
 
@@ -1735,14 +1981,15 @@ export async function generateInitialConceptAction(formData: FormData) {
     redirect(`${redirectPath}?message=${encodeURIComponent("Initial concept already generated.")}`);
   }
 
-  const { data: roomPhoto } = await supabase
+  const { data: roomPhotos = [] } = await supabase
     .from("room_assets")
     .select("*")
     .eq("room_id", roomId)
     .eq("asset_type", "room_photo")
     .order("created_at", { ascending: true })
-    .limit(1)
-    .maybeSingle();
+    .limit(3);
+  const roomPhoto = roomPhotos?.[0] ?? null;
+  const additionalRoomPhotoAssets = (roomPhotos ?? []).slice(1);
 
   if (!roomPhoto) {
     redirect(`/projects/${projectId}/rooms/${roomId}/photos`);
@@ -1779,13 +2026,9 @@ export async function generateInitialConceptAction(formData: FormData) {
 
   const signedInspirationUrls = (
     await Promise.all(
-      (inspirationAssets ?? []).map(async (asset) => {
-        const { data } = await supabase.storage
-          .from("room-assets")
-          .createSignedUrl(asset.storage_path, 60 * 30);
-
-        return data?.signedUrl ?? null;
-      })
+      (inspirationAssets ?? []).map((asset) =>
+        storageImageDataUrl(supabase, "room-assets", asset.storage_path)
+      )
     )
   ).filter((url): url is string => Boolean(url));
 
@@ -1797,6 +2040,41 @@ export async function generateInitialConceptAction(formData: FormData) {
     redirect(`${redirectPath}?message=${encodeURIComponent("The room photo could not be prepared for generation.")}`);
   }
 
+  const additionalRoomPhotos = (
+    await Promise.all(
+      additionalRoomPhotoAssets.map(async (asset) => {
+        const { data: blob, error: blobError } = await supabase.storage
+          .from("room-assets")
+          .download(asset.storage_path);
+        if (blobError || !blob) {
+          return null;
+        }
+        const bytes = Buffer.from(await blob.arrayBuffer());
+        const { data: signed } = await supabase.storage
+          .from("room-assets")
+          .createSignedUrl(asset.storage_path, 60 * 30);
+        return {
+          url: await visionImageDataUrl(bytes, asset.mime_type),
+          referenceUrl: signed?.signedUrl ?? null,
+          bytes,
+          mimeType: asset.mime_type
+        };
+      })
+    )
+  ).filter((photo): photo is NonNullable<typeof photo> => Boolean(photo));
+
+  const { data: floorPlanAsset } = await supabase
+    .from("room_assets")
+    .select("storage_path, mime_type")
+    .eq("room_id", roomId)
+    .eq("asset_type", "floor_plan")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const floorPlanImageUrl = floorPlanAsset?.mime_type?.startsWith("image/")
+    ? await storageImageDataUrl(supabase, "room-assets", floorPlanAsset.storage_path, floorPlanAsset.mime_type)
+    : null;
+
   const { data: measurements } = await supabase
     .from("room_measurements")
     .select("*")
@@ -1805,13 +2083,31 @@ export async function generateInitialConceptAction(formData: FormData) {
     .limit(1)
     .maybeSingle();
 
-  if (!measurements || !hasRequiredRoomSize(measurements)) {
-    redirect(
-      `/projects/${projectId}/rooms/${roomId}/brief/details?message=${encodeURIComponent(
-        "Add the room measurements before generating a design. This keeps furniture sizing honest."
-      )}`
-    );
-  }
+  // Measurements no longer hard-gate generation: a user who just wants to snap a
+  // photo still gets a concept, with the missing-scale assumption recorded and
+  // surfaced instead of a dead end.
+  const measurementsMissing = !measurements || !hasRequiredRoomSize(measurements);
+
+  const spatialIntent = parseSpatialIntent(designBrief.structured_json, room.room_type);
+  const spatialWarnings = deriveSpatialDesignerWarnings({
+    roomType: normalizeCatalogFirstRoomType(room.room_type),
+    intent: spatialIntent,
+    measurements: measurements
+      ? {
+          wallLengthCm: measurements.wall_length_cm,
+          roomDepthCm: measurements.room_depth_cm,
+          ceilingHeightCm: measurements.ceiling_height_cm,
+          source: measurements.source,
+          confidence: measurements.confidence
+        }
+      : null
+  });
+  const spatialAssumptions = [
+    ...(spatialIntent.assumptions ?? []),
+    ...(measurementsMissing
+      ? ["Room measurements were not provided; furniture scale is directional until dimensions are added."]
+      : [])
+  ];
 
   const { data: answeredQuestions = [] } = await supabase
     .from("clarifying_questions")
@@ -1836,28 +2132,48 @@ export async function generateInitialConceptAction(formData: FormData) {
   });
 
   if (catalogueGroundingPlan.blockers.length > 0) {
+    // Record WHY grounding blocked; the user-facing message is deliberately
+    // generic, and without this record the blockers are undiagnosable.
+    await serviceSupabase.from("ai_jobs").insert({
+      user_id: user.id,
+      room_id: roomId,
+      job_type: "initial_concept_generation",
+      status: "failed",
+      provider: configuredImageProvider(),
+      model: configuredImageModel(),
+      error_message: "Catalogue grounding blocked before generation.",
+      input_summary: {
+        roomId,
+        designBriefId: designBrief.id,
+        blockers: catalogueGroundingPlan.blockers,
+        catalogueGrounding: catalogueGroundingPlan.summary
+      }
+    });
     redirect(
       `${redirectPath}?message=${encodeURIComponent(CATALOGUE_GROUNDED_CONCEPT_USER_SAFE_BLOCK_MESSAGE)}`
     );
   }
 
-  const catalogueProducts = catalogueGroundingPlan.products.map(({ match, role, referenceImage }) => ({
-    name: match.name,
-    retailerName: match.retailerName,
-    category: match.categoryNormalized,
-    roleLabel: role.label,
-    selectionReason: match.selectionReason,
-    description: match.description,
-    color: match.color,
-    material: match.material,
-    styleTags: match.styleTags,
-    colorTags: match.colorTags,
-    materialTags: match.materialTags,
-    dimensions: match.dimensions?.sourceText ?? null,
-    primaryImageUrl: match.primaryImageUrl,
-    imageBytes: referenceImage.bytes,
-    imageMimeType: referenceImage.mimeType
-  }));
+  const catalogueProducts = await Promise.all(
+    catalogueGroundingPlan.products.map(async ({ match, role, referenceImage }) => ({
+      name: match.name,
+      retailerName: match.retailerName,
+      category: match.categoryNormalized,
+      roleLabel: role.label,
+      selectionReason: match.selectionReason,
+      description: match.description,
+      color: match.color,
+      material: match.material,
+      styleTags: match.styleTags,
+      colorTags: match.colorTags,
+      materialTags: match.materialTags,
+      dimensions: match.dimensions?.sourceText ?? null,
+      primaryImageUrl: match.primaryImageUrl,
+      imageBytes: referenceImage.bytes,
+      imageMimeType: referenceImage.mimeType,
+      visionImageUrl: await visionImageDataUrl(referenceImage.bytes, referenceImage.mimeType)
+    }))
+  );
   const missingCatalogueReferenceImages = catalogueProducts
     .filter((product) => !product.imageBytes || !product.imageMimeType)
     .map((product) => product.roleLabel);
@@ -1877,12 +2193,8 @@ export async function generateInitialConceptAction(formData: FormData) {
       room_id: roomId,
       job_type: "initial_concept_generation",
       status: "running",
-      provider: process.env.RITZY_IMAGE_PROVIDER ?? "openai",
-      model: `${process.env.OPENAI_TEXT_MODEL ?? "gpt-5-mini"} + ${
-        (process.env.RITZY_IMAGE_PROVIDER ?? "openai") === "gemini"
-          ? (process.env.GEMINI_IMAGE_MODEL ?? "gemini-3.1-flash-image-preview")
-          : (process.env.OPENAI_IMAGE_MODEL ?? "gpt-image-2")
-      }`,
+      provider: configuredImageProvider(),
+      model: `${process.env.OPENAI_TEXT_MODEL ?? "gpt-5-mini"} + ${configuredImageModel()}`,
       prompt_version: null,
       input_summary: {
         roomId,
@@ -1904,11 +2216,20 @@ export async function generateInitialConceptAction(formData: FormData) {
     const photoBytes = Buffer.from(await photoBlob.arrayBuffer());
     const result = await generateInitialConcept({
       roomType: room.room_type,
-      roomPhotoUrl: signedPhoto.signedUrl,
+      roomPhotoUrl: await visionImageDataUrl(photoBytes, roomPhoto.mime_type),
+      roomPhotoReferenceUrl: signedPhoto.signedUrl,
       roomPhotoBytes: photoBytes,
       roomPhotoMimeType: roomPhoto.mime_type,
+      additionalRoomPhotos,
       catalogueProducts,
       inspirationImageUrls: signedInspirationUrls,
+      floorPlanImageUrl,
+      spatialIntent: {
+        focalPoint: spatialIntent.focalPoint,
+        seatingPriority: spatialIntent.seatingPriority,
+        diningSeatCount: spatialIntent.diningSeatCount,
+        mustKeepClear: spatialIntent.mustKeepClear
+      },
       styleSlugs: likedStyleSlugsFromStructuredBrief(designBrief.structured_json),
       styleNotes: designBrief.style_notes,
       colorNotes: designBrief.color_notes,
@@ -1966,7 +2287,13 @@ export async function generateInitialConceptAction(formData: FormData) {
         description: [
           result.concept.rationale,
           "",
-          `Uncertainty: ${result.concept.uncertaintyNote}`
+          `Uncertainty: ${[
+            result.concept.uncertaintyNote,
+            ...spatialAssumptions,
+            ...spatialWarnings
+              .filter((warning) => warning.code !== "spatial_geometry_missing")
+              .map((warning) => warning.message)
+          ].join(" ")}`
         ].join("\n"),
         status: "generated"
       })
@@ -2012,6 +2339,22 @@ export async function generateInitialConceptAction(formData: FormData) {
       .eq("id", concept.id);
 
     await supabase.from("rooms").update({ status: "concepting" }).eq("id", roomId);
+
+    after(async () => {
+      await generateAndStoreConceptViews({
+        serviceSupabase,
+        userId: user.id,
+        roomId,
+        conceptId: concept.id,
+        roomType: room.room_type,
+        conceptTitle: result.concept.title,
+        conceptDescription: result.concept.rationale,
+        conceptGenerationPrompt: result.concept.generationPrompt,
+        heroImageBytes: renderBytes,
+        heroImageStoragePath: renderPath
+      });
+      revalidatePath(redirectPath);
+    });
   } catch (error) {
     await serviceSupabase
       .from("ai_jobs")
@@ -2084,7 +2427,7 @@ export async function groundProductsAction(formData: FormData) {
 
   const { data: concept } = await supabase
     .from("concepts")
-    .select("id, title, description, status, generation_job_id, primary_image_asset:room_assets(*)")
+    .select("id, title, description, status, generation_job_id, palette_json, primary_image_asset:room_assets!concepts_primary_image_asset_id_fkey(*)")
     .eq("id", conceptId)
     .eq("room_id", roomId)
     .single();
@@ -2175,11 +2518,15 @@ export async function groundProductsAction(formData: FormData) {
   const conceptImageAsset = Array.isArray(concept.primary_image_asset)
     ? concept.primary_image_asset[0]
     : concept.primary_image_asset;
-  const { data: conceptSignedImage } = conceptImageAsset?.storage_path
-    ? await serviceSupabase.storage
-        .from("generated-renders")
-        .createSignedUrl(conceptImageAsset.storage_path, 60 * 30)
-    : { data: null };
+  const conceptImageVisionUrl = conceptImageAsset?.storage_path
+    ? await storageImageDataUrl(
+        serviceSupabase,
+        "generated-renders",
+        conceptImageAsset.storage_path,
+        conceptImageAsset.mime_type
+      )
+    : null;
+  const conceptSignedImage = conceptImageVisionUrl ? { signedUrl: conceptImageVisionUrl } : null;
   if (!conceptSignedImage?.signedUrl) {
     redirect(
       `${redirectPath}?message=${encodeURIComponent(
@@ -2187,6 +2534,31 @@ export async function groundProductsAction(formData: FormData) {
       )}`
     );
   }
+
+  // Aesthetic coherence is scored against the palette of the concept image as
+  // rendered (extracted once, cached on the concept row), not only against the
+  // concept's text tokens. Extraction failure degrades to text-only matching.
+  let conceptPalette = parseConceptImagePalette(concept.palette_json);
+  if (!conceptPalette) {
+    try {
+      const paletteResult = await extractConceptImagePalette({
+        imageUrl: conceptSignedImage.signedUrl
+      });
+      conceptPalette = paletteResult.palette;
+      await serviceSupabase
+        .from("concepts")
+        .update({ palette_json: conceptPalette })
+        .eq("id", concept.id);
+    } catch (error) {
+      console.error("Concept palette extraction failed; matching falls back to text tokens.", error);
+    }
+  }
+  const conceptPaletteText = conceptPalette ? conceptPaletteMatchingText(conceptPalette) : null;
+  const paletteGroundedConceptText = conceptPaletteText
+    ? `${baseConceptText}
+${conceptPaletteText}`
+    : baseConceptText;
+  const conceptAvoidColorTags = conceptPalette?.avoidColors ?? [];
 
   const productMatchingPreview = productMatchingEngineV1EnabledForRequest({
     projectId,
@@ -2196,6 +2568,11 @@ export async function groundProductsAction(formData: FormData) {
     roomType: room.room_type
   });
   const productMatchingEngineEnabled = productMatchingPreview.enabled;
+  const recentlyUsedProductIds = await recentlyUsedProductIdsForUser({
+    serviceSupabase,
+    userId: user.id,
+    excludeRoomId: roomId
+  });
   const candidatesPerRole = localSkuFidelityMode ? LOCAL_SKU_FIDELITY_CANDIDATES_PER_ROLE : 6;
   const flatCandidateLimit = localSkuFidelityMode
     ? Math.max(72, blueprintRoles.length * candidatesPerRole)
@@ -2203,9 +2580,11 @@ export async function groundProductsAction(formData: FormData) {
   const sourcingPlan = buildProductSourcingRuntimePlan({
     engineEnabled: productMatchingEngineEnabled,
     roomType: room.room_type,
-    conceptText: baseConceptText,
+    conceptText: paletteGroundedConceptText,
     roles: blueprintRoles,
     candidates: matchingCandidates,
+    recentlyUsedProductIds,
+    avoidColorTags: conceptAvoidColorTags,
     budgetMaxAed: project.budget_max_aed,
     roomMeasurements: measurements
       ? {
@@ -2218,7 +2597,7 @@ export async function groundProductsAction(formData: FormData) {
   });
   const sourcingPools = localSkuFidelityMode
     ? sourcingPlan.roleScopedPools.map((pool) =>
-        rerankRolePoolForAestheticFit(pool, room.room_type, baseConceptText)
+        rerankRolePoolForAestheticFit(pool, room.room_type, paletteGroundedConceptText)
       )
     : sourcingPlan.roleScopedPools;
   const sourcingCandidates = localSkuFidelityMode
@@ -2360,7 +2739,11 @@ export async function groundProductsAction(formData: FormData) {
           roleCandidatePools: productMatchingEngineEnabled ? sourcingCandidatePools : undefined,
           conceptImageDetail: PRODUCT_SOURCING_AI_CONCEPT_IMAGE_DETAIL,
           candidateImageLimit: PRODUCT_SOURCING_AI_CANDIDATE_IMAGE_LIMIT,
-          candidateImageDetail: PRODUCT_SOURCING_AI_CANDIDATE_IMAGE_DETAIL
+          candidateImageDetail: PRODUCT_SOURCING_AI_CANDIDATE_IMAGE_DETAIL,
+          candidateImageDataUrls: await sourcingCandidateImageDataUrls(
+            aiSourcingCandidates,
+            PRODUCT_SOURCING_AI_CANDIDATE_IMAGE_LIMIT
+          )
         }),
         PRODUCT_SOURCING_AI_TIMEOUT_MS,
         "Product visual sourcing timed out."
@@ -2561,7 +2944,7 @@ export async function groundProductsAction(formData: FormData) {
     );
   }
   const visualConceptText = [
-    baseConceptText,
+    paletteGroundedConceptText,
     ...(sourcingResult?.needs.map(
       (need) => `${need.roleLabel}: ${need.visualBrief}`
     ) ?? [])
@@ -2593,6 +2976,8 @@ export async function groundProductsAction(formData: FormData) {
   const baseVisualRanked = rankProductMatches({
     roomType: room.room_type,
     conceptText: visualConceptText,
+    recentlyUsedProductIds,
+    avoidColorTags: conceptAvoidColorTags,
     budgetMaxAed: project.budget_max_aed,
     roomMeasurements: measurements
       ? {
@@ -2635,6 +3020,8 @@ export async function groundProductsAction(formData: FormData) {
       conceptText: visualConceptText,
       roles: retryRoles,
       candidates: matchingCandidates,
+      recentlyUsedProductIds,
+      avoidColorTags: conceptAvoidColorTags,
       budgetMaxAed: project.budget_max_aed,
       roomMeasurements: measurements
         ? {
@@ -2699,7 +3086,11 @@ export async function groundProductsAction(formData: FormData) {
             : undefined,
           conceptImageDetail: PRODUCT_SOURCING_AI_CONCEPT_IMAGE_DETAIL,
           candidateImageLimit: PRODUCT_SOURCING_AI_CANDIDATE_IMAGE_LIMIT,
-          candidateImageDetail: PRODUCT_SOURCING_AI_CANDIDATE_IMAGE_DETAIL
+          candidateImageDetail: PRODUCT_SOURCING_AI_CANDIDATE_IMAGE_DETAIL,
+          candidateImageDataUrls: await sourcingCandidateImageDataUrls(
+            aiRetryCandidates,
+            PRODUCT_SOURCING_AI_CANDIDATE_IMAGE_LIMIT
+          )
         }),
         PRODUCT_SOURCING_AI_TIMEOUT_MS,
         "Product visual sourcing retry timed out."
@@ -2911,6 +3302,8 @@ export async function groundProductsAction(formData: FormData) {
         conceptText: visualConceptText,
         roles,
         candidates: matchingCandidates,
+        recentlyUsedProductIds,
+        avoidColorTags: conceptAvoidColorTags,
         budgetMaxAed: project.budget_max_aed,
         roomMeasurements: measurements
           ? {
@@ -3950,7 +4343,7 @@ export async function generateFinalRenderAction(formData: FormData) {
 
   const { data: concept } = await supabase
     .from("concepts")
-    .select("id, title, description, status, primary_image_asset:room_assets(*)")
+    .select("id, title, description, status, primary_image_asset:room_assets!concepts_primary_image_asset_id_fkey(*)")
     .eq("id", conceptId)
     .eq("room_id", roomId)
     .single();
@@ -4158,20 +4551,80 @@ export async function generateFinalRenderAction(formData: FormData) {
             priceAed: item.unit_price_aed,
             dimensions,
             imageBytes: image?.bytes ?? null,
-            imageMimeType: image?.mimeType ?? null
+            imageMimeType: image?.mimeType ?? null,
+            imageUrl: product.primary_image_url ?? null
           };
         })
       );
-      const result = await generateFinalGroundedRender({
+      const { data: signedRoomPhotoForRender } = await serviceSupabase.storage
+        .from("room-assets")
+        .createSignedUrl(roomPhoto.storage_path, 60 * 30);
+      const { data: signedConceptImageForRender } = conceptImageAsset?.storage_path
+        ? await serviceSupabase.storage
+            .from("generated-renders")
+            .createSignedUrl(conceptImageAsset.storage_path, 60 * 30)
+        : { data: null };
+      const { data: renderDesignBrief } = await serviceSupabase
+        .from("design_briefs")
+        .select("structured_json")
+        .eq("room_id", roomId)
+        .order("updated_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      const renderSpatialIntent = parseSpatialIntent(renderDesignBrief?.structured_json, room.room_type);
+      const renderSpatialIntentPrompt = {
+        focalPoint: renderSpatialIntent.focalPoint,
+        seatingPriority: renderSpatialIntent.seatingPriority,
+        diningSeatCount: renderSpatialIntent.diningSeatCount,
+        mustKeepClear: renderSpatialIntent.mustKeepClear
+      };
+      const renderInput = {
         roomType: room.room_type,
+        spatialIntent: renderSpatialIntentPrompt,
         roomPhotoBytes: Buffer.from(await roomBlob.arrayBuffer()),
         roomPhotoMimeType: roomPhoto.mime_type,
+        roomPhotoUrl: signedRoomPhotoForRender?.signedUrl ?? null,
         conceptImageBytes: conceptBlob ? Buffer.from(await conceptBlob.arrayBuffer()) : null,
         conceptImageMimeType: conceptImageAsset?.mime_type ?? null,
+        conceptImageUrl: signedConceptImageForRender?.signedUrl ?? null,
         conceptTitle: concept.title,
         conceptDescription: concept.description,
         products: productsForRender
-      });
+      };
+      let result = await generateFinalGroundedRender(renderInput);
+
+      // Post-render spatial QA: one corrective retry on a hard fail, then keep
+      // the better of the two attempts. QA failure never fails the render.
+      let renderQaVerdict: string | null = null;
+      let renderQaIssues: string[] = [];
+      let renderQaRegenerated = false;
+      try {
+        let qa = await assessRenderSpatialQuality({
+          imageUrl: await visionImageDataUrl(Buffer.from(result.imageBase64, "base64"), "image/png"),
+          roomType: room.room_type,
+          spatialIntent: renderSpatialIntentPrompt
+        });
+        if (qa.qa.verdict === "regenerate" && qa.qa.issues.length > 0) {
+          const retryResult = await generateFinalGroundedRender({
+            ...renderInput,
+            promptSuffix: spatialQaCorrectionLanguage([...qa.qa.issues])
+          });
+          const retryQa = await assessRenderSpatialQuality({
+            imageUrl: await visionImageDataUrl(Buffer.from(retryResult.imageBase64, "base64"), "image/png"),
+            roomType: room.room_type,
+            spatialIntent: renderSpatialIntentPrompt
+          });
+          if (retryQa.qa.verdict !== "regenerate") {
+            result = retryResult;
+            qa = retryQa;
+            renderQaRegenerated = true;
+          }
+        }
+        renderQaVerdict = qa.qa.verdict;
+        renderQaIssues = [...qa.qa.issues];
+      } catch (error) {
+        console.error("Final render spatial QA failed; shipping unreviewed render.", error);
+      }
       const renderPath = `${user.id}/${roomId}/final-${renderJob.id}.png`;
       const { error: uploadError } = await serviceSupabase.storage
         .from("generated-renders")
@@ -4220,7 +4673,10 @@ export async function generateFinalRenderAction(formData: FormData) {
             imagePromptVersion: result.promptVersion,
             imageLatencySeconds: result.imageLatencySeconds,
             imageFallbackUsed: result.imageFallbackUsed,
-            imageFallbackError: result.imageFallbackError ?? null
+            imageFallbackError: result.imageFallbackError ?? null,
+            spatialQaVerdict: renderQaVerdict,
+            spatialQaIssues: renderQaIssues,
+            spatialQaRegenerated: renderQaRegenerated
           }
         })
         .eq("id", renderJob.id);
@@ -4368,12 +4824,8 @@ export async function reviseConceptAction(formData: FormData) {
       room_id: roomId,
       job_type: "concept_revision",
       status: "running",
-      provider: process.env.RITZY_IMAGE_PROVIDER ?? "openai",
-      model: `${process.env.OPENAI_TEXT_MODEL ?? "gpt-5-mini"} + ${
-        (process.env.RITZY_IMAGE_PROVIDER ?? "openai") === "gemini"
-          ? (process.env.GEMINI_IMAGE_MODEL ?? "gemini-3.1-flash-image-preview")
-          : (process.env.OPENAI_IMAGE_MODEL ?? "gpt-image-2")
-      }`,
+      provider: configuredImageProvider(),
+      model: `${process.env.OPENAI_TEXT_MODEL ?? "gpt-5-mini"} + ${configuredImageModel()}`,
       prompt_version: null,
       input_summary: {
         roomId,
@@ -4389,10 +4841,12 @@ export async function reviseConceptAction(formData: FormData) {
   }
 
   try {
+    const revisionPhotoBytes = Buffer.from(await photoBlob.arrayBuffer());
     const result = await generateConceptRevision({
       roomType: room.room_type,
-      roomPhotoUrl: signedPhoto.signedUrl,
-      roomPhotoBytes: Buffer.from(await photoBlob.arrayBuffer()),
+      roomPhotoUrl: await visionImageDataUrl(revisionPhotoBytes, roomPhoto.mime_type),
+      roomPhotoReferenceUrl: signedPhoto.signedUrl,
+      roomPhotoBytes: revisionPhotoBytes,
       roomPhotoMimeType: roomPhoto.mime_type,
       styleNotes: designBrief.style_notes,
       colorNotes: designBrief.color_notes,
@@ -4506,6 +4960,23 @@ export async function reviseConceptAction(formData: FormData) {
       .update({ status: "generated" })
       .eq("room_id", roomId)
       .eq("status", "selected");
+
+    const revisionImageBytes = Buffer.from(result.imageBase64, "base64");
+    after(async () => {
+      await generateAndStoreConceptViews({
+        serviceSupabase,
+        userId: user.id,
+        roomId,
+        conceptId: revisedConcept.id,
+        roomType: room.room_type,
+        conceptTitle: result.concept.title,
+        conceptDescription: result.concept.rationale,
+        conceptGenerationPrompt: result.concept.generationPrompt,
+        heroImageBytes: revisionImageBytes,
+        heroImageStoragePath: renderPath
+      });
+      revalidatePath(redirectPath);
+    });
   } catch (error) {
     await serviceSupabase
       .from("ai_jobs")
@@ -4718,7 +5189,10 @@ async function buildCatalogueGroundedConceptPlan({
   designBrief: DesignBriefRow;
   answeredQuestions: AnsweredQuestionRow[];
 }) {
-  const cueText = catalogueGroundingCueText({ designBrief, answeredQuestions });
+  const rawCueText = catalogueGroundingCueText({ designBrief, answeredQuestions });
+  // "avoid purple and bright red" must not read as positive purple/red cues:
+  // strip avoid-clauses from the scoring text and enforce them structurally.
+  const { cueText, avoidColorTags } = splitAvoidColorCues(rawCueText);
   const cueRequirements = catalogueCueRequirements(cueText);
   const anchorRoles = enhancedProductRolesForRoom(roomType)
     .filter((role) => role.importance === "anchor" || role.required)
@@ -4761,6 +5235,7 @@ async function buildCatalogueGroundedConceptPlan({
     conceptText,
     roles: anchorRoles,
     candidates,
+    avoidColorTags,
     budgetMaxAed,
     roomMeasurements,
     candidatesPerRole: aestheticGateEnabled ? 36 : CATALOGUE_GROUNDED_CONCEPT_CANDIDATES_PER_ROLE,
@@ -4786,6 +5261,9 @@ async function buildCatalogueGroundedConceptPlan({
     for (const candidate of pool.candidates) {
       let aestheticScoreAdjustment = 0;
       if (hasHardCatalogueGroundingContradiction(candidate.attributeScore.weaknessReasons)) {
+        warnings.push(
+          `${pool.role.label}: skipped ${candidate.name} on hard cue contradiction (${candidate.attributeScore.weaknessReasons.join("; ")}).`
+        );
         continue;
       }
 
@@ -5227,6 +5705,14 @@ async function refineSelectedCatalogueProductsForAestheticFit({
 function hasHardCatalogueGroundingContradiction(weaknessReasons: string[]) {
   return weaknessReasons.some((reason) => {
     const lower = reason.toLowerCase();
+    // Silhouette language is a soft styling preference (often sourced from
+    // style-module prose like "curved forms"); it already costs score and must
+    // never veto the top palette-and-category-correct anchor. Hard vetoes are
+    // reserved for genuine contradictions: wrong class, clashing color family,
+    // impossible dimensions, unavailable stock.
+    if (lower.includes("silhouette")) {
+      return false;
+    }
     return (
       lower.includes("conflicts") ||
       lower.includes("mismatch") ||
@@ -5379,6 +5865,40 @@ function catalogueGroundingWeaknessReasons(
   }
 
   return Array.from(new Set(reasons));
+}
+
+const AVOID_CUE_COLOR_TOKENS = [
+  "beige", "black", "blue", "brown", "burgundy", "charcoal", "cream", "gold", "green", "grey",
+  "gray", "ivory", "navy", "orange", "pink", "purple", "red", "rust", "sage", "taupe",
+  "terracotta", "white", "yellow"
+];
+
+// Splits "avoid X" style clauses out of free-text cues. The named colors become
+// structural avoid tags; the clauses are removed so their tokens stop scoring
+// as positive matches.
+function splitAvoidColorCues(text: string): { cueText: string; avoidColorTags: string[] } {
+  const avoidColorTags = new Set<string>();
+  const cleanedLines = text.split("\n").map((line) => {
+    // Capture from each avoid-marker to the end of the clause (sentence/segment).
+    return line.replace(
+      /\b(?:avoid(?:ing)?|no|not|without|nothing)\b([^.;\n]*)/gi,
+      (clause, tail: string) => {
+        const tailTokens = tail.toLowerCase().split(/[^a-z]+/);
+        const named = AVOID_CUE_COLOR_TOKENS.filter((color) => tailTokens.includes(color));
+        for (const color of named) {
+          avoidColorTags.add(color);
+        }
+        // Only strip the clause when it actually named colors; other avoid
+        // notes (materials, styles) keep flowing to the model as text.
+        return named.length > 0 ? "" : clause;
+      }
+    );
+  });
+
+  return {
+    cueText: cleanedLines.join("\n").replace(/[ \t]{2,}/g, " ").trim(),
+    avoidColorTags: Array.from(avoidColorTags)
+  };
 }
 
 function catalogueCueTokens(value: string) {
@@ -6879,6 +7399,17 @@ function formatAedValue(value: number) {
 }
 
 async function fetchRemoteImage(url: string): Promise<CatalogueReferenceImage | null> {
+  // Retailer CDNs rate-limit and flake; one quick retry rescues most transient
+  // failures without meaningfully slowing the happy path.
+  const first = await fetchRemoteImageOnce(url);
+  if (first) {
+    return first;
+  }
+  await new Promise((resolve) => setTimeout(resolve, 750));
+  return fetchRemoteImageOnce(url);
+}
+
+async function fetchRemoteImageOnce(url: string): Promise<CatalogueReferenceImage | null> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), CATALOGUE_GROUNDED_CONCEPT_IMAGE_FETCH_TIMEOUT_MS);
 

@@ -39,7 +39,14 @@ export const productMatchRequestSchema = z.object({
     })
     .nullable()
     .optional(),
-  candidates: z.array(productMatchCandidateSchema)
+  candidates: z.array(productMatchCandidateSchema),
+  // Product ids already used in the user's other rooms/projects. Demoted (not
+  // excluded) so repeats only surface when a role pool is genuinely thin.
+  recentlyUsedProductIds: z.array(z.string()).optional(),
+  // Color tokens the generated concept image explicitly avoids. Penalized as a
+  // structured signal; never placed in conceptText, where the tokens would
+  // wrongly count as matches.
+  avoidColorTags: z.array(z.string()).optional()
 });
 
 export type ProductMatchCandidate = z.infer<typeof productMatchCandidateSchema>;
@@ -428,10 +435,11 @@ export function rankProductMatches(request: ProductMatchRequest): RankedProductM
   const parsed = productMatchRequestSchema.parse(request);
   const conceptTokens = tokensFor(`${parsed.roomType} ${parsed.conceptText}`);
   const preferredCategories = categoriesForRoom(parsed.roomType);
+  const recentlyUsedIds = new Set(parsed.recentlyUsedProductIds ?? []);
 
   return parsed.candidates
     .filter((candidate) => isEligibleCandidate(candidate, preferredCategories, parsed))
-    .map((candidate) => scoreCandidate(candidate, conceptTokens, preferredCategories, parsed))
+    .map((candidate) => scoreCandidate(candidate, conceptTokens, preferredCategories, parsed, recentlyUsedIds))
     .sort((left, right) => right.score - left.score)
     .map((match, index) => ({ ...match, score: Number((match.score - index * 0.001).toFixed(3)) }));
 }
@@ -653,15 +661,97 @@ export function filterSubstitutionCandidates({
   });
 }
 
+const RECENTLY_USED_PRODUCT_PENALTY = 30;
+const AVOID_COLOR_PENALTY = 24;
+
+function avoidColorMatches(candidate: ProductMatchCandidate, avoidColorTags?: string[]) {
+  if (!avoidColorTags || avoidColorTags.length === 0) {
+    return [];
+  }
+
+  // Expand each avoid tag into its color family when the vocabulary knows it;
+  // tags outside the family map (e.g. "purple") still match as literal tokens.
+  const avoidTokens = new Set(
+    avoidColorTags
+      .flatMap((tag) => tag.toLowerCase().split(/[^a-z]+/))
+      .filter(Boolean)
+      .flatMap((lower) => {
+        const familyMembers = Object.entries(colorFamilies)
+          .filter(([family, members]) => family === lower || members.includes(lower))
+          .flatMap(([family, members]) => [family, ...members]);
+        return [lower, ...familyMembers];
+      })
+  );
+
+  const candidateColorTokens = [candidate.color ?? "", ...candidate.colorTags]
+    .join(" ")
+    .toLowerCase()
+    .split(/[^a-z]+/)
+    .filter(Boolean);
+
+  return Array.from(new Set(candidateColorTokens.filter((token) => avoidTokens.has(token))));
+}
+
+export type ConceptImagePalette = {
+  dominantColors: string[];
+  accentColors: string[];
+  dominantMaterials: string[];
+  avoidColors: string[];
+};
+
+const conceptImagePaletteSchema = z.object({
+  dominantColors: z.array(z.string()).default([]),
+  accentColors: z.array(z.string()).default([]),
+  dominantMaterials: z.array(z.string()).default([]),
+  avoidColors: z.array(z.string()).default([])
+});
+
+export function parseConceptImagePalette(value: unknown): ConceptImagePalette | null {
+  const parsed = conceptImagePaletteSchema.safeParse(value);
+  if (!parsed.success || parsed.data.dominantColors.length === 0) {
+    return null;
+  }
+  return parsed.data;
+}
+
+// Serializes an extracted concept-image palette into matching text. Avoid
+// colors are intentionally NOT included here (they would count as token
+// matches); they flow through the structured avoidColorTags request field.
+export function conceptPaletteMatchingText(palette: ConceptImagePalette) {
+  const parts: string[] = [];
+  if (palette.dominantColors.length > 0) {
+    parts.push(`Concept palette dominant colors: ${palette.dominantColors.join(", ")}.`);
+  }
+  if (palette.accentColors.length > 0) {
+    parts.push(`Concept palette accent colors: ${palette.accentColors.join(", ")}.`);
+  }
+  if (palette.dominantMaterials.length > 0) {
+    parts.push(`Concept palette materials: ${palette.dominantMaterials.join(", ")}.`);
+  }
+  return parts.length > 0 ? parts.join(" ") : null;
+}
+
 function scoreCandidate(
   candidate: ProductMatchCandidate,
   conceptTokens: Set<string>,
   preferredCategories: string[],
-  request: ProductMatchRequest
+  request: ProductMatchRequest,
+  recentlyUsedIds?: Set<string>
 ): RankedProductMatch {
   let score = 0;
   const reasons: string[] = [];
   const warnings: string[] = [];
+
+  if (recentlyUsedIds?.has(candidate.id)) {
+    score -= RECENTLY_USED_PRODUCT_PENALTY;
+    warnings.push("Already used in another of your rooms; fresh alternatives are ranked first.");
+  }
+
+  const avoidColorHits = avoidColorMatches(candidate, request.avoidColorTags);
+  if (avoidColorHits.length > 0) {
+    score -= AVOID_COLOR_PENALTY;
+    warnings.push(`Color (${avoidColorHits.join(", ")}) sits outside the concept palette.`);
+  }
 
   if (candidate.categoryNormalized && preferredCategories.includes(candidate.categoryNormalized)) {
     score += 28;
@@ -1299,7 +1389,9 @@ export function buildRoleScopedCandidatePools({
   candidates,
   budgetMaxAed = null,
   roomMeasurements = null,
-  candidatesPerRole = 12
+  candidatesPerRole = 12,
+  recentlyUsedProductIds,
+  avoidColorTags
 }: {
   roomType: string;
   conceptText: string;
@@ -1308,13 +1400,17 @@ export function buildRoleScopedCandidatePools({
   budgetMaxAed?: number | null;
   roomMeasurements?: ProductMatchRequest["roomMeasurements"];
   candidatesPerRole?: number;
+  recentlyUsedProductIds?: string[];
+  avoidColorTags?: string[];
 }): RoleScopedRetrievalResult {
   const parsed = productMatchRequestSchema.parse({
     roomType,
     conceptText,
     budgetMaxAed,
     roomMeasurements,
-    candidates
+    candidates,
+    recentlyUsedProductIds,
+    avoidColorTags
   });
   const scopedRoles = roles ?? defaultRoleSpecsForRoom(parsed.roomType);
   const preferredCategories = categoriesForRoom(parsed.roomType);
@@ -1343,7 +1439,9 @@ export function buildProductSourcingRuntimePlan({
   budgetMaxAed = null,
   roomMeasurements = null,
   candidatesPerRole = 8,
-  flatCandidateLimit = 36
+  flatCandidateLimit = 36,
+  recentlyUsedProductIds,
+  avoidColorTags
 }: {
   engineEnabled: boolean;
   roomType: string;
@@ -1354,6 +1452,8 @@ export function buildProductSourcingRuntimePlan({
   roomMeasurements?: ProductMatchRequest["roomMeasurements"];
   candidatesPerRole?: number;
   flatCandidateLimit?: number;
+  recentlyUsedProductIds?: string[];
+  avoidColorTags?: string[];
 }): ProductSourcingRuntimePlan {
   if (engineEnabled) {
     const roleScopedPools = buildRoleScopedCandidatePools({
@@ -1363,7 +1463,9 @@ export function buildProductSourcingRuntimePlan({
       candidates,
       budgetMaxAed,
       roomMeasurements,
-      candidatesPerRole
+      candidatesPerRole,
+      recentlyUsedProductIds,
+      avoidColorTags
     }).pools;
 
     return {
@@ -1378,7 +1480,9 @@ export function buildProductSourcingRuntimePlan({
     conceptText,
     budgetMaxAed,
     roomMeasurements,
-    candidates
+    candidates,
+    recentlyUsedProductIds,
+    avoidColorTags
   });
 
   return {
@@ -1458,6 +1562,7 @@ function buildRolePool({
 }): RoleScopedCandidatePool {
   const scored: ScoredRoleCandidate[] = [];
   const rejectionReasons: Record<string, number> = {};
+  const recentlyUsedIds = new Set(request.recentlyUsedProductIds ?? []);
 
   for (const candidate of request.candidates) {
     const rejectionReason = roleGateRejectionReason(candidate, role, request);
@@ -1466,7 +1571,13 @@ function buildRolePool({
       continue;
     }
 
-    const baseMatch = scoreCandidate(candidate, tokensFor(`${request.roomType} ${request.conceptText}`), preferredCategories, request);
+    const baseMatch = scoreCandidate(
+      candidate,
+      tokensFor(`${request.roomType} ${request.conceptText}`),
+      preferredCategories,
+      request,
+      recentlyUsedIds
+    );
     const fit = scoreProductCandidateForRole({ candidate, role, conceptText: request.conceptText });
     const aestheticFit = assessAestheticFitForRole({
       candidate,

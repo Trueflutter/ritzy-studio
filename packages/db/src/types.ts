@@ -169,6 +169,7 @@ export type Database = {
           design_brief_id: string
           generation_job_id: string | null
           id: string
+          palette_json: Json | null
           parent_concept_id: string | null
           primary_image_asset_id: string | null
           room_id: string
@@ -182,6 +183,7 @@ export type Database = {
           design_brief_id: string
           generation_job_id?: string | null
           id?: string
+          palette_json?: Json | null
           parent_concept_id?: string | null
           primary_image_asset_id?: string | null
           room_id: string
@@ -195,6 +197,7 @@ export type Database = {
           design_brief_id?: string
           generation_job_id?: string | null
           id?: string
+          palette_json?: Json | null
           parent_concept_id?: string | null
           primary_image_asset_id?: string | null
           room_id?: string
@@ -844,6 +847,7 @@ export type Database = {
       room_assets: {
         Row: {
           asset_type: Database["public"]["Enums"]["asset_type"]
+          concept_id: string | null
           created_at: string
           height_px: number | null
           id: string
@@ -851,10 +855,12 @@ export type Database = {
           mime_type: string
           room_id: string
           storage_path: string
+          view_key: string | null
           width_px: number | null
         }
         Insert: {
           asset_type: Database["public"]["Enums"]["asset_type"]
+          concept_id?: string | null
           created_at?: string
           height_px?: number | null
           id?: string
@@ -862,10 +868,12 @@ export type Database = {
           mime_type: string
           room_id: string
           storage_path: string
+          view_key?: string | null
           width_px?: number | null
         }
         Update: {
           asset_type?: Database["public"]["Enums"]["asset_type"]
+          concept_id?: string | null
           created_at?: string
           height_px?: number | null
           id?: string
@@ -873,9 +881,17 @@ export type Database = {
           mime_type?: string
           room_id?: string
           storage_path?: string
+          view_key?: string | null
           width_px?: number | null
         }
         Relationships: [
+          {
+            foreignKeyName: "room_assets_concept_id_fkey"
+            columns: ["concept_id"]
+            isOneToOne: false
+            referencedRelation: "concepts"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "room_assets_room_id_fkey"
             columns: ["room_id"]

@@ -1,0 +1,69 @@
+{
+  "generatedAt": "2026-05-21T10:17:29.204Z",
+  "runs": [
+    {
+      "scenario": "living-concept",
+      "provider": "vertex-gemini",
+      "model": "gemini-3.1-flash-image-preview",
+      "location": "global",
+      "promptVersion": "enhanced-ritzy-styling-2026-05-21",
+      "promptPath": "docs/Research/image-model-bakeoff/prompts/living-room-concept-enhanced-ritzy-styling.md",
+      "inputReferences": [
+        "docs/Research/image-model-bakeoff/inputs/source-room.png"
+      ],
+      "outputPath": "docs/Research/image-model-bakeoff/outputs/ayo-review/gemini-3.1-flash-image-preview--living-concept--enhanced-ritzy-styling--16.56s.png",
+      "startTime": "2026-05-21T10:05:00.949Z",
+      "endTime": "2026-05-21T10:05:17.512Z",
+      "latencySeconds": 16.56
+    },
+    {
+      "scenario": "living-final-grounded",
+      "provider": "vertex-gemini",
+      "model": "gemini-3.1-flash-image-preview",
+      "location": "global",
+      "promptVersion": "enhanced-ritzy-styling-2026-05-21",
+      "promptPath": "docs/Research/image-model-bakeoff/prompts/final-grounded-render-enhanced-ritzy-styling.md",
+      "inputReferences": [
+        "docs/Research/image-model-bakeoff/inputs/source-room.png",
+        "docs/Research/image-model-bakeoff/outputs/ayo-review/gemini-3.1-flash-image-preview--living-concept--enhanced-ritzy-styling--16.56s.png",
+        "docs/Research/image-model-bakeoff/inputs/product-reference-contact-sheet.jpg"
+      ],
+      "outputPath": "docs/Research/image-model-bakeoff/outputs/ayo-review/gemini-3.1-flash-image-preview--living-final-grounded--enhanced-ritzy-styling--18.67s.png",
+      "startTime": "2026-05-21T10:05:17.993Z",
+      "endTime": "2026-05-21T10:05:36.660Z",
+      "latencySeconds": 18.67
+    },
+    {
+      "scenario": "living-concept",
+      "provider": "openai",
+      "model": "gpt-image-2",
+      "location": "n/a",
+      "promptVersion": "enhanced-ritzy-styling-2026-05-21",
+      "promptPath": "docs/Research/image-model-bakeoff/prompts/living-room-concept-enhanced-ritzy-styling.md",
+      "inputReferences": [
+        "docs/Research/image-model-bakeoff/inputs/source-room.png"
+      ],
+      "outputPath": "docs/Research/image-model-bakeoff/outputs/ayo-review/openai-gpt-image-2--living-concept--enhanced-ritzy-styling--142.98s.png",
+      "startTime": "2026-05-21T10:12:53.535Z",
+      "endTime": "2026-05-21T10:15:16.514Z",
+      "latencySeconds": 142.98
+    },
+    {
+      "scenario": "living-final-grounded",
+      "provider": "openai",
+      "model": "gpt-image-2",
+      "location": "n/a",
+      "promptVersion": "enhanced-ritzy-styling-2026-05-21",
+      "promptPath": "docs/Research/image-model-bakeoff/prompts/final-grounded-render-enhanced-ritzy-styling.md",
+      "inputReferences": [
+        "docs/Research/image-model-bakeoff/inputs/source-room.png",
+        "docs/Research/image-model-bakeoff/outputs/ayo-review/openai-gpt-image-2--living-concept--enhanced-ritzy-styling--142.98s.png",
+        "docs/Research/image-model-bakeoff/inputs/product-reference-contact-sheet.jpg"
+      ],
+      "outputPath": "docs/Research/image-model-bakeoff/outputs/ayo-review/openai-gpt-image-2--living-final-grounded--enhanced-ritzy-styling--132.68s.png",
+      "startTime": "2026-05-21T10:15:16.519Z",
+      "endTime": "2026-05-21T10:17:29.196Z",
+      "latencySeconds": 132.68
+    }
+  ]
+}

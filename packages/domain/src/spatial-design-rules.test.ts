@@ -6,9 +6,45 @@ import {
   evaluateHardCheckableSpatialRules,
   evaluateSpatialRule,
   hardCheckableSpatialRuleIds,
+  parseSpatialIntent,
   spatialDesignRules,
+  spatialLayoutModeForRoomType,
   type SpatialRoomFacts
 } from "./spatial-design-rules";
+
+assert.equal(spatialLayoutModeForRoomType("Living & Dining"), "living_plus_dining");
+assert.equal(spatialLayoutModeForRoomType("Living Room"), "living_only");
+assert.equal(spatialLayoutModeForRoomType("Dining Room"), "dining_only");
+assert.equal(spatialLayoutModeForRoomType("Bedroom"), "bedroom");
+assert.equal(spatialLayoutModeForRoomType("Home Office"), "home_office");
+
+const capturedIntent = parseSpatialIntent(
+  {
+    spatialIntent: {
+      focalPoint: "view_window",
+      seatingPriority: "conversation",
+      diningSeatCount: 8,
+      mustKeepClear: "balcony door"
+    }
+  },
+  "Living & Dining"
+);
+assert.equal(capturedIntent.layoutMode, "living_plus_dining");
+assert.equal(capturedIntent.focalPoint, "view_window");
+assert.equal(capturedIntent.focalPointConfidence, "user_selected");
+assert.equal(capturedIntent.diningSeatCount, 8);
+assert.deepEqual(capturedIntent.mustKeepClear, ["balcony door"]);
+assert.equal(capturedIntent.assumptions?.length, 0);
+
+const assumedIntent = parseSpatialIntent({}, "Living Room");
+assert.equal(assumedIntent.layoutMode, "living_only");
+assert.equal(assumedIntent.focalPoint, "unknown");
+assert.equal(assumedIntent.focalPointConfidence, "assumed");
+assert.ok((assumedIntent.assumptions ?? []).some((entry) => entry.includes("TV/media wall")));
+
+const combinedAssumed = parseSpatialIntent({ spatialIntent: { focalPoint: "not_a_value" } }, "Living & Dining");
+assert.equal(combinedAssumed.focalPoint, "unknown");
+assert.ok((combinedAssumed.assumptions ?? []).some((entry) => entry.includes("six")));
 
 assert.deepEqual(
   [...hardCheckableSpatialRuleIds].sort(),

@@ -1,0 +1,905 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Ritzy Studio x Home Centre UAE Partner Meeting Pack</title>
+    <style>
+      :root {
+        --ink: #1e2423;
+        --muted: #66716e;
+        --line: #d9dfdc;
+        --paper: #fbfaf7;
+        --panel: #ffffff;
+        --soft: #eef3f1;
+        --teal: #2f7b82;
+        --teal-dark: #205e64;
+        --gold: #b8873b;
+        --danger: #9b3a2f;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        color: var(--ink);
+        background: var(--paper);
+        font-family:
+          Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+          "Segoe UI", sans-serif;
+        line-height: 1.55;
+      }
+
+      a {
+        color: var(--teal-dark);
+        text-decoration-thickness: 1px;
+        text-underline-offset: 3px;
+      }
+
+      .shell {
+        max-width: 1180px;
+        margin: 0 auto;
+        padding: 40px 28px 72px;
+      }
+
+      .hero {
+        border-bottom: 1px solid var(--line);
+        padding: 34px 0 30px;
+      }
+
+      .eyebrow {
+        color: var(--teal-dark);
+        font-size: 13px;
+        font-weight: 750;
+        letter-spacing: 0;
+        text-transform: uppercase;
+      }
+
+      h1 {
+        max-width: 920px;
+        margin: 14px 0 18px;
+        font-size: clamp(38px, 5vw, 68px);
+        line-height: 0.98;
+        letter-spacing: 0;
+      }
+
+      .hero p {
+        max-width: 840px;
+        margin: 0;
+        color: var(--muted);
+        font-size: 20px;
+      }
+
+      .meta {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 1px;
+        margin-top: 28px;
+        border: 1px solid var(--line);
+        background: var(--line);
+      }
+
+      .meta div {
+        min-height: 84px;
+        padding: 16px;
+        background: var(--panel);
+      }
+
+      .label {
+        display: block;
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 700;
+        text-transform: uppercase;
+      }
+
+      .value {
+        display: block;
+        margin-top: 8px;
+        font-weight: 720;
+      }
+
+      section {
+        padding: 38px 0;
+        border-bottom: 1px solid var(--line);
+      }
+
+      h2 {
+        margin: 0 0 18px;
+        font-size: 30px;
+        line-height: 1.08;
+        letter-spacing: 0;
+      }
+
+      h3 {
+        margin: 28px 0 10px;
+        font-size: 20px;
+        line-height: 1.2;
+      }
+
+      p {
+        margin: 0 0 14px;
+      }
+
+      ul,
+      ol {
+        margin: 12px 0 0;
+        padding-left: 22px;
+      }
+
+      li {
+        margin: 7px 0;
+      }
+
+      .grid-2 {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 20px;
+      }
+
+      .grid-3 {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 18px;
+      }
+
+      .panel {
+        padding: 22px;
+        border: 1px solid var(--line);
+        background: var(--panel);
+        border-radius: 8px;
+      }
+
+      .panel h3:first-child {
+        margin-top: 0;
+      }
+
+      .callout {
+        padding: 22px;
+        border-left: 4px solid var(--teal);
+        background: var(--soft);
+      }
+
+      .ask {
+        border-color: rgba(184, 135, 59, 0.35);
+        background: #fff8eb;
+      }
+
+      .danger {
+        border-left-color: var(--danger);
+        background: #fff3f1;
+      }
+
+      .pill-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 14px;
+      }
+
+      .pill {
+        display: inline-flex;
+        align-items: center;
+        min-height: 30px;
+        padding: 6px 10px;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        background: #fff;
+        color: var(--muted);
+        font-size: 13px;
+        font-weight: 650;
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 18px;
+        background: var(--panel);
+        font-size: 14px;
+      }
+
+      th,
+      td {
+        padding: 13px 12px;
+        border: 1px solid var(--line);
+        text-align: left;
+        vertical-align: top;
+      }
+
+      th {
+        background: var(--soft);
+        font-size: 12px;
+        text-transform: uppercase;
+      }
+
+      .email {
+        white-space: pre-wrap;
+        padding: 26px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #fff;
+        font-family: Georgia, "Times New Roman", serif;
+        font-size: 17px;
+        line-height: 1.62;
+      }
+
+      .flow {
+        counter-reset: step;
+        display: grid;
+        gap: 12px;
+      }
+
+      .step {
+        position: relative;
+        padding: 18px 18px 18px 58px;
+        border: 1px solid var(--line);
+        background: var(--panel);
+        border-radius: 8px;
+      }
+
+      .step::before {
+        counter-increment: step;
+        content: counter(step);
+        position: absolute;
+        top: 18px;
+        left: 18px;
+        display: grid;
+        place-items: center;
+        width: 26px;
+        height: 26px;
+        border-radius: 50%;
+        background: var(--teal);
+        color: #fff;
+        font-size: 13px;
+        font-weight: 800;
+      }
+
+      code {
+        padding: 2px 5px;
+        border: 1px solid var(--line);
+        border-radius: 5px;
+        background: #fff;
+        font-size: 0.92em;
+      }
+
+      .small {
+        color: var(--muted);
+        font-size: 14px;
+      }
+
+      @media (max-width: 820px) {
+        .shell {
+          padding: 24px 16px 56px;
+        }
+
+        .meta,
+        .grid-2,
+        .grid-3 {
+          grid-template-columns: 1fr;
+        }
+
+        table {
+          display: block;
+          overflow-x: auto;
+          white-space: nowrap;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="shell">
+      <header class="hero">
+        <div class="eyebrow">Ritzy Studio partner meeting pack</div>
+        <h1>Home Centre UAE retail integration recommendation</h1>
+        <p>
+          A practical briefing for Sam: what we found on the live Home Centre
+          UAE site, what Ritzy should ask for commercially, what the technical
+          team needs to confirm, and how the in-app shopping flow should work
+          from single-retailer checkout to mixed-retailer rooms.
+        </p>
+
+        <div class="meta">
+          <div>
+            <span class="label">Retailer</span>
+            <span class="value">Home Centre / Homecentre UAE</span>
+          </div>
+          <div>
+            <span class="label">Region</span>
+            <span class="value">UAE / Dubai</span>
+          </div>
+          <div>
+            <span class="label">Prepared</span>
+            <span class="value">21 May 2026</span>
+          </div>
+          <div>
+            <span class="label">Primary goal</span>
+            <span class="value">Retailer-hosted checkout with attribution</span>
+          </div>
+        </div>
+      </header>
+
+      <section>
+        <h2>Recommendation in One Page</h2>
+        <div class="grid-2">
+          <div class="panel">
+            <h3>What Ritzy should propose</h3>
+            <p>
+              Ritzy will send high-intent, room-level furniture shoppers into
+              Home Centre. Ritzy intends to invest up to <strong>AED 50,000 per
+              month</strong> in advertising to generate this demand.
+            </p>
+            <p>
+              The commercial ask is a simple partner structure:
+              <strong>5% customer discount</strong> plus
+              <strong>5% commission to Ritzy</strong> on attributed completed
+              orders, subject to agreed return/cancellation treatment.
+            </p>
+          </div>
+
+          <div class="panel ask">
+            <h3>The preferred V1</h3>
+            <p>
+              Phase 0 should check whether Home Centre can reactivate or extend
+              its existing DCMnetwork affiliate route for Ritzy. The strongest
+              V1 still remains: Home Centre hosts the cart and checkout. Ritzy sends SKU,
+              quantity, partner/campaign ID, and optional promo eligibility.
+              Home Centre validates stock/pricing and returns a cart or checkout
+              URL. The customer completes purchase on Home Centre.
+            </p>
+            <p>
+              If Home Centre cannot support an API yet, launch with tracked
+              product links and a campaign-specific promo code while order
+              reporting is arranged.
+            </p>
+          </div>
+        </div>
+
+        <div class="pill-row">
+          <span class="pill">No payment data handled by Ritzy</span>
+          <span class="pill">No Home Centre passwords collected</span>
+          <span class="pill">Retailer owns checkout</span>
+          <span class="pill">Retailer owns stock truth</span>
+          <span class="pill">Partner code can be hidden or rotated</span>
+        </div>
+      </section>
+
+      <section>
+        <h2>Findings From Live Site Review</h2>
+        <div class="grid-2">
+          <div class="panel">
+            <h3>Confirmed</h3>
+            <ul>
+              <li>Product pages can be deep-linked directly.</li>
+              <li>Product IDs are visible in URLs, e.g. <code>166839119</code>.</li>
+              <li>SKU-like identifiers are present in page state.</li>
+              <li>Users can add products to basket before signing in.</li>
+              <li>Anonymous basket persists through the current browser session.</li>
+              <li>Checkout first routes to sign-in, but offers <strong>Checkout As A Guest</strong>.</li>
+              <li>Cart and guest checkout both include <strong>Promos &amp; Vouchers</strong>.</li>
+              <li>Checkout remains fully hosted by Home Centre.</li>
+            </ul>
+          </div>
+
+          <div class="panel">
+            <h3>Not confirmed publicly</h3>
+            <ul>
+              <li>Whether Home Centre supports public add-to-cart URLs.</li>
+              <li>Whether promo codes can be automatically applied from URL parameters.</li>
+              <li>Whether partner metadata can be stored on a cart/order today.</li>
+              <li>How long anonymous carts persist after browser close.</li>
+              <li>Whether anonymous carts merge into accounts after later sign-in.</li>
+              <li>Whether Home Centre has an existing public partner API.</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="callout">
+          <strong>Important technical nuance:</strong> public JavaScript assets
+          show internal cart, checkout, offer-code, SKU, inventory, and delivery
+          estimate API routes. That means the capability likely exists inside
+          Home Centre's stack. Ritzy should not use or imply it will use those
+          internal APIs without an approved partner endpoint, signed link, or
+          formal integration agreement.
+        </div>
+      </section>
+
+      <section>
+        <h2>Existing Partner Programs Found</h2>
+        <div class="callout ask">
+          <strong>Updated recommendation:</strong> do not assume Home Centre
+          needs a completely custom commercial route. There is documented
+          evidence that Home Centre has used an affiliate network route before.
+          Sam should ask whether that program can be reactivated or whether
+          Ritzy should be set up as a direct strategic partner outside the
+          standard affiliate channel.
+        </div>
+
+        <div class="grid-2">
+          <div class="panel">
+            <h3>Home Centre: DCMnetwork affiliate listing</h3>
+            <p>
+              DCMnetwork lists a <strong>Home Centre Affiliate Program</strong>
+              covering UAE, Bahrain, and Saudi Arabia. The page says affiliates
+              can get tracking links, create deep links, request exclusive coupon
+              codes, and view conversion reports.
+            </p>
+            <p>
+              The key limitation: the listed campaign status is
+              <strong>Paused</strong>, and commission details require publisher
+              registration. The listing also says sales are tracked from coupon
+              attribution and that coupon codes are best for promoting the
+              offer.
+            </p>
+            <p class="small">
+              Source:
+              <a href="https://www.dcmnetwork.com/affiliate-marketing/home-centre-affiliate-program/">DCMnetwork Home Centre Affiliate Program</a>
+            </p>
+          </div>
+
+          <div class="panel">
+            <h3>Home Centre: seller/B2B routes</h3>
+            <p>
+              Home Centre also has a public <strong>Sell With Us</strong> route.
+              That appears to be for brands and suppliers who want to sell
+              products through Home Centre's ecosystem, not for a demand
+              partner sending traffic into Home Centre.
+            </p>
+            <p>
+              The site navigation also exposes B2B and Interior Design Services,
+              which are relevant relationship doors, but they are not the same
+              as affiliate tracking, partner checkout, or commission-based
+              traffic attribution.
+            </p>
+            <p class="small">
+              Source:
+              <a href="https://www.homecentre.com/ae/en/s/sell-with-homecentre">Home Centre Sell With Us</a>
+            </p>
+          </div>
+        </div>
+
+        <h3>What Sam should ask now</h3>
+        <ul>
+          <li>Is the Home Centre DCMnetwork affiliate campaign still paused?</li>
+          <li>If paused, can it be reactivated for Ritzy or handled as a direct private campaign?</li>
+          <li>Can Ritzy get a private coupon code and deep-link tracking through DCMnetwork immediately?</li>
+          <li>Can the standard affiliate setup support the 5% customer discount plus 5% Ritzy commission?</li>
+          <li>Can DCMnetwork reporting expose SKU-level order data, returns, cancellations, and campaign IDs?</li>
+          <li>If DCM cannot expose SKU/project metadata, can Home Centre provide supplemental direct reporting?</li>
+          <li>Can this start as affiliate/deep-link tracking and graduate into hosted cart/session API integration?</li>
+        </ul>
+
+        <table>
+          <thead>
+            <tr>
+              <th>Retailer</th>
+              <th>Existing route found</th>
+              <th>Status / evidence</th>
+              <th>Relevance to Ritzy</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Home Centre UAE</td>
+              <td>DCMnetwork affiliate program</td>
+              <td>Listed, UAE/Bahrain/Saudi coverage, campaign marked paused, coupon attribution, CPA.</td>
+              <td>Best immediate commercial route to ask about. Needs reactivation/private campaign confirmation.</td>
+            </tr>
+            <tr>
+              <td>Home Box</td>
+              <td>DCMnetwork affiliate program</td>
+              <td>Listed, UAE/Bahrain/Saudi coverage, campaign marked paused, coupon attribution, CPA.</td>
+              <td>Strong second Landmark Group target if Home Centre route works.</td>
+            </tr>
+            <tr>
+              <td>Danube Home</td>
+              <td>DCMnetwork affiliate program</td>
+              <td>Listed, UAE/Oman/Bahrain coverage, campaign marked paused, link attribution, CPS, deep links.</td>
+              <td>Good alternative retailer for traffic/referral model; confirm reactivation and commission.</td>
+            </tr>
+            <tr>
+              <td>West Elm UAE</td>
+              <td>Affiliate listings via LinkMyDeals/Sovrn; global West Elm also appears on affiliate networks.</td>
+              <td>UAE listing claims Sovrn availability and tiered CPA, but should be verified in the network panel.</td>
+              <td>Potential higher-end partner. Treat aggregator claims as lead, not final terms.</td>
+            </tr>
+            <tr>
+              <td>Pottery Barn UAE</td>
+              <td>DCMnetwork affiliate program</td>
+              <td>Listed for UAE/Saudi/Kuwait; campaign marked active; coupon attribution; commission requires registration.</td>
+              <td>Relevant premium furnishing benchmark if Ritzy wants higher AOV retailers.</td>
+            </tr>
+            <tr>
+              <td>THE One UAE</td>
+              <td>Interior Designer Programme</td>
+              <td>Official programme for designers with privileges/incentives; requires trade/license-style details.</td>
+              <td>More like trade/designer purchasing than traffic affiliate. Useful for a designer-partner lane.</td>
+            </tr>
+            <tr>
+              <td>IKEA UAE</td>
+              <td>IKEA for Business / interior design service</td>
+              <td>Official business network and design services; no UAE affiliate route found in this check.</td>
+              <td>Good B2B/trade conversation, but not a clear commission/referral channel in UAE.</td>
+            </tr>
+            <tr>
+              <td>Homes r Us / Pan Emirates / Marina Home</td>
+              <td>No strong official traffic-affiliate route found in this pass.</td>
+              <td>Some weak third-party or unrelated listings surfaced, but not enough to treat as confirmed.</td>
+              <td>Approach directly after Home Centre/Danube/Home Box unless stronger network listings are confirmed.</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <p class="small">
+          Additional sources checked:
+          <a href="https://www.dcmnetwork.com/?p=13768">DCMnetwork Home Box Affiliate Program</a>,
+          <a href="https://www.dcmnetwork.com/affiliate-marketing/danube-home-affiliate-program/">DCMnetwork Danube Home Affiliate Program</a>,
+          <a href="https://www.dcmnetwork.com/affiliate-marketing/pottery-barn-affiliate-program/">DCMnetwork Pottery Barn Affiliate Program</a>,
+          <a href="https://www.theone.com/designerone">THE One Interior Designer Programme</a>,
+          <a href="https://business.ikea.ae/">IKEA UAE Business</a>,
+          and
+          <a href="https://www.ikea.com/ae/en/ikea-business/">IKEA UAE for Business</a>.
+        </p>
+      </section>
+
+      <section>
+        <h2>Commercial Ask</h2>
+        <div class="grid-3">
+          <div class="panel">
+            <h3>Traffic commitment</h3>
+            <p>
+              Ritzy can position this as a demand-generation partnership:
+              up to <strong>AED 50,000/month</strong> in paid advertising to
+              send qualified UAE homeowners and designers to Home Centre
+              products.
+            </p>
+          </div>
+
+          <div class="panel">
+            <h3>Customer offer</h3>
+            <p>
+              Request a <strong>5% customer discount</strong> on eligible
+              products or selected categories, ideally applied automatically or
+              via a campaign-specific code.
+            </p>
+          </div>
+
+          <div class="panel">
+            <h3>Ritzy economics</h3>
+            <p>
+              Request a <strong>5% commission</strong> to Ritzy on attributed
+              completed orders, with clear rules for returns, cancellations,
+              taxes, delivery charges, and partial refunds.
+            </p>
+          </div>
+        </div>
+
+        <h3>Commercial details Sam should confirm</h3>
+        <ul>
+          <li>Does the 5% customer discount apply to all products, selected categories, or a curated SKU set?</li>
+          <li>Does the discount stack with current sale prices?</li>
+          <li>Is the code public, hidden, single-use, multi-use, session-bound, or customer-bound?</li>
+          <li>Can Home Centre create campaign-specific codes for Ritzy?</li>
+          <li>What is the attribution window: same session, 7 days, 14 days, 30 days?</li>
+          <li>Is Ritzy paid on gross order value, net sales, or net of returns/cancellations?</li>
+          <li>Can Ritzy advertise "partner pricing" or only "retailer links"?</li>
+          <li>Can Ritzy use Home Centre product images, brand name, and logo inside the app?</li>
+          <li>What reporting fields will Home Centre provide, and at what cadence?</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>Email Template to Send Ahead</h2>
+        <div class="email">Subject: Ritzy Studio x Home Centre UAE - partner traffic and checkout integration discussion
+
+Hi [Name],
+
+Thank you again for taking the time to speak with us.
+
+Ritzy Studio is building an interior-design commerce experience for UAE homeowners and designers. A user creates a room concept, selects real furniture and decor products, sees the final room render, and then unlocks a shopping list they can purchase from retail partners.
+
+We would like Home Centre to be one of our first preferred retail partners.
+
+The opportunity is simple: Ritzy can send high-intent, room-level furniture demand into Home Centre. We intend to invest up to AED 50,000 per month in advertising to acquire these customers and guide them toward shoppable room designs.
+
+Our proposed commercial ask is:
+
+5% discount for the customer on attributed Home Centre purchases.
+
+5% commission to Ritzy on attributed completed orders.
+
+We are flexible on whether this applies to all products, selected categories, or an approved curated SKU set. We would also like to understand whether the discount can stack with sale items, how returns and cancellations are treated, and what attribution window/reporting cadence would be possible.
+
+From a technical and risk perspective, we want to keep the flow safe for Home Centre.
+
+Ritzy does not need to handle payment data, customer passwords, fulfillment, returns, cancellations, or customer service. Home Centre should remain the checkout owner, payment processor, merchant, and source of truth for stock and pricing.
+
+The ideal V1 would be either:
+
+1. Partner-tracked product links with a Home Centre campaign code, or
+
+2. A Home Centre-hosted cart/checkout link where Ritzy sends SKU, quantity, partner/campaign ID, and optional promo eligibility, and Home Centre returns a hosted cart or checkout URL.
+
+If your team supports hosted checkout/cart session creation by API, that would create the best customer experience while keeping all payment and order handling inside Home Centre. If not, we can begin with tracked product links and a campaign-specific promo code while we explore a deeper integration.
+
+Ahead of the meeting, it would be helpful to understand:
+
+Do you support adding SKUs to cart via a partner link?
+
+Do you support pre-applied promo codes or hidden partner codes?
+
+Can you create a hosted cart/checkout URL from SKU + quantity + campaign ID?
+
+Can you provide a product feed with SKU, title, price, sale price, stock, dimensions, colour, material, image URL, product URL, and category?
+
+Can order reports include partner/campaign ID and, ideally, Ritzy room/project metadata?
+
+Looking forward to discussing what is easiest and safest for your team.
+
+Best,
+
+Sam</div>
+      </section>
+
+      <section>
+        <h2>Technical Ask and Safety Reassurance</h2>
+        <div class="grid-2">
+          <div class="panel">
+            <h3>What Ritzy needs technically</h3>
+            <ul>
+              <li>Confirmed product identifier to store: SKU, variant SKU, parent SKU, or internal product ID.</li>
+              <li>Product feed with URL, title, images, price, sale price, stock, dimensions, colour, material, category, and delivery/assembly flags.</li>
+              <li>Inventory/price refresh mechanism: API, SFTP, feed, or scheduled export.</li>
+              <li>Partner tracking method: UTM, affiliate link, campaign ID, partner ID, or signed token.</li>
+              <li>Discount application method: manual code, URL auto-apply, hidden server-side code, or partner entitlement.</li>
+              <li>Order reporting by partner/campaign ID, ideally including SKU-level line items.</li>
+            </ul>
+          </div>
+
+          <div class="panel">
+            <h3>Why this is safe for Home Centre</h3>
+            <ul>
+              <li>Home Centre owns checkout and payment.</li>
+              <li>Ritzy never stores card numbers or payment credentials.</li>
+              <li>Ritzy never asks for Home Centre account passwords.</li>
+              <li>Home Centre validates stock, price, delivery eligibility, and fulfillment rules.</li>
+              <li>Home Centre can cap, expire, rotate, or revoke partner codes.</li>
+              <li>Home Centre can restrict discounts by SKU, category, geography, user, or campaign.</li>
+              <li>Home Centre can reject unavailable items before checkout starts.</li>
+            </ul>
+          </div>
+        </div>
+
+        <h3>Checklist for Home Centre product/engineering</h3>
+        <table>
+          <thead>
+            <tr>
+              <th>Question</th>
+              <th>Why it matters</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Do you support cart creation links?</td>
+              <td>Lets Ritzy send a user directly to a prepared cart instead of only a PDP.</td>
+            </tr>
+            <tr>
+              <td>Do you support adding SKUs to cart via URL?</td>
+              <td>Lowest-effort cart-prefill option if an API is not available.</td>
+            </tr>
+            <tr>
+              <td>Do you support pre-applied promo codes via URL?</td>
+              <td>Improves UX and avoids manual code copying.</td>
+            </tr>
+            <tr>
+              <td>Can a partner code be applied invisibly server-side?</td>
+              <td>Lets Home Centre hide, rotate, and control discount mechanics.</td>
+            </tr>
+            <tr>
+              <td>Can you create a hosted checkout/cart session by API?</td>
+              <td>Best V1 experience: Ritzy sends SKU/qty; Home Centre returns URL.</td>
+            </tr>
+            <tr>
+              <td>Can you attach partner ID, campaign ID, and Ritzy project/room ID?</td>
+              <td>Enables attribution, reporting, and order reconciliation.</td>
+            </tr>
+            <tr>
+              <td>What authentication is required?</td>
+              <td>API key, OAuth, signed URL, HMAC, IP allowlist, rate limits, sandbox.</td>
+            </tr>
+            <tr>
+              <td>Can unavailable items be returned before checkout?</td>
+              <td>Prevents customers landing on broken or out-of-stock carts.</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section>
+        <h2>Suggested App Flow</h2>
+        <div class="flow">
+          <div class="step">
+            <strong>User finishes a room design.</strong>
+            Ritzy shows the final render and selected product list after the
+            shopping-list unlock.
+          </div>
+          <div class="step">
+            <strong>Ritzy groups products by retailer.</strong>
+            If all selected items are Home Centre, show one primary action:
+            <code>Checkout with Home Centre</code>.
+          </div>
+          <div class="step">
+            <strong>Ritzy creates the outbound purchase session.</strong>
+            In the ideal flow, Ritzy sends SKU, quantity, campaign ID, and room
+            metadata to Home Centre. Home Centre returns a hosted cart/checkout
+            URL.
+          </div>
+          <div class="step">
+            <strong>User lands on Home Centre.</strong>
+            The cart or checkout is prepared by Home Centre. The user completes
+            address, delivery, promo, payment, and order confirmation there.
+          </div>
+          <div class="step">
+            <strong>Ritzy logs attribution.</strong>
+            Ritzy records outbound click/session: project ID, room ID, products,
+            retailer, timestamp, campaign ID, and checkout URL type.
+          </div>
+          <div class="step">
+            <strong>Orders are reconciled later.</strong>
+            If Home Centre provides reports, Ritzy matches order IDs and SKU
+            line items back to campaign/project metadata.
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <h2>If a Room Mixes Retailers</h2>
+        <p>
+          Mixed-retailer rooms should not force one universal checkout in V1.
+          That would make Ritzy look like the merchant of record and create
+          avoidable payment, support, returns, inventory, and legal complexity.
+        </p>
+
+        <div class="grid-3">
+          <div class="panel">
+            <h3>V1: retailer groups</h3>
+            <p>
+              Show the shopping list grouped by retailer: Home Centre, IKEA,
+              Pan Emirates, etc. Each group has its own checkout button.
+            </p>
+            <p class="small">
+              Example: "Checkout 4 items with Home Centre" and "Shop 2 items at
+              IKEA."
+            </p>
+          </div>
+
+          <div class="panel">
+            <h3>V1.5: preferred retailer mode</h3>
+            <p>
+              Let users choose "prioritise Home Centre" so Ritzy biases product
+              matching toward one retailer and reduces fragmented checkouts.
+            </p>
+            <p class="small">
+              This is commercially useful if Home Centre gives better pricing,
+              commission, or feed quality.
+            </p>
+          </div>
+
+          <div class="panel">
+            <h3>Later: Ritzy orchestration</h3>
+            <p>
+              If multiple retailers provide checkout-session APIs, Ritzy can
+              create several hosted checkout sessions and present a step-by-step
+              purchase plan.
+            </p>
+            <p class="small">
+              Still no payment handling by Ritzy unless the business chooses a
+              marketplace model later.
+            </p>
+          </div>
+        </div>
+
+        <div class="callout danger">
+          <strong>Do not promise a universal multi-retailer cart for V1.</strong>
+          Promise retailer-hosted checkout sessions. If a design contains
+          multiple retailers, the honest V1 is multiple retailer checkout
+          buttons grouped cleanly in the shopping list.
+        </div>
+      </section>
+
+      <section>
+        <h2>Integration Options</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Option</th>
+              <th>Customer experience</th>
+              <th>Home Centre effort</th>
+              <th>Ritzy effort</th>
+              <th>Recommended stance</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>A. Tracked product links</td>
+              <td>User lands on product page and adds manually.</td>
+              <td>Low</td>
+              <td>Low</td>
+              <td>Good fallback if API is not available.</td>
+            </tr>
+            <tr>
+              <td>B. Partner promo code</td>
+              <td>User gets 5% off manually or automatically.</td>
+              <td>Low to medium</td>
+              <td>Low</td>
+              <td>Useful for V1 economics and reporting.</td>
+            </tr>
+            <tr>
+              <td>C. Cart prefill link</td>
+              <td>User lands in a prepared cart.</td>
+              <td>Medium</td>
+              <td>Medium</td>
+              <td>Strong if Home Centre already supports signed cart links.</td>
+            </tr>
+            <tr>
+              <td>D. Hosted checkout session API</td>
+              <td>User clicks once from Ritzy and checks out on Home Centre.</td>
+              <td>Medium to high</td>
+              <td>Medium</td>
+              <td>Best V1 partner-grade integration.</td>
+            </tr>
+            <tr>
+              <td>E. Full marketplace/order API</td>
+              <td>Ritzy would manage ordering directly.</td>
+              <td>Very high</td>
+              <td>Very high</td>
+              <td>Future only. Overkill for the first partnership.</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section>
+        <h2>Meeting Script</h2>
+        <div class="panel">
+          <p>
+            "We want to make this easy and safe for Home Centre. Ritzy is not
+            trying to replace your checkout or become the merchant. We are
+            generating design-led purchase intent and sending it to you."
+          </p>
+          <p>
+            "Commercially, we are prepared to invest up to AED 50,000 per month
+            in advertising. In return, we would like a 5% benefit for the
+            customer and a 5% commission to Ritzy on attributed completed
+            orders."
+          </p>
+          <p>
+            "Technically, the ideal experience is: Ritzy sends SKU and quantity
+            with a partner campaign ID, Home Centre validates stock and pricing,
+            applies any approved promo entitlement, and returns a hosted cart or
+            checkout URL. The customer then completes everything with Home
+            Centre."
+          </p>
+          <p>
+            "If that is too much for V1, we can begin with tracked product links
+            and a campaign-specific code, then move toward cart creation once
+            the partnership proves volume."
+          </p>
+        </div>
+      </section>
+
+      <section>
+        <h2>Bottom Line</h2>
+        <p>
+          Home Centre is a strong first target because its current customer
+          journey already supports the behaviors Ritzy needs: stable product
+          links, anonymous basket, guest checkout, voucher entry, SKU visibility,
+          and retailer-hosted payment. Ritzy should make the commercial ask
+          clearly, keep the technical ask safe, and avoid over-promising a
+          marketplace or universal cart before the partner infrastructure exists.
+        </p>
+      </section>
+    </main>
+  </body>
+</html>

@@ -53,6 +53,108 @@ export type SpatialIntent = {
   assumptions?: readonly string[];
 };
 
+// The layout mode is decided by the room type the user picked (Living & Dining
+// is a first-class room type); it is never asked twice.
+export function spatialLayoutModeForRoomType(roomType: string): SpatialLayoutMode {
+  const normalized = roomType
+    .trim()
+    .toLowerCase()
+    .replace(/&/g, " and ")
+    .replace(/[/_-]/g, " ")
+    .replace(/\s+/g, " ");
+
+  if (/\bliving\b/.test(normalized) && /\bdining\b/.test(normalized)) {
+    return "living_plus_dining";
+  }
+  if (normalized.includes("living") || normalized.includes("lounge") || normalized.includes("family")) {
+    return "living_only";
+  }
+  if (normalized.includes("dining")) {
+    return "dining_only";
+  }
+  if (normalized.includes("bed")) {
+    return "bedroom";
+  }
+  if (normalized.includes("office") || normalized.includes("study")) {
+    return "home_office";
+  }
+  return "unknown";
+}
+
+const spatialFocalPointValues: readonly SpatialFocalPoint[] = [
+  "tv_media_wall",
+  "view_window",
+  "fireplace",
+  "art_display_wall",
+  "conversation",
+  "bed_wall",
+  "workstation",
+  "unknown"
+];
+
+const spatialSeatingPriorityValues: readonly SpatialSeatingPriority[] = [
+  "tv_viewing",
+  "conversation",
+  "family_lounging",
+  "formal_hosting",
+  "majlis_hosting",
+  "mixed",
+  "unknown"
+];
+
+// Reads the structured spatial intent captured by the brief out of
+// design_briefs.structured_json. Tolerant of missing/legacy data.
+export function parseSpatialIntent(value: unknown, roomType: string): SpatialIntent {
+  const layoutMode = spatialLayoutModeForRoomType(roomType);
+  const record =
+    value && typeof value === "object" && "spatialIntent" in value
+      ? ((value as { spatialIntent?: unknown }).spatialIntent as Record<string, unknown> | null)
+      : null;
+
+  const assumptions: string[] = [];
+  const focalPointRaw = typeof record?.focalPoint === "string" ? record.focalPoint : null;
+  const focalPoint = spatialFocalPointValues.includes(focalPointRaw as SpatialFocalPoint)
+    ? (focalPointRaw as SpatialFocalPoint)
+    : "unknown";
+  const seatingPriorityRaw = typeof record?.seatingPriority === "string" ? record.seatingPriority : null;
+  const seatingPriority = spatialSeatingPriorityValues.includes(
+    seatingPriorityRaw as SpatialSeatingPriority
+  )
+    ? (seatingPriorityRaw as SpatialSeatingPriority)
+    : "unknown";
+  const diningSeatCountRaw = record?.diningSeatCount;
+  const diningSeatCount =
+    typeof diningSeatCountRaw === "number" && Number.isFinite(diningSeatCountRaw) && diningSeatCountRaw > 0
+      ? Math.min(Math.round(diningSeatCountRaw), 16)
+      : null;
+  const mustKeepClearRaw = record?.mustKeepClear;
+  const mustKeepClear =
+    typeof mustKeepClearRaw === "string" && mustKeepClearRaw.trim().length > 0
+      ? [mustKeepClearRaw.trim()]
+      : Array.isArray(mustKeepClearRaw)
+        ? mustKeepClearRaw.filter((entry): entry is string => typeof entry === "string" && entry.length > 0)
+        : [];
+
+  const livingLike = layoutMode === "living_only" || layoutMode === "living_plus_dining";
+  if (livingLike && focalPoint === "unknown") {
+    assumptions.push("Focal point not confirmed; assuming the TV/media wall anchors the seating.");
+  }
+  if (layoutMode === "living_plus_dining" && diningSeatCount === null) {
+    assumptions.push("Dining seat count not confirmed; assuming six day-to-day seats.");
+  }
+
+  return {
+    layoutMode,
+    focalPoint,
+    focalPointConfidence: focalPoint === "unknown" ? "assumed" : "user_selected",
+    seatingPriority,
+    diningNeeded: layoutMode === "living_plus_dining" || layoutMode === "dining_only",
+    diningSeatCount,
+    mustKeepClear,
+    assumptions
+  };
+}
+
 export type SpatialRuleCheckability = "hard-checkable" | "prompt-checkable" | "vision-QA-only";
 
 export type SpatialRuleSurface =

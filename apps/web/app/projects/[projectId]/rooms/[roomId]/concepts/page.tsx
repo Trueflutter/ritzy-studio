@@ -109,7 +109,7 @@ export default async function ConceptsPage({
 
   const { data: concepts = [] } = await supabase
     .from("concepts")
-    .select("*, primary_image_asset:room_assets(*)")
+    .select("*, primary_image_asset:room_assets!concepts_primary_image_asset_id_fkey(*)")
     .eq("room_id", roomId)
     .order("created_at", { ascending: false });
 
@@ -150,6 +150,33 @@ export default async function ConceptsPage({
   const heroConcept = selectedConcept ?? conceptsWithImages[0] ?? null;
   const earlierConcepts = conceptsWithImages.filter((concept) => concept.id !== heroConcept?.id);
   const canGenerate = Boolean(designBrief && roomPhoto);
+
+  const viewCaptions: Record<string, string> = {
+    reverse_wide: "From the other end of the room",
+    anchor_detail: "The anchor group, up close"
+  };
+  const { data: heroViewAssets = [] } = heroConcept
+    ? await supabase
+        .from("room_assets")
+        .select("*")
+        .eq("concept_id", heroConcept.id)
+        .not("view_key", "is", null)
+        .order("created_at", { ascending: true })
+    : { data: [] };
+  const heroViews = await Promise.all(
+    (heroViewAssets ?? []).map(async (asset) => {
+      const { data } = await serviceSupabase.storage
+        .from("generated-renders")
+        .createSignedUrl(asset.storage_path, 60 * 60);
+
+      return {
+        id: asset.id,
+        viewKey: asset.view_key ?? "",
+        caption: viewCaptions[asset.view_key ?? ""] ?? "Another view",
+        signedUrl: data?.signedUrl ?? null
+      };
+    })
+  );
 
   const hero = heroConcept
     ? {
@@ -234,6 +261,34 @@ export default async function ConceptsPage({
                   )}
                 </div>
               </MarketingPanel>
+
+              {heroViews.length > 0 ? (
+                <div className="mt-4 grid gap-4 md:grid-cols-2">
+                  {heroViews.map((view) => (
+                    <figure className="border border-line bg-surface p-3" key={view.id}>
+                      <div className="flex aspect-[16/9] items-center justify-center overflow-hidden bg-page">
+                        {view.signedUrl ? (
+                          <Image
+                            alt={`${hero.title} — ${view.caption.toLowerCase()}`}
+                            className="h-full w-full object-cover"
+                            height={540}
+                            src={view.signedUrl}
+                            unoptimized
+                            width={960}
+                          />
+                        ) : (
+                          <p className="font-display text-body-s italic text-error">
+                            view could not load
+                          </p>
+                        )}
+                      </div>
+                      <figcaption className="mt-3 font-body text-caption-tight font-medium uppercase text-ink-muted">
+                        {view.caption}
+                      </figcaption>
+                    </figure>
+                  ))}
+                </div>
+              ) : null}
 
               <div className="mx-auto mt-10 max-w-[720px]">
                 <p className="font-body text-caption font-medium uppercase tracking-[0.32em] text-accent-deep">

@@ -29,3 +29,9 @@ yarn-debug.log*
 .supabase/
 tmp-*
 .vercel
+
+# Dev harness local state (scripts/dev-harness)
+scripts/dev-harness/auth.json
+scripts/dev-harness/e2e-state.json
+scripts/dev-harness/e2e-shots/
+scripts/dev-harness/manifest.tsv

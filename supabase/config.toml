@@ -365,7 +365,9 @@ deno_version = 2
 # secret_key = "env(SECRET_VALUE)"
 
 [analytics]
-enabled = true
+# Disabled: the vector container cannot mount the docker socket under colima,
+# and analytics is not needed for local development.
+enabled = false
 port = 55327
 # Configure one of the supported backends: `postgres`, `bigquery`.
 backend = "postgres"

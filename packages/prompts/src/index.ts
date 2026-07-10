@@ -1,6 +1,8 @@
 import { z } from "zod";
 
 export {
+  conceptViewCameraLanguage,
+  conceptViewConsistencyLanguage,
   finalRenderProductFidelityLanguage,
   globalPhotorealismLanguage,
   productRoleLanguage,
@@ -8,10 +10,13 @@ export {
   roomDesignLanguage,
   roomSpatialPlacementGuardrailLanguage,
   sourceRoomPreservationLanguage,
+  spatialLayoutLanguage,
   styleDesignLanguage,
   styleDesignModules,
+  type ConceptViewKey,
   type RitzyRoomType,
-  type RitzyStyleModule
+  type RitzyStyleModule,
+  type SpatialPromptIntent
 } from "./interior-design-language";
 
 export const clarifyingQuestionsPrompt = {
@@ -108,6 +113,119 @@ export const inspirationAnalysisJsonSchema = {
 } as const;
 
 export type InspirationAnalysisResponse = z.infer<typeof inspirationAnalysisResponseSchema>;
+
+export const conceptPalettePrompt = {
+  key: "concept.palette_extraction",
+  version: "2026-07-10.1",
+  system: [
+    "You are Ritzy Studio's interior palette analyst.",
+    "Read the generated interior concept image and report the palette AS RENDERED, not as briefed.",
+    "Use lowercase canonical color-family tokens where possible: black, blue, brown, camel, tan, charcoal, cream, ivory, beige, taupe, oatmeal, sand, green, sage, olive, grey, red, terracotta, rust, burgundy, white, gold, brass, bronze, walnut, oak, purple, orange, pink.",
+    "Use lowercase canonical material tokens where possible: linen, boucle, velvet, leather, chenille, wool, fabric, wood, walnut, oak, marble, travertine, stone, glass, brass, bronze, metal, plaster, ceramic, rattan, jute.",
+    "dominantColors: the 2-4 color families that define large surfaces and anchor furniture.",
+    "accentColors: the 1-4 color families used in smaller doses (decor, art, plants, metal finishes).",
+    "dominantMaterials: the 2-6 material families that visibly define the room.",
+    "avoidColors: 1-4 color families that would clash with this palette if a product carried them."
+  ].join("\n")
+} as const;
+
+export const conceptPaletteResponseSchema = z.object({
+  dominantColors: z.array(z.string().min(2).max(30)).min(1).max(4),
+  accentColors: z.array(z.string().min(2).max(30)).max(4),
+  dominantMaterials: z.array(z.string().min(2).max(30)).min(1).max(6),
+  avoidColors: z.array(z.string().min(2).max(30)).max(4)
+});
+
+export const conceptPaletteJsonSchema = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    dominantColors: {
+      type: "array",
+      minItems: 1,
+      maxItems: 4,
+      items: { type: "string", minLength: 2, maxLength: 30 }
+    },
+    accentColors: {
+      type: "array",
+      maxItems: 4,
+      items: { type: "string", minLength: 2, maxLength: 30 }
+    },
+    dominantMaterials: {
+      type: "array",
+      minItems: 1,
+      maxItems: 6,
+      items: { type: "string", minLength: 2, maxLength: 30 }
+    },
+    avoidColors: {
+      type: "array",
+      maxItems: 4,
+      items: { type: "string", minLength: 2, maxLength: 30 }
+    }
+  },
+  required: ["dominantColors", "accentColors", "dominantMaterials", "avoidColors"]
+} as const;
+
+export type ConceptPaletteResponse = z.infer<typeof conceptPaletteResponseSchema>;
+
+export const renderSpatialQaPrompt = {
+  key: "render.spatial_qa",
+  version: "2026-07-10.1",
+  system: [
+    "You are Ritzy Studio's spatial quality reviewer for generated interior images.",
+    "Judge the image like a senior interior designer reviewing a junior's render before it goes to a client.",
+    "Checks:",
+    "- focalOrientation: primary seating (or bed/desk for those rooms) addresses the room's focal point; seating is not turned away from it. Use not_applicable when the room type has no seating-focal relationship.",
+    "- anchorAlignment: the primary sofa/bed/table reads parallel to its wall and square to the rug and room grid, not canted diagonally without an architectural reason.",
+    "- scalePlausibility: furniture sizes and clearances are physically believable for the room; no giant rugs, doll furniture, blocked doors, or impossible walkways. An area rug must anchor its furniture group (at least the front legs of the seating on it); a rug floating like a bath mat near the coffee table is a fail.",
+    "- compositionIntegrity: no warped furniture, floating objects, impossible reflections, duplicated limbs of furniture, or visible AI artifacts a client would notice.",
+    "- zoning (combined living+dining only, else not_applicable): living and dining read as two coherent zones with a clear boundary and circulation, dining never between the sofa and its focal wall.",
+    "Judge strictly, as if your name goes on the presentation. When a check is genuinely borderline, mark the check fail and let the verdict be warn rather than silently passing it.",
+    "verdict: pass when a professional would present this image as-is; warn for real but presentable flaws; regenerate for faux pas a client would reject (wrong orientation, clearly canted anchor, broken or missing rug anchoring, broken scale, obvious artifacts).",
+    "issues: short, specific, designer-voiced descriptions of each failed check. Empty when everything passes."
+  ].join("\n")
+} as const;
+
+const qaCheckEnum = z.enum(["pass", "fail", "not_applicable"]);
+
+export const renderSpatialQaResponseSchema = z.object({
+  focalOrientation: qaCheckEnum,
+  anchorAlignment: qaCheckEnum,
+  scalePlausibility: qaCheckEnum,
+  compositionIntegrity: qaCheckEnum,
+  zoning: qaCheckEnum,
+  verdict: z.enum(["pass", "warn", "regenerate"]),
+  issues: z.array(z.string().min(4).max(240)).max(6)
+});
+
+export const renderSpatialQaJsonSchema = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    focalOrientation: { type: "string", enum: ["pass", "fail", "not_applicable"] },
+    anchorAlignment: { type: "string", enum: ["pass", "fail", "not_applicable"] },
+    scalePlausibility: { type: "string", enum: ["pass", "fail", "not_applicable"] },
+    compositionIntegrity: { type: "string", enum: ["pass", "fail", "not_applicable"] },
+    zoning: { type: "string", enum: ["pass", "fail", "not_applicable"] },
+    verdict: { type: "string", enum: ["pass", "warn", "regenerate"] },
+    issues: {
+      type: "array",
+      maxItems: 6,
+      items: { type: "string", minLength: 4, maxLength: 240 }
+    }
+  },
+  required: [
+    "focalOrientation",
+    "anchorAlignment",
+    "scalePlausibility",
+    "compositionIntegrity",
+    "zoning",
+    "verdict",
+    "issues"
+  ]
+} as const;
+
+export type RenderSpatialQaResponse = z.infer<typeof renderSpatialQaResponseSchema>;
 
 export const initialConceptPrompt = {
   key: "concept.initial_room_analysis",

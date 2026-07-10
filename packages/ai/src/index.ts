@@ -15,6 +15,16 @@ import {
   conceptProductSourcingPrompt,
   conceptProductSourcingResponseSchema,
   conceptRevisionPrompt,
+  conceptPaletteJsonSchema,
+  conceptPalettePrompt,
+  conceptPaletteResponseSchema,
+  renderSpatialQaJsonSchema,
+  renderSpatialQaPrompt,
+  renderSpatialQaResponseSchema,
+  type RenderSpatialQaResponse,
+  conceptViewCameraLanguage,
+  conceptViewConsistencyLanguage,
+  type ConceptViewKey,
   finalRenderProductFidelityLanguage,
   globalPhotorealismLanguage,
   initialConceptJsonSchema,
@@ -26,6 +36,8 @@ import {
   roomDesignLanguage,
   roomSpatialPlacementGuardrailLanguage,
   sourceRoomPreservationLanguage,
+  spatialLayoutLanguage,
+  type SpatialPromptIntent,
   styleDesignLanguage,
   inspirationAnalysisJsonSchema,
   inspirationAnalysisPrompt,
@@ -37,14 +49,22 @@ import {
 import { createHash, createSign } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import OpenAI, { toFile } from "openai";
+import sharp from "sharp";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-type ImageProvider = "gemini" | "openai";
+type ImageProvider = "gemini" | "openai" | "evolink";
 
 type ImageGenerationReference = {
   bytes: Buffer;
   mimeType: string;
   name: string;
+  // Publicly fetchable URL for the same image (signed Storage URL or retailer CDN URL).
+  // Required by URL-based providers such as Evolink; byte-based providers ignore it.
+  url?: string | null;
+  // A reference the render is meaningless without (the room photo, the approved
+  // concept). URL-based providers must fail over to a byte-based provider rather
+  // than generate without it.
+  required?: boolean;
 };
 
 type ImageGenerationAttempt = {
@@ -104,8 +124,18 @@ export type AnalyzeInspirationImagesResult = {
 export type GenerateInitialConceptInput = {
   roomType: string;
   roomPhotoUrl: string;
+  // Publicly fetchable URL for URL-based image providers; roomPhotoUrl may be a data URL.
+  roomPhotoReferenceUrl?: string | null;
   roomPhotoBytes: Buffer;
   roomPhotoMimeType: string;
+  // Additional photos of the SAME room from other corners. They give the model
+  // real spatial coverage instead of hallucinating occluded walls from one frame.
+  additionalRoomPhotos?: Array<{
+    url: string;
+    referenceUrl?: string | null;
+    bytes: Buffer;
+    mimeType: string;
+  }>;
   catalogueProducts?: Array<{
     name: string;
     retailerName: string;
@@ -122,8 +152,14 @@ export type GenerateInitialConceptInput = {
     primaryImageUrl?: string | null;
     imageBytes?: Buffer | null;
     imageMimeType?: string | null;
+    // Downscaled data URL for vision inputs; imageBytes stay full-res for
+    // image-generation references.
+    visionImageUrl?: string | null;
   }>;
   inspirationImageUrls?: string[];
+  // Data URL of the uploaded floor plan image, when one exists. Read by the
+  // direction model for layout reasoning; never used as a render reference.
+  floorPlanImageUrl?: string | null;
   styleSlugs?: string[];
   styleNotes?: string | null;
   colorNotes?: string | null;
@@ -135,6 +171,7 @@ export type GenerateInitialConceptInput = {
     question: string;
     answer: string;
   }>;
+  spatialIntent?: SpatialPromptIntent | null;
   measurements?: {
     wallLengthCm?: number | null;
     roomDepthCm?: number | null;
@@ -208,10 +245,15 @@ export type GenerateFinalGroundedRenderInput = {
   roomType: string;
   roomPhotoBytes: Buffer;
   roomPhotoMimeType: string;
+  roomPhotoUrl?: string | null;
   conceptImageBytes?: Buffer | null;
   conceptImageMimeType?: string | null;
+  conceptImageUrl?: string | null;
   conceptTitle: string;
   conceptDescription?: string | null;
+  spatialIntent?: SpatialPromptIntent | null;
+  // Extra corrective instructions (e.g. from spatial QA) appended to the prompt.
+  promptSuffix?: string | null;
   products: Array<{
     name: string;
     retailerName: string;
@@ -223,6 +265,7 @@ export type GenerateFinalGroundedRenderInput = {
     dimensions?: string | null;
     imageBytes?: Buffer | null;
     imageMimeType?: string | null;
+    imageUrl?: string | null;
   }>;
 };
 
@@ -275,6 +318,7 @@ export type SourceProductsFromConceptInput = {
   conceptImageDetail?: ProductSourcingImageDetail;
   candidateImageLimit?: number;
   candidateImageDetail?: ProductSourcingImageDetail;
+  candidateImageDataUrls?: Record<string, string>;
 };
 
 export type ProductVisualMatchStatus =
@@ -361,6 +405,23 @@ function enhancedRitzyInteriorStylingLanguage({
   ].join("\n");
 }
 
+function roomMeasurementsLanguage(measurements?: {
+  wallLengthCm?: number | null;
+  roomDepthCm?: number | null;
+  ceilingHeightCm?: number | null;
+} | null) {
+  if (!measurements?.wallLengthCm || !measurements.roomDepthCm) {
+    return null;
+  }
+
+  return [
+    `The real room measures approximately ${Math.round(measurements.wallLengthCm)} cm along the main wall and ${Math.round(
+      measurements.roomDepthCm
+    )} cm deep${measurements.ceilingHeightCm ? ` with a ${Math.round(measurements.ceilingHeightCm)} cm ceiling` : ""}.`,
+    "Keep every furniture piece, rug, and clearance physically plausible for these dimensions; do not compress or stretch the room."
+  ].join(" ");
+}
+
 export function buildInitialConceptSystemPrompt({
   roomType,
   styleSlugs = [],
@@ -395,7 +456,10 @@ export function buildInitialConceptImagePrompt({
   catalogueProductSummary,
   styleSlugs = [],
   useInteriorPromptV2 = false,
-  strictSourceRoomPreservation = false
+  strictSourceRoomPreservation = false,
+  spatialIntent = null,
+  measurements = null,
+  additionalRoomPhotoCount = 0
 }: {
   generationPrompt: string;
   roomType: string;
@@ -404,18 +468,29 @@ export function buildInitialConceptImagePrompt({
   styleSlugs?: string[];
   useInteriorPromptV2?: boolean;
   strictSourceRoomPreservation?: boolean;
+  spatialIntent?: SpatialPromptIntent | null;
+  additionalRoomPhotoCount?: number;
+  measurements?: {
+    wallLengthCm?: number | null;
+    roomDepthCm?: number | null;
+    ceilingHeightCm?: number | null;
+  } | null;
 }) {
   if (!useInteriorPromptV2) {
     return [
       generationPrompt,
       "",
-      "Use the uploaded room photo as the base image.",
+      additionalRoomPhotoCount > 0
+        ? `The first ${additionalRoomPhotoCount + 1} input images are photos of the SAME room from different corners. Use the FIRST photo's camera perspective as the base image; use the other angles only to understand the room's true walls, openings, and proportions.`
+        : "Use the uploaded room photo as the base image.",
       hasInspirationImages
         ? "Use the uploaded inspiration images as style references for palette, materials, atmosphere, and composition. Do not reproduce them exactly."
         : null,
       "Preserve visible architecture, walls, windows, doors, ceiling details, AC vents, sockets, built-ins, and fixed bathroom fixtures where present.",
       strictSourceRoomPreservation ? strictSourceRoomPreservationLanguage() : null,
       roomBlueprintDefaultsLanguage(roomType),
+      spatialLayoutLanguage(roomType, spatialIntent),
+      roomMeasurementsLanguage(measurements),
       enhancedRitzyInteriorStylingLanguage({ mode: "initial-concept" }),
       catalogueProductSummary
         ? [
@@ -436,7 +511,9 @@ export function buildInitialConceptImagePrompt({
   return [
     generationPrompt,
     "",
-    "Use the uploaded room photo as the base image.",
+    additionalRoomPhotoCount > 0
+        ? `The first ${additionalRoomPhotoCount + 1} input images are photos of the SAME room from different corners. Use the FIRST photo's camera perspective as the base image; use the other angles only to understand the room's true walls, openings, and proportions.`
+        : "Use the uploaded room photo as the base image.",
     hasInspirationImages
       ? "Use the uploaded inspiration images as style references for palette, materials, atmosphere, and composition. Do not reproduce them exactly."
       : null,
@@ -444,6 +521,8 @@ export function buildInitialConceptImagePrompt({
     strictSourceRoomPreservation ? strictSourceRoomPreservationLanguage() : null,
     roomDesignLanguage(roomType),
     roomBlueprintDefaultsLanguage(roomType),
+    spatialLayoutLanguage(roomType, spatialIntent),
+    roomMeasurementsLanguage(measurements),
     styleDesignLanguage(styleSlugs),
     globalPhotorealismLanguage(),
     enhancedRitzyInteriorStylingLanguage({ mode: "initial-concept" }),
@@ -461,6 +540,11 @@ export function buildInitialConceptImagePrompt({
     .join("\n");
 }
 
+function truncateForPrompt(value: string, maxChars: number) {
+  const collapsed = value.replace(/\s+/g, " ").trim();
+  return collapsed.length <= maxChars ? collapsed : `${collapsed.slice(0, maxChars - 1)}…`;
+}
+
 export function buildFinalGroundedRenderPrompt({
   roomType,
   conceptTitle,
@@ -468,7 +552,8 @@ export function buildFinalGroundedRenderPrompt({
   hasConceptImage,
   productSummary,
   useFinalRenderPromptV2 = false,
-  strictSourceRoomPreservation = false
+  strictSourceRoomPreservation = false,
+  spatialIntent = null
 }: {
   roomType: string;
   conceptTitle: string;
@@ -476,6 +561,7 @@ export function buildFinalGroundedRenderPrompt({
   hasConceptImage?: boolean;
   productSummary: string;
   useFinalRenderPromptV2?: boolean;
+  spatialIntent?: SpatialPromptIntent | null;
   strictSourceRoomPreservation?: boolean;
 }) {
   if (!useFinalRenderPromptV2) {
@@ -484,6 +570,7 @@ export function buildFinalGroundedRenderPrompt({
       "",
       sourceRoomPreservationLanguage(roomType),
       roomSpatialPlacementGuardrailLanguage(roomType),
+      spatialLayoutLanguage(roomType, spatialIntent),
       strictSourceRoomPreservation ? strictSourceRoomPreservationLanguage() : null,
       `Selected concept: ${conceptTitle}`,
       conceptDescription ? `Concept notes: ${conceptDescription}` : null,
@@ -513,6 +600,7 @@ export function buildFinalGroundedRenderPrompt({
     sourceRoomPreservationLanguage(roomType),
     strictSourceRoomPreservation ? strictSourceRoomPreservationLanguage() : null,
     roomDesignLanguage(roomType),
+    spatialLayoutLanguage(roomType, spatialIntent),
     globalPhotorealismLanguage(),
     finalRenderProductFidelityLanguage(),
     enhancedRitzyInteriorStylingLanguage({ mode: "final-grounded-render" }),
@@ -547,6 +635,42 @@ async function generateImageWithConfiguredProvider({
   noImageErrorMessage: string;
 }): Promise<ImageGenerationAttempt> {
   const env = parseServerEnv(process.env);
+
+  if (env.RITZY_IMAGE_PROVIDER === "evolink") {
+    const startedAt = Date.now();
+
+    try {
+      return await generateEvolinkImage({
+        prompt,
+        references,
+        model: env.EVOLINK_IMAGE_MODEL,
+        apiKey: env.EVOLINK_API_KEY,
+        quality: env.EVOLINK_IMAGE_QUALITY
+      });
+    } catch (error) {
+      const fallbackError = formatImageGenerationError(error);
+      try {
+        const fallbackAttempt = await generateOpenAiImage({
+          client,
+          prompt,
+          references,
+          model: env.OPENAI_IMAGE_MODEL,
+          noImageErrorMessage
+        });
+
+        return {
+          ...fallbackAttempt,
+          latencySeconds: secondsSince(startedAt),
+          fallbackUsed: true,
+          error: fallbackError
+        };
+      } catch (fallbackFailure) {
+        throw new Error(
+          `Evolink image generation failed (${fallbackError}); OpenAI fallback also failed (${formatImageGenerationError(fallbackFailure)}).`
+        );
+      }
+    }
+  }
 
   if (env.RITZY_IMAGE_PROVIDER === "gemini") {
     const startedAt = Date.now();
@@ -728,6 +852,184 @@ async function generateGeminiImage({
   }
 }
 
+// URL-based image providers can only fetch real, publicly reachable URLs. Data
+// URLs (used for vision-model inputs) and localhost storage URLs are excluded so
+// the provider fails fast into its byte-based fallback instead of erroring mid-task.
+function publicReferenceUrl(url: string | null | undefined) {
+  if (!url) {
+    return null;
+  }
+
+  if (url.startsWith("data:")) {
+    return null;
+  }
+
+  try {
+    const parsed = new URL(url);
+    if (parsed.hostname === "localhost" || parsed.hostname === "127.0.0.1") {
+      return null;
+    }
+  } catch {
+    return null;
+  }
+
+  return url;
+}
+
+const EVOLINK_API_BASE = "https://api.evolink.ai";
+const EVOLINK_POLL_INTERVAL_MS = 3_000;
+const EVOLINK_POLL_TIMEOUT_MS = 300_000;
+const EVOLINK_MAX_REFERENCE_URLS = 14;
+
+type EvolinkTaskResponse = {
+  id?: string;
+  status?: "pending" | "processing" | "completed" | "failed" | string;
+  results?: string[];
+  error?: { message?: string } | string | null;
+  fail_reason?: string | null;
+};
+
+async function generateEvolinkImage({
+  prompt,
+  references,
+  model,
+  apiKey,
+  quality
+}: {
+  prompt: string;
+  references: ImageGenerationReference[];
+  model: string;
+  apiKey?: string;
+  quality: "1K" | "2K" | "4K";
+}): Promise<ImageGenerationAttempt> {
+  if (!apiKey) {
+    throw new Error("EVOLINK_API_KEY is required for Evolink image generation.");
+  }
+
+  const startedAt = Date.now();
+  // Prefer real public URLs (small request payloads); inline bytes as data URLs
+  // otherwise. Verified live: the API accepts data URLs, so a required
+  // reference (the room, the approved concept) can never be silently dropped.
+  // Inlined references are recompressed so a full reference set stays a few
+  // megabytes instead of tens.
+  const referenceUrls = (
+    await Promise.all(
+      references.map(
+        async (reference) =>
+          publicReferenceUrl(reference.url) ?? (await referenceDataUrl(reference))
+      )
+    )
+  ).slice(0, EVOLINK_MAX_REFERENCE_URLS);
+
+  const headers = {
+    Authorization: `Bearer ${apiKey}`,
+    "Content-Type": "application/json"
+  };
+
+  const submitResponse = await fetch(`${EVOLINK_API_BASE}/v1/images/generations`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      model,
+      prompt,
+      size: "16:9",
+      quality,
+      ...(referenceUrls.length > 0 ? { image_urls: referenceUrls } : {})
+    })
+  });
+
+  const submitPayload = (await submitResponse.json().catch(() => null)) as EvolinkTaskResponse | null;
+
+  if (!submitResponse.ok || !submitPayload?.id) {
+    throw new Error(
+      evolinkErrorMessage(submitPayload) ??
+        `Evolink image generation submit failed with HTTP ${submitResponse.status}.`
+    );
+  }
+
+  const deadline = startedAt + EVOLINK_POLL_TIMEOUT_MS;
+
+  while (Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, EVOLINK_POLL_INTERVAL_MS));
+
+    const pollResponse = await fetch(`${EVOLINK_API_BASE}/v1/tasks/${encodeURIComponent(submitPayload.id)}`, {
+      method: "GET",
+      headers
+    });
+    const task = (await pollResponse.json().catch(() => null)) as EvolinkTaskResponse | null;
+
+    if (!pollResponse.ok) {
+      throw new Error(
+        evolinkErrorMessage(task) ?? `Evolink task polling failed with HTTP ${pollResponse.status}.`
+      );
+    }
+
+    if (task?.status === "failed") {
+      throw new Error(evolinkErrorMessage(task) ?? "Evolink image generation failed.");
+    }
+
+    if (task?.status === "completed") {
+      const resultUrl = task.results?.[0];
+
+      if (!resultUrl) {
+        throw new Error("Evolink image generation completed without a result image URL.");
+      }
+
+      const imageResponse = await fetch(resultUrl);
+
+      if (!imageResponse.ok) {
+        throw new Error(`Evolink result image download failed with HTTP ${imageResponse.status}.`);
+      }
+
+      const imageBase64 = Buffer.from(await imageResponse.arrayBuffer()).toString("base64");
+
+      return {
+        provider: "evolink",
+        model,
+        imageBase64,
+        revisedPrompt: null,
+        latencySeconds: secondsSince(startedAt),
+        fallbackUsed: false,
+        error: null
+      };
+    }
+  }
+
+  throw new Error(`Evolink image generation timed out after ${EVOLINK_POLL_TIMEOUT_MS / 1000} seconds.`);
+}
+
+async function referenceDataUrl(reference: ImageGenerationReference) {
+  try {
+    const compressed = await sharp(reference.bytes)
+      .resize(1280, 1280, { fit: "inside", withoutEnlargement: true })
+      .jpeg({ quality: 82 })
+      .toBuffer();
+    return `data:image/jpeg;base64,${compressed.toString("base64")}`;
+  } catch {
+    return `data:${normalizeImageMimeType(reference.mimeType)};base64,${reference.bytes.toString("base64")}`;
+  }
+}
+
+function evolinkErrorMessage(payload: EvolinkTaskResponse | null): string | null {
+  if (!payload) {
+    return null;
+  }
+
+  if (typeof payload.error === "string" && payload.error) {
+    return `Evolink: ${payload.error}`;
+  }
+
+  if (payload.error && typeof payload.error === "object" && payload.error.message) {
+    return `Evolink: ${payload.error.message}`;
+  }
+
+  if (payload.fail_reason) {
+    return `Evolink: ${payload.fail_reason}`;
+  }
+
+  return null;
+}
+
 export async function generateClarifyingQuestions(
   input: GenerateClarifyingQuestionsInput
 ): Promise<GenerateClarifyingQuestionsResult> {
@@ -747,6 +1049,7 @@ export async function generateClarifyingQuestions(
         ].join("\n");
 
   const response = await client.responses.create({
+    max_output_tokens: 4000,
     model: env.OPENAI_TEXT_MODEL,
     input: [
       {
@@ -802,6 +1105,7 @@ export async function analyzeInspirationImages(
   const client = new OpenAI({ apiKey: env.OPENAI_API_KEY });
 
   const response = await client.responses.create({
+    max_output_tokens: 4000,
     model: env.OPENAI_TEXT_MODEL,
     input: [
       {
@@ -898,12 +1202,14 @@ export async function sourceProductsFromConcept(
           .join("\n")
       : "No role-scoped pools supplied. Use the expected product roles and candidate list.";
   const candidateImageContent = productSourcingCandidateImageContent(input.candidates, {
+    imageDataUrls: input.candidateImageDataUrls,
     candidateLimit,
     candidateImageLimit: input.candidateImageLimit,
     detail: input.candidateImageDetail
   });
 
   const response = await client.responses.create({
+    max_output_tokens: 32000,
     model: env.OPENAI_TEXT_MODEL,
     input: [
       {
@@ -967,18 +1273,22 @@ export function productSourcingCandidateImageContent(
   {
     candidateLimit = 36,
     candidateImageLimit = candidateLimit,
-    detail = "high"
+    detail = "high",
+    imageDataUrls
   }: {
     candidateLimit?: number;
     candidateImageLimit?: number;
     detail?: ProductSourcingImageDetail;
+    // Downscaled data URLs by candidate id; preferred over provider-side URL
+    // downloads, which flake on rate-limited CDNs and non-public hosts.
+    imageDataUrls?: Record<string, string>;
   } = {}
 ) {
   const imageLimit = Math.max(0, Math.min(candidateLimit, candidateImageLimit));
 
   return candidates
     .slice(0, candidateLimit)
-    .filter((candidate) => candidate.primaryImageUrl)
+    .filter((candidate) => imageDataUrls?.[candidate.id] || candidate.primaryImageUrl)
     .slice(0, imageLimit)
     .flatMap((candidate) => [
       {
@@ -987,7 +1297,7 @@ export function productSourcingCandidateImageContent(
       },
       {
         type: "input_image" as const,
-        image_url: candidate.primaryImageUrl as string,
+        image_url: imageDataUrls?.[candidate.id] ?? (candidate.primaryImageUrl as string),
         detail
       }
     ]);
@@ -1317,7 +1627,7 @@ function catalogueProductDirectionContent(
       ].join("\n")
     },
     ...products
-      .filter((product) => product.primaryImageUrl)
+      .filter((product) => product.visionImageUrl || product.imageBytes || product.primaryImageUrl)
       .flatMap((product, index) => [
         {
           type: "input_text" as const,
@@ -1325,7 +1635,13 @@ function catalogueProductDirectionContent(
         },
         {
           type: "input_image" as const,
-          image_url: product.primaryImageUrl as string,
+          // Prefer inlined images: vision providers cannot fetch non-public
+          // storage hosts, and remote CDNs rate-limit provider-side downloads.
+          image_url:
+            product.visionImageUrl ??
+            (product.imageBytes && product.imageMimeType
+              ? `data:${product.imageMimeType};base64,${product.imageBytes.toString("base64")}`
+              : (product.primaryImageUrl as string)),
           detail: "low" as const
         }
       ])
@@ -1353,6 +1669,7 @@ export async function generateInitialConcept(
   };
 
   const directionResponse = await client.responses.create({
+    max_output_tokens: 24000,
     model: env.OPENAI_TEXT_MODEL,
     input: [
       {
@@ -1375,6 +1692,30 @@ export async function generateInitialConcept(
             image_url: input.roomPhotoUrl,
             detail: "high"
           },
+          ...(input.additionalRoomPhotos ?? []).flatMap((photo, index) => [
+            {
+              type: "input_text" as const,
+              text: `Additional photo ${index + 2} of the SAME room from another corner. Use it to understand walls, openings, and proportions that the first photo cannot see.`
+            },
+            {
+              type: "input_image" as const,
+              image_url: photo.url,
+              detail: "high" as const
+            }
+          ]),
+          ...(input.floorPlanImageUrl
+            ? [
+                {
+                  type: "input_text" as const,
+                  text: "The next image is the room's floor plan. Use it to understand the room's true footprint, door and window positions, and circulation before deciding the furniture layout. Reference it in the layout logic of your generation prompt."
+                },
+                {
+                  type: "input_image" as const,
+                  image_url: input.floorPlanImageUrl,
+                  detail: "high" as const
+                }
+              ]
+            : []),
           ...catalogueProductDirectionContent(input.catalogueProducts ?? []),
           ...(input.inspirationImageUrls ?? []).flatMap((imageUrl, index) => [
             {
@@ -1410,7 +1751,10 @@ export async function generateInitialConcept(
       : null,
     styleSlugs: input.styleSlugs,
     useInteriorPromptV2,
-    strictSourceRoomPreservation: localStrictSourceRoomPreservationEnabled()
+    strictSourceRoomPreservation: localStrictSourceRoomPreservationEnabled(),
+    spatialIntent: input.spatialIntent ?? null,
+    measurements: input.measurements ?? null,
+    additionalRoomPhotoCount: input.additionalRoomPhotos?.length ?? 0
   });
   const catalogueReferences = (input.catalogueProducts ?? [])
     .filter((product) => product.imageBytes && product.imageMimeType)
@@ -1418,7 +1762,8 @@ export async function generateInitialConcept(
     .map((product, index) => ({
       bytes: product.imageBytes as Buffer,
       mimeType: product.imageMimeType as string,
-      name: `catalogue-product-${index}`
+      name: `catalogue-product-${index}`,
+      url: product.primaryImageUrl ?? null
     }));
 
   const imageResult = await generateImageWithConfiguredProvider({
@@ -1428,8 +1773,16 @@ export async function generateInitialConcept(
       {
         bytes: input.roomPhotoBytes,
         mimeType: input.roomPhotoMimeType,
-        name: "room"
+        name: "room",
+        url: publicReferenceUrl(input.roomPhotoReferenceUrl ?? input.roomPhotoUrl),
+        required: true
       },
+      ...(input.additionalRoomPhotos ?? []).slice(0, 2).map((photo, index) => ({
+        bytes: photo.bytes,
+        mimeType: photo.mimeType,
+        name: `room-angle-${index + 2}`,
+        url: publicReferenceUrl(photo.referenceUrl ?? photo.url)
+      })),
       ...catalogueReferences
     ],
     noImageErrorMessage: "OpenAI image generation returned no image data."
@@ -1451,6 +1804,239 @@ export async function generateInitialConcept(
     imageBase64: imageResult.imageBase64,
     revisedPrompt: imageResult.revisedPrompt ?? null
   };
+}
+
+export type { ConceptViewKey };
+
+export type GenerateConceptViewInput = {
+  roomType: string;
+  viewKey: ConceptViewKey;
+  conceptTitle: string;
+  conceptDescription?: string | null;
+  conceptGenerationPrompt?: string | null;
+  heroImageBytes: Buffer;
+  heroImageMimeType: string;
+  heroImageUrl?: string | null;
+};
+
+export type GenerateConceptViewResult = {
+  viewKey: ConceptViewKey;
+  promptVersion: string;
+  imageProvider: ImageProvider;
+  imageModel: string;
+  imageLatencySeconds: number;
+  imageFallbackUsed: boolean;
+  imageFallbackError?: string | null;
+  imageBase64: string;
+};
+
+export const CONCEPT_VIEW_PROMPT_VERSION = "concept-view.2026-07-10.1";
+
+export function buildConceptViewPrompt(input: {
+  roomType: string;
+  viewKey: ConceptViewKey;
+  conceptTitle: string;
+  conceptDescription?: string | null;
+  conceptGenerationPrompt?: string | null;
+}) {
+  return [
+    conceptViewConsistencyLanguage(),
+    "",
+    conceptViewCameraLanguage(input.roomType, input.viewKey),
+    "",
+    `Approved concept: ${input.conceptTitle}`,
+    input.conceptDescription ? `Concept notes: ${input.conceptDescription}` : null,
+    input.conceptGenerationPrompt
+      ? `The room was designed to this brief; use it only to keep the design identical, never to redesign: ${input.conceptGenerationPrompt}`
+      : null,
+    "",
+    globalPhotorealismLanguage(),
+    "Do not add text labels, prices, product names, or retailer claims."
+  ]
+    .filter((line): line is string => line !== null)
+    .join("\n");
+}
+
+export async function generateConceptView(
+  input: GenerateConceptViewInput
+): Promise<GenerateConceptViewResult> {
+  const env = parseServerEnv(process.env);
+  const client = new OpenAI({ apiKey: env.OPENAI_API_KEY });
+  const prompt = buildConceptViewPrompt(input);
+
+  const imageResult = await generateImageWithConfiguredProvider({
+    client,
+    prompt,
+    references: [
+      {
+        bytes: input.heroImageBytes,
+        mimeType: input.heroImageMimeType,
+        name: "approved-concept",
+        url: input.heroImageUrl ?? null,
+        required: true
+      }
+    ],
+    noImageErrorMessage: "Concept view generation returned no image data."
+  });
+
+  return {
+    viewKey: input.viewKey,
+    promptVersion: CONCEPT_VIEW_PROMPT_VERSION,
+    imageProvider: imageResult.provider,
+    imageModel: imageResult.model,
+    imageLatencySeconds: imageResult.latencySeconds,
+    imageFallbackUsed: imageResult.fallbackUsed,
+    imageFallbackError: imageResult.error ?? null,
+    imageBase64: imageResult.imageBase64
+  };
+}
+
+export type ExtractConceptImagePaletteInput = {
+  // Data URL or fetchable URL of the generated concept image.
+  imageUrl: string;
+};
+
+export type ExtractConceptImagePaletteResult = {
+  promptKey: string;
+  promptVersion: string;
+  model: string;
+  palette: {
+    dominantColors: string[];
+    accentColors: string[];
+    dominantMaterials: string[];
+    avoidColors: string[];
+  };
+};
+
+export async function extractConceptImagePalette(
+  input: ExtractConceptImagePaletteInput
+): Promise<ExtractConceptImagePaletteResult> {
+  const env = parseServerEnv(process.env);
+  const client = new OpenAI({ apiKey: env.OPENAI_API_KEY });
+
+  const response = await client.responses.create({
+    max_output_tokens: 4000,
+    model: env.OPENAI_TEXT_MODEL,
+    input: [
+      {
+        role: "system",
+        content: conceptPalettePrompt.system
+      },
+      {
+        role: "user",
+        content: [
+          {
+            type: "input_text",
+            text: "Extract the rendered palette of this interior design concept image."
+          },
+          {
+            type: "input_image",
+            image_url: input.imageUrl,
+            detail: "low"
+          }
+        ]
+      }
+    ],
+    text: {
+      format: {
+        type: "json_schema",
+        name: "ritzy_concept_palette",
+        schema: conceptPaletteJsonSchema,
+        strict: true
+      }
+    }
+  });
+
+  const palette = conceptPaletteResponseSchema.parse(JSON.parse(response.output_text));
+
+  return {
+    promptKey: conceptPalettePrompt.key,
+    promptVersion: conceptPalettePrompt.version,
+    model: env.OPENAI_TEXT_MODEL,
+    palette
+  };
+}
+
+export type AssessRenderSpatialQualityInput = {
+  // Data URL or fetchable URL of the rendered image.
+  imageUrl: string;
+  roomType: string;
+  spatialIntent?: SpatialPromptIntent | null;
+};
+
+export type AssessRenderSpatialQualityResult = {
+  promptKey: string;
+  promptVersion: string;
+  model: string;
+  qa: RenderSpatialQaResponse;
+};
+
+export async function assessRenderSpatialQuality(
+  input: AssessRenderSpatialQualityInput
+): Promise<AssessRenderSpatialQualityResult> {
+  const env = parseServerEnv(process.env);
+  const client = new OpenAI({ apiKey: env.OPENAI_API_KEY });
+
+  const context = [
+    `Room type: ${input.roomType}.`,
+    input.spatialIntent?.focalPoint && input.spatialIntent.focalPoint !== "unknown"
+      ? `The user chose the focal point: ${input.spatialIntent.focalPoint.replace(/_/g, " ")}.`
+      : "Focal point was not specified; judge against the most credible focal point in the image.",
+    input.spatialIntent?.mustKeepClear?.length
+      ? `The user asked to keep clear: ${input.spatialIntent.mustKeepClear.join("; ")}.`
+      : null
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+  const response = await client.responses.create({
+    max_output_tokens: 4000,
+    model: env.OPENAI_TEXT_MODEL,
+    input: [
+      {
+        role: "system",
+        content: renderSpatialQaPrompt.system
+      },
+      {
+        role: "user",
+        content: [
+          { type: "input_text", text: context },
+          {
+            type: "input_image",
+            image_url: input.imageUrl,
+            detail: "high"
+          }
+        ]
+      }
+    ],
+    text: {
+      format: {
+        type: "json_schema",
+        name: "ritzy_render_spatial_qa",
+        schema: renderSpatialQaJsonSchema,
+        strict: true
+      }
+    }
+  });
+
+  const qa = renderSpatialQaResponseSchema.parse(JSON.parse(response.output_text));
+
+  return {
+    promptKey: renderSpatialQaPrompt.key,
+    promptVersion: renderSpatialQaPrompt.version,
+    model: env.OPENAI_TEXT_MODEL,
+    qa
+  };
+}
+
+// Corrective language appended to an image prompt when spatial QA asked for a
+// regeneration; the issues come straight from the QA verdict.
+export function spatialQaCorrectionLanguage(issues: string[]) {
+  return [
+    "A design review of the previous attempt found these placement problems; fix every one of them this time:",
+    ...issues.map((issue) => `- ${issue}`),
+    "Keep the same design direction, palette, and products; only correct the placement, orientation, scale, or artifact problems named above."
+  ].join("\n");
 }
 
 export async function generateConceptRevision(
@@ -1475,6 +2061,7 @@ export async function generateConceptRevision(
   };
 
   const directionResponse = await client.responses.create({
+    max_output_tokens: 24000,
     model: env.OPENAI_TEXT_MODEL,
     input: [
       {
@@ -1525,7 +2112,9 @@ export async function generateConceptRevision(
       {
         bytes: input.roomPhotoBytes,
         mimeType: input.roomPhotoMimeType,
-        name: "room"
+        name: "room",
+        url: publicReferenceUrl(input.roomPhotoReferenceUrl ?? input.roomPhotoUrl),
+        required: true
       }
     ],
     noImageErrorMessage: "OpenAI image revision returned no image data."
@@ -1573,6 +2162,7 @@ export async function generateProductEnrichment(
   const sourceHash = createProductEnrichmentSourceHash(parsedInput);
 
   const response = await client.responses.create({
+    max_output_tokens: 8000,
     model: env.OPENAI_TEXT_MODEL,
     input: [
       {
@@ -1753,32 +2343,37 @@ export async function generateFinalGroundedRender(
     .map((product, index) => ({
       bytes: product.imageBytes as Buffer,
       mimeType: product.imageMimeType as string,
-      name: `product-${index}`
+      name: `product-${index}`,
+      url: product.imageUrl ?? null
     }));
+  // The image model has tight prompt-token limits; keep the product summary to
+  // the visual facts it can act on. Selection rationales are provenance, not
+  // render guidance.
   const productSummary = input.products
     .map((product, index) =>
       [
         `${index + 1}. ${product.category}: ${product.name}`,
         product.roleLabel ? `room role: ${product.roleLabel}` : null,
-        `retailer: ${product.retailerName}`,
-        product.description ? `description: ${product.description}` : null,
-        product.priceAed ? `price: AED ${product.priceAed}` : null,
-        product.dimensions ? `dimensions: ${product.dimensions}` : null,
-        product.visualMatchReason ? `why selected: ${product.visualMatchReason}` : null
+        product.description ? `description: ${truncateForPrompt(product.description, 140)}` : null,
+        product.dimensions ? `dimensions: ${product.dimensions}` : null
       ]
         .filter(Boolean)
         .join("; ")
     )
     .join("\n");
-  const prompt = buildFinalGroundedRenderPrompt({
+  const basePrompt = buildFinalGroundedRenderPrompt({
     roomType: input.roomType,
     conceptTitle: input.conceptTitle,
-    conceptDescription: input.conceptDescription,
+    conceptDescription: input.conceptDescription
+      ? truncateForPrompt(input.conceptDescription, 600)
+      : input.conceptDescription,
     hasConceptImage,
     productSummary,
     useFinalRenderPromptV2,
-    strictSourceRoomPreservation: localStrictSourceRoomPreservationEnabled()
+    strictSourceRoomPreservation: localStrictSourceRoomPreservationEnabled(),
+    spatialIntent: input.spatialIntent ?? null
   });
+  const prompt = input.promptSuffix ? `${basePrompt}\n\n${input.promptSuffix}` : basePrompt;
 
   const imageResult = await generateImageWithConfiguredProvider({
     client,
@@ -1787,14 +2382,18 @@ export async function generateFinalGroundedRender(
       {
         bytes: input.roomPhotoBytes,
         mimeType: input.roomPhotoMimeType,
-        name: "room"
+        name: "room",
+        url: input.roomPhotoUrl ?? null,
+        required: true
       },
       ...(input.conceptImageBytes && input.conceptImageMimeType
         ? [
             {
               bytes: input.conceptImageBytes,
               mimeType: input.conceptImageMimeType,
-              name: "concept"
+              name: "concept",
+              url: input.conceptImageUrl ?? null,
+              required: true
             }
           ]
         : []),

@@ -1,4 +1,5 @@
 import { ButtonLink, SubmitButton } from "@ritzy-studio/ui";
+import { parseSpatialIntent, spatialLayoutModeForRoomType } from "@ritzy-studio/domain";
 import { notFound, redirect } from "next/navigation";
 
 import { saveDesignBriefAction } from "@/app/actions";
@@ -62,6 +63,11 @@ export default async function BriefDetailsPage({
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();
+
+  const spatialIntent = parseSpatialIntent(designBrief?.structured_json, room.room_type);
+  const layoutMode = spatialLayoutModeForRoomType(room.room_type);
+  const showSeatingPlanning = layoutMode === "living_only" || layoutMode === "living_plus_dining";
+  const showDiningPlanning = layoutMode === "living_plus_dining" || layoutMode === "dining_only";
 
   const inspirationAnalysis = inspirationAnalysisFromStructuredJson(designBrief?.structured_json);
   const selectedStyles = selectedStylesFromStructuredJson(designBrief?.structured_json);
@@ -192,16 +198,110 @@ export default async function BriefDetailsPage({
           </div>
         </div>
 
+        {showSeatingPlanning || showDiningPlanning ? (
+          <section className="mt-12">
+            <h2 className="font-display text-display-xs font-light tracking-[-0.01em] text-ink">
+              Room planning
+              <span className="ml-3 align-middle font-body text-caption font-medium uppercase tracking-wider text-ink-helper">
+                · A designer would ask
+              </span>
+            </h2>
+            <p className="mt-4 max-w-[72ch] font-body text-body-s text-ink-muted">
+              These decide where the furniture goes, not just what it looks like. Skip anything you are
+              unsure of and we will note the assumption.
+            </p>
+            <div className="mt-6 grid gap-4 md:grid-cols-2">
+              {showSeatingPlanning ? (
+                <div className="border border-line bg-surface p-5">
+                  <label className="block font-body text-body-l text-ink" htmlFor="focalPoint">
+                    What should the seating face?
+                  </label>
+                  <select
+                    className="mt-4 block w-full border-0 border-b border-[var(--rs-border)] bg-transparent px-0 pb-2 font-body text-body-m text-ink outline-none transition-colors duration-micro ease-standard focus:border-[var(--rs-accent-deep)]"
+                    defaultValue={spatialIntent.focalPoint ?? "unknown"}
+                    id="focalPoint"
+                    name="focalPoint"
+                  >
+                    <option value="unknown">Let the designer decide</option>
+                    <option value="tv_media_wall">The TV / media wall</option>
+                    <option value="view_window">The window / view</option>
+                    <option value="fireplace">The fireplace</option>
+                    <option value="art_display_wall">An art or display wall</option>
+                    <option value="conversation">Each other — conversation first</option>
+                  </select>
+                </div>
+              ) : null}
+              {showSeatingPlanning ? (
+                <div className="border border-line bg-surface p-5">
+                  <label className="block font-body text-body-l text-ink" htmlFor="seatingPriority">
+                    How is the room mostly used?
+                  </label>
+                  <select
+                    className="mt-4 block w-full border-0 border-b border-[var(--rs-border)] bg-transparent px-0 pb-2 font-body text-body-m text-ink outline-none transition-colors duration-micro ease-standard focus:border-[var(--rs-accent-deep)]"
+                    defaultValue={spatialIntent.seatingPriority ?? "unknown"}
+                    id="seatingPriority"
+                    name="seatingPriority"
+                  >
+                    <option value="unknown">Let the designer decide</option>
+                    <option value="tv_viewing">Watching TV together</option>
+                    <option value="conversation">Entertaining and conversation</option>
+                    <option value="family_lounging">Relaxed family lounging</option>
+                    <option value="formal_hosting">Formal hosting</option>
+                    <option value="majlis_hosting">Majlis-style hosting</option>
+                  </select>
+                </div>
+              ) : null}
+              {showDiningPlanning ? (
+                <div className="border border-line bg-surface p-5">
+                  <label className="block font-body text-body-l text-ink" htmlFor="diningSeatCount">
+                    Day-to-day dining seats
+                  </label>
+                  <p className="mt-2 font-body text-body-s text-ink-muted">
+                    How many people eat here on a normal day?
+                  </p>
+                  <input
+                    className="mt-4 block w-full border-0 border-b border-[var(--rs-border)] bg-transparent px-0 pb-2 font-body text-body-m text-ink outline-none transition-colors duration-micro ease-standard placeholder:text-[var(--rs-text-placeholder)] focus:border-[var(--rs-accent-deep)]"
+                    defaultValue={spatialIntent.diningSeatCount ?? ""}
+                    id="diningSeatCount"
+                    max="16"
+                    min="2"
+                    name="diningSeatCount"
+                    placeholder="6"
+                    type="number"
+                  />
+                </div>
+              ) : null}
+              <div className="border border-line bg-surface p-5">
+                <label className="block font-body text-body-l text-ink" htmlFor="mustKeepClear">
+                  Anything that must stay clear?
+                </label>
+                <p className="mt-2 font-body text-body-s text-ink-muted">
+                  Doors, balcony access, AC returns, a prayer corner...
+                </p>
+                <input
+                  className="mt-4 block w-full border-0 border-b border-[var(--rs-border)] bg-transparent px-0 pb-2 font-body text-body-m text-ink outline-none transition-colors duration-micro ease-standard placeholder:text-[var(--rs-text-placeholder)] focus:border-[var(--rs-accent-deep)]"
+                  defaultValue={spatialIntent.mustKeepClear?.[0] ?? ""}
+                  id="mustKeepClear"
+                  name="mustKeepClear"
+                  placeholder="keep the balcony door clear"
+                  type="text"
+                />
+              </div>
+            </div>
+          </section>
+        ) : null}
+
         <section className="mt-12">
           <h2 className="font-display text-display-xs font-light tracking-[-0.01em] text-ink">
             Measurements
             <span className="ml-3 align-middle font-body text-caption font-medium uppercase tracking-wider text-ink-helper">
-              · Required
+              · Strongly recommended
             </span>
           </h2>
           <p className="mt-4 max-w-[72ch] font-body text-body-s text-ink-muted">
-            Add the main wall, room depth, and ceiling height before moving ahead. These dimensions keep
-            sofa, table, chair, lighting, and rug recommendations from becoming misleading.
+            The main wall, room depth, and ceiling height keep sofa, table, chair, lighting, and rug
+            recommendations honestly sized. Skip them and we will still design, with scale treated as
+            directional until you add dimensions.
           </p>
           <div className="mt-6 grid gap-4 md:grid-cols-3">
             <div className="border border-line bg-surface p-5">
@@ -212,14 +312,12 @@ export default async function BriefDetailsPage({
                 The longest usable wall in the room.
               </p>
               <input
-                aria-required="true"
                 className="mt-4 block w-full border-0 border-b border-[var(--rs-border)] bg-transparent px-0 pb-2 font-body text-body-m text-ink outline-none transition-colors duration-micro ease-standard placeholder:text-[var(--rs-text-placeholder)] focus:border-[var(--rs-accent-deep)]"
                 defaultValue={measurements?.wall_length_cm ?? ""}
                 id="wallLengthCm"
                 min="1"
                 name="wallLengthCm"
                 placeholder="520"
-                required
                 type="number"
               />
             </div>
@@ -231,14 +329,12 @@ export default async function BriefDetailsPage({
                 From that wall to the opposite side.
               </p>
               <input
-                aria-required="true"
                 className="mt-4 block w-full border-0 border-b border-[var(--rs-border)] bg-transparent px-0 pb-2 font-body text-body-m text-ink outline-none transition-colors duration-micro ease-standard placeholder:text-[var(--rs-text-placeholder)] focus:border-[var(--rs-accent-deep)]"
                 defaultValue={measurements?.room_depth_cm ?? ""}
                 id="roomDepthCm"
                 min="1"
                 name="roomDepthCm"
                 placeholder="410"
-                required
                 type="number"
               />
             </div>
@@ -250,14 +346,12 @@ export default async function BriefDetailsPage({
                 Your best measured ceiling height.
               </p>
               <input
-                aria-required="true"
                 className="mt-4 block w-full border-0 border-b border-[var(--rs-border)] bg-transparent px-0 pb-2 font-body text-body-m text-ink outline-none transition-colors duration-micro ease-standard placeholder:text-[var(--rs-text-placeholder)] focus:border-[var(--rs-accent-deep)]"
                 defaultValue={measurements?.ceiling_height_cm ?? ""}
                 id="ceilingHeightCm"
                 min="1"
                 name="ceilingHeightCm"
                 placeholder="290"
-                required
                 type="number"
               />
             </div>

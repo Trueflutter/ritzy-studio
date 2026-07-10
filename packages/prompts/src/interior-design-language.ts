@@ -285,6 +285,125 @@ export function productRoleLanguage(roomType: string) {
   return "Consider layered product roles that materially define the room: anchor furniture, supporting furniture, rug/textiles, lighting, art or mirror, storage where useful, and restrained decor. Do not force every layer into every room.";
 }
 
+// Structured spatial intent captured by the brief. Mirrors the domain's
+// SpatialIntent shape without importing across packages.
+export type SpatialPromptIntent = {
+  focalPoint?: string;
+  seatingPriority?: string;
+  diningSeatCount?: number | null;
+  mustKeepClear?: readonly string[];
+};
+
+const focalPointLanguage: Record<string, string> = {
+  tv_media_wall:
+    "The user confirmed the TV/media wall is the primary focal point: orient the primary seating to face it across the rug and coffee-table zone.",
+  view_window:
+    "The user confirmed the window view is the primary focal point: orient seating to share the view without blocking access or daylight, and do not force a TV wall into the composition.",
+  fireplace:
+    "The user confirmed the fireplace is the primary focal point: anchor the seating group on it and treat any media layer as secondary.",
+  art_display_wall:
+    "The user confirmed an art or display wall is the primary focal point: compose the seating toward it and give that wall a gallery-caliber treatment.",
+  conversation:
+    "The user confirmed conversation is the priority over any screen or wall: arrange seating as an inward-facing group around a shared center, with no piece orphaned outside the circle."
+};
+
+const seatingPriorityLanguage: Record<string, string> = {
+  tv_viewing:
+    "Seating priority: comfortable TV viewing. Keep the primary sofa square to the media wall at a sensible viewing distance.",
+  conversation:
+    "Seating priority: entertaining and conversation. Chairs and sofa address a shared center; no seat should require turning around to talk.",
+  family_lounging:
+    "Seating priority: relaxed family lounging. Favor deep, generous seating and soft layering over formality.",
+  formal_hosting:
+    "Seating priority: formal hosting. Compose a composed, symmetric seating group with generous guest seating and polished styling.",
+  majlis_hosting:
+    "Seating priority: majlis-style hosting. Provide generous continuous seating along the walls oriented to the room's center, hosting density over minimalism, while keeping the arrangement tailored and contemporary."
+};
+
+// Additive spatial guidance derived from the user's structured planning
+// answers. Slotted into the existing concept/render language compositions.
+export function spatialLayoutLanguage(roomType: string, intent?: SpatialPromptIntent | null) {
+  const resolved = resolveRoomType(roomType);
+  const parts: string[] = [];
+
+  if (intent?.focalPoint && focalPointLanguage[intent.focalPoint]) {
+    parts.push(focalPointLanguage[intent.focalPoint]);
+  }
+
+  if (intent?.seatingPriority && seatingPriorityLanguage[intent.seatingPriority]) {
+    parts.push(seatingPriorityLanguage[intent.seatingPriority]);
+  }
+
+  if (
+    (resolved === "living_dining" || resolved === "dining") &&
+    typeof intent?.diningSeatCount === "number" &&
+    intent.diningSeatCount > 0
+  ) {
+    parts.push(
+      `The dining table must seat ${intent.diningSeatCount} with realistic chair spacing and pull-out clearance; do not render a different seat count.`
+    );
+  }
+
+  if (intent?.mustKeepClear && intent.mustKeepClear.length > 0) {
+    parts.push(
+      `Keep these areas completely clear of furniture and decor, exactly as the user asked: ${intent.mustKeepClear.join("; ")}.`
+    );
+  }
+
+  return parts.length > 0 ? parts.join(" ") : null;
+}
+
+export type ConceptViewKey = "reverse_wide" | "anchor_detail";
+
+const anchorGroupLanguage: Record<RitzyRoomType, string> = {
+  living: "the seating group: the primary sofa, coffee table, and accent seating composed over the rug",
+  living_dining:
+    "the living-zone seating group: the primary sofa, coffee table, and accent seating composed over the living rug, with the dining zone readable beyond it",
+  dining: "the dining group: the dining table, its chairs, and the centered over-table fixture",
+  bedroom: "the bed wall: the bed, headboard, bedside tables, and bedside lighting over the rug",
+  bathroom: "the vanity wall: the vanity, mirror, and lighting composition",
+  office: "the work setup: the desk, task chair, and shelving or storage behind it",
+  default: "the room's main furniture group"
+};
+
+const reverseWideLanguage: Record<RitzyRoomType, string> = {
+  living:
+    "The camera now stands at the far end of the room near the window or focal wall, looking back across the seating group toward the wall the first photo was taken from, so the previously unseen side of the room is now visible.",
+  living_dining:
+    "The camera now stands in the dining zone, looking back across the divider and the living seating group toward where the first photo was taken, so the dining table, its chairs, and the zone boundary are now the foreground and the living zone reads beyond them.",
+  dining:
+    "The camera now stands on the opposite side of the dining table from the first photo, looking back across the table toward the previously unseen side of the room, with the sideboard or serving wall now visible.",
+  bedroom:
+    "The camera now stands beside the window or the wall facing the bed, looking back at the bed wall straight on, so the full headboard composition and both bedside tables are visible.",
+  bathroom:
+    "The camera now faces the previously unseen wall of the bathroom, keeping the same fixtures and finishes visible from the new side.",
+  office:
+    "The camera now stands behind or beside the desk position, looking back toward the entry side of the room, so the desk setup is seen from its other side and the previously unseen wall is visible.",
+  default:
+    "The camera now stands at the opposite end of the room, looking back toward where the first photo was taken, so the previously unseen side of the room is visible."
+};
+
+export function conceptViewCameraLanguage(roomType: string, viewKey: ConceptViewKey) {
+  const resolved = resolveRoomType(roomType);
+
+  if (viewKey === "reverse_wide") {
+    return reverseWideLanguage[resolved];
+  }
+
+  return `The camera moves to a closer three-quarter composition of ${anchorGroupLanguage[resolved]}, at standing eye height, composing it as the clear subject of the frame with realistic perspective.`;
+}
+
+export function conceptViewConsistencyLanguage() {
+  return [
+    "The reference image is the approved design concept for this room. Produce another photograph of THE SAME designed room.",
+    "Every piece of furniture, every material, every color, the rug pattern, the lighting fixtures, the wall treatment, the curtains, and the decor must be kept identical to the reference image.",
+    "Do not introduce new furniture, remove existing pieces, change upholstery colors or materials, or restyle the room in any way.",
+    "Keep the same architecture: the same walls, window positions, door positions, ceiling, and flooring as the reference image, seen from the new camera position with physically plausible perspective.",
+    "Keep the same lighting mood, daylight direction, and warm layered lighting as the reference image.",
+    "This must read as a second photograph of the identical physical room taken moments later, not a new design or a variation."
+  ].join(" ");
+}
+
 function resolveStyleSlugs(styleSlugs: string[]) {
   const resolved: string[] = [];
 
