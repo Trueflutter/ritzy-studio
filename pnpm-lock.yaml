@@ -108,6 +108,9 @@ importers:
       openai:
         specifier: ^6.35.0
         version: 6.35.0(ws@8.20.0)(zod@4.3.6)
+      sharp:
+        specifier: ^0.35.3
+        version: 0.35.3(@types/node@20.19.39)
     devDependencies:
       '@types/node':
         specifier: ^20

@@ -162,6 +162,62 @@ file top to bottom. Newest entries at the bottom. Keep this file updated after e
 5. Catalog depth: needs hosted DB back or a headless-browser ingestion approach (plain fetch is
    bot-blocked for Home Centre/Danube/IKEA/2XL).
 
+## 2026-07-10 (session 2 — after Ayo cleared blockers)
+
+### State changes
+- Hosted Supabase restored (DNS back; 3,309 real products). BUT the two new migrations
+  (20260710120000_concept_view_assets, 20260710153000_concept_palette) are NOT applied there —
+  Ayo must run them (SQL in the migration files) via dashboard SQL editor or `supabase db push`.
+  Until then the hosted app will fail on concept views and palette selects.
+- Evolink approved for OpenAI-SDK routing: .env.local sets OPENAI_BASE_URL=https://api.evolink.ai/v1,
+  OPENAI_API_KEY=<evolink key>, OPENAI_TEXT_MODEL=gpt-5.1. Model decision: GPT-5.6 family is not
+  yet on Evolink (API GA 2026-07-09); recommendation is gpt-5.6-luna ($1/$6, 82.5 vs GPT-5.5's
+  83.4) once available; gpt-5.1 today. Vercel CLI is authenticated + linked (env updates possible).
+- PR #310 review findings all addressed (required references, parallel+tracked concept views,
+  revision views, dev-harness gitignore). Whitespace claim did not reproduce
+  (`git diff main...HEAD --check` clean).
+
+### LIVE E2E COMPLETED (local stack + Evolink text/images, real Gemini renderer)
+Full flow verified in the running app: login -> onboarding -> project -> room -> photo -> brief
+(with room-planning questions) -> clarifying questions (gpt-5.1) -> catalogue-grounded concept
+(real Gemini render, architecture preserved, on-palette) -> two consistent concept views (live,
+excellent identity consistency incl. anchored products) -> palette extraction (cached, accurate)
+-> product grounding -> shopping list -> final render (in flight at writing).
+
+Validated live: PM-001 traps ALL excluded (office chair, office table, bathroom mirror);
+selected picks mostly palette-coherent; palette_json cached on concept.
+
+### Failure classes found live and FIXED (each was a real production risk)
+1. PostgREST embed ambiguity from the new concept_id FK silently emptied the concepts and
+   product-matching pages (named-FK embeds now).
+2. Provider-side image downloads flake (CDN rate limits, non-public hosts): ALL vision inputs now
+   downscaled (sharp 1024px JPEG) + inlined as data URLs, incl. sourcing candidates (fetched
+   app-side with retry) and catalogue references.
+3. Gateway cost estimator rejects unbounded calls: every Responses call now sets
+   max_output_tokens (4k-32k by call type).
+4. Evolink references: verified live that data URLs ARE accepted (handoff Appendix A said
+   otherwise); references now prefer public URLs and inline compressed (1280px JPEG) data URLs as
+   fallback, so required room/concept references can never be dropped. Double-provider failures
+   now surface both errors.
+5. Final render prompt exceeded Evolink's 4000-token image-model prompt cap: product summary
+   slimmed to visual facts (selection rationales removed), concept description truncated.
+6. Evolink balance: image generation reserves credits; 402 "insufficient balance" was topped up
+   by Ayo mid-session. Cost telemetry worth adding later.
+
+### OPEN QUALITY BUG (top priority next session)
+The catalogue-grounding ANCHOR loop picked the Royal Purple Vega sofa (attribute score 36, with
+"colour cue lacks positive catalogue evidence") as the concept anchor even though the pool ranked
+ivory/camel sofas far higher (240/166) and the brief said "avoid purple". The anchor then
+propagated: concept was designed "around" it and sourcing preselected it (selected sofa = purple;
+selected rug = the anchored burgundy Persian). Where to look: the anchor selection loop in
+buildCatalogueGroundedConceptPlan (apps/web/app/actions.ts ~5205-5280) — why the top-ranked
+candidates were skipped (hasHardCatalogueGroundingContradiction on cue-conflict weaknesses is the
+suspect: ivory/camel likely flagged "conflicts" against some cue token while purple only got the
+softer "lacks positive evidence"), plus consider hard avoid-color enforcement at anchor time
+(cheap: pass brief avoid colors into the plan as avoidColorTags — the scorer already supports it).
+Also: visual sourcing TIMED OUT (text fallback used, telemetry recorded); tune
+PRODUCT_SOURCING_AI_TIMEOUT_MS vs Evolink latency or trim candidate images.
+
 ### Retailer scraping status (for catalog depth work)
 - Home Centre, Danube, IKEA AE: 403 (TLS-fingerprint bot protection — even browser UA via curl
   fails). 2XL: 405. The One: adapter works but is dry-run-only by compliance gate. Catalog depth

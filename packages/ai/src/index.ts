@@ -49,6 +49,7 @@ import {
 import { createHash, createSign } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import OpenAI, { toFile } from "openai";
+import sharp from "sharp";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 type ImageProvider = "gemini" | "openai" | "evolink";
@@ -539,6 +540,11 @@ export function buildInitialConceptImagePrompt({
     .join("\n");
 }
 
+function truncateForPrompt(value: string, maxChars: number) {
+  const collapsed = value.replace(/\s+/g, " ").trim();
+  return collapsed.length <= maxChars ? collapsed : `${collapsed.slice(0, maxChars - 1)}…`;
+}
+
 export function buildFinalGroundedRenderPrompt({
   roomType,
   conceptTitle,
@@ -643,20 +649,26 @@ async function generateImageWithConfiguredProvider({
       });
     } catch (error) {
       const fallbackError = formatImageGenerationError(error);
-      const fallbackAttempt = await generateOpenAiImage({
-        client,
-        prompt,
-        references,
-        model: env.OPENAI_IMAGE_MODEL,
-        noImageErrorMessage
-      });
+      try {
+        const fallbackAttempt = await generateOpenAiImage({
+          client,
+          prompt,
+          references,
+          model: env.OPENAI_IMAGE_MODEL,
+          noImageErrorMessage
+        });
 
-      return {
-        ...fallbackAttempt,
-        latencySeconds: secondsSince(startedAt),
-        fallbackUsed: true,
-        error: fallbackError
-      };
+        return {
+          ...fallbackAttempt,
+          latencySeconds: secondsSince(startedAt),
+          fallbackUsed: true,
+          error: fallbackError
+        };
+      } catch (fallbackFailure) {
+        throw new Error(
+          `Evolink image generation failed (${fallbackError}); OpenAI fallback also failed (${formatImageGenerationError(fallbackFailure)}).`
+        );
+      }
     }
   }
 
@@ -898,13 +910,16 @@ async function generateEvolinkImage({
   // Prefer real public URLs (small request payloads); inline bytes as data URLs
   // otherwise. Verified live: the API accepts data URLs, so a required
   // reference (the room, the approved concept) can never be silently dropped.
-  const referenceUrls = references
-    .map(
-      (reference) =>
-        publicReferenceUrl(reference.url) ??
-        `data:${normalizeImageMimeType(reference.mimeType)};base64,${reference.bytes.toString("base64")}`
+  // Inlined references are recompressed so a full reference set stays a few
+  // megabytes instead of tens.
+  const referenceUrls = (
+    await Promise.all(
+      references.map(
+        async (reference) =>
+          publicReferenceUrl(reference.url) ?? (await referenceDataUrl(reference))
+      )
     )
-    .slice(0, EVOLINK_MAX_REFERENCE_URLS);
+  ).slice(0, EVOLINK_MAX_REFERENCE_URLS);
 
   const headers = {
     Authorization: `Bearer ${apiKey}`,
@@ -981,6 +996,18 @@ async function generateEvolinkImage({
   }
 
   throw new Error(`Evolink image generation timed out after ${EVOLINK_POLL_TIMEOUT_MS / 1000} seconds.`);
+}
+
+async function referenceDataUrl(reference: ImageGenerationReference) {
+  try {
+    const compressed = await sharp(reference.bytes)
+      .resize(1280, 1280, { fit: "inside", withoutEnlargement: true })
+      .jpeg({ quality: 82 })
+      .toBuffer();
+    return `data:image/jpeg;base64,${compressed.toString("base64")}`;
+  } catch {
+    return `data:${normalizeImageMimeType(reference.mimeType)};base64,${reference.bytes.toString("base64")}`;
+  }
 }
 
 function evolinkErrorMessage(payload: EvolinkTaskResponse | null): string | null {
@@ -2319,16 +2346,16 @@ export async function generateFinalGroundedRender(
       name: `product-${index}`,
       url: product.imageUrl ?? null
     }));
+  // The image model has tight prompt-token limits; keep the product summary to
+  // the visual facts it can act on. Selection rationales are provenance, not
+  // render guidance.
   const productSummary = input.products
     .map((product, index) =>
       [
         `${index + 1}. ${product.category}: ${product.name}`,
         product.roleLabel ? `room role: ${product.roleLabel}` : null,
-        `retailer: ${product.retailerName}`,
-        product.description ? `description: ${product.description}` : null,
-        product.priceAed ? `price: AED ${product.priceAed}` : null,
-        product.dimensions ? `dimensions: ${product.dimensions}` : null,
-        product.visualMatchReason ? `why selected: ${product.visualMatchReason}` : null
+        product.description ? `description: ${truncateForPrompt(product.description, 140)}` : null,
+        product.dimensions ? `dimensions: ${product.dimensions}` : null
       ]
         .filter(Boolean)
         .join("; ")
@@ -2337,7 +2364,9 @@ export async function generateFinalGroundedRender(
   const basePrompt = buildFinalGroundedRenderPrompt({
     roomType: input.roomType,
     conceptTitle: input.conceptTitle,
-    conceptDescription: input.conceptDescription,
+    conceptDescription: input.conceptDescription
+      ? truncateForPrompt(input.conceptDescription, 600)
+      : input.conceptDescription,
     hasConceptImage,
     productSummary,
     useFinalRenderPromptV2,

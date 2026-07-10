@@ -16,7 +16,8 @@
     "@ritzy-studio/domain": "workspace:*",
     "@ritzy-studio/prompts": "workspace:*",
     "@supabase/supabase-js": "^2.89.0",
-    "openai": "^6.35.0"
+    "openai": "^6.35.0",
+    "sharp": "^0.35.3"
   },
   "devDependencies": {
     "@types/node": "^20",
