@@ -5187,7 +5187,10 @@ async function buildCatalogueGroundedConceptPlan({
   designBrief: DesignBriefRow;
   answeredQuestions: AnsweredQuestionRow[];
 }) {
-  const cueText = catalogueGroundingCueText({ designBrief, answeredQuestions });
+  const rawCueText = catalogueGroundingCueText({ designBrief, answeredQuestions });
+  // "avoid purple and bright red" must not read as positive purple/red cues:
+  // strip avoid-clauses from the scoring text and enforce them structurally.
+  const { cueText, avoidColorTags } = splitAvoidColorCues(rawCueText);
   const cueRequirements = catalogueCueRequirements(cueText);
   const anchorRoles = enhancedProductRolesForRoom(roomType)
     .filter((role) => role.importance === "anchor" || role.required)
@@ -5230,6 +5233,7 @@ async function buildCatalogueGroundedConceptPlan({
     conceptText,
     roles: anchorRoles,
     candidates,
+    avoidColorTags,
     budgetMaxAed,
     roomMeasurements,
     candidatesPerRole: aestheticGateEnabled ? 36 : CATALOGUE_GROUNDED_CONCEPT_CANDIDATES_PER_ROLE,
@@ -5848,6 +5852,40 @@ function catalogueGroundingWeaknessReasons(
   }
 
   return Array.from(new Set(reasons));
+}
+
+const AVOID_CUE_COLOR_TOKENS = [
+  "beige", "black", "blue", "brown", "burgundy", "charcoal", "cream", "gold", "green", "grey",
+  "gray", "ivory", "navy", "orange", "pink", "purple", "red", "rust", "sage", "taupe",
+  "terracotta", "white", "yellow"
+];
+
+// Splits "avoid X" style clauses out of free-text cues. The named colors become
+// structural avoid tags; the clauses are removed so their tokens stop scoring
+// as positive matches.
+function splitAvoidColorCues(text: string): { cueText: string; avoidColorTags: string[] } {
+  const avoidColorTags = new Set<string>();
+  const cleanedLines = text.split("\n").map((line) => {
+    // Capture from each avoid-marker to the end of the clause (sentence/segment).
+    return line.replace(
+      /\b(?:avoid(?:ing)?|no|not|without|nothing)\b([^.;\n]*)/gi,
+      (clause, tail: string) => {
+        const tailTokens = tail.toLowerCase().split(/[^a-z]+/);
+        const named = AVOID_CUE_COLOR_TOKENS.filter((color) => tailTokens.includes(color));
+        for (const color of named) {
+          avoidColorTags.add(color);
+        }
+        // Only strip the clause when it actually named colors; other avoid
+        // notes (materials, styles) keep flowing to the model as text.
+        return named.length > 0 ? "" : clause;
+      }
+    );
+  });
+
+  return {
+    cueText: cleanedLines.join("\n").replace(/[ \t]{2,}/g, " ").trim(),
+    avoidColorTags: Array.from(avoidColorTags)
+  };
 }
 
 function catalogueCueTokens(value: string) {
