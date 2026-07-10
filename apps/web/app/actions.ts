@@ -4,9 +4,11 @@ import {
   analyzeInspirationImages,
   generateClarifyingQuestions,
   generateConceptRevision,
+  generateConceptView,
   generateFinalGroundedRender,
   generateInitialConcept,
-  sourceProductsFromConcept
+  sourceProductsFromConcept,
+  type ConceptViewKey
 } from "@ritzy-studio/ai";
 import type { Database } from "@ritzy-studio/db";
 import {
@@ -108,6 +110,81 @@ const INTERNAL_PILOT_SIGNUP_MESSAGE =
 
 function productReferenceOrderingV2Enabled() {
   return process.env.RITZY_PRODUCT_REFERENCE_ORDERING_V2_ENABLED === "true";
+}
+
+const CONCEPT_VIEW_KEYS: ConceptViewKey[] = ["reverse_wide", "anchor_detail"];
+
+// Generates the additional camera angles for a stored concept and records them as
+// concept-linked room assets. Runs inside after(): view failures must never fail
+// the concept itself, so each view is best-effort.
+async function generateAndStoreConceptViews({
+  serviceSupabase,
+  userId,
+  roomId,
+  conceptId,
+  roomType,
+  conceptTitle,
+  conceptDescription,
+  conceptGenerationPrompt,
+  heroImageBytes,
+  heroImageStoragePath
+}: {
+  serviceSupabase: ReturnType<typeof createServiceClient>;
+  userId: string;
+  roomId: string;
+  conceptId: string;
+  roomType: string;
+  conceptTitle: string;
+  conceptDescription?: string | null;
+  conceptGenerationPrompt?: string | null;
+  heroImageBytes: Buffer;
+  heroImageStoragePath: string;
+}) {
+  const { data: signedHero } = await serviceSupabase.storage
+    .from("generated-renders")
+    .createSignedUrl(heroImageStoragePath, 60 * 30);
+
+  for (const viewKey of CONCEPT_VIEW_KEYS) {
+    try {
+      const view = await generateConceptView({
+        roomType,
+        viewKey,
+        conceptTitle,
+        conceptDescription,
+        conceptGenerationPrompt,
+        heroImageBytes,
+        heroImageMimeType: "image/png",
+        heroImageUrl: signedHero?.signedUrl ?? null
+      });
+      const viewPath = `${userId}/${roomId}/${conceptId}-${viewKey}.png`;
+      const { error: uploadError } = await serviceSupabase.storage
+        .from("generated-renders")
+        .upload(viewPath, Buffer.from(view.imageBase64, "base64"), {
+          contentType: "image/png",
+          upsert: true
+        });
+
+      if (uploadError) {
+        throw new Error(uploadError.message);
+      }
+
+      const { error: assetError } = await serviceSupabase.from("room_assets").insert({
+        room_id: roomId,
+        asset_type: "concept_render",
+        storage_path: viewPath,
+        mime_type: "image/png",
+        is_primary: false,
+        concept_id: conceptId,
+        view_key: viewKey
+      });
+
+      if (assetError) {
+        throw new Error(assetError.message);
+      }
+    } catch (error) {
+      console.error(`Concept view generation failed (${viewKey}, concept ${conceptId}):`, error);
+    }
+  }
 }
 
 function configuredImageProvider() {
@@ -2023,6 +2100,22 @@ export async function generateInitialConceptAction(formData: FormData) {
       .eq("id", concept.id);
 
     await supabase.from("rooms").update({ status: "concepting" }).eq("id", roomId);
+
+    after(async () => {
+      await generateAndStoreConceptViews({
+        serviceSupabase,
+        userId: user.id,
+        roomId,
+        conceptId: concept.id,
+        roomType: room.room_type,
+        conceptTitle: result.concept.title,
+        conceptDescription: result.concept.rationale,
+        conceptGenerationPrompt: result.concept.generationPrompt,
+        heroImageBytes: renderBytes,
+        heroImageStoragePath: renderPath
+      });
+      revalidatePath(redirectPath);
+    });
   } catch (error) {
     await serviceSupabase
       .from("ai_jobs")
