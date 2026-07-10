@@ -3,12 +3,14 @@
 import {
   analyzeInspirationImages,
   generateClarifyingQuestions,
+  assessRenderSpatialQuality,
   extractConceptImagePalette,
   generateConceptRevision,
   generateConceptView,
   generateFinalGroundedRender,
   generateInitialConcept,
   sourceProductsFromConcept,
+  spatialQaCorrectionLanguage,
   type ConceptViewKey
 } from "@ritzy-studio/ai";
 import type { Database } from "@ritzy-studio/db";
@@ -4464,14 +4466,15 @@ export async function generateFinalRenderAction(formData: FormData) {
         .limit(1)
         .maybeSingle();
       const renderSpatialIntent = parseSpatialIntent(renderDesignBrief?.structured_json, room.room_type);
-      const result = await generateFinalGroundedRender({
+      const renderSpatialIntentPrompt = {
+        focalPoint: renderSpatialIntent.focalPoint,
+        seatingPriority: renderSpatialIntent.seatingPriority,
+        diningSeatCount: renderSpatialIntent.diningSeatCount,
+        mustKeepClear: renderSpatialIntent.mustKeepClear
+      };
+      const renderInput = {
         roomType: room.room_type,
-        spatialIntent: {
-          focalPoint: renderSpatialIntent.focalPoint,
-          seatingPriority: renderSpatialIntent.seatingPriority,
-          diningSeatCount: renderSpatialIntent.diningSeatCount,
-          mustKeepClear: renderSpatialIntent.mustKeepClear
-        },
+        spatialIntent: renderSpatialIntentPrompt,
         roomPhotoBytes: Buffer.from(await roomBlob.arrayBuffer()),
         roomPhotoMimeType: roomPhoto.mime_type,
         roomPhotoUrl: signedRoomPhotoForRender?.signedUrl ?? null,
@@ -4481,7 +4484,41 @@ export async function generateFinalRenderAction(formData: FormData) {
         conceptTitle: concept.title,
         conceptDescription: concept.description,
         products: productsForRender
-      });
+      };
+      let result = await generateFinalGroundedRender(renderInput);
+
+      // Post-render spatial QA: one corrective retry on a hard fail, then keep
+      // the better of the two attempts. QA failure never fails the render.
+      let renderQaVerdict: string | null = null;
+      let renderQaIssues: string[] = [];
+      let renderQaRegenerated = false;
+      try {
+        let qa = await assessRenderSpatialQuality({
+          imageUrl: bytesToDataUrl(Buffer.from(result.imageBase64, "base64"), "image/png"),
+          roomType: room.room_type,
+          spatialIntent: renderSpatialIntentPrompt
+        });
+        if (qa.qa.verdict === "regenerate" && qa.qa.issues.length > 0) {
+          const retryResult = await generateFinalGroundedRender({
+            ...renderInput,
+            promptSuffix: spatialQaCorrectionLanguage([...qa.qa.issues])
+          });
+          const retryQa = await assessRenderSpatialQuality({
+            imageUrl: bytesToDataUrl(Buffer.from(retryResult.imageBase64, "base64"), "image/png"),
+            roomType: room.room_type,
+            spatialIntent: renderSpatialIntentPrompt
+          });
+          if (retryQa.qa.verdict !== "regenerate") {
+            result = retryResult;
+            qa = retryQa;
+            renderQaRegenerated = true;
+          }
+        }
+        renderQaVerdict = qa.qa.verdict;
+        renderQaIssues = [...qa.qa.issues];
+      } catch (error) {
+        console.error("Final render spatial QA failed; shipping unreviewed render.", error);
+      }
       const renderPath = `${user.id}/${roomId}/final-${renderJob.id}.png`;
       const { error: uploadError } = await serviceSupabase.storage
         .from("generated-renders")
@@ -4530,7 +4567,10 @@ export async function generateFinalRenderAction(formData: FormData) {
             imagePromptVersion: result.promptVersion,
             imageLatencySeconds: result.imageLatencySeconds,
             imageFallbackUsed: result.imageFallbackUsed,
-            imageFallbackError: result.imageFallbackError ?? null
+            imageFallbackError: result.imageFallbackError ?? null,
+            spatialQaVerdict: renderQaVerdict,
+            spatialQaIssues: renderQaIssues,
+            spatialQaRegenerated: renderQaRegenerated
           }
         })
         .eq("id", renderJob.id);

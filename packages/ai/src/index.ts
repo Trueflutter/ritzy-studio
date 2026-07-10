@@ -18,6 +18,10 @@ import {
   conceptPaletteJsonSchema,
   conceptPalettePrompt,
   conceptPaletteResponseSchema,
+  renderSpatialQaJsonSchema,
+  renderSpatialQaPrompt,
+  renderSpatialQaResponseSchema,
+  type RenderSpatialQaResponse,
   conceptViewCameraLanguage,
   conceptViewConsistencyLanguage,
   type ConceptViewKey,
@@ -240,6 +244,8 @@ export type GenerateFinalGroundedRenderInput = {
   conceptTitle: string;
   conceptDescription?: string | null;
   spatialIntent?: SpatialPromptIntent | null;
+  // Extra corrective instructions (e.g. from spatial QA) appended to the prompt.
+  promptSuffix?: string | null;
   products: Array<{
     name: string;
     retailerName: string;
@@ -1898,6 +1904,87 @@ export async function extractConceptImagePalette(
   };
 }
 
+export type AssessRenderSpatialQualityInput = {
+  // Data URL or fetchable URL of the rendered image.
+  imageUrl: string;
+  roomType: string;
+  spatialIntent?: SpatialPromptIntent | null;
+};
+
+export type AssessRenderSpatialQualityResult = {
+  promptKey: string;
+  promptVersion: string;
+  model: string;
+  qa: RenderSpatialQaResponse;
+};
+
+export async function assessRenderSpatialQuality(
+  input: AssessRenderSpatialQualityInput
+): Promise<AssessRenderSpatialQualityResult> {
+  const env = parseServerEnv(process.env);
+  const client = new OpenAI({ apiKey: env.OPENAI_API_KEY });
+
+  const context = [
+    `Room type: ${input.roomType}.`,
+    input.spatialIntent?.focalPoint && input.spatialIntent.focalPoint !== "unknown"
+      ? `The user chose the focal point: ${input.spatialIntent.focalPoint.replace(/_/g, " ")}.`
+      : "Focal point was not specified; judge against the most credible focal point in the image.",
+    input.spatialIntent?.mustKeepClear?.length
+      ? `The user asked to keep clear: ${input.spatialIntent.mustKeepClear.join("; ")}.`
+      : null
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+  const response = await client.responses.create({
+    model: env.OPENAI_TEXT_MODEL,
+    input: [
+      {
+        role: "system",
+        content: renderSpatialQaPrompt.system
+      },
+      {
+        role: "user",
+        content: [
+          { type: "input_text", text: context },
+          {
+            type: "input_image",
+            image_url: input.imageUrl,
+            detail: "high"
+          }
+        ]
+      }
+    ],
+    text: {
+      format: {
+        type: "json_schema",
+        name: "ritzy_render_spatial_qa",
+        schema: renderSpatialQaJsonSchema,
+        strict: true
+      }
+    }
+  });
+
+  const qa = renderSpatialQaResponseSchema.parse(JSON.parse(response.output_text));
+
+  return {
+    promptKey: renderSpatialQaPrompt.key,
+    promptVersion: renderSpatialQaPrompt.version,
+    model: env.OPENAI_TEXT_MODEL,
+    qa
+  };
+}
+
+// Corrective language appended to an image prompt when spatial QA asked for a
+// regeneration; the issues come straight from the QA verdict.
+export function spatialQaCorrectionLanguage(issues: string[]) {
+  return [
+    "A design review of the previous attempt found these placement problems; fix every one of them this time:",
+    ...issues.map((issue) => `- ${issue}`),
+    "Keep the same design direction, palette, and products; only correct the placement, orientation, scale, or artifact problems named above."
+  ].join("\n");
+}
+
 export async function generateConceptRevision(
   input: GenerateConceptRevisionInput
 ): Promise<GenerateInitialConceptResult> {
@@ -2217,7 +2304,7 @@ export async function generateFinalGroundedRender(
         .join("; ")
     )
     .join("\n");
-  const prompt = buildFinalGroundedRenderPrompt({
+  const basePrompt = buildFinalGroundedRenderPrompt({
     roomType: input.roomType,
     conceptTitle: input.conceptTitle,
     conceptDescription: input.conceptDescription,
@@ -2227,6 +2314,7 @@ export async function generateFinalGroundedRender(
     strictSourceRoomPreservation: localStrictSourceRoomPreservationEnabled(),
     spatialIntent: input.spatialIntent ?? null
   });
+  const prompt = input.promptSuffix ? `${basePrompt}\n\n${input.promptSuffix}` : basePrompt;
 
   const imageResult = await generateImageWithConfiguredProvider({
     client,

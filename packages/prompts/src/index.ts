@@ -168,6 +168,64 @@ export const conceptPaletteJsonSchema = {
 
 export type ConceptPaletteResponse = z.infer<typeof conceptPaletteResponseSchema>;
 
+export const renderSpatialQaPrompt = {
+  key: "render.spatial_qa",
+  version: "2026-07-10.1",
+  system: [
+    "You are Ritzy Studio's spatial quality reviewer for generated interior images.",
+    "Judge the image like a senior interior designer reviewing a junior's render before it goes to a client.",
+    "Checks:",
+    "- focalOrientation: primary seating (or bed/desk for those rooms) addresses the room's focal point; seating is not turned away from it. Use not_applicable when the room type has no seating-focal relationship.",
+    "- anchorAlignment: the primary sofa/bed/table reads parallel to its wall and square to the rug and room grid, not canted diagonally without an architectural reason.",
+    "- scalePlausibility: furniture sizes and clearances are physically believable for the room; no giant rugs, doll furniture, blocked doors, or impossible walkways.",
+    "- compositionIntegrity: no warped furniture, floating objects, impossible reflections, duplicated limbs of furniture, or visible AI artifacts a client would notice.",
+    "- zoning (combined living+dining only, else not_applicable): living and dining read as two coherent zones with a clear boundary and circulation, dining never between the sofa and its focal wall.",
+    "verdict: pass when a professional would present this image; warn for real but presentable flaws; regenerate for faux pas a client would reject (wrong orientation, canted anchor, broken scale, obvious artifacts).",
+    "issues: short, specific, designer-voiced descriptions of each failed check. Empty when everything passes."
+  ].join("\n")
+} as const;
+
+const qaCheckEnum = z.enum(["pass", "fail", "not_applicable"]);
+
+export const renderSpatialQaResponseSchema = z.object({
+  focalOrientation: qaCheckEnum,
+  anchorAlignment: qaCheckEnum,
+  scalePlausibility: qaCheckEnum,
+  compositionIntegrity: qaCheckEnum,
+  zoning: qaCheckEnum,
+  verdict: z.enum(["pass", "warn", "regenerate"]),
+  issues: z.array(z.string().min(4).max(240)).max(6)
+});
+
+export const renderSpatialQaJsonSchema = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    focalOrientation: { type: "string", enum: ["pass", "fail", "not_applicable"] },
+    anchorAlignment: { type: "string", enum: ["pass", "fail", "not_applicable"] },
+    scalePlausibility: { type: "string", enum: ["pass", "fail", "not_applicable"] },
+    compositionIntegrity: { type: "string", enum: ["pass", "fail", "not_applicable"] },
+    zoning: { type: "string", enum: ["pass", "fail", "not_applicable"] },
+    verdict: { type: "string", enum: ["pass", "warn", "regenerate"] },
+    issues: {
+      type: "array",
+      maxItems: 6,
+      items: { type: "string", minLength: 4, maxLength: 240 }
+    }
+  },
+  required: [
+    "focalOrientation",
+    "anchorAlignment",
+    "scalePlausibility",
+    "compositionIntegrity",
+    "zoning",
+    "verdict",
+    "issues"
+  ]
+} as const;
+
+export type RenderSpatialQaResponse = z.infer<typeof renderSpatialQaResponseSchema>;
+
 export const initialConceptPrompt = {
   key: "concept.initial_room_analysis",
   version: "2026-05-04.1",
