@@ -27,8 +27,10 @@ with spatial-QA verdict `pass`. Evidence and per-fix commits: FABLE_PROGRESS.md 
   images → Evolink. OpenAI billing was topped up: `gpt-5-mini`/`gpt-5.5` work DIRECT again;
   `gpt-5.6-*` is limited-preview on this account (retest availability — switch text model to
   `gpt-5.6-luna` when it opens; it's the value pick at $1/$6).
-- Vercel production env: NOT yet updated (sandbox blocked secret writes). Ayo must run the
-  commands in the "Production env" section below (or approve them interactively).
+- Vercel env: DONE. All five vars (RITZY_IMAGE_PROVIDER=evolink, EVOLINK_API_KEY/MODEL/QUALITY,
+  RITZY_PRODUCT_MATCHING_ENGINE_V1_ENABLED=true) verified on Production+Preview via
+  scripts/dev-harness/fix-vercel-env.sh. Production text model stays default gpt-5-mini on the
+  direct OpenAI key; OPENAI_BASE_URL must NOT be set in production.
 
 ## Immediate queue (highest value first)
 
@@ -55,20 +57,6 @@ with spatial-QA verdict `pass`. Evidence and per-fix commits: FABLE_PROGRESS.md 
    hosted evidently has out-of-band. Codify them in a migration so environments stop drifting.
 8. **Dev-only paper cuts.** Hydration mismatch on hidden form inputs (caret-color) triggers the
    dev overlay; style-step tiles render with empty image slots.
-
-## Production env (Ayo runs; sandbox blocks secret writes from the agent)
-
-```sh
-# from repo root; EVOLINK key is the EVOLINK_API_KEY line in .env.local
-grep '^EVOLINK_API_KEY=' .env.local | cut -d= -f2 | vercel env add EVOLINK_API_KEY production
-printf 'gemini-3.1-flash-image-preview' | vercel env add EVOLINK_IMAGE_MODEL production
-printf '1K' | vercel env add EVOLINK_IMAGE_QUALITY production
-printf 'true' | vercel env add RITZY_PRODUCT_MATCHING_ENGINE_V1_ENABLED production
-vercel env rm RITZY_IMAGE_PROVIDER production   # then re-add:
-printf 'evolink' | vercel env add RITZY_IMAGE_PROVIDER production
-# text model stays default gpt-5-mini on the existing OPENAI_API_KEY (topped up).
-# Do NOT set OPENAI_BASE_URL in production (that was the local Evolink stopgap).
-```
 
 ## Traps the next instance must not rediscover
 
