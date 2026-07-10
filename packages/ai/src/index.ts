@@ -60,6 +60,10 @@ type ImageGenerationReference = {
   // Publicly fetchable URL for the same image (signed Storage URL or retailer CDN URL).
   // Required by URL-based providers such as Evolink; byte-based providers ignore it.
   url?: string | null;
+  // A reference the render is meaningless without (the room photo, the approved
+  // concept). URL-based providers must fail over to a byte-based provider rather
+  // than generate without it.
+  required?: boolean;
 };
 
 type ImageGenerationAttempt = {
@@ -887,6 +891,18 @@ async function generateEvolinkImage({
   }
 
   const startedAt = Date.now();
+  const missingRequired = references.filter(
+    (reference) => reference.required && !publicReferenceUrl(reference.url)
+  );
+
+  if (missingRequired.length > 0) {
+    throw new Error(
+      `Evolink image generation is missing publicly fetchable URLs for required references (${missingRequired
+        .map((reference) => reference.name)
+        .join(", ")}); falling back to a byte-based provider.`
+    );
+  }
+
   const referenceUrls = references
     .map((reference) => publicReferenceUrl(reference.url))
     .filter((url): url is string => Boolean(url))
@@ -1724,7 +1740,8 @@ export async function generateInitialConcept(
         bytes: input.roomPhotoBytes,
         mimeType: input.roomPhotoMimeType,
         name: "room",
-        url: publicReferenceUrl(input.roomPhotoReferenceUrl ?? input.roomPhotoUrl)
+        url: publicReferenceUrl(input.roomPhotoReferenceUrl ?? input.roomPhotoUrl),
+        required: true
       },
       ...(input.additionalRoomPhotos ?? []).slice(0, 2).map((photo, index) => ({
         bytes: photo.bytes,
@@ -1821,7 +1838,8 @@ export async function generateConceptView(
         bytes: input.heroImageBytes,
         mimeType: input.heroImageMimeType,
         name: "approved-concept",
-        url: input.heroImageUrl ?? null
+        url: input.heroImageUrl ?? null,
+        required: true
       }
     ],
     noImageErrorMessage: "Concept view generation returned no image data."
@@ -2058,7 +2076,8 @@ export async function generateConceptRevision(
         bytes: input.roomPhotoBytes,
         mimeType: input.roomPhotoMimeType,
         name: "room",
-        url: publicReferenceUrl(input.roomPhotoReferenceUrl ?? input.roomPhotoUrl)
+        url: publicReferenceUrl(input.roomPhotoReferenceUrl ?? input.roomPhotoUrl),
+        required: true
       }
     ],
     noImageErrorMessage: "OpenAI image revision returned no image data."
@@ -2324,7 +2343,8 @@ export async function generateFinalGroundedRender(
         bytes: input.roomPhotoBytes,
         mimeType: input.roomPhotoMimeType,
         name: "room",
-        url: input.roomPhotoUrl ?? null
+        url: input.roomPhotoUrl ?? null,
+        required: true
       },
       ...(input.conceptImageBytes && input.conceptImageMimeType
         ? [
@@ -2332,7 +2352,8 @@ export async function generateFinalGroundedRender(
               bytes: input.conceptImageBytes,
               mimeType: input.conceptImageMimeType,
               name: "concept",
-              url: input.conceptImageUrl ?? null
+              url: input.conceptImageUrl ?? null,
+              required: true
             }
           ]
         : []),

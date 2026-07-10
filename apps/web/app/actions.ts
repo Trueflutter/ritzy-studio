@@ -181,46 +181,84 @@ async function generateAndStoreConceptViews({
     .from("generated-renders")
     .createSignedUrl(heroImageStoragePath, 60 * 30);
 
-  for (const viewKey of CONCEPT_VIEW_KEYS) {
-    try {
-      const view = await generateConceptView({
-        roomType,
-        viewKey,
-        conceptTitle,
-        conceptDescription,
-        conceptGenerationPrompt,
-        heroImageBytes,
-        heroImageMimeType: "image/png",
-        heroImageUrl: signedHero?.signedUrl ?? null
-      });
-      const viewPath = `${userId}/${roomId}/${conceptId}-${viewKey}.png`;
-      const { error: uploadError } = await serviceSupabase.storage
-        .from("generated-renders")
-        .upload(viewPath, Buffer.from(view.imageBase64, "base64"), {
-          contentType: "image/png",
-          upsert: true
+  // Tracked as an ai_job so silent failures are observable and retryable; the
+  // two views generate in parallel to stay well inside the task lifetime.
+  const { data: viewsJob } = await serviceSupabase
+    .from("ai_jobs")
+    .insert({
+      user_id: userId,
+      room_id: roomId,
+      job_type: "concept_views",
+      status: "running",
+      provider: configuredImageProvider(),
+      model: configuredImageModel(),
+      input_summary: { conceptId, viewKeys: CONCEPT_VIEW_KEYS }
+    })
+    .select("id")
+    .single();
+
+  const outcomes = await Promise.all(
+    CONCEPT_VIEW_KEYS.map(async (viewKey) => {
+      try {
+        const view = await generateConceptView({
+          roomType,
+          viewKey,
+          conceptTitle,
+          conceptDescription,
+          conceptGenerationPrompt,
+          heroImageBytes,
+          heroImageMimeType: "image/png",
+          heroImageUrl: signedHero?.signedUrl ?? null
+        });
+        const viewPath = `${userId}/${roomId}/${conceptId}-${viewKey}.png`;
+        const { error: uploadError } = await serviceSupabase.storage
+          .from("generated-renders")
+          .upload(viewPath, Buffer.from(view.imageBase64, "base64"), {
+            contentType: "image/png",
+            upsert: true
+          });
+
+        if (uploadError) {
+          throw new Error(uploadError.message);
+        }
+
+        const { error: assetError } = await serviceSupabase.from("room_assets").insert({
+          room_id: roomId,
+          asset_type: "concept_render",
+          storage_path: viewPath,
+          mime_type: "image/png",
+          is_primary: false,
+          concept_id: conceptId,
+          view_key: viewKey
         });
 
-      if (uploadError) {
-        throw new Error(uploadError.message);
-      }
+        if (assetError) {
+          throw new Error(assetError.message);
+        }
 
-      const { error: assetError } = await serviceSupabase.from("room_assets").insert({
-        room_id: roomId,
-        asset_type: "concept_render",
-        storage_path: viewPath,
-        mime_type: "image/png",
-        is_primary: false,
-        concept_id: conceptId,
-        view_key: viewKey
-      });
-
-      if (assetError) {
-        throw new Error(assetError.message);
+        return { viewKey, ok: true as const, provider: view.imageProvider, fallbackUsed: view.imageFallbackUsed };
+      } catch (error) {
+        console.error(`Concept view generation failed (${viewKey}, concept ${conceptId}):`, error);
+        return {
+          viewKey,
+          ok: false as const,
+          error: error instanceof Error ? error.message : "Concept view generation failed."
+        };
       }
-    } catch (error) {
-      console.error(`Concept view generation failed (${viewKey}, concept ${conceptId}):`, error);
-    }
+    })
+  );
+
+  if (viewsJob) {
+    const failed = outcomes.filter((outcome) => !outcome.ok);
+    await serviceSupabase
+      .from("ai_jobs")
+      .update({
+        status: failed.length === CONCEPT_VIEW_KEYS.length ? "failed" : "succeeded",
+        completed_at: new Date().toISOString(),
+        error_message: failed.length > 0 ? failed.map((outcome) => `${outcome.viewKey}: ${outcome.error}`).join("; ") : null,
+        output_summary: { conceptId, outcomes }
+      })
+      .eq("id", viewsJob.id);
   }
 }
 
@@ -4854,6 +4892,23 @@ export async function reviseConceptAction(formData: FormData) {
       .update({ status: "generated" })
       .eq("room_id", roomId)
       .eq("status", "selected");
+
+    const revisionImageBytes = Buffer.from(result.imageBase64, "base64");
+    after(async () => {
+      await generateAndStoreConceptViews({
+        serviceSupabase,
+        userId: user.id,
+        roomId,
+        conceptId: revisedConcept.id,
+        roomType: room.room_type,
+        conceptTitle: result.concept.title,
+        conceptDescription: result.concept.rationale,
+        conceptGenerationPrompt: result.concept.generationPrompt,
+        heroImageBytes: revisionImageBytes,
+        heroImageStoragePath: renderPath
+      });
+      revalidatePath(redirectPath);
+    });
   } catch (error) {
     await serviceSupabase
       .from("ai_jobs")
