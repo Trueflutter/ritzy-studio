@@ -61,6 +61,7 @@ import { productMatchingControlledPreviewGate } from "@ritzy-studio/config";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { after } from "next/server";
+import sharp from "sharp";
 
 import { createServiceClient } from "@/lib/supabase/service";
 import { createClient } from "@/lib/supabase/server";
@@ -121,6 +122,28 @@ function productReferenceOrderingV2Enabled() {
 }
 
 const CONCEPT_VIEW_KEYS: ConceptViewKey[] = ["reverse_wide", "anchor_detail"];
+
+// Downscaled data URLs for the candidate images an AI sourcing call will see.
+// Fetched app-side (with retry) so the vision provider never has to download
+// from rate-limited retailer CDNs or non-public storage hosts.
+async function sourcingCandidateImageDataUrls(
+  candidates: Array<{ id: string; primaryImageUrl?: string | null }>,
+  limit: number
+): Promise<Record<string, string>> {
+  const entries = await Promise.all(
+    candidates.slice(0, limit).map(async (candidate) => {
+      if (!candidate.primaryImageUrl) {
+        return null;
+      }
+      const image = await fetchRemoteImage(candidate.primaryImageUrl);
+      if (!image) {
+        return null;
+      }
+      return [candidate.id, await visionImageDataUrl(image.bytes, image.mimeType)] as const;
+    })
+  );
+  return Object.fromEntries(entries.filter((entry): entry is [string, string] => Boolean(entry)));
+}
 
 // Product ids the user has already kept in OTHER rooms. Matching demotes (not
 // excludes) them so the same anchor pieces stop reappearing across projects
@@ -1750,11 +1773,26 @@ async function storageImageDataUrl(
 
   const buffer = Buffer.from(await data.arrayBuffer());
   const contentType = mimeType ?? (data.type || "image/jpeg");
-  return `data:${contentType};base64,${buffer.toString("base64")}`;
+  return visionImageDataUrl(buffer, contentType);
 }
 
 function bytesToDataUrl(bytes: Buffer, mimeType: string) {
   return `data:${mimeType};base64,${bytes.toString("base64")}`;
+}
+
+// Vision models tile images at ~1k px; sending multi-megabyte originals only
+// adds cost, latency, and gateway cost-estimate rejections. Downscale for
+// vision inputs; image-GENERATION references keep original bytes.
+async function visionImageDataUrl(bytes: Buffer, mimeType: string) {
+  try {
+    const resized = await sharp(bytes)
+      .resize(1024, 1024, { fit: "inside", withoutEnlargement: true })
+      .jpeg({ quality: 78 })
+      .toBuffer();
+    return `data:image/jpeg;base64,${resized.toString("base64")}`;
+  } catch {
+    return bytesToDataUrl(bytes, mimeType);
+  }
 }
 
 async function analyzeAndWriteInspirationForRoom({
@@ -2014,7 +2052,7 @@ export async function generateInitialConceptAction(formData: FormData) {
           .from("room-assets")
           .createSignedUrl(asset.storage_path, 60 * 30);
         return {
-          url: bytesToDataUrl(bytes, asset.mime_type),
+          url: await visionImageDataUrl(bytes, asset.mime_type),
           referenceUrl: signed?.signedUrl ?? null,
           bytes,
           mimeType: asset.mime_type
@@ -2092,28 +2130,48 @@ export async function generateInitialConceptAction(formData: FormData) {
   });
 
   if (catalogueGroundingPlan.blockers.length > 0) {
+    // Record WHY grounding blocked; the user-facing message is deliberately
+    // generic, and without this record the blockers are undiagnosable.
+    await serviceSupabase.from("ai_jobs").insert({
+      user_id: user.id,
+      room_id: roomId,
+      job_type: "initial_concept_generation",
+      status: "failed",
+      provider: configuredImageProvider(),
+      model: configuredImageModel(),
+      error_message: "Catalogue grounding blocked before generation.",
+      input_summary: {
+        roomId,
+        designBriefId: designBrief.id,
+        blockers: catalogueGroundingPlan.blockers,
+        catalogueGrounding: catalogueGroundingPlan.summary
+      }
+    });
     redirect(
       `${redirectPath}?message=${encodeURIComponent(CATALOGUE_GROUNDED_CONCEPT_USER_SAFE_BLOCK_MESSAGE)}`
     );
   }
 
-  const catalogueProducts = catalogueGroundingPlan.products.map(({ match, role, referenceImage }) => ({
-    name: match.name,
-    retailerName: match.retailerName,
-    category: match.categoryNormalized,
-    roleLabel: role.label,
-    selectionReason: match.selectionReason,
-    description: match.description,
-    color: match.color,
-    material: match.material,
-    styleTags: match.styleTags,
-    colorTags: match.colorTags,
-    materialTags: match.materialTags,
-    dimensions: match.dimensions?.sourceText ?? null,
-    primaryImageUrl: match.primaryImageUrl,
-    imageBytes: referenceImage.bytes,
-    imageMimeType: referenceImage.mimeType
-  }));
+  const catalogueProducts = await Promise.all(
+    catalogueGroundingPlan.products.map(async ({ match, role, referenceImage }) => ({
+      name: match.name,
+      retailerName: match.retailerName,
+      category: match.categoryNormalized,
+      roleLabel: role.label,
+      selectionReason: match.selectionReason,
+      description: match.description,
+      color: match.color,
+      material: match.material,
+      styleTags: match.styleTags,
+      colorTags: match.colorTags,
+      materialTags: match.materialTags,
+      dimensions: match.dimensions?.sourceText ?? null,
+      primaryImageUrl: match.primaryImageUrl,
+      imageBytes: referenceImage.bytes,
+      imageMimeType: referenceImage.mimeType,
+      visionImageUrl: await visionImageDataUrl(referenceImage.bytes, referenceImage.mimeType)
+    }))
+  );
   const missingCatalogueReferenceImages = catalogueProducts
     .filter((product) => !product.imageBytes || !product.imageMimeType)
     .map((product) => product.roleLabel);
@@ -2156,7 +2214,7 @@ export async function generateInitialConceptAction(formData: FormData) {
     const photoBytes = Buffer.from(await photoBlob.arrayBuffer());
     const result = await generateInitialConcept({
       roomType: room.room_type,
-      roomPhotoUrl: bytesToDataUrl(photoBytes, roomPhoto.mime_type),
+      roomPhotoUrl: await visionImageDataUrl(photoBytes, roomPhoto.mime_type),
       roomPhotoReferenceUrl: signedPhoto.signedUrl,
       roomPhotoBytes: photoBytes,
       roomPhotoMimeType: roomPhoto.mime_type,
@@ -2367,7 +2425,7 @@ export async function groundProductsAction(formData: FormData) {
 
   const { data: concept } = await supabase
     .from("concepts")
-    .select("id, title, description, status, generation_job_id, palette_json, primary_image_asset:room_assets(*)")
+    .select("id, title, description, status, generation_job_id, palette_json, primary_image_asset:room_assets!concepts_primary_image_asset_id_fkey(*)")
     .eq("id", conceptId)
     .eq("room_id", roomId)
     .single();
@@ -2679,7 +2737,11 @@ ${conceptPaletteText}`
           roleCandidatePools: productMatchingEngineEnabled ? sourcingCandidatePools : undefined,
           conceptImageDetail: PRODUCT_SOURCING_AI_CONCEPT_IMAGE_DETAIL,
           candidateImageLimit: PRODUCT_SOURCING_AI_CANDIDATE_IMAGE_LIMIT,
-          candidateImageDetail: PRODUCT_SOURCING_AI_CANDIDATE_IMAGE_DETAIL
+          candidateImageDetail: PRODUCT_SOURCING_AI_CANDIDATE_IMAGE_DETAIL,
+          candidateImageDataUrls: await sourcingCandidateImageDataUrls(
+            aiSourcingCandidates,
+            PRODUCT_SOURCING_AI_CANDIDATE_IMAGE_LIMIT
+          )
         }),
         PRODUCT_SOURCING_AI_TIMEOUT_MS,
         "Product visual sourcing timed out."
@@ -3022,7 +3084,11 @@ ${conceptPaletteText}`
             : undefined,
           conceptImageDetail: PRODUCT_SOURCING_AI_CONCEPT_IMAGE_DETAIL,
           candidateImageLimit: PRODUCT_SOURCING_AI_CANDIDATE_IMAGE_LIMIT,
-          candidateImageDetail: PRODUCT_SOURCING_AI_CANDIDATE_IMAGE_DETAIL
+          candidateImageDetail: PRODUCT_SOURCING_AI_CANDIDATE_IMAGE_DETAIL,
+          candidateImageDataUrls: await sourcingCandidateImageDataUrls(
+            aiRetryCandidates,
+            PRODUCT_SOURCING_AI_CANDIDATE_IMAGE_LIMIT
+          )
         }),
         PRODUCT_SOURCING_AI_TIMEOUT_MS,
         "Product visual sourcing retry timed out."
@@ -4275,7 +4341,7 @@ export async function generateFinalRenderAction(formData: FormData) {
 
   const { data: concept } = await supabase
     .from("concepts")
-    .select("id, title, description, status, primary_image_asset:room_assets(*)")
+    .select("id, title, description, status, primary_image_asset:room_assets!concepts_primary_image_asset_id_fkey(*)")
     .eq("id", conceptId)
     .eq("room_id", roomId)
     .single();
@@ -4532,7 +4598,7 @@ export async function generateFinalRenderAction(formData: FormData) {
       let renderQaRegenerated = false;
       try {
         let qa = await assessRenderSpatialQuality({
-          imageUrl: bytesToDataUrl(Buffer.from(result.imageBase64, "base64"), "image/png"),
+          imageUrl: await visionImageDataUrl(Buffer.from(result.imageBase64, "base64"), "image/png"),
           roomType: room.room_type,
           spatialIntent: renderSpatialIntentPrompt
         });
@@ -4542,7 +4608,7 @@ export async function generateFinalRenderAction(formData: FormData) {
             promptSuffix: spatialQaCorrectionLanguage([...qa.qa.issues])
           });
           const retryQa = await assessRenderSpatialQuality({
-            imageUrl: bytesToDataUrl(Buffer.from(retryResult.imageBase64, "base64"), "image/png"),
+            imageUrl: await visionImageDataUrl(Buffer.from(retryResult.imageBase64, "base64"), "image/png"),
             roomType: room.room_type,
             spatialIntent: renderSpatialIntentPrompt
           });
@@ -4776,7 +4842,7 @@ export async function reviseConceptAction(formData: FormData) {
     const revisionPhotoBytes = Buffer.from(await photoBlob.arrayBuffer());
     const result = await generateConceptRevision({
       roomType: room.room_type,
-      roomPhotoUrl: bytesToDataUrl(revisionPhotoBytes, roomPhoto.mime_type),
+      roomPhotoUrl: await visionImageDataUrl(revisionPhotoBytes, roomPhoto.mime_type),
       roomPhotoReferenceUrl: signedPhoto.signedUrl,
       roomPhotoBytes: revisionPhotoBytes,
       roomPhotoMimeType: roomPhoto.mime_type,
@@ -7282,6 +7348,17 @@ function formatAedValue(value: number) {
 }
 
 async function fetchRemoteImage(url: string): Promise<CatalogueReferenceImage | null> {
+  // Retailer CDNs rate-limit and flake; one quick retry rescues most transient
+  // failures without meaningfully slowing the happy path.
+  const first = await fetchRemoteImageOnce(url);
+  if (first) {
+    return first;
+  }
+  await new Promise((resolve) => setTimeout(resolve, 750));
+  return fetchRemoteImageOnce(url);
+}
+
+async function fetchRemoteImageOnce(url: string): Promise<CatalogueReferenceImage | null> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), CATALOGUE_GROUNDED_CONCEPT_IMAGE_FETCH_TIMEOUT_MS);
 

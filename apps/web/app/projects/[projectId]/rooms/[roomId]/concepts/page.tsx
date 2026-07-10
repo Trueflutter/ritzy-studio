@@ -109,7 +109,7 @@ export default async function ConceptsPage({
 
   const { data: concepts = [] } = await supabase
     .from("concepts")
-    .select("*, primary_image_asset:room_assets(*)")
+    .select("*, primary_image_asset:room_assets!concepts_primary_image_asset_id_fkey(*)")
     .eq("room_id", roomId)
     .order("created_at", { ascending: false });
 
