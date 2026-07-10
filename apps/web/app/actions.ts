@@ -107,7 +107,12 @@ const CATALOGUE_GROUNDED_CONCEPT_PRODUCTS_PER_CATEGORY = 300;
 const CATALOGUE_GROUNDED_CONCEPT_CANDIDATES_PER_ROLE = 12;
 const CATALOGUE_GROUNDED_CONCEPT_FLAT_CANDIDATE_LIMIT = 48;
 const CATALOGUE_GROUNDED_CONCEPT_MIN_ATTRIBUTE_TOTAL = 35;
-const CATALOGUE_GROUNDED_CONCEPT_IMAGE_FETCH_TIMEOUT_MS = 2_500;
+// Real catalogue reference images (Home Centre media CDN) are frequently 2-3 MB and take longer
+// than a couple of seconds to download. At 2.5s the largest-image roles (rugs especially) had
+// EVERY candidate time out ("without a fetchable reference image"), which blocked the whole
+// concept ("we need a little more catalogue evidence"). The grounding loop breaks on the first
+// fetchable candidate, so a longer ceiling keeps the happy path fast while rescuing large images.
+const CATALOGUE_GROUNDED_CONCEPT_IMAGE_FETCH_TIMEOUT_MS = 12_000;
 const CATALOGUE_GROUNDED_CONCEPT_USER_SAFE_BLOCK_MESSAGE =
   "We need a little more catalogue evidence before building this room direction. Try broadening the style or colour notes, then generate again.";
 const CATALOGUE_GROUNDED_CONCEPT_REFERENCE_IMAGE_BLOCK_MESSAGE =
