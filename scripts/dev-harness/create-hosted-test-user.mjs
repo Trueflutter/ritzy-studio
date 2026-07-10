@@ -4,7 +4,10 @@
 import fs from "node:fs";
 import path from "node:path";
 
-const envText = fs.readFileSync(path.resolve(process.cwd(), "../../.env.local"), "utf8");
+// Resolve paths relative to THIS script, not the cwd — otherwise running it from the repo root
+// would miss .env.local and write the test credentials (e2e-state.json) outside the ignored dir.
+const here = path.dirname(new URL(import.meta.url).pathname);
+const envText = fs.readFileSync(path.resolve(here, "../../.env.local"), "utf8");
 const get = (k) => {
   const m = envText.match(new RegExp("^" + k + "=(.*)$", "m"));
   return m ? m[1].trim().replace(/^["']|["']$/g, "") : null;
@@ -32,7 +35,7 @@ console.log("email:", email);
 console.log("user_id_present:", Boolean(userId));
 
 if (ok) {
-  const stateFile = path.resolve(process.cwd(), "e2e-state.json");
+  const stateFile = path.resolve(here, "e2e-state.json");
   const state = fs.existsSync(stateFile) ? JSON.parse(fs.readFileSync(stateFile, "utf8")) : {};
   state.email = email;
   state.password = password;

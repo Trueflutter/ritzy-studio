@@ -2,7 +2,8 @@
 import fs from "node:fs";
 import path from "node:path";
 
-const envText = fs.readFileSync(path.resolve(process.cwd(), "../../.env.local"), "utf8");
+const here = path.dirname(new URL(import.meta.url).pathname);
+const envText = fs.readFileSync(path.resolve(here, "../../.env.local"), "utf8");
 const get = (k) => (envText.match(new RegExp("^" + k + "=(.*)$", "m")) || [])[1]?.trim().replace(/^["']|["']$/g, "");
 const url = get("NEXT_PUBLIC_SUPABASE_URL");
 const svc = get("SUPABASE_SERVICE_ROLE_KEY");

@@ -113,6 +113,12 @@ const CATALOGUE_GROUNDED_CONCEPT_MIN_ATTRIBUTE_TOTAL = 35;
 // concept ("we need a little more catalogue evidence"). The grounding loop breaks on the first
 // fetchable candidate, so a longer ceiling keeps the happy path fast while rescuing large images.
 const CATALOGUE_GROUNDED_CONCEPT_IMAGE_FETCH_TIMEOUT_MS = 12_000;
+// Per-image timeout is generous (large catalogue images), so bound the WHOLE grounding: without a
+// ceiling, a role whose top candidates all have unfetchable images would fetch each sequentially
+// (~24.75s incl. retry) and could stall the synchronous concept action for minutes. Once this
+// wall-clock budget is spent, stop evaluating further candidates and block fast instead. The happy
+// path (first candidate resolves in a few seconds) never approaches it.
+const CATALOGUE_GROUNDED_CONCEPT_IMAGE_FETCH_BUDGET_MS = 90_000;
 const CATALOGUE_GROUNDED_CONCEPT_USER_SAFE_BLOCK_MESSAGE =
   "We need a little more catalogue evidence before building this room direction. Try broadening the style or colour notes, then generate again.";
 const CATALOGUE_GROUNDED_CONCEPT_REFERENCE_IMAGE_BLOCK_MESSAGE =
@@ -5252,6 +5258,8 @@ async function buildCatalogueGroundedConceptPlan({
   const selected: CatalogueGroundingProduct[] = [];
   const blockers: string[] = [];
   const warnings: string[] = [];
+  // Wall-clock ceiling across all roles' reference-image fetches (see the constant).
+  const imageFetchDeadline = Date.now() + CATALOGUE_GROUNDED_CONCEPT_IMAGE_FETCH_BUDGET_MS;
 
   for (const pool of roleScopedPools) {
     let selectedCandidate: (typeof pool.candidates)[number] | null = null;
@@ -5285,6 +5293,13 @@ async function buildCatalogueGroundedConceptPlan({
           warnings.push(`${pool.role.label}: skipped aesthetically unsuitable catalogue candidate (${candidate.name}).`);
           continue;
         }
+      }
+
+      if (Date.now() > imageFetchDeadline) {
+        warnings.push(
+          `${pool.role.label}: reference-image fetch budget exhausted; stopped evaluating further candidates.`
+        );
+        break;
       }
 
       const referenceImage = candidate.primaryImageUrl ? await fetchRemoteImage(candidate.primaryImageUrl) : null;
