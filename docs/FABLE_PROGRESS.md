@@ -96,6 +96,26 @@ file top to bottom. Newest entries at the bottom. Keep this file updated after e
    (fable-evidence POC) until hosted Supabase returns.
 5. Confirm Evolink as production image provider for beta (static key), Vertex as fallback.
 
+### Matching quality work (committed)
+- Cross-project demotion: `recentlyUsedProductIds` on the match request; -30 in both rankers;
+  grounding action fetches the user's selected items from other rooms and threads it through
+  sourcing plan, visual ranking, retry, and option pools. Unit-tested (twin-sofa fixture).
+- Concept-image palette coherence: `extractConceptImagePalette` (packages/ai, cached in new
+  `concepts.palette_json`), `conceptPaletteMatchingText` + structured `avoidColorTags` penalty
+  (-24) in domain. Dominant colors/materials join concept text; avoid colors NEVER enter the
+  text (would count as token matches). Palette prompt validated against the real concept image
+  via the Evolink harness: returns exactly the right families.
+- Engine v1 is ON locally (.env.local RITZY_PRODUCT_MATCHING_ENGINE_V1_ENABLED=true). Flipping
+  the production default awaits a real-flow validation run (blocked on OpenAI quota).
+- Deliberate deferrals: global-ranker tie-break rotation (role-scoped pools already rotate
+  product families; engine-on makes that the live path), and pgvector embedding recall.
+
+### Multi-view concepts (committed)
+- Migration `room_assets.concept_id` + `view_key`; `generateConceptView` in packages/ai with
+  per-room-type camera language (`conceptViewCameraLanguage`); after() task generates
+  reverse_wide + anchor_detail views after the hero lands; concepts page shows the pair.
+  POC evidence: docs/Tracks/v2-commercial/fable-evidence/2026-07-10-multiangle-poc/.
+
 ### Retailer scraping status (for catalog depth work)
 - Home Centre, Danube, IKEA AE: 403 (TLS-fingerprint bot protection — even browser UA via curl
   fails). 2XL: 405. The One: adapter works but is dry-run-only by compliance gate. Catalog depth
