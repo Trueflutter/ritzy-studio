@@ -1,0 +1,1769 @@
+{
+  "retailer": {
+    "name": "Local Fixture Co",
+    "domain": "fixtures.ritzy.local",
+    "adapter_key": "local-fixture",
+    "status": "active"
+  },
+  "note": "Synthetic local-dev catalog. Real names/prices are invented; image URLs are AI-generated product shots hosted on the Evolink CDN. Includes deliberate trap products (office chair in armchairs, office table in coffee_tables, bathroom mirror in mirrors, loud off-palette pieces) to exercise PM-001 class purity and palette coherence. Never seed a hosted environment with this file.",
+  "products": [
+    {
+      "sku": "sofa-01",
+      "name": "Meridian 3-Seater Sofa, Ivory Linen",
+      "category_raw": "sofas",
+      "category_normalized": "sofas",
+      "color": "ivory",
+      "material": "linen",
+      "style_tags": [
+        "quiet-luxury-residential",
+        "textured-neutral"
+      ],
+      "color_tags": [
+        "ivory",
+        "cream"
+      ],
+      "material_tags": [
+        "linen",
+        "fabric"
+      ],
+      "room_tags": [
+        "living"
+      ],
+      "price_aed": 4890,
+      "dims": {
+        "w": 228,
+        "d": 95,
+        "h": 82
+      },
+      "image_prompt": "tailored ivory linen 3-seater sofa with slim arms and walnut legs"
+    },
+    {
+      "sku": "sofa-02",
+      "name": "Sable Sofa 2.5-Seater, Sage Green Weave",
+      "category_raw": "sofas",
+      "category_normalized": "sofas",
+      "color": "sage green",
+      "material": "fabric",
+      "style_tags": [
+        "organic-modern"
+      ],
+      "color_tags": [
+        "green",
+        "sage"
+      ],
+      "material_tags": [
+        "fabric"
+      ],
+      "room_tags": [
+        "living"
+      ],
+      "price_aed": 3650,
+      "dims": {
+        "w": 198,
+        "d": 92,
+        "h": 80
+      },
+      "image_prompt": "sage green woven fabric 2.5-seater sofa with rounded arms"
+    },
+    {
+      "sku": "sofa-03",
+      "name": "Harbor L-Shaped Sectional, Oatmeal Boucle",
+      "category_raw": "sofas",
+      "category_normalized": "sofas",
+      "color": "oatmeal",
+      "material": "boucle",
+      "style_tags": [
+        "textured-neutral",
+        "organic-modern"
+      ],
+      "color_tags": [
+        "cream",
+        "oatmeal"
+      ],
+      "material_tags": [
+        "boucle"
+      ],
+      "room_tags": [
+        "living"
+      ],
+      "price_aed": 7250,
+      "dims": {
+        "w": 285,
+        "d": 160,
+        "h": 78
+      },
+      "image_prompt": "oatmeal boucle L-shaped sectional sofa with left chaise"
+    },
+    {
+      "sku": "sofa-04",
+      "name": "Rialto 3-Seater Sofa, Camel Leather",
+      "category_raw": "sofas",
+      "category_normalized": "sofas",
+      "color": "camel",
+      "material": "leather",
+      "style_tags": [
+        "warm-contemporary-gallery"
+      ],
+      "color_tags": [
+        "brown",
+        "camel",
+        "tan"
+      ],
+      "material_tags": [
+        "leather"
+      ],
+      "room_tags": [
+        "living"
+      ],
+      "price_aed": 6980,
+      "dims": {
+        "w": 222,
+        "d": 94,
+        "h": 84
+      },
+      "image_prompt": "camel tan leather 3-seater sofa with track arms and black steel legs"
+    },
+    {
+      "sku": "sofa-05",
+      "name": "Nimbus 2-Seater Loveseat, Cloud Grey",
+      "category_raw": "sofas",
+      "category_normalized": "sofas",
+      "color": "grey",
+      "material": "fabric",
+      "style_tags": [
+        "sculptural-minimal"
+      ],
+      "color_tags": [
+        "grey"
+      ],
+      "material_tags": [
+        "fabric"
+      ],
+      "room_tags": [
+        "living"
+      ],
+      "price_aed": 2890,
+      "dims": {
+        "w": 168,
+        "d": 90,
+        "h": 80
+      },
+      "image_prompt": "cloud grey fabric 2-seater loveseat with soft rounded silhouette"
+    },
+    {
+      "sku": "sofa-06",
+      "name": "Vega Velvet Sofa, Royal Purple",
+      "category_raw": "sofas",
+      "category_normalized": "sofas",
+      "color": "purple",
+      "material": "velvet",
+      "style_tags": [
+        "collected-eclectic"
+      ],
+      "color_tags": [
+        "purple"
+      ],
+      "material_tags": [
+        "velvet"
+      ],
+      "room_tags": [
+        "living"
+      ],
+      "price_aed": 4190,
+      "dims": {
+        "w": 210,
+        "d": 92,
+        "h": 86
+      },
+      "image_prompt": "royal purple velvet 3-seater sofa with gold metal legs, glamorous"
+    },
+    {
+      "sku": "sofa-07",
+      "name": "Duna Modular Sofa, Taupe Chenille",
+      "category_raw": "sofas",
+      "category_normalized": "sofas",
+      "color": "taupe",
+      "material": "chenille",
+      "style_tags": [
+        "quiet-luxury-residential"
+      ],
+      "color_tags": [
+        "taupe",
+        "cream"
+      ],
+      "material_tags": [
+        "fabric",
+        "chenille"
+      ],
+      "room_tags": [
+        "living"
+      ],
+      "price_aed": 8460,
+      "dims": {
+        "w": 300,
+        "d": 100,
+        "h": 76
+      },
+      "image_prompt": "taupe chenille low modular sofa, three straight modules in a row"
+    },
+    {
+      "sku": "chair-01",
+      "name": "Puglia Accent Armchair, Ivory Boucle",
+      "category_raw": "armchairs",
+      "category_normalized": "armchairs",
+      "color": "ivory",
+      "material": "boucle",
+      "style_tags": [
+        "organic-modern",
+        "textured-neutral"
+      ],
+      "color_tags": [
+        "ivory",
+        "cream"
+      ],
+      "material_tags": [
+        "boucle"
+      ],
+      "room_tags": [
+        "living"
+      ],
+      "price_aed": 1890,
+      "dims": {
+        "w": 82,
+        "d": 80,
+        "h": 74
+      },
+      "image_prompt": "ivory boucle barrel accent armchair with curved back"
+    },
+    {
+      "sku": "chair-02",
+      "name": "Andes Lounge Chair, Walnut and Tan Leather",
+      "category_raw": "armchairs",
+      "category_normalized": "armchairs",
+      "color": "tan",
+      "material": "leather",
+      "style_tags": [
+        "warm-contemporary-gallery"
+      ],
+      "color_tags": [
+        "brown",
+        "tan"
+      ],
+      "material_tags": [
+        "leather",
+        "walnut",
+        "wood"
+      ],
+      "room_tags": [
+        "living"
+      ],
+      "price_aed": 2650,
+      "dims": {
+        "w": 76,
+        "d": 82,
+        "h": 78
+      },
+      "image_prompt": "mid-century lounge chair with walnut frame and tan leather sling seat"
+    },
+    {
+      "sku": "chair-03",
+      "name": "Cove Slipper Chair, Sage Velvet",
+      "category_raw": "armchairs",
+      "category_normalized": "armchairs",
+      "color": "sage",
+      "material": "velvet",
+      "style_tags": [
+        "organic-modern"
+      ],
+      "color_tags": [
+        "green",
+        "sage"
+      ],
+      "material_tags": [
+        "velvet"
+      ],
+      "room_tags": [
+        "living"
+      ],
+      "price_aed": 1450,
+      "dims": {
+        "w": 70,
+        "d": 76,
+        "h": 72
+      },
+      "image_prompt": "sage green velvet armless slipper chair with soft curves"
+    },
+    {
+      "sku": "chair-04",
+      "name": "Fjord Wing Chair, Charcoal Wool",
+      "category_raw": "armchairs",
+      "category_normalized": "armchairs",
+      "color": "charcoal",
+      "material": "wool",
+      "style_tags": [
+        "quiet-luxury-residential"
+      ],
+      "color_tags": [
+        "grey",
+        "charcoal"
+      ],
+      "material_tags": [
+        "fabric",
+        "wool"
+      ],
+      "room_tags": [
+        "living"
+      ],
+      "price_aed": 2290,
+      "dims": {
+        "w": 80,
+        "d": 86,
+        "h": 102
+      },
+      "image_prompt": "charcoal grey wool modern wing chair with oak legs"
+    },
+    {
+      "sku": "chair-05",
+      "name": "Apex Executive Ergonomic Office Chair, Black Mesh",
+      "category_raw": "armchair",
+      "category_normalized": "armchairs",
+      "color": "black",
+      "material": "mesh",
+      "style_tags": [],
+      "color_tags": [
+        "black"
+      ],
+      "material_tags": [
+        "metal"
+      ],
+      "room_tags": [
+        "office"
+      ],
+      "price_aed": 1190,
+      "dims": {
+        "w": 66,
+        "d": 66,
+        "h": 118
+      },
+      "image_prompt": "black mesh ergonomic office task chair with wheels and gas lift"
+    },
+    {
+      "sku": "chair-06",
+      "name": "Loop Occasional Chair, Rust Corduroy",
+      "category_raw": "armchairs",
+      "category_normalized": "armchairs",
+      "color": "rust",
+      "material": "corduroy",
+      "style_tags": [
+        "collected-eclectic"
+      ],
+      "color_tags": [
+        "red",
+        "rust",
+        "terracotta"
+      ],
+      "material_tags": [
+        "fabric"
+      ],
+      "room_tags": [
+        "living"
+      ],
+      "price_aed": 1680,
+      "dims": {
+        "w": 74,
+        "d": 78,
+        "h": 76
+      },
+      "image_prompt": "rust terracotta corduroy occasional chair with rounded arms"
+    },
+    {
+      "sku": "ctable-01",
+      "name": "Strata Coffee Table, Honed Travertine",
+      "category_raw": "coffee tables",
+      "category_normalized": "coffee_tables",
+      "color": "cream",
+      "material": "travertine",
+      "style_tags": [
+        "quiet-luxury-residential",
+        "sculptural-minimal"
+      ],
+      "color_tags": [
+        "cream",
+        "beige"
+      ],
+      "material_tags": [
+        "travertine",
+        "marble",
+        "stone"
+      ],
+      "room_tags": [
+        "living"
+      ],
+      "price_aed": 2980,
+      "dims": {
+        "w": 120,
+        "d": 70,
+        "h": 33
+      },
+      "image_prompt": "honed travertine rectangular coffee table with slab legs"
+    },
+    {
+      "sku": "ctable-02",
+      "name": "Orbit Round Coffee Table, Walnut",
+      "category_raw": "coffee tables",
+      "category_normalized": "coffee_tables",
+      "color": "walnut",
+      "material": "wood",
+      "style_tags": [
+        "warm-contemporary-gallery",
+        "japandi-atelier"
+      ],
+      "color_tags": [
+        "brown",
+        "walnut"
+      ],
+      "material_tags": [
+        "wood",
+        "walnut"
+      ],
+      "room_tags": [
+        "living"
+      ],
+      "price_aed": 1890,
+      "dims": {
+        "w": 100,
+        "d": 100,
+        "h": 35
+      },
+      "image_prompt": "round walnut coffee table with sculptural pedestal base"
+    },
+    {
+      "sku": "ctable-03",
+      "name": "Halo Nesting Coffee Tables, Brushed Brass and Glass",
+      "category_raw": "coffee tables",
+      "category_normalized": "coffee_tables",
+      "color": "brass",
+      "material": "glass",
+      "style_tags": [
+        "contemporary-hotel-residence"
+      ],
+      "color_tags": [
+        "gold",
+        "brass"
+      ],
+      "material_tags": [
+        "glass",
+        "brass",
+        "metal"
+      ],
+      "room_tags": [
+        "living"
+      ],
+      "price_aed": 2140,
+      "dims": {
+        "w": 90,
+        "d": 90,
+        "h": 38
+      },
+      "image_prompt": "set of two round nesting coffee tables with brushed brass frames and smoked glass tops"
+    },
+    {
+      "sku": "ctable-04",
+      "name": "Ledge Coffee Table, Black Oak",
+      "category_raw": "coffee tables",
+      "category_normalized": "coffee_tables",
+      "color": "black",
+      "material": "wood",
+      "style_tags": [
+        "sculptural-minimal"
+      ],
+      "color_tags": [
+        "black"
+      ],
+      "material_tags": [
+        "wood",
+        "oak"
+      ],
+      "room_tags": [
+        "living"
+      ],
+      "price_aed": 1650,
+      "dims": {
+        "w": 130,
+        "d": 65,
+        "h": 30
+      },
+      "image_prompt": "long low black oak plinth coffee table, minimal monolithic form"
+    },
+    {
+      "sku": "ctable-05",
+      "name": "Pop Gloss Coffee Table, Fire Engine Red",
+      "category_raw": "coffee tables",
+      "category_normalized": "coffee_tables",
+      "color": "red",
+      "material": "lacquer",
+      "style_tags": [],
+      "color_tags": [
+        "red"
+      ],
+      "material_tags": [
+        "metal"
+      ],
+      "room_tags": [
+        "living"
+      ],
+      "price_aed": 990,
+      "dims": {
+        "w": 110,
+        "d": 60,
+        "h": 40
+      },
+      "image_prompt": "high gloss fire engine red lacquer coffee table, loud statement piece"
+    },
+    {
+      "sku": "ctable-06",
+      "name": "Atlas Office Work Table with Cable Grommet",
+      "category_raw": "office tables",
+      "category_normalized": "coffee_tables",
+      "color": "white",
+      "material": "laminate",
+      "style_tags": [],
+      "color_tags": [
+        "white"
+      ],
+      "material_tags": [
+        "metal"
+      ],
+      "room_tags": [
+        "office"
+      ],
+      "price_aed": 760,
+      "dims": {
+        "w": 140,
+        "d": 70,
+        "h": 74
+      },
+      "image_prompt": "white laminate office work desk table with metal legs and cable grommet"
+    },
+    {
+      "sku": "ctable-07",
+      "name": "Vessel Coffee Table, Cream Plaster",
+      "category_raw": "coffee tables",
+      "category_normalized": "coffee_tables",
+      "color": "cream",
+      "material": "plaster",
+      "style_tags": [
+        "organic-modern",
+        "sculptural-minimal"
+      ],
+      "color_tags": [
+        "cream",
+        "ivory"
+      ],
+      "material_tags": [
+        "plaster"
+      ],
+      "room_tags": [
+        "living"
+      ],
+      "price_aed": 2440,
+      "dims": {
+        "w": 105,
+        "d": 105,
+        "h": 32
+      },
+      "image_prompt": "round cream plaster coffee table with organic curved base"
+    },
+    {
+      "sku": "stable-01",
+      "name": "Puck Side Table, Travertine",
+      "category_raw": "side tables",
+      "category_normalized": "side_tables",
+      "color": "cream",
+      "material": "travertine",
+      "style_tags": [
+        "quiet-luxury-residential"
+      ],
+      "color_tags": [
+        "cream",
+        "beige"
+      ],
+      "material_tags": [
+        "travertine",
+        "stone"
+      ],
+      "room_tags": [
+        "living"
+      ],
+      "price_aed": 1180,
+      "dims": {
+        "w": 45,
+        "d": 45,
+        "h": 50
+      },
+      "image_prompt": "small round travertine drum side table"
+    },
+    {
+      "sku": "stable-02",
+      "name": "Kanso Side Table, Walnut",
+      "category_raw": "side tables",
+      "category_normalized": "side_tables",
+      "color": "walnut",
+      "material": "wood",
+      "style_tags": [
+        "japandi-atelier",
+        "warm-contemporary-gallery"
+      ],
+      "color_tags": [
+        "brown",
+        "walnut"
+      ],
+      "material_tags": [
+        "wood",
+        "walnut"
+      ],
+      "room_tags": [
+        "living",
+        "bedroom"
+      ],
+      "price_aed": 890,
+      "dims": {
+        "w": 50,
+        "d": 40,
+        "h": 55
+      },
+      "image_prompt": "walnut wood side table with lower shelf, japandi style"
+    },
+    {
+      "sku": "stable-03",
+      "name": "Aria Bedside Table, White Oak with Drawer",
+      "category_raw": "nightstands",
+      "category_normalized": "side_tables",
+      "color": "oak",
+      "material": "wood",
+      "style_tags": [
+        "japandi-atelier",
+        "textured-neutral"
+      ],
+      "color_tags": [
+        "cream",
+        "beige"
+      ],
+      "material_tags": [
+        "wood",
+        "oak"
+      ],
+      "room_tags": [
+        "bedroom"
+      ],
+      "price_aed": 1090,
+      "dims": {
+        "w": 55,
+        "d": 42,
+        "h": 52
+      },
+      "image_prompt": "white oak bedside table with one drawer and slim legs"
+    },
+    {
+      "sku": "stable-04",
+      "name": "Torus Side Table, Black Steel",
+      "category_raw": "side tables",
+      "category_normalized": "side_tables",
+      "color": "black",
+      "material": "metal",
+      "style_tags": [
+        "sculptural-minimal"
+      ],
+      "color_tags": [
+        "black"
+      ],
+      "material_tags": [
+        "metal",
+        "steel"
+      ],
+      "room_tags": [
+        "living"
+      ],
+      "price_aed": 640,
+      "dims": {
+        "w": 42,
+        "d": 42,
+        "h": 48
+      },
+      "image_prompt": "black powder coated steel cylinder side table"
+    },
+    {
+      "sku": "rug-01",
+      "name": "Meseta Wool Rug 250x350, Ivory Taupe Pattern",
+      "category_raw": "rugs",
+      "category_normalized": "rugs",
+      "color": "ivory",
+      "material": "wool",
+      "style_tags": [
+        "quiet-luxury-residential",
+        "textured-neutral"
+      ],
+      "color_tags": [
+        "ivory",
+        "taupe",
+        "cream"
+      ],
+      "material_tags": [
+        "wool"
+      ],
+      "room_tags": [
+        "living"
+      ],
+      "price_aed": 3290,
+      "dims": {
+        "w": 350,
+        "d": 250,
+        "h": 2
+      },
+      "image_prompt": "large ivory and taupe wool area rug with subtle abstract pattern, flat overhead product shot"
+    },
+    {
+      "sku": "rug-02",
+      "name": "Dune Jute Rug 200x300, Natural",
+      "category_raw": "rugs",
+      "category_normalized": "rugs",
+      "color": "natural",
+      "material": "jute",
+      "style_tags": [
+        "refined-coastal",
+        "organic-modern"
+      ],
+      "color_tags": [
+        "beige",
+        "sand"
+      ],
+      "material_tags": [
+        "fabric"
+      ],
+      "room_tags": [
+        "living",
+        "dining"
+      ],
+      "price_aed": 1490,
+      "dims": {
+        "w": 300,
+        "d": 200,
+        "h": 1
+      },
+      "image_prompt": "natural woven jute area rug, flat overhead product shot"
+    },
+    {
+      "sku": "rug-03",
+      "name": "Heritage Persian Rug 200x300, Burgundy Medallion",
+      "category_raw": "rugs",
+      "category_normalized": "rugs",
+      "color": "burgundy",
+      "material": "wool",
+      "style_tags": [
+        "collected-eclectic"
+      ],
+      "color_tags": [
+        "red",
+        "burgundy"
+      ],
+      "material_tags": [
+        "wool"
+      ],
+      "room_tags": [
+        "living"
+      ],
+      "price_aed": 4890,
+      "dims": {
+        "w": 300,
+        "d": 200,
+        "h": 2
+      },
+      "image_prompt": "traditional burgundy persian medallion rug, flat overhead product shot"
+    },
+    {
+      "sku": "rug-04",
+      "name": "Mist Rug 250x350, Sage and Cream Abstract",
+      "category_raw": "rugs",
+      "category_normalized": "rugs",
+      "color": "sage",
+      "material": "wool blend",
+      "style_tags": [
+        "organic-modern"
+      ],
+      "color_tags": [
+        "green",
+        "sage",
+        "cream"
+      ],
+      "material_tags": [
+        "wool",
+        "fabric"
+      ],
+      "room_tags": [
+        "living"
+      ],
+      "price_aed": 2790,
+      "dims": {
+        "w": 350,
+        "d": 250,
+        "h": 2
+      },
+      "image_prompt": "sage green and cream abstract watercolor area rug, flat overhead product shot"
+    },
+    {
+      "sku": "rug-05",
+      "name": "Grid Rug 160x230, Charcoal Wool Check",
+      "category_raw": "rugs",
+      "category_normalized": "rugs",
+      "color": "charcoal",
+      "material": "wool",
+      "style_tags": [
+        "sculptural-minimal"
+      ],
+      "color_tags": [
+        "grey",
+        "charcoal"
+      ],
+      "material_tags": [
+        "wool"
+      ],
+      "room_tags": [
+        "living",
+        "office"
+      ],
+      "price_aed": 1890,
+      "dims": {
+        "w": 230,
+        "d": 160,
+        "h": 2
+      },
+      "image_prompt": "charcoal grey wool rug with tonal grid check pattern, flat overhead product shot"
+    },
+    {
+      "sku": "light-01",
+      "name": "Arc Floor Lamp, Brushed Bronze with Linen Shade",
+      "category_raw": "lighting",
+      "category_normalized": "lighting",
+      "color": "bronze",
+      "material": "metal",
+      "style_tags": [
+        "quiet-luxury-residential",
+        "contemporary-hotel-residence"
+      ],
+      "color_tags": [
+        "gold",
+        "bronze"
+      ],
+      "material_tags": [
+        "metal",
+        "brass",
+        "linen"
+      ],
+      "room_tags": [
+        "living"
+      ],
+      "price_aed": 1290,
+      "dims": {
+        "w": 40,
+        "d": 40,
+        "h": 165
+      },
+      "image_prompt": "brushed bronze arc floor lamp with natural linen drum shade"
+    },
+    {
+      "sku": "light-02",
+      "name": "Oda Table Lamp, Ceramic Terracotta",
+      "category_raw": "lighting",
+      "category_normalized": "lighting",
+      "color": "terracotta",
+      "material": "ceramic",
+      "style_tags": [
+        "organic-modern",
+        "soft-modern-mediterranean"
+      ],
+      "color_tags": [
+        "red",
+        "terracotta"
+      ],
+      "material_tags": [
+        "plaster"
+      ],
+      "room_tags": [
+        "living",
+        "bedroom"
+      ],
+      "price_aed": 560,
+      "dims": {
+        "w": 32,
+        "d": 32,
+        "h": 48
+      },
+      "image_prompt": "terracotta ceramic gourd table lamp with off-white shade"
+    },
+    {
+      "sku": "light-03",
+      "name": "Halo Pendant, Plaster Dome 60cm",
+      "category_raw": "lighting",
+      "category_normalized": "lighting",
+      "color": "white",
+      "material": "plaster",
+      "style_tags": [
+        "sculptural-minimal",
+        "organic-modern"
+      ],
+      "color_tags": [
+        "white",
+        "cream"
+      ],
+      "material_tags": [
+        "plaster"
+      ],
+      "room_tags": [
+        "dining",
+        "living"
+      ],
+      "price_aed": 980,
+      "dims": {
+        "w": 60,
+        "d": 60,
+        "h": 30
+      },
+      "image_prompt": "matte white plaster dome pendant light"
+    },
+    {
+      "sku": "light-04",
+      "name": "Linea Over-Table Chandelier, Aged Brass 5-Globe",
+      "category_raw": "lighting",
+      "category_normalized": "lighting",
+      "color": "brass",
+      "material": "metal",
+      "style_tags": [
+        "parisian-contemporary",
+        "contemporary-hotel-residence"
+      ],
+      "color_tags": [
+        "gold",
+        "brass"
+      ],
+      "material_tags": [
+        "brass",
+        "glass"
+      ],
+      "room_tags": [
+        "dining"
+      ],
+      "price_aed": 2190,
+      "dims": {
+        "w": 120,
+        "d": 25,
+        "h": 35
+      },
+      "image_prompt": "linear aged brass chandelier with five opal glass globes"
+    },
+    {
+      "sku": "light-05",
+      "name": "Sana Bedside Sconce, Bronze Swing Arm",
+      "category_raw": "lighting",
+      "category_normalized": "lighting",
+      "color": "bronze",
+      "material": "metal",
+      "style_tags": [
+        "quiet-luxury-residential"
+      ],
+      "color_tags": [
+        "gold",
+        "bronze"
+      ],
+      "material_tags": [
+        "metal",
+        "brass"
+      ],
+      "room_tags": [
+        "bedroom"
+      ],
+      "price_aed": 420,
+      "dims": {
+        "w": 18,
+        "d": 45,
+        "h": 22
+      },
+      "image_prompt": "bronze swing arm wall sconce with small linen shade"
+    },
+    {
+      "sku": "light-06",
+      "name": "Neon Party Strip Light Kit, RGB",
+      "category_raw": "lighting",
+      "category_normalized": "lighting",
+      "color": "multicolor",
+      "material": "plastic",
+      "style_tags": [],
+      "color_tags": [
+        "blue"
+      ],
+      "material_tags": [
+        "metal"
+      ],
+      "room_tags": [
+        "office"
+      ],
+      "price_aed": 150,
+      "dims": {
+        "w": 500,
+        "d": 1,
+        "h": 1
+      },
+      "image_prompt": "RGB LED neon strip light kit coiled, consumer electronics product shot"
+    },
+    {
+      "sku": "storage-01",
+      "name": "Ravine Media Console, Walnut 200cm",
+      "category_raw": "tv units",
+      "category_normalized": "storage",
+      "color": "walnut",
+      "material": "wood",
+      "style_tags": [
+        "warm-contemporary-gallery",
+        "quiet-luxury-residential"
+      ],
+      "color_tags": [
+        "brown",
+        "walnut"
+      ],
+      "material_tags": [
+        "wood",
+        "walnut"
+      ],
+      "room_tags": [
+        "living"
+      ],
+      "price_aed": 3890,
+      "dims": {
+        "w": 200,
+        "d": 45,
+        "h": 55
+      },
+      "image_prompt": "long walnut media console with fluted sliding doors"
+    },
+    {
+      "sku": "storage-02",
+      "name": "Plinth Sideboard, Cream Lacquer with Travertine Top",
+      "category_raw": "sideboards",
+      "category_normalized": "storage",
+      "color": "cream",
+      "material": "wood",
+      "style_tags": [
+        "quiet-luxury-residential",
+        "sculptural-minimal"
+      ],
+      "color_tags": [
+        "cream",
+        "ivory"
+      ],
+      "material_tags": [
+        "wood",
+        "travertine",
+        "stone"
+      ],
+      "room_tags": [
+        "dining",
+        "living"
+      ],
+      "price_aed": 4590,
+      "dims": {
+        "w": 180,
+        "d": 48,
+        "h": 78
+      },
+      "image_prompt": "cream lacquer sideboard with travertine top and four doors"
+    },
+    {
+      "sku": "storage-03",
+      "name": "Slat Console Table, Black Oak",
+      "category_raw": "consoles",
+      "category_normalized": "storage",
+      "color": "black",
+      "material": "wood",
+      "style_tags": [
+        "sculptural-minimal",
+        "japandi-atelier"
+      ],
+      "color_tags": [
+        "black"
+      ],
+      "material_tags": [
+        "wood",
+        "oak"
+      ],
+      "room_tags": [
+        "living"
+      ],
+      "price_aed": 1790,
+      "dims": {
+        "w": 140,
+        "d": 35,
+        "h": 80
+      },
+      "image_prompt": "black oak slatted console table, narrow"
+    },
+    {
+      "sku": "storage-04",
+      "name": "Vault Bookshelf, Oak and Steel 5-Tier",
+      "category_raw": "shelving",
+      "category_normalized": "storage",
+      "color": "oak",
+      "material": "wood",
+      "style_tags": [
+        "warm-contemporary-gallery"
+      ],
+      "color_tags": [
+        "brown",
+        "beige"
+      ],
+      "material_tags": [
+        "wood",
+        "oak",
+        "steel",
+        "metal"
+      ],
+      "room_tags": [
+        "living",
+        "office"
+      ],
+      "price_aed": 2290,
+      "dims": {
+        "w": 100,
+        "d": 35,
+        "h": 190
+      },
+      "image_prompt": "five tier open bookshelf with oak shelves and black steel frame"
+    },
+    {
+      "sku": "dtable-01",
+      "name": "Tavola Dining Table 220cm, Walnut",
+      "category_raw": "dining tables",
+      "category_normalized": "dining_tables",
+      "color": "walnut",
+      "material": "wood",
+      "style_tags": [
+        "warm-contemporary-gallery",
+        "quiet-luxury-residential"
+      ],
+      "color_tags": [
+        "brown",
+        "walnut"
+      ],
+      "material_tags": [
+        "wood",
+        "walnut"
+      ],
+      "room_tags": [
+        "dining"
+      ],
+      "price_aed": 5290,
+      "dims": {
+        "w": 220,
+        "d": 100,
+        "h": 75
+      },
+      "image_prompt": "rectangular walnut dining table with sculptural rounded legs, seats eight"
+    },
+    {
+      "sku": "dtable-02",
+      "name": "Luna Round Dining Table 135cm, Cream Stone",
+      "category_raw": "dining tables",
+      "category_normalized": "dining_tables",
+      "color": "cream",
+      "material": "stone",
+      "style_tags": [
+        "sculptural-minimal",
+        "organic-modern"
+      ],
+      "color_tags": [
+        "cream",
+        "ivory"
+      ],
+      "material_tags": [
+        "stone",
+        "marble"
+      ],
+      "room_tags": [
+        "dining"
+      ],
+      "price_aed": 4690,
+      "dims": {
+        "w": 135,
+        "d": 135,
+        "h": 75
+      },
+      "image_prompt": "round cream stone dining table with cylindrical pedestal base"
+    },
+    {
+      "sku": "dtable-03",
+      "name": "Frame Dining Table 200cm, Black Oak and Glass",
+      "category_raw": "dining tables",
+      "category_normalized": "dining_tables",
+      "color": "black",
+      "material": "glass",
+      "style_tags": [
+        "contemporary-hotel-residence"
+      ],
+      "color_tags": [
+        "black"
+      ],
+      "material_tags": [
+        "glass",
+        "oak",
+        "wood"
+      ],
+      "room_tags": [
+        "dining"
+      ],
+      "price_aed": 3990,
+      "dims": {
+        "w": 200,
+        "d": 95,
+        "h": 75
+      },
+      "image_prompt": "rectangular dining table with black oak frame and smoked glass top"
+    },
+    {
+      "sku": "dchair-01",
+      "name": "Ember Dining Chair, Walnut and Cognac Leather",
+      "category_raw": "dining chairs",
+      "category_normalized": "chairs",
+      "color": "cognac",
+      "material": "leather",
+      "style_tags": [
+        "warm-contemporary-gallery"
+      ],
+      "color_tags": [
+        "brown",
+        "cognac"
+      ],
+      "material_tags": [
+        "leather",
+        "walnut",
+        "wood"
+      ],
+      "room_tags": [
+        "dining"
+      ],
+      "price_aed": 1190,
+      "dims": {
+        "w": 50,
+        "d": 55,
+        "h": 80
+      },
+      "image_prompt": "walnut dining chair with cognac leather seat and curved backrest"
+    },
+    {
+      "sku": "dchair-02",
+      "name": "Osa Dining Chair, Ivory Boucle",
+      "category_raw": "dining chairs",
+      "category_normalized": "chairs",
+      "color": "ivory",
+      "material": "boucle",
+      "style_tags": [
+        "organic-modern",
+        "textured-neutral"
+      ],
+      "color_tags": [
+        "ivory",
+        "cream"
+      ],
+      "material_tags": [
+        "boucle"
+      ],
+      "room_tags": [
+        "dining"
+      ],
+      "price_aed": 890,
+      "dims": {
+        "w": 52,
+        "d": 56,
+        "h": 82
+      },
+      "image_prompt": "ivory boucle upholstered dining chair with rounded back"
+    },
+    {
+      "sku": "dchair-03",
+      "name": "Reed Dining Chair, Natural Oak and Cane",
+      "category_raw": "dining chairs",
+      "category_normalized": "chairs",
+      "color": "oak",
+      "material": "wood",
+      "style_tags": [
+        "japandi-atelier",
+        "refined-coastal"
+      ],
+      "color_tags": [
+        "beige",
+        "sand"
+      ],
+      "material_tags": [
+        "wood",
+        "oak"
+      ],
+      "room_tags": [
+        "dining"
+      ],
+      "price_aed": 740,
+      "dims": {
+        "w": 48,
+        "d": 54,
+        "h": 80
+      },
+      "image_prompt": "natural oak dining chair with woven cane backrest"
+    },
+    {
+      "sku": "dchair-04",
+      "name": "Tux Dining Chair, Black Velvet with Brass Legs",
+      "category_raw": "dining chairs",
+      "category_normalized": "chairs",
+      "color": "black",
+      "material": "velvet",
+      "style_tags": [
+        "contemporary-hotel-residence",
+        "parisian-contemporary"
+      ],
+      "color_tags": [
+        "black"
+      ],
+      "material_tags": [
+        "velvet",
+        "brass",
+        "metal"
+      ],
+      "room_tags": [
+        "dining"
+      ],
+      "price_aed": 980,
+      "dims": {
+        "w": 51,
+        "d": 57,
+        "h": 84
+      },
+      "image_prompt": "black velvet dining chair with slim brass legs"
+    },
+    {
+      "sku": "bed-01",
+      "name": "Cumulus Bed Frame King, Oatmeal Upholstered",
+      "category_raw": "beds",
+      "category_normalized": "beds",
+      "color": "oatmeal",
+      "material": "fabric",
+      "style_tags": [
+        "textured-neutral",
+        "quiet-luxury-residential"
+      ],
+      "color_tags": [
+        "cream",
+        "oatmeal"
+      ],
+      "material_tags": [
+        "fabric",
+        "linen"
+      ],
+      "room_tags": [
+        "bedroom"
+      ],
+      "price_aed": 4290,
+      "dims": {
+        "w": 190,
+        "d": 210,
+        "h": 110
+      },
+      "image_prompt": "king bed frame with tall oatmeal upholstered curved headboard"
+    },
+    {
+      "sku": "bed-02",
+      "name": "Tatami Bed Frame King, Low Walnut Platform",
+      "category_raw": "beds",
+      "category_normalized": "beds",
+      "color": "walnut",
+      "material": "wood",
+      "style_tags": [
+        "japandi-atelier"
+      ],
+      "color_tags": [
+        "brown",
+        "walnut"
+      ],
+      "material_tags": [
+        "wood",
+        "walnut"
+      ],
+      "room_tags": [
+        "bedroom"
+      ],
+      "price_aed": 3690,
+      "dims": {
+        "w": 195,
+        "d": 215,
+        "h": 75
+      },
+      "image_prompt": "low walnut platform king bed with slim integrated headboard"
+    },
+    {
+      "sku": "art-01",
+      "name": "Terrain Abstract Canvas 120x90, Ochre and Sand",
+      "category_raw": "wall art",
+      "category_normalized": "wall_art",
+      "color": "ochre",
+      "material": "canvas",
+      "style_tags": [
+        "warm-contemporary-gallery",
+        "organic-modern"
+      ],
+      "color_tags": [
+        "brown",
+        "ochre",
+        "sand"
+      ],
+      "material_tags": [
+        "fabric"
+      ],
+      "room_tags": [
+        "living",
+        "dining",
+        "bedroom"
+      ],
+      "price_aed": 1290,
+      "dims": {
+        "w": 120,
+        "d": 4,
+        "h": 90
+      },
+      "image_prompt": "large abstract canvas artwork in ochre sand and cream textured strokes, thin oak frame"
+    },
+    {
+      "sku": "art-02",
+      "name": "Duo Line Art Prints Set of 2, Framed 50x70",
+      "category_raw": "wall art",
+      "category_normalized": "wall_art",
+      "color": "black",
+      "material": "paper",
+      "style_tags": [
+        "sculptural-minimal",
+        "parisian-contemporary"
+      ],
+      "color_tags": [
+        "black",
+        "white"
+      ],
+      "material_tags": [
+        "wood"
+      ],
+      "room_tags": [
+        "living",
+        "bedroom",
+        "office"
+      ],
+      "price_aed": 640,
+      "dims": {
+        "w": 50,
+        "d": 3,
+        "h": 70
+      },
+      "image_prompt": "set of two framed minimal single-line figure art prints, black frames"
+    },
+    {
+      "sku": "art-03",
+      "name": "Sahara Textile Wall Hanging 100x140, Woven Neutral",
+      "category_raw": "wall art",
+      "category_normalized": "wall_art",
+      "color": "natural",
+      "material": "wool",
+      "style_tags": [
+        "organic-modern",
+        "soft-modern-mediterranean"
+      ],
+      "color_tags": [
+        "beige",
+        "cream",
+        "sand"
+      ],
+      "material_tags": [
+        "wool",
+        "fabric"
+      ],
+      "room_tags": [
+        "living",
+        "bedroom"
+      ],
+      "price_aed": 890,
+      "dims": {
+        "w": 100,
+        "d": 2,
+        "h": 140
+      },
+      "image_prompt": "woven neutral textile wall hanging with fringe, tactile"
+    },
+    {
+      "sku": "mirror-01",
+      "name": "Aura Arched Floor Mirror 170cm, Bronze Frame",
+      "category_raw": "mirrors",
+      "category_normalized": "mirrors",
+      "color": "bronze",
+      "material": "metal",
+      "style_tags": [
+        "quiet-luxury-residential",
+        "parisian-contemporary"
+      ],
+      "color_tags": [
+        "gold",
+        "bronze"
+      ],
+      "material_tags": [
+        "metal",
+        "brass",
+        "glass"
+      ],
+      "room_tags": [
+        "living",
+        "bedroom"
+      ],
+      "price_aed": 1590,
+      "dims": {
+        "w": 80,
+        "d": 4,
+        "h": 170
+      },
+      "image_prompt": "tall arched floor mirror with thin bronze metal frame"
+    },
+    {
+      "sku": "mirror-02",
+      "name": "Marina Bathroom Vanity Mirror with LED Ring, 70cm",
+      "category_raw": "bathroom mirrors",
+      "category_normalized": "mirrors",
+      "color": "silver",
+      "material": "glass",
+      "style_tags": [],
+      "color_tags": [
+        "white"
+      ],
+      "material_tags": [
+        "glass",
+        "metal"
+      ],
+      "room_tags": [
+        "bathroom"
+      ],
+      "price_aed": 490,
+      "dims": {
+        "w": 70,
+        "d": 4,
+        "h": 70
+      },
+      "image_prompt": "round bathroom vanity mirror with LED ring light"
+    },
+    {
+      "sku": "decor-01",
+      "name": "Kilnworks Ceramic Vase Trio, Cream and Ochre",
+      "category_raw": "decor",
+      "category_normalized": "decor",
+      "color": "cream",
+      "material": "ceramic",
+      "style_tags": [
+        "organic-modern",
+        "warm-contemporary-gallery"
+      ],
+      "color_tags": [
+        "cream",
+        "ochre"
+      ],
+      "material_tags": [
+        "plaster"
+      ],
+      "room_tags": [
+        "living",
+        "dining"
+      ],
+      "price_aed": 420,
+      "dims": {
+        "w": 20,
+        "d": 20,
+        "h": 35
+      },
+      "image_prompt": "set of three handmade ceramic vases in cream and ochre"
+    },
+    {
+      "sku": "decor-02",
+      "name": "Wave Cushion 50x50, Ivory Boucle",
+      "category_raw": "cushions",
+      "category_normalized": "decor",
+      "color": "ivory",
+      "material": "boucle",
+      "style_tags": [
+        "textured-neutral"
+      ],
+      "color_tags": [
+        "ivory",
+        "cream"
+      ],
+      "material_tags": [
+        "boucle"
+      ],
+      "room_tags": [
+        "living",
+        "bedroom"
+      ],
+      "price_aed": 160,
+      "dims": {
+        "w": 50,
+        "d": 15,
+        "h": 50
+      },
+      "image_prompt": "ivory boucle square cushion"
+    },
+    {
+      "sku": "decor-03",
+      "name": "Ember Throw Blanket, Rust Waffle Cotton",
+      "category_raw": "throws",
+      "category_normalized": "decor",
+      "color": "rust",
+      "material": "cotton",
+      "style_tags": [
+        "collected-eclectic",
+        "organic-modern"
+      ],
+      "color_tags": [
+        "red",
+        "rust",
+        "terracotta"
+      ],
+      "material_tags": [
+        "fabric"
+      ],
+      "room_tags": [
+        "living",
+        "bedroom"
+      ],
+      "price_aed": 240,
+      "dims": {
+        "w": 130,
+        "d": 2,
+        "h": 170
+      },
+      "image_prompt": "rust waffle weave cotton throw blanket folded"
+    },
+    {
+      "sku": "decor-04",
+      "name": "Monolith Sculpture, Black Marble 30cm",
+      "category_raw": "decor",
+      "category_normalized": "decor",
+      "color": "black",
+      "material": "marble",
+      "style_tags": [
+        "sculptural-minimal",
+        "warm-contemporary-gallery"
+      ],
+      "color_tags": [
+        "black"
+      ],
+      "material_tags": [
+        "marble",
+        "stone"
+      ],
+      "room_tags": [
+        "living",
+        "office"
+      ],
+      "price_aed": 380,
+      "dims": {
+        "w": 12,
+        "d": 12,
+        "h": 30
+      },
+      "image_prompt": "small abstract black marble sculpture on plinth"
+    },
+    {
+      "sku": "curtain-01",
+      "name": "Veil Linen Curtain Pair, Greige 140x300",
+      "category_raw": "curtains",
+      "category_normalized": "decor",
+      "color": "greige",
+      "material": "linen",
+      "style_tags": [
+        "quiet-luxury-residential",
+        "textured-neutral"
+      ],
+      "color_tags": [
+        "taupe",
+        "cream"
+      ],
+      "material_tags": [
+        "linen"
+      ],
+      "room_tags": [
+        "living",
+        "bedroom"
+      ],
+      "price_aed": 680,
+      "dims": {
+        "w": 140,
+        "d": 1,
+        "h": 300
+      },
+      "image_prompt": "pair of greige linen curtain panels hanging, full height"
+    },
+    {
+      "sku": "desk-01",
+      "name": "Focus Desk 140cm, Oak with Cable Tray",
+      "category_raw": "desks",
+      "category_normalized": "desks",
+      "color": "oak",
+      "material": "wood",
+      "style_tags": [
+        "japandi-atelier",
+        "warm-contemporary-gallery"
+      ],
+      "color_tags": [
+        "beige",
+        "brown"
+      ],
+      "material_tags": [
+        "wood",
+        "oak"
+      ],
+      "room_tags": [
+        "office"
+      ],
+      "price_aed": 2190,
+      "dims": {
+        "w": 140,
+        "d": 70,
+        "h": 75
+      },
+      "image_prompt": "oak writing desk with two drawers and slim legs"
+    },
+    {
+      "sku": "ochair-01",
+      "name": "Posture Task Chair, Sand Fabric on Castors",
+      "category_raw": "office chairs",
+      "category_normalized": "office_chairs",
+      "color": "sand",
+      "material": "fabric",
+      "style_tags": [
+        "quiet-luxury-residential"
+      ],
+      "color_tags": [
+        "beige",
+        "sand"
+      ],
+      "material_tags": [
+        "fabric"
+      ],
+      "room_tags": [
+        "office"
+      ],
+      "price_aed": 1490,
+      "dims": {
+        "w": 62,
+        "d": 62,
+        "h": 95
+      },
+      "image_prompt": "refined sand fabric office task chair with low back, residential style"
+    }
+  ]
+}
