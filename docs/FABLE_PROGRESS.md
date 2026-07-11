@@ -250,20 +250,97 @@ returns 200 (it does not import the actions module). Runtime log root cause:
     Could not load the "sharp" module using the linux-x64 runtime
     ERR_DLOPEN_FAILED: libvips-cpp.so.8.18.3: cannot open shared object file
 
-`sharp` (new to the live path this release, for vision-input downscaling) is auto-externalized
-by Next, so it is `require`d at runtime. In this pnpm monorepo sharp + its platform packages
-(`@img/sharp-linux-x64`, `@img/sharp-libvips-linux-x64` carrying the `.so`) hoist to the repo-root
-`.pnpm` store, OUTSIDE `apps/web`. Next output-file-tracing defaults to the project dir and
-dropped those native files from the deployed function. Fix: set `outputFileTracingRoot` to the
-monorepo root in `apps/web/next.config.ts` (the fix Next's own monorepo docs prescribe).
+`sharp` (new to the live path this release, for vision-input downscaling). RESOLVED in two
+attempts — record BOTH so the mechanism is clear:
 
-Verified on the PREVIEW deployment (linux-x64, identical runtime): after the fix the sharp DLOPEN
-error is GONE. Preview then 500s on a DIFFERENT, pre-existing, preview-scoped issue — Supabase
-public vars (`NEXT_PUBLIC_SUPABASE_URL`/`ANON_KEY`) are scoped Production-only, so preview has no
-Supabase client. Production has all required vars at Production scope (confirmed via
-`vercel env ls`; Supabase URL/anon/service-role, OpenAI, Stripe, Evolink; no `OPENAI_BASE_URL`),
-so merging #311 restores production. Awaiting Ayo's merge approval, then confirm prod `/` != 500.
+- PR #311 (`outputFileTracingRoot` = monorepo root): WRONG LAYER. Merged, but production STILL
+  500'd with the same ERR_DLOPEN. Vercel already sets the monorepo tracing root itself, so this
+  was effectively a no-op.
+- PR #312 (`outputFileTracingIncludes` for the linux sharp packages): THE REAL FIX. sharp 0.35
+  ships prebuilt platform packages; `@img/sharp-linux-x64`'s `.node` addon `dlopen`s its sibling
+  `@img/sharp-libvips-linux-x64/lib/libvips-cpp.so.8.18.3` at load. `@vercel/nft` traces
+  `require`/`import` but CANNOT follow a `dlopen`, so it bundled the `.node` and dropped the `.so`.
+  Force both linux platform packages into every route's trace via `outputFileTracingIncludes`
+  (globs resolve from the project root; `.pnpm` dirs only exist on the linux build → no-op on mac).
+
+FALSE-VERIFICATION TRAP (I fell into it): I first "verified" #311 on a preview and saw the DLOPEN
+error replaced by a Supabase error, and called it fixed. That was WRONG — the preview had no
+Supabase env, so it 500'd in MIDDLEWARE (Supabase client) BEFORE the sharp-importing page module
+ever loaded. The Supabase error masked the still-broken sharp path. Only after adding the two
+PUBLIC Supabase vars (`NEXT_PUBLIC_SUPABASE_URL`/`ANON_KEY`) to Vercel PREVIEW scope did the
+preview exercise the real path. #312 preview then gave `/` -> 307 -> `/login` -> 200 (sharp loads,
+no DLOPEN, clean runtime logs). Merged #312; production `/` confirmed 307 -> /login (was 500).
+
+Preview env is now provisioned with the public Supabase vars so future PRs can be smoke-tested on
+a real preview before merge. Production has all required vars at Production scope (verified via
+`vercel env ls`: Supabase URL/anon/service-role, OpenAI, Stripe, Evolink; no `OPENAI_BASE_URL`).
 
 TRAP for the next instance: sharp works locally (macOS native binary) and in `pnpm build`, so
 green local checks do NOT catch this. It only manifests on the linux Vercel function. Any new
-native/optional-binary dependency needs a preview-deploy smoke test, not just `pnpm check`.
+native/optional-binary dependency needs a preview-deploy smoke test that reaches the code path
+(preview MUST have Supabase env, or it dies in middleware first and masks the real error).
+
+### HOSTED E2E against the real 3,309-product catalog (queue item 1)
+Ran the FULL flow in the local app pointed at hosted Supabase (`.env.local` swapped to hosted;
+Evolink for text+images; real Gemini renderer). Playwright harness `scripts/dev-harness/e2e.mjs`
+extended with the missing stages: `signup`, `brief-details`, `brief-questions`, `concept`,
+`sourcing` (+ `photos` upload race fixed — it closed the browser mid-upload).
+
+Test account: hosted signup is gated to `@ritzyinteriors.com` AND hosted Supabase has email
+confirmation ON, so UI signup lands back on /login with no session. Created a pre-confirmed test
+user via the admin API (`create-hosted-test-user.mjs`, email_confirm:true). Preview/local both
+reach the app. Room photo used: a real furnished living room
+(`docs/Design/inspiration-sample-candidates/lr-02...jpg`).
+
+**FINDING + FIX (production-affecting): concept generation blocked on large catalogue images.**
+Against the real catalog, `initial_concept_generation` failed with the user-facing "we need a
+little more catalogue evidence" — NOT a taste/catalog-depth problem. Root cause (from
+`ai_jobs.input_summary.catalogueGrounding.warnings`): every RUG candidate was "skipped ... without
+a fetchable reference image". Home Centre media-CDN images are 2-3 MB; the grounding image fetch
+timed out at `CATALOGUE_GROUNDED_CONCEPT_IMAGE_FETCH_TIMEOUT_MS = 2_500`ms. Rugs have the largest
+images so ALL candidates timed out → the required rug role produced no anchor → the WHOLE concept
+was blocked. This hits production identically (same code/catalog/timeout). Fix: raised to 12_000ms
+(actions.ts). The grounding loop breaks on the first fetchable candidate, so the happy path stays
+fast; only the pathological all-fail case is slower. After the fix the concept generated cleanly.
+BRITTLENESS (noted, not yet fixed): one required anchor role with no fetchable image hard-blocks
+the entire concept — it should degrade gracefully (text-anchor the role, or proceed without it).
+Also worth auditing the sibling `PRODUCT_SOURCING_IMAGE_PREFLIGHT_TIMEOUT_MS = 2_500` (same class).
+
+**Concept quality (verified with eyes):** "Cognac Calm Living – Organic Contemporary with
+Scandinavian Warmth" — preserved the source room's architecture (clerestory windows, framed door,
+wood floors), on-brief warm-neutral/cognac/walnut/sage, editorial photography feel, and RESPECTED
+the avoid-purple/red brief. 2 extra camera views generated (concept_views succeeded).
+
+**Matching quality (real catalog):** sourcing succeeded; selected shopping list is budget-adherent
+(AED 38,448 < 40,000), class-correct, palette-coherent (all cognac/neutral). MINOR FINDING: a
+"Cigar Lounge Armchair, Red" survives as an ALTERNATE despite "avoid ... bright red" — avoid-colors
+demote (-24) but do not exclude from the option pool; consider hard-excluding avoid-colors from
+alternates, not just selections.
+
+**Final render — E2E COMPLETE + durability finding.** The render engine works against hosted +
+Evolink Gemini: `render_jobs` succeeded with `spatialQaVerdict = pass`, 1 asset. BUT the render
+runs in an in-request `after()` that does NOT survive client disconnect. First attempt (harness
+clicked the button then closed the browser 6s later): ZERO server-side Evolink activity, job stuck
+`running` forever. Second attempt with the browser kept alive on /presentation: completed in ~90s.
+Worse, the dedup guard treats a stuck `running` job as "Final render is already running" and
+BLOCKS every retry for 15 minutes (staleness heuristic) — so a beta user who closes the tab after
+triggering gets a permanently-stuck render with no recourse for 15 min. This is queue item 5
+(render durability) with a concrete repro; the fix is a durable/background-safe render (not tied to
+the request) + a user-visible retry affordance. Repro: `scripts/dev-harness/render-alive.mjs`.
+
+**Budget adherence ignores quantity (finding).** The selected list's per-UNIT sum is AED 38,448
+(< 40,000 budget), but the Stilo armchair has quantity 2, so the real furniture total (line totals)
+is AED 44,118 — ~10% OVER budget, and this is what the presentation shows. The budget gate should
+use qty x price (line_total_aed), not unit prices.
+
+### Full E2E result (queue item 1 — DONE)
+signup -> onboarding -> project -> room -> photo (real furnished living room) -> brief -> 5
+clarifying questions -> concept (Gemini, architecture preserved, on-brief, avoid-color held) -> 2
+consistent camera views -> sourcing/matching (budget-adherent per-unit, class-correct,
+palette-coherent) -> final grounded render (succeeded, spatial QA pass). The definition-of-done
+pipeline works against the real 3,309-product catalogue. Fix shipped: image-fetch timeout (#313).
+Findings queued: render durability (item 5, high), budget-with-quantity, avoid-colors-in-alternates,
+sibling PRODUCT_SOURCING_IMAGE_PREFLIGHT_TIMEOUT_MS, grounding brittleness (one role blocks all).
+
+Env note: `.env.local` left pointed at HOSTED Supabase for this run (backup in the session
+scratchpad `env.local.backup`); revert to local when done with hosted verification.
