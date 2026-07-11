@@ -151,6 +151,7 @@ async function run() {
     checkedCount: 3,
     acceptedCount: 1,
     rejectedCount: 2,
+    skippedCount: 0,
     rejectionReasons: {
       unsupported_mime: 1,
       unsupported_extension: 1
@@ -162,6 +163,50 @@ async function run() {
   assert.equal(preflight.candidates[1]?.name, "HTML instead of image");
   assert.equal(preflight.candidates[2]?.primaryImageUrl, null);
   assert.equal(preflight.candidates[3]?.primaryImageUrl, null);
+
+  // Wall-clock budget: an already-spent budget skips every fetch. Skipped candidates with an
+  // image are passed through optimistically (kept + counted usable) so a slow CDN can never
+  // block a required role; a null-image candidate stays missing (not counted usable).
+  const budgetSpent = await preflightProductCandidateImages(
+    [
+      { id: "slow-1", primaryImageUrl: "https://retailer.example/slow-1.jpg" },
+      { id: "slow-2", primaryImageUrl: "https://retailer.example/slow-2.jpg" },
+      { id: "no-image", primaryImageUrl: null }
+    ],
+    {
+      budgetMs: -1,
+      fetcher: (async () => {
+        throw new Error("preflight must not fetch once the budget is spent");
+      }) as typeof fetch
+    }
+  );
+
+  assert.deepEqual(budgetSpent.summary, {
+    checkedCount: 0,
+    acceptedCount: 0,
+    rejectedCount: 0,
+    skippedCount: 2,
+    rejectionReasons: {}
+  });
+  assert.deepEqual(budgetSpent.acceptedCandidateIds, ["slow-1", "slow-2"]);
+  assert.equal(budgetSpent.candidates[0]?.primaryImageUrl, "https://retailer.example/slow-1.jpg");
+  assert.equal(budgetSpent.candidates[1]?.primaryImageUrl, "https://retailer.example/slow-2.jpg");
+  assert.equal(budgetSpent.candidates[2]?.primaryImageUrl, null);
+
+  // A required role whose only candidate was skipped on budget still reads as usable.
+  assert.equal(
+    buildProductImagePreflightGate({
+      candidateCount: 2,
+      acceptedCandidateIds: budgetSpent.acceptedCandidateIds,
+      rolePools: [
+        {
+          role: { label: "Sofa", priority: "required" },
+          candidates: [{ id: "slow-1" }]
+        }
+      ]
+    }).usable,
+    true
+  );
 
   assert.deepEqual(
     buildProductImagePreflightGate({

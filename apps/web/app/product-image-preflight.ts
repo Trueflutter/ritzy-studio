@@ -11,6 +11,9 @@ export type ProductImagePreflightSummary = {
   checkedCount: number;
   acceptedCount: number;
   rejectedCount: number;
+  // Candidates left unchecked because the overall wall-clock budget was spent. They are passed
+  // through optimistically (image kept, presumed usable) so a slow CDN can't block sourcing.
+  skippedCount: number;
   rejectionReasons: Partial<Record<ProductImagePreflightRejectionReason, number>>;
 };
 
@@ -24,6 +27,11 @@ type ProductImagePreflightOptions = {
   timeoutMs?: number;
   maxBytes?: number;
   concurrency?: number;
+  // Overall wall-clock ceiling for the whole batch. The per-image timeout is deliberately
+  // generous (slow retailer CDNs), so without an overall bound a batch of dead URLs could
+  // stall the synchronous sourcing action. Once spent, remaining candidates are skipped
+  // (passed through optimistically), never rejected. Mirrors the grounding fetch budget.
+  budgetMs?: number;
 };
 
 type ProductImagePreflightRolePool = {
@@ -40,6 +48,23 @@ const defaultTimeoutMs = 2_500;
 const defaultMaxBytes = 20 * 1024 * 1024;
 const defaultConcurrency = 6;
 
+// Zero-cost passthrough for when the AI does not consume product images: no network at all, and the
+// candidates flow through unchanged. Use instead of preflightProductCandidateImages when the gate
+// and sanitized candidates would be discarded anyway, so a slow CDN never adds latency for nothing.
+export function skippedProductImagePreflight<T extends ProductImageCandidate>(candidates: T[]) {
+  return {
+    candidates,
+    acceptedCandidateIds: [] as string[],
+    summary: {
+      checkedCount: 0,
+      acceptedCount: 0,
+      rejectedCount: 0,
+      skippedCount: 0,
+      rejectionReasons: {}
+    } satisfies ProductImagePreflightSummary
+  };
+}
+
 export async function preflightProductCandidateImages<T extends ProductImageCandidate>(
   candidates: T[],
   options: ProductImagePreflightOptions = {}
@@ -48,26 +73,47 @@ export async function preflightProductCandidateImages<T extends ProductImageCand
   const timeoutMs = options.timeoutMs ?? defaultTimeoutMs;
   const maxBytes = options.maxBytes ?? defaultMaxBytes;
   const concurrency = Math.max(1, options.concurrency ?? defaultConcurrency);
-  const checks = await mapWithConcurrency(candidates, concurrency, async (candidate) => ({
-    candidate,
-    result: await validateProductImageUrlForAi(candidate.primaryImageUrl, {
-      fetcher,
-      timeoutMs,
-      maxBytes
-    })
-  }));
+  const deadline = typeof options.budgetMs === "number" ? Date.now() + options.budgetMs : null;
+  const checks = await mapWithConcurrency(candidates, concurrency, async (candidate) => {
+    // Once the wall-clock budget is spent, stop fetching. Skipped candidates keep their image
+    // and are presumed usable so a slow batch degrades gracefully instead of blocking.
+    if (deadline !== null && Date.now() > deadline) {
+      return { candidate, result: { status: "skipped" as const } };
+    }
+    return {
+      candidate,
+      result: await validateProductImageUrlForAi(candidate.primaryImageUrl, {
+        fetcher,
+        timeoutMs,
+        maxBytes
+      })
+    };
+  });
   const rejectionReasons: ProductImagePreflightSummary["rejectionReasons"] = {};
   const acceptedCandidateIds: string[] = [];
   let checkedCount = 0;
+  let acceptedCount = 0;
+  let skippedCount = 0;
 
   const sanitizedCandidates = checks.map(({ candidate, result }) => {
     if (result.status === "missing") {
       return candidate;
     }
 
+    // Budget exhausted before this candidate was checked: keep it and count it as usable so the
+    // required-role gate cannot false-block on a slow CDN. Downstream fetch has retry + fallback.
+    if (result.status === "skipped") {
+      if (candidate.primaryImageUrl) {
+        skippedCount += 1;
+        acceptedCandidateIds.push(candidate.id);
+      }
+      return candidate;
+    }
+
     checkedCount += 1;
 
     if (result.status === "accepted") {
+      acceptedCount += 1;
       acceptedCandidateIds.push(candidate.id);
       return candidate;
     }
@@ -84,8 +130,9 @@ export async function preflightProductCandidateImages<T extends ProductImageCand
     acceptedCandidateIds,
     summary: {
       checkedCount,
-      acceptedCount: acceptedCandidateIds.length,
-      rejectedCount: checkedCount - acceptedCandidateIds.length,
+      acceptedCount,
+      rejectedCount: checkedCount - acceptedCount,
+      skippedCount,
       rejectionReasons
     }
   };

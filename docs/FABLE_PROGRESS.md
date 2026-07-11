@@ -361,3 +361,67 @@ scratchpad `env.local.backup`); revert to local when done with hosted verificati
   stale job; unit test `apps/web/lib/render.test.ts` (run via `npx tsx`). NOTE: this bounds the
   worst case to ~4min + gives recovery; a fully durable/background render (Vercel Queues) is still
   the eventual robust answer but was out of scope for the launch deadline.
+
+## 2026-07-11 (session 4 — Opus 4.8 — sourcing & grounding robustness)
+
+Branched `fable/budget-with-quantity` off latest origin/main (#315 merged). Production re-verified
+green first (`/` 307 -> /login; /login renders sign-in; protected /onboarding 307 -> /login).
+Worked the handover queue items 1-4 (concept/sourcing-path robustness). Items 1 & 3 verified LIVE
+against the hosted 3,309-product catalogue via the Playwright harness + Evolink (fresh matching runs
+through `groundProductsAction`, no concept regen, no final render). PR #1 of this session.
+
+### Item 1 — budget adherence ignores quantity (VERIFIED LIVE)
+Two-layer fix; the live run proved the first layer alone was insufficient.
+- Per-role gate (`roleGateRejectionReason`) now compares the LINE total (unit x role.quantity) to
+  the budget, not the unit price. A single role-line that alone exceeds the whole budget is gated
+  out. (Necessary hardening, but the reported case had no single line over budget.)
+- Aggregate fit (`fitSelectionToBudget`, new domain fn wired into `groundProductsAction`): after
+  per-role selection, greedily downgrades roles to cheaper in-pool alternates until the qty-aware
+  line-total SUM fits the budget — smallest-sufficient swap first (least aesthetic loss), else
+  largest saving; required roles never emptied. THIS is what fixes the finding.
+- Live proof on the real room: total 44,118 (over 40,000) -> 38,488 (within). The Malibu sofa and
+  the Stilo armchair (qty 2) anchors were preserved; the coffee table was downgraded to fit. Unit
+  test reproduces the exact 44,118 case + no-budget + unfittable-budget paths.
+
+### Item 3 — avoid-colours survive as alternates (VERIFIED LIVE)
+Two-layer fix; again the live run exposed the deeper cause.
+- `buildRolePool` now HARD-EXCLUDES avoid-colour candidates from the option pool (selected AND
+  alternates), not just the -24 demotion; kept only as a last resort so a required role isn't
+  emptied. (`rejectionReasons.avoid_color`.)
+- ROOT CAUSE the exclusion alone didn't fix: `conceptAvoidColorTags` in sourcing came ONLY from the
+  concept-IMAGE palette's inferred avoidColors (["black","grey","purple","blue"] — no red!), so the
+  user's explicit brief "avoid bright red" never reached matching and the red armchair survived.
+  Now unions the palette avoidColors with the brief's parsed avoid colours (`splitAvoidColorCues`
+  over `avoid_notes`) before the pool filter. Live proof: "Cigar Lounge Armchair, Red" now fully
+  excluded (0 offenders in the 36-item pool).
+
+### Item 2 — sibling PRODUCT_SOURCING_IMAGE_PREFLIGHT_TIMEOUT_MS (audited + bounded)
+Audit: the preflight is a header-only (Range: bytes=0-0) reachability check, and its blocking gate
+is currently INACTIVE in prod (`PRODUCT_SOURCING_AI_PRODUCT_IMAGES_ENABLED` is false because
+CANDIDATE_IMAGE_LIMIT=0) — so today it's overhead/telemetry, not a live blocker. But it's a latent
+landmine: flip that flag and a slow retailer CDN times out a required role at 2.5s and blocks
+sourcing exactly like #313 blocked concepts. Mirrored the #313 fix: per-image ceiling 2.5s -> 8s;
+added an overall wall-clock budget (`PRODUCT_SOURCING_IMAGE_PREFLIGHT_BUDGET_MS = 20s`); once spent,
+remaining candidates pass through OPTIMISTICALLY (kept + counted usable), never rejected, so a slow
+CDN degrades to latency, not a block. Unit-tested (`product-image-preflight.test.ts`, incl. the
+budget-spent skip path). Not separately live-exercised (gate off), safe by construction.
+
+### Item 4 — grounding brittleness: one role blocks the whole concept (degraded)
+`buildCatalogueGroundedConceptPlan` used to push a hard blocker (and fail the whole concept) when a
+single required anchor role couldn't produce an image-backed candidate. Concept-first (ADR 0001)
+designs freely and grounds products at sourcing, so an ungrounded role is designed by the model and
+matched to a SKU later — not lost. Per-role failures now degrade to warnings
+(`summary.degradedRequiredRoles`); the concept blocks ONLY if not a single anchor grounds. Happy
+path unchanged (still selects image-backed anchors); the existing hosted concept + sourcing still
+work end to end. Typecheck/lint clean; not independently reproduced (the trigger — all-unfetchable
+images for a required role — is exactly the pathological case that previously blocked).
+
+### Verification notes / env
+- `.env.local` was switched to HOSTED for the live matching runs (`use-env.sh hosted`) and a fresh
+  dev server started on :3000; the old local dev server (55006) was replaced. REVERT to local at
+  session end (`use-env.sh local` + restart) — leaving it hosted is the known "pointed at prod" trap.
+- New harness drivers: `scripts/dev-harness/refresh-matches.mjs` (force a fresh matching run without
+  concept regen) and `verify-budget-avoidcolor.mjs` (assert budget + avoid-colour on the list).
+- Still OPEN from the queue: item 5 (multi-angle FINAL render) — next PR; needs a hosted render run.
+  Deferred: budget-fit telemetry on ai_jobs (the outcome is already visible in
+  shopping_lists.estimated_total_aed + items).

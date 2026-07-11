@@ -27,6 +27,7 @@ import {
   composeRoomProductOptions,
   conceptPaletteMatchingText,
   deriveSpatialDesignerWarnings,
+  fitSelectionToBudget,
   normalizeCatalogFirstRoomType,
   parseConceptImagePalette,
   parseSpatialIntent,
@@ -75,6 +76,7 @@ import {
 import {
   buildProductImagePreflightGate,
   preflightProductCandidateImages,
+  skippedProductImagePreflight,
   type ProductImagePreflightSummary
 } from "./product-image-preflight";
 import {
@@ -97,7 +99,15 @@ import {
 
 const PRODUCT_SOURCING_AI_TIMEOUT_MS = 45_000;
 const PRODUCT_MATCHING_CATALOG_LIMIT = 1500;
-const PRODUCT_SOURCING_IMAGE_PREFLIGHT_TIMEOUT_MS = 2_500;
+// Header-only (Range: bytes=0-0) reachability check per candidate image. At 2.5s a slow retailer
+// CDN's TLS + TTFB could time out otherwise-valid images; when the AI-product-image gate is on
+// (PRODUCT_SOURCING_AI_PRODUCT_IMAGES_ENABLED) that would block sourcing for a required role the
+// same way the 2.5s grounding fetch blocked concepts pre-#313. Generous per-image ceiling, bounded
+// overall by PRODUCT_SOURCING_IMAGE_PREFLIGHT_BUDGET_MS so a batch of dead URLs can't stall.
+const PRODUCT_SOURCING_IMAGE_PREFLIGHT_TIMEOUT_MS = 8_000;
+// Overall wall-clock budget for a whole preflight batch. Once spent, remaining candidates are
+// passed through optimistically (never rejected), so slow CDNs degrade to latency, not a block.
+const PRODUCT_SOURCING_IMAGE_PREFLIGHT_BUDGET_MS = 20_000;
 const PRODUCT_SOURCING_MAX_IMAGE_BYTES = 20 * 1024 * 1024;
 const PRODUCT_SOURCING_AI_CONCEPT_IMAGE_DETAIL = "low" as const;
 const PRODUCT_SOURCING_AI_CANDIDATE_IMAGE_LIMIT = 0;
@@ -2460,6 +2470,17 @@ export async function groundProductsAction(formData: FormData) {
     .limit(1)
     .maybeSingle();
 
+  // The user's explicit avoid-colour instruction (brief avoid_notes, e.g. "avoid bright red") must
+  // reach product matching. The concept-image palette's avoidColors is an inferred signal and can
+  // miss what the user asked for, so union the two before the sourcing avoid-colour filter runs.
+  const { data: sourcingDesignBrief } = await supabase
+    .from("design_briefs")
+    .select("avoid_notes")
+    .eq("room_id", roomId)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
   const baseConceptText = `${concept.title}\n${concept.description ?? ""}`;
   const blueprintRoles: RoomProductRoleSpec[] = enhancedProductRolesForRoom(room.room_type).map((role) => ({
     category: role.category,
@@ -2570,7 +2591,10 @@ export async function groundProductsAction(formData: FormData) {
     ? `${baseConceptText}
 ${conceptPaletteText}`
     : baseConceptText;
-  const conceptAvoidColorTags = conceptPalette?.avoidColors ?? [];
+  const briefAvoidColorTags = splitAvoidColorCues(sourcingDesignBrief?.avoid_notes ?? "").avoidColorTags;
+  const conceptAvoidColorTags = Array.from(
+    new Set([...(conceptPalette?.avoidColors ?? []), ...briefAvoidColorTags])
+  );
 
   const productMatchingPreview = productMatchingEngineV1EnabledForRequest({
     projectId,
@@ -2625,10 +2649,15 @@ ${conceptPaletteText}`
       priority: "required"
     }));
   const staticRoles = mergeRoomRoles(blueprintRoles, legacyRequiredRoles);
-  const initialImagePreflight = await preflightProductCandidateImages(sourcingCandidates, {
-    timeoutMs: PRODUCT_SOURCING_IMAGE_PREFLIGHT_TIMEOUT_MS,
-    maxBytes: PRODUCT_SOURCING_MAX_IMAGE_BYTES
-  });
+  // Only fetch when the AI actually consumes product images; otherwise the gate and sanitized
+  // candidates are discarded, so a slow CDN would add up to the whole preflight budget for nothing.
+  const initialImagePreflight = PRODUCT_SOURCING_AI_PRODUCT_IMAGES_ENABLED
+    ? await preflightProductCandidateImages(sourcingCandidates, {
+        timeoutMs: PRODUCT_SOURCING_IMAGE_PREFLIGHT_TIMEOUT_MS,
+        budgetMs: PRODUCT_SOURCING_IMAGE_PREFLIGHT_BUDGET_MS,
+        maxBytes: PRODUCT_SOURCING_MAX_IMAGE_BYTES
+      })
+    : skippedProductImagePreflight(sourcingCandidates);
   const aiSourcingCandidates = PRODUCT_SOURCING_AI_PRODUCT_IMAGES_ENABLED
     ? initialImagePreflight.candidates
     : sourcingCandidates;
@@ -3048,10 +3077,13 @@ ${conceptPaletteText}`
     });
     const retryPools = retryPlan.roleScopedPools;
     const retryCandidates = retryPlan.candidates;
-    const retryImagePreflight = await preflightProductCandidateImages(retryCandidates, {
-      timeoutMs: PRODUCT_SOURCING_IMAGE_PREFLIGHT_TIMEOUT_MS,
-      maxBytes: PRODUCT_SOURCING_MAX_IMAGE_BYTES
-    });
+    const retryImagePreflight = PRODUCT_SOURCING_AI_PRODUCT_IMAGES_ENABLED
+      ? await preflightProductCandidateImages(retryCandidates, {
+          timeoutMs: PRODUCT_SOURCING_IMAGE_PREFLIGHT_TIMEOUT_MS,
+          budgetMs: PRODUCT_SOURCING_IMAGE_PREFLIGHT_BUDGET_MS,
+          maxBytes: PRODUCT_SOURCING_MAX_IMAGE_BYTES
+        })
+      : skippedProductImagePreflight(retryCandidates);
     retryProductImagePreflightSummary = retryImagePreflight.summary;
     const aiRetryCandidates = PRODUCT_SOURCING_AI_PRODUCT_IMAGES_ENABLED
       ? retryImagePreflight.candidates
@@ -3623,8 +3655,18 @@ ${conceptPaletteText}`
     }
   }
 
+  // Aggregate budget adherence: per-role selection above has no view of the running total, so the
+  // qty-aware line-total sum can exceed the stated budget (a role at qty 2 doubles its line). Fit
+  // the selection to budget by downgrading roles to cheaper in-pool alternates before persisting.
+  const budgetFit = fitSelectionToBudget({
+    roleOptions,
+    selectedProductIdByRole,
+    budgetMaxAed: project.budget_max_aed ?? null
+  });
+  const budgetAdjustedSelection = budgetFit.selectedProductIdByRole;
+
   const selectedFirstRoleOptions = roleOptions.map((role) => {
-    const selectedId = selectedProductIdByRole.get(role.category);
+    const selectedId = budgetAdjustedSelection.get(role.category);
     const selectedOption = selectedId ? role.options.find((option) => option.id === selectedId) : undefined;
     if (!selectedOption || role.options[0]?.id === selectedOption.id) {
       return role;
@@ -3638,7 +3680,7 @@ ${conceptPaletteText}`
 
   const itemRows = buildShoppingListItemRows({
     roleOptions: selectedFirstRoleOptions,
-    selectedProductIdByRole,
+    selectedProductIdByRole: budgetAdjustedSelection,
     reasonFor: (match) => {
       const sourceSelection = sourceSelectionsById.get(match.id);
       return [
@@ -5295,6 +5337,7 @@ async function buildCatalogueGroundedConceptPlan({
   const selected: CatalogueGroundingProduct[] = [];
   const blockers: string[] = [];
   const warnings: string[] = [];
+  const degradedRequiredRoles: string[] = [];
   // Wall-clock ceiling across all roles' reference-image fetches (see the constant).
   const imageFetchDeadline = Date.now() + CATALOGUE_GROUNDED_CONCEPT_IMAGE_FETCH_BUDGET_MS;
 
@@ -5366,11 +5409,17 @@ async function buildCatalogueGroundedConceptPlan({
     }
 
     if (!selectedCandidate || !selectedReferenceImage) {
+      // Graceful degradation: a single required role that can't produce an image-backed anchor
+      // must NOT hard-block the whole concept. Concept-first (ADR 0001) designs the room freely,
+      // then grounds real products at sourcing — so an ungrounded role is designed by the model
+      // and matched to a real SKU later, not lost. We only block if NOTHING grounds at all
+      // (post-loop check below), which is the true "catalogue has no usable evidence" case.
       if (pool.role.priority === "required") {
         const reason = pool.candidates.length > 0
           ? "eligible candidates had hard role or cue contradictions or lacked usable reference images"
           : "no eligible catalogue candidate";
-        blockers.push(`${pool.role.label}: ${reason}.`);
+        degradedRequiredRoles.push(pool.role.label);
+        warnings.push(`${pool.role.label}: proceeding without a catalogue anchor (${reason}).`);
       }
       continue;
     }
@@ -5391,6 +5440,15 @@ async function buildCatalogueGroundedConceptPlan({
       referenceImage: selectedReferenceImage
     });
   }
+  // The concept is only truly ungroundable when not a single anchor could be secured. One or two
+  // grounded anchors are enough for a catalogue-aware concept; ungrounded roles degrade to warnings
+  // above and are matched to real products at sourcing.
+  if (selected.length === 0) {
+    blockers.push(
+      "No catalogue anchor could be grounded for this room (no eligible candidate had a usable reference image)."
+    );
+  }
+
   if (aestheticGateEnabled) {
     await refineSelectedCatalogueProductsForAestheticFit({
       selected,
@@ -5434,6 +5492,7 @@ async function buildCatalogueGroundedConceptPlan({
       selectedProductCount: productsForConcept.length,
       blockerCount: blockers.length,
       warningCount: warnings.length,
+      degradedRequiredRoles,
       cueRequirements,
       warnings: warnings.slice(0, 12),
       selectedAnchors: productsForConcept.map(({ role, match }) => ({
