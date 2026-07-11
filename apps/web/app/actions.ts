@@ -27,6 +27,7 @@ import {
   composeRoomProductOptions,
   conceptPaletteMatchingText,
   deriveSpatialDesignerWarnings,
+  fitSelectionToBudget,
   normalizeCatalogFirstRoomType,
   parseConceptImagePalette,
   parseSpatialIntent,
@@ -2468,6 +2469,17 @@ export async function groundProductsAction(formData: FormData) {
     .limit(1)
     .maybeSingle();
 
+  // The user's explicit avoid-colour instruction (brief avoid_notes, e.g. "avoid bright red") must
+  // reach product matching. The concept-image palette's avoidColors is an inferred signal and can
+  // miss what the user asked for, so union the two before the sourcing avoid-colour filter runs.
+  const { data: sourcingDesignBrief } = await supabase
+    .from("design_briefs")
+    .select("avoid_notes")
+    .eq("room_id", roomId)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
   const baseConceptText = `${concept.title}\n${concept.description ?? ""}`;
   const blueprintRoles: RoomProductRoleSpec[] = enhancedProductRolesForRoom(room.room_type).map((role) => ({
     category: role.category,
@@ -2578,7 +2590,10 @@ export async function groundProductsAction(formData: FormData) {
     ? `${baseConceptText}
 ${conceptPaletteText}`
     : baseConceptText;
-  const conceptAvoidColorTags = conceptPalette?.avoidColors ?? [];
+  const briefAvoidColorTags = splitAvoidColorCues(sourcingDesignBrief?.avoid_notes ?? "").avoidColorTags;
+  const conceptAvoidColorTags = Array.from(
+    new Set([...(conceptPalette?.avoidColors ?? []), ...briefAvoidColorTags])
+  );
 
   const productMatchingPreview = productMatchingEngineV1EnabledForRequest({
     projectId,
@@ -3633,8 +3648,18 @@ ${conceptPaletteText}`
     }
   }
 
+  // Aggregate budget adherence: per-role selection above has no view of the running total, so the
+  // qty-aware line-total sum can exceed the stated budget (a role at qty 2 doubles its line). Fit
+  // the selection to budget by downgrading roles to cheaper in-pool alternates before persisting.
+  const budgetFit = fitSelectionToBudget({
+    roleOptions,
+    selectedProductIdByRole,
+    budgetMaxAed: project.budget_max_aed ?? null
+  });
+  const budgetAdjustedSelection = budgetFit.selectedProductIdByRole;
+
   const selectedFirstRoleOptions = roleOptions.map((role) => {
-    const selectedId = selectedProductIdByRole.get(role.category);
+    const selectedId = budgetAdjustedSelection.get(role.category);
     const selectedOption = selectedId ? role.options.find((option) => option.id === selectedId) : undefined;
     if (!selectedOption || role.options[0]?.id === selectedOption.id) {
       return role;
@@ -3648,7 +3673,7 @@ ${conceptPaletteText}`
 
   const itemRows = buildShoppingListItemRows({
     roleOptions: selectedFirstRoleOptions,
-    selectedProductIdByRole,
+    selectedProductIdByRole: budgetAdjustedSelection,
     reasonFor: (match) => {
       const sourceSelection = sourceSelectionsById.get(match.id);
       return [
