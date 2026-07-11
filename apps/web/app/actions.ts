@@ -4675,7 +4675,11 @@ export async function generateFinalRenderAction(formData: FormData) {
         throw new Error(renderAssetError.message);
       }
 
-      await serviceSupabase
+      // Only record success if THIS job is still running. If a stale-retry reclaimed it (flipped
+      // it to failed) while we were rendering, the `.eq("status", "running")` filter matches no
+      // rows — do not resurrect the reclaimed job (that would duplicate work and leave two
+      // succeeded jobs for one selection); discard the render we just produced instead.
+      const { data: completedRows } = await serviceSupabase
         .from("render_jobs")
         .update({
           status: "succeeded",
@@ -4701,10 +4705,20 @@ export async function generateFinalRenderAction(formData: FormData) {
             spatialQaRegenerated: renderQaRegenerated
           }
         })
-        .eq("id", renderJob.id);
+        .eq("id", renderJob.id)
+        .eq("status", "running")
+        .select("id");
+
+      if (!completedRows || completedRows.length === 0) {
+        await serviceSupabase.storage.from("generated-renders").remove([renderPath]);
+        await serviceSupabase.from("room_assets").delete().eq("id", renderAsset.id);
+        return;
+      }
+
       await serviceSupabase.from("rooms").update({ status: "rendering" }).eq("id", roomId);
       revalidatePath(revealPath);
     } catch (error) {
+      // Same guard: never overwrite a job that was already reclaimed/finalised by another path.
       await serviceSupabase
         .from("render_jobs")
         .update({
@@ -4712,7 +4726,8 @@ export async function generateFinalRenderAction(formData: FormData) {
           completed_at: new Date().toISOString(),
           error_message: error instanceof Error ? error.message : "Final render generation failed."
         })
-        .eq("id", renderJob.id);
+        .eq("id", renderJob.id)
+        .eq("status", "running");
       revalidatePath(revealPath);
     }
   });
