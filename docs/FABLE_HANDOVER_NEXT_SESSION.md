@@ -10,9 +10,13 @@ without Ayo's explicit approval. Goal: launch-ready beta.
 - **Production is UP.** `www.ritzystudio.app` serves (`/` → 307 → /login, all routes healthy).
   It had been fully 500'ing (sharp native module) after the #310 merge; fixed and re-verified.
 - **Merged:** #312 (sharp libvips trace fix — the prod hotfix), #313 (concept-unblock: catalogue
-  image-fetch timeout 2.5s→12s + an overall 90s grounding fetch budget; plus harness).
-- **OPEN, awaiting Ayo's review/merge: #314** (render durability — stalled-render recovery). Codex
-  had approved #313; #314 has not been reviewed yet.
+  image-fetch timeout 2.5s→12s + an overall 90s grounding fetch budget; plus harness), #314 (render
+  durability — stalled-render recovery: `FINAL_RENDER_STALE_MS`=4min + `isRenderJobStalled`, the
+  presentation page drops the infinite spinner for a retry affordance, and the stale-retry failover
+  is an error-checked compare-and-swap with an after()-completion reclamation guard so a slow render
+  can't resurrect a reclaimed job or delete a valid one). Prod re-verified green after each.
+  Remaining render work: a truly durable/background render (Vercel Queues) — #314 only bounds the
+  stuck window to ~4min with recovery.
 - **Full E2E works against the hosted 3,309-product catalogue** (definition-of-done pipeline):
   signup → onboarding → project → room → real room photo → brief → 5 clarifying questions →
   concept (Gemini via Evolink, architecture preserved, on-brief, **avoid-color held**) → 2
@@ -21,8 +25,10 @@ without Ayo's explicit approval. Goal: launch-ready beta.
 
 ## Immediate queue (highest value first)
 
-1. **Get #314 reviewed/merged** (render durability). After merge, re-verify prod green.
-2. **Budget adherence ignores quantity** (finding, task #8). Selected per-UNIT sum was AED 38,448
+0. **First:** branch off latest `origin/main`; verify prod (`www.ritzystudio.app` real flow); run
+   `bash scripts/dev-harness/use-env.sh local` state is already the default — switch to `hosted`
+   only for a real-catalogue verification pass, then back.
+1. **Budget adherence ignores quantity** (finding, task #8). Selected per-UNIT sum was AED 38,448
    (< 40k budget) but real line total (an armchair at qty 2) was AED 44,118 — ~10% over, and that
    over-budget number is what the presentation shows. The budget gate should use `line_total_aed`
    (qty × price), not unit prices. Find the budget filter in the sourcing/grounding path.
