@@ -4495,7 +4495,7 @@ export async function generateFinalRenderAction(formData: FormData) {
     // read above and this write — otherwise we would flip a freshly-succeeded job back to failed
     // and start a duplicate render. If we did not win the transition, the render resolved on its
     // own; defer to whatever it became rather than starting a new one.
-    const { data: failedRows } = await supabase
+    const { data: failedRows, error: reclaimError } = await supabase
       .from("render_jobs")
       .update({
         status: "failed",
@@ -4506,7 +4506,12 @@ export async function generateFinalRenderAction(formData: FormData) {
       .in("status", ["running", "queued"])
       .select("id");
 
-    if (!failedRows || failedRows.length === 0) {
+    // Distinguish a DB error from a genuine CAS miss: an error must NOT be read as "another
+    // process won" (that would leave the stale job running and silently drop the retry).
+    if (reclaimError) {
+      throw new Error(reclaimError.message);
+    }
+    if (failedRows.length === 0) {
       redirect(revealPathForRenderJob(matchingRenderJob.id));
     }
   }
@@ -4679,7 +4684,7 @@ export async function generateFinalRenderAction(formData: FormData) {
       // it to failed) while we were rendering, the `.eq("status", "running")` filter matches no
       // rows — do not resurrect the reclaimed job (that would duplicate work and leave two
       // succeeded jobs for one selection); discard the render we just produced instead.
-      const { data: completedRows } = await serviceSupabase
+      const { data: completedRows, error: completeError } = await serviceSupabase
         .from("render_jobs")
         .update({
           status: "succeeded",
@@ -4709,7 +4714,13 @@ export async function generateFinalRenderAction(formData: FormData) {
         .eq("status", "running")
         .select("id");
 
-      if (!completedRows || completedRows.length === 0) {
+      // A DB error is NOT a reclamation — only an empty result set (0 rows, no error) means the
+      // job was reclaimed. On error, re-throw so the catch handles it; never delete the render
+      // we just produced on a transient failure.
+      if (completeError) {
+        throw new Error(completeError.message);
+      }
+      if (completedRows.length === 0) {
         await serviceSupabase.storage.from("generated-renders").remove([renderPath]);
         await serviceSupabase.from("room_assets").delete().eq("id", renderAsset.id);
         return;
