@@ -48,6 +48,23 @@ const defaultTimeoutMs = 2_500;
 const defaultMaxBytes = 20 * 1024 * 1024;
 const defaultConcurrency = 6;
 
+// Zero-cost passthrough for when the AI does not consume product images: no network at all, and the
+// candidates flow through unchanged. Use instead of preflightProductCandidateImages when the gate
+// and sanitized candidates would be discarded anyway, so a slow CDN never adds latency for nothing.
+export function skippedProductImagePreflight<T extends ProductImageCandidate>(candidates: T[]) {
+  return {
+    candidates,
+    acceptedCandidateIds: [] as string[],
+    summary: {
+      checkedCount: 0,
+      acceptedCount: 0,
+      rejectedCount: 0,
+      skippedCount: 0,
+      rejectionReasons: {}
+    } satisfies ProductImagePreflightSummary
+  };
+}
+
 export async function preflightProductCandidateImages<T extends ProductImageCandidate>(
   candidates: T[],
   options: ProductImagePreflightOptions = {}
