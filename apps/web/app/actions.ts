@@ -65,6 +65,7 @@ import sharp from "sharp";
 
 import { createServiceClient } from "@/lib/supabase/service";
 import { createClient } from "@/lib/supabase/server";
+import { FINAL_RENDER_STALE_MS } from "@/lib/render";
 import {
   appUrl,
   DESIGNER_MONTHLY_AMOUNT_USD,
@@ -4479,8 +4480,7 @@ export async function generateFinalRenderAction(formData: FormData) {
 
   if (matchingRenderJob?.status === "running" || matchingRenderJob?.status === "queued") {
     const startedAt = matchingRenderJob.created_at ? Date.parse(matchingRenderJob.created_at) : Date.now();
-    const staleAfterMs = 15 * 60 * 1000;
-    const isStale = Number.isFinite(startedAt) && Date.now() - startedAt > staleAfterMs;
+    const isStale = Number.isFinite(startedAt) && Date.now() - startedAt > FINAL_RENDER_STALE_MS;
 
     if (!isStale) {
       redirect(

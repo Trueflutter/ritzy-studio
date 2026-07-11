@@ -344,3 +344,20 @@ sibling PRODUCT_SOURCING_IMAGE_PREFLIGHT_TIMEOUT_MS, grounding brittleness (one 
 
 Env note: `.env.local` left pointed at HOSTED Supabase for this run (backup in the session
 scratchpad `env.local.backup`); revert to local when done with hosted verification.
+
+### Session 3 continued (Opus 4.8) — after Codex approved #313
+
+- **#313 MERGED** (Codex approved at 0619860). Addressed Codex's two findings first: bounded the
+  grounding image fetch with an overall 90s wall-clock budget (`CATALOGUE_GROUNDED_CONCEPT_IMAGE_FETCH_BUDGET_MS`)
+  so a role with all-dead images can't stall the synchronous concept action for minutes; and fixed
+  the harness scripts to resolve paths from `import.meta.url`. Production re-verified green (307).
+- **Render durability FIX (PR pending): item 5.** Root cause refined: the render's after() marks
+  success/failure correctly IF it runs; the liability is a job stuck `running` when after() never
+  completes — the old 15-min staleness blocked retries AND the presentation page spun forever with
+  no retry. Fix (no durable queue needed for launch): shared `FINAL_RENDER_STALE_MS = 4min`
+  (`apps/web/lib/render.ts` + `isRenderJobStalled`); the action fails a stalled job on the next
+  attempt (was 15min); the presentation page drops out of the spinner into a working "this render
+  is taking longer than expected — retry" affordance once stalled. Verified in-app with a synthetic
+  stale job; unit test `apps/web/lib/render.test.ts` (run via `npx tsx`). NOTE: this bounds the
+  worst case to ~4min + gives recovery; a fully durable/background render (Vercel Queues) is still
+  the eventual robust answer but was out of scope for the launch deadline.
