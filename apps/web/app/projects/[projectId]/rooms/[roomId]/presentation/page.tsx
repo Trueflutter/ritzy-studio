@@ -11,6 +11,7 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
 import { generateFinalRenderAction } from "@/app/actions";
+import { isRenderJobStalled } from "@/lib/render";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
 
@@ -152,8 +153,14 @@ export default async function PresentationPage({
       ).data?.signedUrl
     : null;
   const renderJobStatus = latestRenderJob?.status ?? null;
+  // A render whose in-request after() task never completed can sit in `running` indefinitely.
+  // Once it is stalled, stop showing the progress spinner (which would poll forever) and fall
+  // through to the retry affordance, which will fail the stale job and start a fresh render.
+  const isRenderStalled = isRenderJobStalled(renderJobStatus, latestRenderJob?.created_at);
   const showRenderProgress =
-    !finalRenderUrl && (renderJobStatus === "running" || renderJobStatus === "queued");
+    !finalRenderUrl &&
+    !isRenderStalled &&
+    (renderJobStatus === "running" || renderJobStatus === "queued");
   const showShoppingListUnlock = !commerceUnlocked && Boolean(finalRenderUrl);
   const canRequestRender = Boolean(selectedConcept && shoppingList && selectedItemIds.length > 0);
   const currentEstimateAed =
@@ -269,13 +276,19 @@ export default async function PresentationPage({
                     Final render
                   </p>
                   <h2 className="mt-6 font-display text-display-xs font-light tracking-[-0.01em] text-ink">
-                    {renderJobStatus === "failed" ? "The render needs another try." : "Ready to generate your room."}
+                    {isRenderStalled
+                      ? "This render is taking longer than expected."
+                      : renderJobStatus === "failed"
+                        ? "The render needs another try."
+                        : "Ready to generate your room."}
                   </h2>
                   <p className="mx-auto mt-4 max-w-[440px] font-body text-body-s text-ink-secondary">
-                    {renderJobStatus === "failed"
-                      ? (latestRenderJob?.error_message ??
-                        "The previous render attempt failed before it could create an image.")
-                      : "Create the final image with your selected catalog pieces."}
+                    {isRenderStalled
+                      ? "The previous attempt stalled before it finished. Start it again — your concept and shopping list are unchanged."
+                      : renderJobStatus === "failed"
+                        ? (latestRenderJob?.error_message ??
+                          "The previous render attempt failed before it could create an image.")
+                        : "Create the final image with your selected catalog pieces."}
                   </p>
                   <FinalRenderForm
                     canRequestRender={canRequestRender}

@@ -1,86 +1,94 @@
-# Handover: next session (written by Fable, 2026-07-10 end of session 2)
+# Handover: next session (written by Opus 4.8, 2026-07-11, mid session 3)
 
-Read order for the incoming instance: `docs/FABLE_HANDOFF.md` (original brief) →
-`docs/FABLE_PROGRESS.md` (full session log, newest at bottom) → this file. PR #310 is MERGED to
-main (all Codex findings addressed across three review rounds); start by branching fresh off
-latest `origin/main`. NEVER merge without Ayo. Conventional commits, trailer
-`Co-Authored-By: <your model name> <noreply@anthropic.com>`. Stage files by name.
-Production/preview Vercel env is set (all five Evolink/matching vars verified Production+Preview);
-the merge triggers the deployment that picks them up — verify it went green before anything else.
+Read order: this file → `docs/FABLE_PROGRESS.md` (full session log, newest at bottom) →
+`docs/FABLE_HANDOFF.md` (original brief, still the north star). Conventional commits, trailer
+`Co-Authored-By: <your model name> <noreply@anthropic.com>`. Stage files by name. NEVER merge
+without Ayo's explicit approval. Goal: launch-ready beta.
 
-## Where things stand (verified, not aspirational)
+## State (verified this session, not aspirational)
 
-The prime-directive pipeline works END TO END in the live app against the real Gemini renderer
-(via Evolink): photo → brief (room-planning questions) → clarifying questions → catalogue-grounded
-concept → 2 consistent extra camera views → cached palette extraction → product matching (trap
-products excluded, avoid-colors enforced, cross-project demotion) → shopping list → final render
-with spatial-QA verdict `pass`. Evidence and per-fix commits: FABLE_PROGRESS.md session-2 section.
-
-- Local stack: colima + `supabase start` (port 55321), fixture catalog via
-  `npx tsx scripts/local-catalog-seed/seed.ts`, E2E driver `scripts/dev-harness/e2e.mjs`
-  (stages: login/onboarding/project/room/photos/brief-style/brief-inspiration/brief-details/
-  brief-questions/concept/inspect). Test user fable-test@ritzy.local / fable-test-passw0rd, has an
-  active local `subscriptions` row (designer_monthly_usd_99) for multi-room testing.
-- Hosted Supabase: restored, 3,309 products, BOTH new migrations applied (concept_view_assets,
-  concept_palette — verified via REST probes).
-- Env truth: local `.env.local` routes OpenAI-SDK → Evolink (`OPENAI_BASE_URL`, gpt-5.1) and
-  images → Evolink. OpenAI billing was topped up: `gpt-5-mini`/`gpt-5.5` work DIRECT again;
-  `gpt-5.6-*` is limited-preview on this account (retest availability — switch text model to
-  `gpt-5.6-luna` when it opens; it's the value pick at $1/$6).
-- Vercel env: DONE. All five vars (RITZY_IMAGE_PROVIDER=evolink, EVOLINK_API_KEY/MODEL/QUALITY,
-  RITZY_PRODUCT_MATCHING_ENGINE_V1_ENABLED=true) verified on Production+Preview via
-  scripts/dev-harness/fix-vercel-env.sh. Production text model stays default gpt-5-mini on the
-  direct OpenAI key; OPENAI_BASE_URL must NOT be set in production.
+- **Production is UP.** `www.ritzystudio.app` serves (`/` → 307 → /login, all routes healthy).
+  It had been fully 500'ing (sharp native module) after the #310 merge; fixed and re-verified.
+- **Merged:** #312 (sharp libvips trace fix — the prod hotfix), #313 (concept-unblock: catalogue
+  image-fetch timeout 2.5s→12s + an overall 90s grounding fetch budget; plus harness).
+- **OPEN, awaiting Ayo's review/merge: #314** (render durability — stalled-render recovery). Codex
+  had approved #313; #314 has not been reviewed yet.
+- **Full E2E works against the hosted 3,309-product catalogue** (definition-of-done pipeline):
+  signup → onboarding → project → room → real room photo → brief → 5 clarifying questions →
+  concept (Gemini via Evolink, architecture preserved, on-brief, **avoid-color held**) → 2
+  consistent camera views → sourcing/matching (class-correct, palette-coherent) → final grounded
+  render (succeeded, spatial QA `pass`). Evidence + per-fix detail: FABLE_PROGRESS.md session-3.
 
 ## Immediate queue (highest value first)
 
-1. **Hosted E2E.** Point `.env.local` at hosted (swap the `# HOSTED:` comment lines back in),
-   run the full flow against the REAL 3,309-product catalog. Expect new matching-quality findings
-   (the fixture catalog is 60 items). Also set `OPENAI_BASE_URL` off (direct OpenAI, gpt-5-mini)
-   to match production, and keep `RITZY_IMAGE_PROVIDER=evolink`.
-2. **Sourcing timeout.** Visual sourcing timed out once against Evolink (text fallback engaged
-   as designed). Tune `PRODUCT_SOURCING_AI_TIMEOUT_MS` (apps/web/app/actions.ts) or trim
-   candidate-image payloads; direct-OpenAI latency may already fix it.
-3. **Concept-prompt token audit.** Final-render prompt was slimmed to fit Evolink's 4000-token
-   image-prompt cap; the CONCEPT image prompt is near the cap too (style modules + guardrails +
-   spatial language + catalogue summary). Audit `buildInitialConceptImagePrompt` length with a
-   real brief; slim greedily (the guardrails matter more than prose duplication).
-4. **Final-render multi-angle.** `generateConceptView` pattern applies directly (hero final
-   render as identity reference + camera-move language). Presentation page already renders
-   concept-linked view assets; extend to final renders (asset_type final_render + view_key).
-5. **Render durability.** Final render is an in-request `after()` with a 15-min staleness
-   heuristic (actions.ts `generateFinalRenderAction`). Under beta load, consider a durable
-   queue (Vercel Queues) or at minimum idempotent retry + user-visible retry affordance.
-6. **Cost telemetry.** Evolink balance ran dry mid-session with a 402. Log per-job credit usage
-   (Evolink returns `usage.credits_used` on task completion) into ai_jobs.cost_estimate_usd.
-7. **Grants migration.** Local Supabase needed manual `grant ... to service_role` fixups that
-   hosted evidently has out-of-band. Codify them in a migration so environments stop drifting.
-8. **Dev-only paper cuts.** Hydration mismatch on hidden form inputs (caret-color) triggers the
-   dev overlay; style-step tiles render with empty image slots.
+1. **Get #314 reviewed/merged** (render durability). After merge, re-verify prod green.
+2. **Budget adherence ignores quantity** (finding, task #8). Selected per-UNIT sum was AED 38,448
+   (< 40k budget) but real line total (an armchair at qty 2) was AED 44,118 — ~10% over, and that
+   over-budget number is what the presentation shows. The budget gate should use `line_total_aed`
+   (qty × price), not unit prices. Find the budget filter in the sourcing/grounding path.
+3. **Sibling timeout** `PRODUCT_SOURCING_IMAGE_PREFLIGHT_TIMEOUT_MS = 2_500` (actions.ts) is the
+   same class as the #313 concept-blocker (large Home Centre images). Audit/raise + bound it the
+   same way the grounding fetch now is.
+4. **Avoid-colors in alternates** (finding, task #9, minor). A "Cigar Lounge Armchair, Red" survived
+   as an ALTERNATE despite brief "avoid bright red"; `avoidColorTags` (−24) demotes but doesn't
+   exclude from the visible option pool. Consider hard-excluding avoid-colors from alternates.
+5. **Grounding brittleness.** One required anchor role with no fetchable image hard-blocks the whole
+   concept (`buildCatalogueGroundedConceptPlan` blockers). Degrade gracefully (text-anchor the role
+   or proceed without it) instead of blocking the entire concept.
+6. **Original queue items still open:** concept-prompt token audit vs Evolink's 4000-token image
+   cap (`buildInitialConceptImagePrompt`); multi-angle FINAL render (concept already has views;
+   extend `generateConceptView` pattern to final_render + view_key); cost telemetry (Evolink
+   `usage.credits_used` → ai_jobs.cost_estimate_usd); grants migration.
+7. **Render: truly durable** (beyond #314's 4-min recovery). #314 bounds the stuck state and gives a
+   retry, but the render still rides an in-request `after()`. Vercel Queues / a background job is the
+   robust long-term answer.
+
+## Setup to reproduce the hosted E2E
+
+- Local dev stack already stood up last session: colima + `supabase start` (:55321). The app dev
+  server (`pnpm dev`, :3000) was left running pointed at HOSTED Supabase.
+- **`.env.local` is currently pointed at HOSTED** (backup at the session scratchpad
+  `env.local.backup`; the swap is reversible — each hosted key has a `# LOCAL (swapped out...)`
+  comment above it). Revert to local when done with hosted verification. Text + images route through
+  Evolink; `RITZY_IMAGE_PROVIDER=evolink`.
+- **Playwright:** installed in an ISOLATED dir last session (`<scratchpad>/pw`) and symlinked to
+  `scripts/dev-harness/node_modules` (both gone next session). Reinstall: `npm i playwright` in an
+  isolated dir WITH ITS OWN package.json (do NOT `npm install` inside the repo — npm walks up to the
+  monorepo root package.json and tries to install the whole workspace, corrupting pnpm). Browsers
+  are cached in `~/Library/Caches/ms-playwright` (use `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1`).
+- **Harness** `scripts/dev-harness/e2e.mjs` now has stages: signup, login, onboarding, project,
+  room, photos, brief-style, brief-inspiration, brief-details, brief-questions, concept, sourcing,
+  render, inspect. Helpers: `create-hosted-test-user.mjs` (admin-API pre-confirmed account),
+  `read-ai-job.mjs` (dump ai_jobs/render diagnostics for a room), `render-alive.mjs` (render repro).
+  Test account creds are in `scripts/dev-harness/e2e-state.json` (gitignored).
+- **Hosted test account:** signup is gated to `@ritzyinteriors.com` AND hosted has email
+  confirmation ON, so UI signup can't auto-login — use the admin-API pre-confirmed account script.
 
 ## Traps the next instance must not rediscover
 
+- **Native/optional-binary deps (sharp) fail ONLY on the Vercel linux function**, never locally or
+  in `pnpm build`. Verify any such change on a PREVIEW deploy that reaches the code path. Preview now
+  has the public Supabase vars (added this session) so it doesn't die in middleware first. `sharp`
+  needs `outputFileTracingIncludes` (the `.node` dlopen's a sibling libvips `.so` that nft can't
+  trace). See `[[project-native-dep-vercel-trace]]` memory.
+- **Hosted DB queries via service-role trip the sandbox's PII/credential guards** if you print user
+  emails/IDs or even partial secret values. Query only what you need (ai_jobs, render_jobs, your own
+  test data); never enumerate users or print key prefixes.
 - PostgREST embeds involving concepts↔room_assets MUST name the FK
-  (`room_assets!concepts_primary_image_asset_id_fkey`) — the concept_id FK made `room_assets(*)`
-  ambiguous and pages fail SILENTLY (empty data, no error).
-- Vision inputs must be inlined data URLs (downscaled via `visionImageDataUrl`) — provider-side
-  URL downloads flake on CDNs/non-public hosts. Image-generation references keep full-res bytes;
-  Evolink references auto-compress (`referenceDataUrl`).
-- Every `client.responses.create` must set `max_output_tokens` — gateway cost estimators reject
-  unbounded reservations against low balances.
-- Evolink image-model prompts cap at 4000 tokens — keep render/concept prompts lean.
-- `hasHardCatalogueGroundingContradiction` must never hard-veto on soft styling signals — the
-  silhouette case anchored a purple sofa against an explicit "avoid purple". Anchor-loop skips
-  now emit warnings; read them (ai_jobs output_summary.catalogueGrounding.warnings) before
-  guessing at matching bugs.
-- "avoid X" phrases in briefs must not enter cue/matching text as positive tokens
-  (`splitAvoidColorCues` handles brief text; keep the invariant for any new text path).
-- The user's Chrome cannot reach localhost — drive the local app with the Playwright harness,
-  never claude-in-chrome.
+  (`room_assets!concepts_primary_image_asset_id_fkey`) or pages fail SILENTLY (empty data).
+- Vision inputs must be inlined data URLs (`visionImageDataUrl`); Evolink image prompts cap at 4000
+  tokens; every `client.responses.create` must set `max_output_tokens`.
+- "avoid X" phrases must never enter cue/matching text as positive tokens (`splitAvoidColorCues`);
+  `hasHardCatalogueGroundingContradiction` must not hard-veto on soft styling/silhouette signals.
+- Grounding diagnostics live in `ai_jobs.input_summary.catalogueGrounding.warnings` — READ THEM
+  before guessing why a concept blocked.
+- The user's Chrome CANNOT reach localhost — drive the local app with the Playwright harness, never
+  claude-in-chrome. (Production is a real hosted URL, so browser tools CAN reach it.)
+- Harness closes the browser between stages; anything client-side-async (photo upload, the render
+  after()) needs a live browser until it completes, or it silently doesn't persist/run.
 
 ## Definition of done (unchanged, from FABLE_HANDOFF.md)
 
-Real person, real photo (furnished or empty) → spatially sound, beautiful, on-brief design from
-≥3 mutually consistent angles, matched to real non-repeating buyable furniture, client-ready
-presentation, reliably. The multi-angle CONCEPT requirement is met; the final render is still a
-single angle (queue item 4).
+Real person, real photo → spatially sound, beautiful, on-brief design from ≥3 mutually consistent
+angles, matched to real non-repeating buyable furniture, client-ready presentation, reliably. The
+multi-angle CONCEPT requirement is met; the FINAL render is still a single angle (queue).

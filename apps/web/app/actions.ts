@@ -65,6 +65,7 @@ import sharp from "sharp";
 
 import { createServiceClient } from "@/lib/supabase/service";
 import { createClient } from "@/lib/supabase/server";
+import { FINAL_RENDER_STALE_MS } from "@/lib/render";
 import {
   appUrl,
   DESIGNER_MONTHLY_AMOUNT_USD,
@@ -4479,8 +4480,7 @@ export async function generateFinalRenderAction(formData: FormData) {
 
   if (matchingRenderJob?.status === "running" || matchingRenderJob?.status === "queued") {
     const startedAt = matchingRenderJob.created_at ? Date.parse(matchingRenderJob.created_at) : Date.now();
-    const staleAfterMs = 15 * 60 * 1000;
-    const isStale = Number.isFinite(startedAt) && Date.now() - startedAt > staleAfterMs;
+    const isStale = Number.isFinite(startedAt) && Date.now() - startedAt > FINAL_RENDER_STALE_MS;
 
     if (!isStale) {
       redirect(
@@ -4490,14 +4490,30 @@ export async function generateFinalRenderAction(formData: FormData) {
       );
     }
 
-    await supabase
+    // Atomic compare-and-swap: only fail the job if it is STILL running/queued. Filtering on the
+    // status (not just id) closes the race where the original after() task finishes between our
+    // read above and this write — otherwise we would flip a freshly-succeeded job back to failed
+    // and start a duplicate render. If we did not win the transition, the render resolved on its
+    // own; defer to whatever it became rather than starting a new one.
+    const { data: failedRows, error: reclaimError } = await supabase
       .from("render_jobs")
       .update({
         status: "failed",
         completed_at: new Date().toISOString(),
         error_message: "Final render timed out before completion. Please retry."
       })
-      .eq("id", matchingRenderJob.id);
+      .eq("id", matchingRenderJob.id)
+      .in("status", ["running", "queued"])
+      .select("id");
+
+    // Distinguish a DB error from a genuine CAS miss: an error must NOT be read as "another
+    // process won" (that would leave the stale job running and silently drop the retry).
+    if (reclaimError) {
+      throw new Error(reclaimError.message);
+    }
+    if (failedRows.length === 0) {
+      redirect(revealPathForRenderJob(matchingRenderJob.id));
+    }
   }
 
   if (
@@ -4664,7 +4680,11 @@ export async function generateFinalRenderAction(formData: FormData) {
         throw new Error(renderAssetError.message);
       }
 
-      await serviceSupabase
+      // Only record success if THIS job is still running. If a stale-retry reclaimed it (flipped
+      // it to failed) while we were rendering, the `.eq("status", "running")` filter matches no
+      // rows — do not resurrect the reclaimed job (that would duplicate work and leave two
+      // succeeded jobs for one selection); discard the render we just produced instead.
+      const { data: completedRows, error: completeError } = await serviceSupabase
         .from("render_jobs")
         .update({
           status: "succeeded",
@@ -4690,10 +4710,26 @@ export async function generateFinalRenderAction(formData: FormData) {
             spatialQaRegenerated: renderQaRegenerated
           }
         })
-        .eq("id", renderJob.id);
+        .eq("id", renderJob.id)
+        .eq("status", "running")
+        .select("id");
+
+      // A DB error is NOT a reclamation — only an empty result set (0 rows, no error) means the
+      // job was reclaimed. On error, re-throw so the catch handles it; never delete the render
+      // we just produced on a transient failure.
+      if (completeError) {
+        throw new Error(completeError.message);
+      }
+      if (completedRows.length === 0) {
+        await serviceSupabase.storage.from("generated-renders").remove([renderPath]);
+        await serviceSupabase.from("room_assets").delete().eq("id", renderAsset.id);
+        return;
+      }
+
       await serviceSupabase.from("rooms").update({ status: "rendering" }).eq("id", roomId);
       revalidatePath(revealPath);
     } catch (error) {
+      // Same guard: never overwrite a job that was already reclaimed/finalised by another path.
       await serviceSupabase
         .from("render_jobs")
         .update({
@@ -4701,7 +4737,8 @@ export async function generateFinalRenderAction(formData: FormData) {
           completed_at: new Date().toISOString(),
           error_message: error instanceof Error ? error.message : "Final render generation failed."
         })
-        .eq("id", renderJob.id);
+        .eq("id", renderJob.id)
+        .eq("status", "running");
       revalidatePath(revealPath);
     }
   });
