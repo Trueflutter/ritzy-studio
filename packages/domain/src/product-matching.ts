@@ -2931,6 +2931,127 @@ function stableHash(value: string) {
   return hash;
 }
 
+export function optionUnitPriceAed(match: Pick<RankedProductMatch, "salePriceAed" | "priceAed">): number {
+  return match.salePriceAed ?? match.priceAed ?? 0;
+}
+
+export type BudgetFitResult = {
+  selectedProductIdByRole: Map<string, string>;
+  adjusted: boolean;
+  // Downgrades applied to bring the qty-aware line-total sum within budget.
+  downgrades: Array<{ category: string; fromProductId: string; toProductId: string; savingsAed: number }>;
+  estimatedTotalAed: number;
+  budgetMaxAed: number | null;
+  withinBudget: boolean;
+};
+
+// Aggregate budget adherence. Per-role selection has no view of the running total, so the chosen
+// list can exceed the stated budget once quantities are applied (a role at qty 2 doubles its line
+// total). This greedily downgrades selected roles to cheaper in-pool alternates — smallest
+// sufficient swap first to preserve the aesthetic pick, else the largest saving — until the
+// qty-aware line-total sum fits the budget or no cheaper alternate remains. Required roles are
+// never emptied: a role always keeps one of its own options. Reasons on line totals, not unit
+// prices. Returns a fresh map; the input is not mutated.
+export function fitSelectionToBudget({
+  roleOptions,
+  selectedProductIdByRole,
+  budgetMaxAed
+}: {
+  roleOptions: RoleProductOptions[];
+  selectedProductIdByRole: Map<string, string>;
+  budgetMaxAed: number | null;
+}): BudgetFitResult {
+  const selection = new Map(selectedProductIdByRole);
+  const downgrades: BudgetFitResult["downgrades"] = [];
+
+  const lineTotalFor = (role: RoleProductOptions, productId: string | undefined) => {
+    const option = productId ? role.options.find((candidate) => candidate.id === productId) : undefined;
+    return option ? optionUnitPriceAed(option) * Math.max(1, role.quantity || 1) : 0;
+  };
+  const currentTotal = () =>
+    roleOptions.reduce((total, role) => total + lineTotalFor(role, selection.get(role.category)), 0);
+
+  const initialTotal = currentTotal();
+  if (budgetMaxAed === null || budgetMaxAed <= 0 || initialTotal <= budgetMaxAed) {
+    return {
+      selectedProductIdByRole: selection,
+      adjusted: false,
+      downgrades,
+      estimatedTotalAed: initialTotal,
+      budgetMaxAed,
+      withinBudget: budgetMaxAed === null || budgetMaxAed <= 0 || initialTotal <= budgetMaxAed
+    };
+  }
+
+  // Bound the loop by the number of roles x their options; each swap strictly lowers a role's
+  // selected price, so it always terminates well within this.
+  const maxSwaps = roleOptions.reduce((total, role) => total + role.options.length, 0) + 1;
+  for (let step = 0; step < maxSwaps; step += 1) {
+    const total = currentTotal();
+    if (total <= budgetMaxAed) {
+      break;
+    }
+    const overBy = total - budgetMaxAed;
+
+    let sufficient: { role: RoleProductOptions; to: RankedProductMatch; savings: number } | null = null;
+    let largest: { role: RoleProductOptions; to: RankedProductMatch; savings: number } | null = null;
+
+    for (const role of roleOptions) {
+      const quantity = Math.max(1, role.quantity || 1);
+      const selectedId = selection.get(role.category);
+      const selectedOption = selectedId ? role.options.find((option) => option.id === selectedId) : undefined;
+      if (!selectedOption) {
+        continue;
+      }
+      const selectedPrice = optionUnitPriceAed(selectedOption);
+      for (const option of role.options) {
+        const price = optionUnitPriceAed(option);
+        if (option.id === selectedOption.id || price >= selectedPrice) {
+          continue;
+        }
+        const savings = (selectedPrice - price) * quantity;
+        // Just-enough swap: smallest saving that still clears the overage (least aesthetic loss).
+        if (savings >= overBy && (!sufficient || savings < sufficient.savings)) {
+          sufficient = { role, to: option, savings };
+        }
+        // Fallback: the single largest saving available this round.
+        if (!largest || savings > largest.savings) {
+          largest = { role, to: option, savings };
+        }
+      }
+    }
+
+    const swap = sufficient ?? largest;
+    if (!swap) {
+      // No cheaper alternate anywhere — the pool cannot fit this budget.
+      break;
+    }
+
+    const fromId = selection.get(swap.role.category)!;
+    selection.set(swap.role.category, swap.to.id);
+    downgrades.push({
+      category: swap.role.category,
+      fromProductId: fromId,
+      toProductId: swap.to.id,
+      savingsAed: swap.savings
+    });
+
+    if (sufficient) {
+      break;
+    }
+  }
+
+  const estimatedTotalAed = currentTotal();
+  return {
+    selectedProductIdByRole: selection,
+    adjusted: downgrades.length > 0,
+    downgrades,
+    estimatedTotalAed,
+    budgetMaxAed,
+    withinBudget: estimatedTotalAed <= budgetMaxAed
+  };
+}
+
 // Flatten role option pools into shopping_list_item rows. The chosen product
 // per role is `selected`; the rest are `option`. Purchase quantity carries the
 // role quantity so a "2 accent chairs" role totals at price x 2.
