@@ -4,12 +4,17 @@
 // appended (output_asset_ids grows to 3) or the final_render_views ai_job reaches a terminal state.
 import { chromium } from "playwright";
 import fs from "node:fs";
+import path from "node:path";
 
 const BASE = "http://localhost:3000";
-const env = fs.readFileSync("../../.env.local", "utf8");
+// Resolve paths from this script's location so it runs from any cwd (e.g. the repo root).
+const DIR = path.dirname(new URL(import.meta.url).pathname);
+const AUTH = path.join(DIR, "auth.json");
+const SHOTS = path.join(DIR, "e2e-shots");
+const env = fs.readFileSync(path.resolve(DIR, "../../.env.local"), "utf8");
 const get = (k) => (env.match(new RegExp("^" + k + "=(.*)$", "m")) || [])[1]?.trim().replace(/^["']|["']$/g, "");
 const url = get("NEXT_PUBLIC_SUPABASE_URL"), svc = get("SUPABASE_SERVICE_ROLE_KEY");
-const state = JSON.parse(fs.readFileSync("./e2e-state.json", "utf8"));
+const state = JSON.parse(fs.readFileSync(path.join(DIR, "e2e-state.json"), "utf8"));
 const h = { apikey: svc, Authorization: "Bearer " + svc, "Content-Type": "application/json" };
 const q = async (p) => (await fetch(url + "/rest/v1/" + p, { headers: h })).json();
 
@@ -24,7 +29,7 @@ for (const j of await q(`render_jobs?room_id=eq.${state.roomId}&status=in.(runni
 }
 
 const browser = await chromium.launch();
-const page = await browser.newContext({ storageState: "auth.json" }).then((c) => c.newPage());
+const page = await browser.newContext({ storageState: AUTH }).then((c) => c.newPage());
 page.setDefaultTimeout(30000);
 try {
   await page.goto(`${BASE}/projects/${state.projectId}/rooms/${state.roomId}/product-matching`, { waitUntil: "domcontentloaded" });
@@ -51,7 +56,7 @@ try {
       break;
     }
   }
-  await page.screenshot({ path: "e2e-shots/17-final-render-multiview.png", fullPage: true });
+  await page.screenshot({ path: path.join(SHOTS, "17-final-render-multiview.png"), fullPage: true });
 
   // Report the persisted final-render assets and their view keys.
   const assetIds = ((await q(`render_jobs?room_id=eq.${state.roomId}&order=created_at.desc&limit=1&select=output_asset_ids`))[0]?.output_asset_ids) || [];

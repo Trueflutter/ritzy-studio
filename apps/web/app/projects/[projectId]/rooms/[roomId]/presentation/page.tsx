@@ -11,7 +11,7 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
 import { generateFinalRenderAction } from "@/app/actions";
-import { isRenderJobStalled } from "@/lib/render";
+import { isRenderJobStalled, isWithinFinalRenderViewsWindow } from "@/lib/render";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
 
@@ -183,6 +183,27 @@ export default async function PresentationPage({
     !finalRenderUrl &&
     !isRenderStalled &&
     (renderJobStatus === "running" || renderJobStatus === "queued");
+  // The additional camera angles are generated right after the hero commits (same after() task), so
+  // keep refreshing until the final_render_views job is terminal — otherwise the gallery would only
+  // appear on a manual reload. Bounded by the render's age so a task that died before producing the
+  // views can never poll forever.
+  const { data: finalRenderViewsJob } =
+    finalRenderUrl && latestRenderJob?.id
+      ? await serviceSupabase
+          .from("ai_jobs")
+          .select("status, created_at")
+          .eq("room_id", roomId)
+          .eq("job_type", "final_render_views")
+          .contains("input_summary", { renderJobId: latestRenderJob.id })
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle()
+      : { data: null };
+  const renderRecentlySucceeded = isWithinFinalRenderViewsWindow(latestRenderJob?.created_at);
+  const viewsJobComplete =
+    finalRenderViewsJob?.status === "succeeded" || finalRenderViewsJob?.status === "failed";
+  const showViewProgress =
+    Boolean(finalRenderUrl) && additionalRenderViews.length === 0 && !viewsJobComplete && renderRecentlySucceeded;
   const showShoppingListUnlock = !commerceUnlocked && Boolean(finalRenderUrl);
   const canRequestRender = Boolean(selectedConcept && shoppingList && selectedItemIds.length > 0);
   const currentEstimateAed =
@@ -193,7 +214,7 @@ export default async function PresentationPage({
 
   return (
     <main className="min-h-dvh bg-surface text-ink print:bg-surface">
-      <RenderRefresh enabled={showRenderProgress} />
+      <RenderRefresh enabled={showRenderProgress || showViewProgress} />
       <header className="flex min-h-20 items-center justify-between border-b border-line bg-surface px-5 md:px-8 lg:px-12 xl:px-16 print:hidden">
         <Link className="font-display text-[28px] font-light text-ink" href="/">
           Ri <span className="font-body text-caption font-medium uppercase text-ink-muted">Ritzy Studio</span>
