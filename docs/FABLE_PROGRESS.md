@@ -425,3 +425,32 @@ images for a required role — is exactly the pathological case that previously 
 - Still OPEN from the queue: item 5 (multi-angle FINAL render) — next PR; needs a hosted render run.
   Deferred: budget-fit telemetry on ai_jobs (the outcome is already visible in
   shopping_lists.estimated_total_aed + items).
+
+### Item 5 — multi-angle FINAL render (VERIFIED LIVE) — PR #2 of this session
+Branch `fable/multi-angle-final-render` (stacked on `fable/budget-with-quantity`). The FINAL render
+was a single camera angle; the concept already ships 3 mutually-consistent views but the client
+render did not. Extended the `generateConceptView` pattern to the final render.
+- prompts: `finalRenderViewConsistencyLanguage` (truth-separation preamble — the reference is the
+  finished render with the real purchased products; reproduce every piece identically). Reuses
+  `conceptViewCameraLanguage` for the reverse_wide + anchor_detail angles.
+- ai: `generateFinalRenderView` + `buildFinalRenderViewPrompt` (mirror generateConceptView; hero
+  final render as the single required reference). New test `final-render-view-prompt.test.ts`.
+- web: `generateAndStoreFinalRenderViews` runs best-effort in the render after() AFTER the hero
+  commits and the job is succeeded — a view failure or task timeout never regresses the render. View
+  assets are `room_assets` (asset_type final_render, view_key) appended to
+  `render_jobs.output_asset_ids` (hero stays index 0). Presentation page reads ALL output_asset_ids
+  and renders a captioned gallery under the hero ("Reverse angle" / "Detail view").
+- LIVE PROOF (hosted + Evolink Gemini, render job 681c637a): hero + reverse_wide + anchor_detail all
+  generated, output_asset_ids grew to 3, room_assets carry the view_keys. Eyeballed all 3: same
+  products (Malibu sofa, Stilo wingback, marble coffee table, jute rug, brass arc lamp), same
+  architecture, different camera — mutually consistent + on-brief. Presentation renders the gallery
+  with AED 38,488 total. Drivers: `scripts/dev-harness/render-multiview.mjs`.
+- KNOWN-SOFT: `anchor_detail` frames close to the hero (the hero is already a wide seating-group
+  shot). Prompt-tunable later — not a blocker. The multi-angle concept + multi-angle final render
+  together satisfy the definition-of-done's "≥3 mutually-consistent angles" for BOTH stages.
+
+### Session 4 status
+- PR #316 (items 1-4, `fable/budget-with-quantity`) — open, items 1 & 3 verified live.
+- PR #2 (item 5, `fable/multi-angle-final-render`, stacked) — open, verified live.
+- No further queue items started. Env still HOSTED at time of writing — revert to local before
+  handing back (`bash scripts/dev-harness/use-env.sh local` + restart dev server).

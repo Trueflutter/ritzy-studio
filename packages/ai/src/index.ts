@@ -26,6 +26,7 @@ import {
   conceptViewConsistencyLanguage,
   type ConceptViewKey,
   finalRenderProductFidelityLanguage,
+  finalRenderViewConsistencyLanguage,
   globalPhotorealismLanguage,
   initialConceptJsonSchema,
   initialConceptPrompt,
@@ -1882,6 +1883,79 @@ export async function generateConceptView(
   return {
     viewKey: input.viewKey,
     promptVersion: CONCEPT_VIEW_PROMPT_VERSION,
+    imageProvider: imageResult.provider,
+    imageModel: imageResult.model,
+    imageLatencySeconds: imageResult.latencySeconds,
+    imageFallbackUsed: imageResult.fallbackUsed,
+    imageFallbackError: imageResult.error ?? null,
+    imageBase64: imageResult.imageBase64
+  };
+}
+
+// Additional camera angles of the FINAL grounded render. Mirrors generateConceptView but takes the
+// completed hero render (which already composites the real purchased products) as the reference and
+// uses truth-separation-aware consistency language so the second/third angles reproduce the exact
+// same products, not a restyle. Camera language is shared with concept views (same room geometry).
+export type GenerateFinalRenderViewInput = {
+  roomType: string;
+  viewKey: ConceptViewKey;
+  conceptTitle: string;
+  conceptDescription?: string | null;
+  heroImageBytes: Buffer;
+  heroImageMimeType: string;
+  heroImageUrl?: string | null;
+};
+
+export type GenerateFinalRenderViewResult = GenerateConceptViewResult;
+
+export const FINAL_RENDER_VIEW_PROMPT_VERSION = "final-render-view.2026-07-11.1";
+
+export function buildFinalRenderViewPrompt(input: {
+  roomType: string;
+  viewKey: ConceptViewKey;
+  conceptTitle: string;
+  conceptDescription?: string | null;
+}) {
+  return [
+    finalRenderViewConsistencyLanguage(),
+    "",
+    conceptViewCameraLanguage(input.roomType, input.viewKey),
+    "",
+    `Room design: ${input.conceptTitle}`,
+    input.conceptDescription ? `Design notes: ${input.conceptDescription}` : null,
+    "",
+    globalPhotorealismLanguage(),
+    "Do not add text labels, prices, product names, or retailer claims."
+  ]
+    .filter((line): line is string => line !== null)
+    .join("\n");
+}
+
+export async function generateFinalRenderView(
+  input: GenerateFinalRenderViewInput
+): Promise<GenerateFinalRenderViewResult> {
+  const env = parseServerEnv(process.env);
+  const client = new OpenAI({ apiKey: env.OPENAI_API_KEY });
+  const prompt = buildFinalRenderViewPrompt(input);
+
+  const imageResult = await generateImageWithConfiguredProvider({
+    client,
+    prompt,
+    references: [
+      {
+        bytes: input.heroImageBytes,
+        mimeType: input.heroImageMimeType,
+        name: "final-render",
+        url: input.heroImageUrl ?? null,
+        required: true
+      }
+    ],
+    noImageErrorMessage: "Final render view generation returned no image data."
+  });
+
+  return {
+    viewKey: input.viewKey,
+    promptVersion: FINAL_RENDER_VIEW_PROMPT_VERSION,
     imageProvider: imageResult.provider,
     imageModel: imageResult.model,
     imageLatencySeconds: imageResult.latencySeconds,

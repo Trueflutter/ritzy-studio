@@ -24,3 +24,19 @@ export function isRenderJobStalled(
   const startedAt = Date.parse(createdAt);
   return Number.isFinite(startedAt) && now - startedAt > FINAL_RENDER_STALE_MS;
 }
+
+// How long after a hero render the presentation keeps polling for the additional camera angles. The
+// views generate in the same after() task right after the hero commits; if they have not appeared
+// within this window the task did not produce them, so stop refreshing instead of polling forever.
+export const FINAL_RENDER_VIEWS_WINDOW_MS = 5 * 60 * 1000;
+
+export function isWithinFinalRenderViewsWindow(
+  createdAt: string | null | undefined,
+  now: number = Date.now()
+): boolean {
+  if (!createdAt) {
+    return false;
+  }
+  const startedAt = Date.parse(createdAt);
+  return Number.isFinite(startedAt) && now - startedAt < FINAL_RENDER_VIEWS_WINDOW_MS;
+}
