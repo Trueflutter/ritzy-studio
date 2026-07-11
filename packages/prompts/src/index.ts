@@ -4,6 +4,7 @@ export {
   conceptViewCameraLanguage,
   conceptViewConsistencyLanguage,
   finalRenderProductFidelityLanguage,
+  finalRenderViewConsistencyLanguage,
   globalPhotorealismLanguage,
   productRoleLanguage,
   roomBlueprintDefaultsLanguage,

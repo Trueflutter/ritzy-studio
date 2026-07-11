@@ -33,6 +33,16 @@ const renderRevealPhases = [
   "Preparing the final reveal"
 ];
 
+const renderViewLabels: Record<string, string> = {
+  reverse_wide: "Reverse angle",
+  anchor_detail: "Detail view"
+};
+
+// The hero render carries no view_key; additional angles do. Labels are room-type agnostic.
+function renderViewLabel(viewKey: string | null): string {
+  return (viewKey && renderViewLabels[viewKey]) || "Alternate angle";
+}
+
 export default async function PresentationPage({
   params,
   searchParams
@@ -133,25 +143,37 @@ export default async function PresentationPage({
           .maybeSingle()
       : { data: null };
   const latestRenderJob = routedRenderJob ?? selectionRenderJob;
-  const matchingRenderAssetId = Array.isArray(latestRenderJob?.output_asset_ids)
-    ? latestRenderJob.output_asset_ids[0]
-    : null;
-  const { data: finalRenderAsset } = matchingRenderAssetId
-    ? await supabase
-        .from("room_assets")
-        .select("*")
-        .eq("id", matchingRenderAssetId)
-        .eq("room_id", roomId)
-        .eq("asset_type", "final_render")
-        .maybeSingle()
-    : { data: null };
-  const finalRenderUrl = finalRenderAsset?.storage_path
-    ? (
-        await serviceSupabase.storage
+  // output_asset_ids is [hero, ...additional camera angles]. Fetch them all so the presentation can
+  // show the room from several viewpoints, like a designer would; the hero stays index 0.
+  const renderAssetIds = Array.isArray(latestRenderJob?.output_asset_ids)
+    ? latestRenderJob.output_asset_ids.filter((id): id is string => typeof id === "string")
+    : [];
+  const { data: renderAssets } =
+    renderAssetIds.length > 0
+      ? await supabase
+          .from("room_assets")
+          .select("id, storage_path, view_key")
+          .in("id", renderAssetIds)
+          .eq("room_id", roomId)
+          .eq("asset_type", "final_render")
+      : { data: null };
+  const orderedRenderAssets = renderAssetIds
+    .map((id) => (renderAssets ?? []).find((asset) => asset.id === id))
+    .filter((asset): asset is NonNullable<typeof asset> => Boolean(asset?.storage_path));
+  const renderViews = (
+    await Promise.all(
+      orderedRenderAssets.map(async (asset) => {
+        const { data: signed } = await serviceSupabase.storage
           .from("generated-renders")
-          .createSignedUrl(finalRenderAsset.storage_path, 60 * 60)
-      ).data?.signedUrl
-    : null;
+          .createSignedUrl(asset.storage_path, 60 * 60);
+        return signed?.signedUrl
+          ? { url: signed.signedUrl, label: renderViewLabel(asset.view_key) }
+          : null;
+      })
+    )
+  ).filter((view): view is { url: string; label: string } => Boolean(view));
+  const finalRenderUrl = renderViews[0]?.url ?? null;
+  const additionalRenderViews = renderViews.slice(1);
   const renderJobStatus = latestRenderJob?.status ?? null;
   // A render whose in-request after() task never completed can sit in `running` indefinitely.
   // Once it is stalled, stop showing the progress spinner (which would poll forever) and fall
@@ -302,6 +324,27 @@ export default async function PresentationPage({
               </div>
             )}
           </div>
+          {finalRenderUrl && additionalRenderViews.length > 0 ? (
+            <div className="mt-4 grid gap-4 sm:grid-cols-2 print:grid-cols-2">
+              {additionalRenderViews.map((view) => (
+                <figure key={view.url} className="border border-line bg-page">
+                  <div className="aspect-[3/2]">
+                    <Image
+                      alt={`Final client room render — ${view.label.toLowerCase()}`}
+                      className="h-full w-full object-cover"
+                      height={1024}
+                      unoptimized
+                      src={view.url}
+                      width={1536}
+                    />
+                  </div>
+                  <figcaption className="border-t border-line px-4 py-2 font-body text-caption font-medium uppercase tracking-[0.28em] text-ink-muted">
+                    {view.label}
+                  </figcaption>
+                </figure>
+              ))}
+            </div>
+          ) : null}
         </section>
 
         <section className="mt-12 grid gap-8 lg:grid-cols-[360px_minmax(0,1fr)] print:block">

@@ -404,6 +404,21 @@ export function conceptViewConsistencyLanguage() {
   ].join(" ");
 }
 
+// Consistency preamble for additional camera angles of the FINAL grounded render. The reference is
+// the completed render that already composites the real purchased products, so fidelity here means
+// reproducing those exact pieces from a new viewpoint — the same truth-separation discipline as the
+// hero render, applied to the second and third angles.
+export function finalRenderViewConsistencyLanguage() {
+  return [
+    "The reference image is the final rendered room, already furnished with the exact products the client selected. Produce another photograph of THE SAME finished room.",
+    "Every purchasable piece — the sofa and seating, tables, rug pattern, lighting fixtures, media unit, art, mirrors, curtains, and decor — must be reproduced identically to the reference image: same silhouette, color, material, and proportions.",
+    "Do not substitute, recolor, restyle, add, or remove any product; do not invent nicer alternatives or extra decor.",
+    "Keep the same architecture: the same walls, window and door positions, ceiling, and flooring as the reference image, seen from the new camera position with physically plausible perspective.",
+    "Keep the same lighting mood, daylight direction, and warm layered lighting as the reference image.",
+    "This must read as a second photograph of the identical finished room taken moments later, not a new design, a restyle, or a variation."
+  ].join(" ");
+}
+
 function resolveStyleSlugs(styleSlugs: string[]) {
   const resolved: string[] = [];
 
