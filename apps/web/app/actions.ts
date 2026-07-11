@@ -4490,14 +4490,25 @@ export async function generateFinalRenderAction(formData: FormData) {
       );
     }
 
-    await supabase
+    // Atomic compare-and-swap: only fail the job if it is STILL running/queued. Filtering on the
+    // status (not just id) closes the race where the original after() task finishes between our
+    // read above and this write — otherwise we would flip a freshly-succeeded job back to failed
+    // and start a duplicate render. If we did not win the transition, the render resolved on its
+    // own; defer to whatever it became rather than starting a new one.
+    const { data: failedRows } = await supabase
       .from("render_jobs")
       .update({
         status: "failed",
         completed_at: new Date().toISOString(),
         error_message: "Final render timed out before completion. Please retry."
       })
-      .eq("id", matchingRenderJob.id);
+      .eq("id", matchingRenderJob.id)
+      .in("status", ["running", "queued"])
+      .select("id");
+
+    if (!failedRows || failedRows.length === 0) {
+      redirect(revealPathForRenderJob(matchingRenderJob.id));
+    }
   }
 
   if (
