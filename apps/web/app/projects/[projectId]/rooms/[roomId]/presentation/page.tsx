@@ -157,23 +157,24 @@ export default async function PresentationPage({
           .eq("room_id", roomId)
           .eq("asset_type", "final_render")
       : { data: null };
-  const orderedRenderAssets = renderAssetIds
-    .map((id) => (renderAssets ?? []).find((asset) => asset.id === id))
-    .filter((asset): asset is NonNullable<typeof asset> => Boolean(asset?.storage_path));
-  const renderViews = (
-    await Promise.all(
-      orderedRenderAssets.map(async (asset) => {
-        const { data: signed } = await serviceSupabase.storage
-          .from("generated-renders")
-          .createSignedUrl(asset.storage_path, 60 * 60);
-        return signed?.signedUrl
-          ? { url: signed.signedUrl, label: renderViewLabel(asset.view_key) }
-          : null;
-      })
-    )
-  ).filter((view): view is { url: string; label: string } => Boolean(view));
-  const finalRenderUrl = renderViews[0]?.url ?? null;
-  const additionalRenderViews = renderViews.slice(1);
+  // The hero is strictly output_asset_ids[0]; the rest are additional angles. Sign each by its own
+  // id so a failed hero URL never promotes an alternate into the hero slot (which drives the whole
+  // reveal state) — if the hero can't be produced the render simply reads as not-ready.
+  const signRenderAsset = async (assetId: string) => {
+    const asset = (renderAssets ?? []).find((candidate) => candidate.id === assetId);
+    if (!asset?.storage_path) {
+      return null;
+    }
+    const { data: signed } = await serviceSupabase.storage
+      .from("generated-renders")
+      .createSignedUrl(asset.storage_path, 60 * 60);
+    return signed?.signedUrl ? { url: signed.signedUrl, label: renderViewLabel(asset.view_key) } : null;
+  };
+  const heroRenderView = renderAssetIds[0] ? await signRenderAsset(renderAssetIds[0]) : null;
+  const additionalRenderViews = (await Promise.all(renderAssetIds.slice(1).map(signRenderAsset))).filter(
+    (view): view is { url: string; label: string } => Boolean(view)
+  );
+  const finalRenderUrl = heroRenderView?.url ?? null;
   const renderJobStatus = latestRenderJob?.status ?? null;
   // A render whose in-request after() task never completed can sit in `running` indefinitely.
   // Once it is stalled, stop showing the progress spinner (which would poll forever) and fall
