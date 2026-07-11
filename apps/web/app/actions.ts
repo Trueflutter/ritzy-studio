@@ -97,7 +97,15 @@ import {
 
 const PRODUCT_SOURCING_AI_TIMEOUT_MS = 45_000;
 const PRODUCT_MATCHING_CATALOG_LIMIT = 1500;
-const PRODUCT_SOURCING_IMAGE_PREFLIGHT_TIMEOUT_MS = 2_500;
+// Header-only (Range: bytes=0-0) reachability check per candidate image. At 2.5s a slow retailer
+// CDN's TLS + TTFB could time out otherwise-valid images; when the AI-product-image gate is on
+// (PRODUCT_SOURCING_AI_PRODUCT_IMAGES_ENABLED) that would block sourcing for a required role the
+// same way the 2.5s grounding fetch blocked concepts pre-#313. Generous per-image ceiling, bounded
+// overall by PRODUCT_SOURCING_IMAGE_PREFLIGHT_BUDGET_MS so a batch of dead URLs can't stall.
+const PRODUCT_SOURCING_IMAGE_PREFLIGHT_TIMEOUT_MS = 8_000;
+// Overall wall-clock budget for a whole preflight batch. Once spent, remaining candidates are
+// passed through optimistically (never rejected), so slow CDNs degrade to latency, not a block.
+const PRODUCT_SOURCING_IMAGE_PREFLIGHT_BUDGET_MS = 20_000;
 const PRODUCT_SOURCING_MAX_IMAGE_BYTES = 20 * 1024 * 1024;
 const PRODUCT_SOURCING_AI_CONCEPT_IMAGE_DETAIL = "low" as const;
 const PRODUCT_SOURCING_AI_CANDIDATE_IMAGE_LIMIT = 0;
@@ -2627,6 +2635,7 @@ ${conceptPaletteText}`
   const staticRoles = mergeRoomRoles(blueprintRoles, legacyRequiredRoles);
   const initialImagePreflight = await preflightProductCandidateImages(sourcingCandidates, {
     timeoutMs: PRODUCT_SOURCING_IMAGE_PREFLIGHT_TIMEOUT_MS,
+    budgetMs: PRODUCT_SOURCING_IMAGE_PREFLIGHT_BUDGET_MS,
     maxBytes: PRODUCT_SOURCING_MAX_IMAGE_BYTES
   });
   const aiSourcingCandidates = PRODUCT_SOURCING_AI_PRODUCT_IMAGES_ENABLED
@@ -3050,6 +3059,7 @@ ${conceptPaletteText}`
     const retryCandidates = retryPlan.candidates;
     const retryImagePreflight = await preflightProductCandidateImages(retryCandidates, {
       timeoutMs: PRODUCT_SOURCING_IMAGE_PREFLIGHT_TIMEOUT_MS,
+      budgetMs: PRODUCT_SOURCING_IMAGE_PREFLIGHT_BUDGET_MS,
       maxBytes: PRODUCT_SOURCING_MAX_IMAGE_BYTES
     });
     retryProductImagePreflightSummary = retryImagePreflight.summary;
@@ -5295,6 +5305,7 @@ async function buildCatalogueGroundedConceptPlan({
   const selected: CatalogueGroundingProduct[] = [];
   const blockers: string[] = [];
   const warnings: string[] = [];
+  const degradedRequiredRoles: string[] = [];
   // Wall-clock ceiling across all roles' reference-image fetches (see the constant).
   const imageFetchDeadline = Date.now() + CATALOGUE_GROUNDED_CONCEPT_IMAGE_FETCH_BUDGET_MS;
 
@@ -5366,11 +5377,17 @@ async function buildCatalogueGroundedConceptPlan({
     }
 
     if (!selectedCandidate || !selectedReferenceImage) {
+      // Graceful degradation: a single required role that can't produce an image-backed anchor
+      // must NOT hard-block the whole concept. Concept-first (ADR 0001) designs the room freely,
+      // then grounds real products at sourcing — so an ungrounded role is designed by the model
+      // and matched to a real SKU later, not lost. We only block if NOTHING grounds at all
+      // (post-loop check below), which is the true "catalogue has no usable evidence" case.
       if (pool.role.priority === "required") {
         const reason = pool.candidates.length > 0
           ? "eligible candidates had hard role or cue contradictions or lacked usable reference images"
           : "no eligible catalogue candidate";
-        blockers.push(`${pool.role.label}: ${reason}.`);
+        degradedRequiredRoles.push(pool.role.label);
+        warnings.push(`${pool.role.label}: proceeding without a catalogue anchor (${reason}).`);
       }
       continue;
     }
@@ -5391,6 +5408,15 @@ async function buildCatalogueGroundedConceptPlan({
       referenceImage: selectedReferenceImage
     });
   }
+  // The concept is only truly ungroundable when not a single anchor could be secured. One or two
+  // grounded anchors are enough for a catalogue-aware concept; ungrounded roles degrade to warnings
+  // above and are matched to real products at sourcing.
+  if (selected.length === 0) {
+    blockers.push(
+      "No catalogue anchor could be grounded for this room (no eligible candidate had a usable reference image)."
+    );
+  }
+
   if (aestheticGateEnabled) {
     await refineSelectedCatalogueProductsForAestheticFit({
       selected,
@@ -5434,6 +5460,7 @@ async function buildCatalogueGroundedConceptPlan({
       selectedProductCount: productsForConcept.length,
       blockerCount: blockers.length,
       warningCount: warnings.length,
+      degradedRequiredRoles,
       cueRequirements,
       warnings: warnings.slice(0, 12),
       selectedAnchors: productsForConcept.map(({ role, match }) => ({
