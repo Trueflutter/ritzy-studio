@@ -1,100 +1,107 @@
-# Handover: next session (written by Opus 4.8, 2026-07-11, mid session 3)
+# Handover: next session (written by Opus 4.8, 2026-07-11, end of session 4)
 
-Read order: this file → `docs/FABLE_PROGRESS.md` (full session log, newest at bottom) →
-`docs/FABLE_HANDOFF.md` (original brief, still the north star). Conventional commits, trailer
-`Co-Authored-By: <your model name> <noreply@anthropic.com>`. Stage files by name. NEVER merge
-without Ayo's explicit approval. Goal: launch-ready beta.
+Read order: this file → `docs/FABLE_PROGRESS.md` (full session log, newest at bottom — the session-4
+entry has full detail) → `docs/FABLE_HANDOFF.md` (original brief, still the north star). Conventional
+commits, trailer `Co-Authored-By: <your model name> <noreply@anthropic.com>`. Stage files by name.
+NEVER merge without Ayo's explicit approval. Goal: launch-ready beta.
+
+## Model note
+
+Opus 4.8 handled session 4 well (deep multi-file reasoning + live verification + stacked PRs). The
+remaining work is well-scoped engineering, not research — Opus 4.8 is a fine choice; Fable 5 is
+equally capable and has continuity with these `FABLE_*` docs. Either works.
 
 ## State (verified this session, not aspirational)
 
-- **Production is UP.** `www.ritzystudio.app` serves (`/` → 307 → /login, all routes healthy).
-  It had been fully 500'ing (sharp native module) after the #310 merge; fixed and re-verified.
-- **Merged:** #312 (sharp libvips trace fix — the prod hotfix), #313 (concept-unblock: catalogue
-  image-fetch timeout 2.5s→12s + an overall 90s grounding fetch budget; plus harness), #314 (render
-  durability — stalled-render recovery: `FINAL_RENDER_STALE_MS`=4min + `isRenderJobStalled`, the
-  presentation page drops the infinite spinner for a retry affordance, and the stale-retry failover
-  is an error-checked compare-and-swap with an after()-completion reclamation guard so a slow render
-  can't resurrect a reclaimed job or delete a valid one). Prod re-verified green after each.
-  Remaining render work: a truly durable/background render (Vercel Queues) — #314 only bounds the
-  stuck window to ~4min with recovery.
-- **Full E2E works against the hosted 3,309-product catalogue** (definition-of-done pipeline):
-  signup → onboarding → project → room → real room photo → brief → 5 clarifying questions →
-  concept (Gemini via Evolink, architecture preserved, on-brief, **avoid-color held**) → 2
-  consistent camera views → sourcing/matching (class-correct, palette-coherent) → final grounded
-  render (succeeded, spatial QA `pass`). Evidence + per-fix detail: FABLE_PROGRESS.md session-3.
+- **Production is UP and green.** `www.ritzystudio.app`: `/` → 307 → /login, `/login` renders the
+  sign-in page. Verify a real flow yourself before starting.
+- **The definition-of-done pipeline works end-to-end against the real 3,309-product catalogue:**
+  photo → concept → 3 mutually-consistent camera angles → budget-adherent, avoid-colour-clean,
+  buyable shopping list → **multi-angle FINAL render** (hero + reverse + detail) → client-ready
+  presentation. Both the multi-angle CONCEPT and the multi-angle FINAL render requirements are met.
+- **Merged this session:** #316 (budget-with-quantity + avoid-colour exclusion + preflight
+  bounding/skip + grounding degradation) and #318 (multi-angle final render + review fixes). `main`
+  is at the #318 merge. **Note:** PR #317 was the original multi-angle PR; it auto-closed when its
+  stacked base branch was deleted on the #316 merge, and was reopened as #318 — don't be confused by
+  the gap. No migrations were needed (`room_assets.view_key` + `asset_type: final_render` already
+  existed).
 
 ## Immediate queue (highest value first)
 
-0. **First:** branch off latest `origin/main`; verify prod (`www.ritzystudio.app` real flow); run
-   `bash scripts/dev-harness/use-env.sh local` state is already the default — switch to `hosted`
-   only for a real-catalogue verification pass, then back.
-1. **Budget adherence ignores quantity** (finding, task #8). Selected per-UNIT sum was AED 38,448
-   (< 40k budget) but real line total (an armchair at qty 2) was AED 44,118 — ~10% over, and that
-   over-budget number is what the presentation shows. The budget gate should use `line_total_aed`
-   (qty × price), not unit prices. Find the budget filter in the sourcing/grounding path.
-3. **Sibling timeout** `PRODUCT_SOURCING_IMAGE_PREFLIGHT_TIMEOUT_MS = 2_500` (actions.ts) is the
-   same class as the #313 concept-blocker (large Home Centre images). Audit/raise + bound it the
-   same way the grounding fetch now is.
-4. **Avoid-colors in alternates** (finding, task #9, minor). A "Cigar Lounge Armchair, Red" survived
-   as an ALTERNATE despite brief "avoid bright red"; `avoidColorTags` (−24) demotes but doesn't
-   exclude from the visible option pool. Consider hard-excluding avoid-colors from alternates.
-5. **Grounding brittleness.** One required anchor role with no fetchable image hard-blocks the whole
-   concept (`buildCatalogueGroundedConceptPlan` blockers). Degrade gracefully (text-anchor the role
-   or proceed without it) instead of blocking the entire concept.
-6. **Original queue items still open:** concept-prompt token audit vs Evolink's 4000-token image
-   cap (`buildInitialConceptImagePrompt`); multi-angle FINAL render (concept already has views;
-   extend `generateConceptView` pattern to final_render + view_key); cost telemetry (Evolink
-   `usage.credits_used` → ai_jobs.cost_estimate_usd); grants migration.
-7. **Render: truly durable** (beyond #314's 4-min recovery). #314 bounds the stuck state and gives a
-   retry, but the render still rides an in-request `after()`. Vercel Queues / a background job is the
-   robust long-term answer.
+0. **First:** verify prod (`www.ritzystudio.app` real flow); branch off latest `origin/main`.
+   `.env.local` is on LOCAL (default). Switch to `hosted` only for a real-catalogue verification
+   pass (`bash scripts/dev-harness/use-env.sh hosted`), then back to local.
+1. **Render durability (top priority).** The final render still rides an in-request `after()` task.
+   #314 only bounds a stuck render to ~4 min + a retry affordance (`FINAL_RENDER_STALE_MS`,
+   `isRenderJobStalled` in `apps/web/lib/render.ts`). Make it truly durable/background — **Vercel
+   Queues** is the intended answer. This is the main beta-reliability gap. The multi-angle views run
+   in the same `after()` after the hero commits (`generateAndStoreFinalRenderViews` in
+   `apps/web/app/actions.ts`), so whatever you build must keep them working (they append to
+   `render_jobs.output_asset_ids` and the presentation polls `final_render_views` until terminal).
+2. **Cost telemetry.** Thread Evolink `usage.credits_used` → `ai_jobs.cost_estimate_usd`. We spend
+   real credits blind. (Deferred deliberately; budget-fit outcome is already visible in
+   `shopping_lists.estimated_total_aed`.)
+3. **Grants migration.** The local-only grant fixups (service_role grants) are NOT codified in a
+   migration — a fresh DB provision would miss them. See FABLE_PROGRESS 2026-07-10.
+4. **Concept-prompt token audit** vs Evolink's 4000-token image-prompt cap
+   (`buildInitialConceptImagePrompt`) — it runs near the cap; a complex brief could truncate.
+5. **Cosmetic:** the `anchor_detail` final-render angle frames close to the hero (the hero is already
+   a wide seating-group shot). Tune `conceptViewCameraLanguage`'s `anchor_detail` for a genuinely
+   tighter composition.
 
-## Setup to reproduce the hosted E2E
+## Setup / how to verify (green tests are NOT the bar — verify in the running app)
 
-- Local dev stack already stood up last session: colima + `supabase start` (:55321). The app dev
-  server (`pnpm dev`, :3000) was left running pointed at HOSTED Supabase.
-- **`.env.local` is currently pointed at HOSTED** (backup at the session scratchpad
-  `env.local.backup`; the swap is reversible — each hosted key has a `# LOCAL (swapped out...)`
-  comment above it). Revert to local when done with hosted verification. Text + images route through
-  Evolink; `RITZY_IMAGE_PROVIDER=evolink`.
-- **Playwright:** installed in an ISOLATED dir last session (`<scratchpad>/pw`) and symlinked to
-  `scripts/dev-harness/node_modules` (both gone next session). Reinstall: `npm i playwright` in an
-  isolated dir WITH ITS OWN package.json (do NOT `npm install` inside the repo — npm walks up to the
-  monorepo root package.json and tries to install the whole workspace, corrupting pnpm). Browsers
-  are cached in `~/Library/Caches/ms-playwright` (use `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1`).
-- **Harness** `scripts/dev-harness/e2e.mjs` now has stages: signup, login, onboarding, project,
-  room, photos, brief-style, brief-inspiration, brief-details, brief-questions, concept, sourcing,
-  render, inspect. Helpers: `create-hosted-test-user.mjs` (admin-API pre-confirmed account),
-  `read-ai-job.mjs` (dump ai_jobs/render diagnostics for a room), `render-alive.mjs` (render repro).
-  Test account creds are in `scripts/dev-harness/e2e-state.json` (gitignored).
-- **Hosted test account:** signup is gated to `@ritzyinteriors.com` AND hosted has email
-  confirmation ON, so UI signup can't auto-login — use the admin-API pre-confirmed account script.
+- **The user's Chrome CANNOT reach localhost** — drive the local app with the Playwright harness in
+  `scripts/dev-harness`, never claude-in-chrome. (Browser tools CAN reach the hosted prod URL.)
+- **Reinstall Playwright in an ISOLATED dir** with its own `package.json` — do NOT `npm install`
+  inside the repo (npm walks up to the monorepo root and corrupts pnpm). Browsers cache in
+  `~/Library/Caches/ms-playwright` (`PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1`).
+- **Env switch:** `bash scripts/dev-harness/use-env.sh hosted|local`, then restart `pnpm dev`.
+  Revert to local when done — leaving it on hosted is the known "pointed at prod" trap.
+- Verify against the **real Gemini renderer via Evolink** (`RITZY_IMAGE_PROVIDER=evolink`), never
+  gpt-image-2.
+- Harness drivers (read own test data only): `e2e.mjs` (staged flow), `refresh-matches.mjs` (fresh
+  matching run without concept regen), `verify-budget-avoidcolor.mjs` (assert budget + avoid-colour
+  on the list), `render-multiview.mjs` (trigger a render and keep the browser alive until the angle
+  views land), `read-ai-job.mjs` (dump ai_jobs/grounding diagnostics). Hosted test user + state in
+  `scripts/dev-harness/e2e-state.json` (gitignored).
 
 ## Traps the next instance must not rediscover
 
-- **Native/optional-binary deps (sharp) fail ONLY on the Vercel linux function**, never locally or
-  in `pnpm build`. Verify any such change on a PREVIEW deploy that reaches the code path. Preview now
-  has the public Supabase vars (added this session) so it doesn't die in middleware first. `sharp`
-  needs `outputFileTracingIncludes` (the `.node` dlopen's a sibling libvips `.so` that nft can't
-  trace). See `[[project-native-dep-vercel-trace]]` memory.
-- **Hosted DB queries via service-role trip the sandbox's PII/credential guards** if you print user
-  emails/IDs or even partial secret values. Query only what you need (ai_jobs, render_jobs, your own
-  test data); never enumerate users or print key prefixes.
-- PostgREST embeds involving concepts↔room_assets MUST name the FK
+- **Production moves ONLY via merge to `main`.** A bash-guard hook blocks manual `vercel --prod`
+  (even `vercel ls --prod` false-triggers it). For rollback: `vercel promote <last-good-deployment>`.
+- **Native/optional-binary deps (sharp) fail ONLY on the Vercel linux function**, never locally or in
+  `pnpm build`. Verify any such change on a PREVIEW deploy that reaches the code path (preview has
+  the public Supabase vars). `sharp` needs `outputFileTracingIncludes`. See
+  `[[project-native-dep-vercel-trace]]`.
+- **Stacked PRs:** if you stack PR-B on PR-A's branch, RETARGET PR-B to `main` BEFORE merging PR-A —
+  merging PR-A with `--delete-branch` auto-closes PR-B and you cannot reopen it against a deleted
+  base (session 4 hit this; had to recreate #317 as #318).
+- PostgREST embeds on concepts↔room_assets MUST name the FK
   (`room_assets!concepts_primary_image_asset_id_fkey`) or pages fail SILENTLY (empty data).
-- Vision inputs must be inlined data URLs (`visionImageDataUrl`); Evolink image prompts cap at 4000
-  tokens; every `client.responses.create` must set `max_output_tokens`.
-- "avoid X" phrases must never enter cue/matching text as positive tokens (`splitAvoidColorCues`);
-  `hasHardCatalogueGroundingContradiction` must not hard-veto on soft styling/silhouette signals.
+- Evolink image prompts cap at 4000 tokens; every `client.responses.create` must set
+  `max_output_tokens`; vision inputs must be inlined data URLs (`visionImageDataUrl`).
+- "avoid X" phrases must never enter cue/matching text as positive tokens (`splitAvoidColorCues`).
+  Sourcing avoid-colours now UNION the concept-image-palette avoidColors with the brief's parsed
+  avoid colours (`avoid_notes`) — keep that; the palette alone missed the user's explicit "avoid red".
+- Hosted service-role queries that print user emails/IDs/secret prefixes trip the sandbox PII guard.
+  Query only what you need (ai_jobs, render_jobs, your own test data); never enumerate users.
 - Grounding diagnostics live in `ai_jobs.input_summary.catalogueGrounding.warnings` — READ THEM
   before guessing why a concept blocked.
-- The user's Chrome CANNOT reach localhost — drive the local app with the Playwright harness, never
-  claude-in-chrome. (Production is a real hosted URL, so browser tools CAN reach it.)
-- Harness closes the browser between stages; anything client-side-async (photo upload, the render
-  after()) needs a live browser until it completes, or it silently doesn't persist/run.
+
+## Conventions
+
+Branch off latest `origin/main` (never work on main — hook-enforced). Conventional commits, stage
+files by name (untracked scratch dirs exist). Build/typecheck/lint/test all green before PR
+(lint+typecheck from `apps/web`: `./node_modules/.bin/tsc -p tsconfig.json --noEmit` and
+`./node_modules/.bin/eslint .`; package tests are plain `tsx` scripts, e.g. `pnpm --filter
+@ritzy-studio/domain test`). Open PRs and present the URL. **Never merge without Ayo's explicit
+approval.**
 
 ## Definition of done (unchanged, from FABLE_HANDOFF.md)
 
 Real person, real photo → spatially sound, beautiful, on-brief design from ≥3 mutually consistent
-angles, matched to real non-repeating buyable furniture, client-ready presentation, reliably. The
-multi-angle CONCEPT requirement is met; the FINAL render is still a single angle (queue).
+angles, matched to real non-repeating buyable furniture within budget, client-ready presentation,
+reliably. All of this is met EXCEPT the reliability bar under load — the final render still rides an
+in-request `after()` (queue item 1). That is the last thing standing between "works" and "works
+reliably for a beta group."
