@@ -45,6 +45,7 @@ export type ProductMatchingEvalScenario = {
   roomType: string;
   conceptText: string;
   budgetMaxAed?: number | null;
+  avoidColorTags?: string[];
   roles: RoomProductRoleSpec[];
   candidates: ProductMatchCandidate[];
   expectations: ProductMatchingEvalExpectations;
@@ -118,6 +119,7 @@ export function runProductMatchingEvalScenario(scenario: ProductMatchingEvalScen
     roomType: scenario.roomType,
     conceptText: scenario.conceptText,
     budgetMaxAed: scenario.budgetMaxAed ?? null,
+    avoidColorTags: scenario.avoidColorTags,
     roles: scenario.roles,
     candidates: scenario.candidates,
     candidatesPerRole: 4
@@ -690,6 +692,117 @@ export const productMatchingEvalScenarios: ProductMatchingEvalScenario[] = [
           unavailable: 1,
           missing_image: 1,
           over_budget: 1
+        }
+      }
+    }
+  },
+  {
+    name: "quantity-aware budget gate rejects a role line total over budget",
+    roomType: "living room",
+    conceptText: "cognac leather accent armchair, pair",
+    budgetMaxAed: 40000,
+    roles: [
+      {
+        category: "chairs",
+        label: "accent seating",
+        visualBrief: "cognac leather accent armchair",
+        quantity: 2,
+        priority: "supporting"
+      }
+    ],
+    candidates: [
+      // Unit price fits the budget (22,059 < 40,000) but the LINE total at qty 2
+      // is 44,118 — over budget. Must be gated out, not selected.
+      evalCandidate("10000000-0000-4000-8000-000000000091", "Stilo Cognac Leather Armchair", {
+        categoryNormalized: "chairs",
+        priceAed: 22059,
+        primaryImageUrl: "https://example.com/eval-stilo-armchair.jpg",
+        colorTags: ["cognac", "brown"],
+        materialTags: ["leather"]
+      }),
+      // Line total 30,000 < 40,000 — the affordable pair, should win.
+      evalCandidate("10000000-0000-4000-8000-000000000092", "Budget Cognac Leather Armchair", {
+        categoryNormalized: "chairs",
+        priceAed: 15000,
+        primaryImageUrl: "https://example.com/eval-budget-armchair.jpg",
+        colorTags: ["cognac", "brown"],
+        materialTags: ["leather"]
+      })
+    ],
+    expectations: {
+      requiredRoleLabels: ["accent seating"],
+      expectedTopCandidateIdByRole: {
+        "accent seating": "10000000-0000-4000-8000-000000000092"
+      },
+      disallowedCandidateIdsByRole: {
+        "accent seating": ["10000000-0000-4000-8000-000000000091"]
+      },
+      expectedRejectedReasonsByRole: {
+        "accent seating": {
+          over_budget: 1
+        }
+      },
+      expectedQuantityByRole: {
+        "accent seating": 2
+      }
+    }
+  },
+  {
+    name: "avoid-color candidates are excluded from the option pool not just demoted",
+    roomType: "living room",
+    conceptText: "cognac leather accent armchair",
+    avoidColorTags: ["red"],
+    roles: [
+      {
+        category: "chairs",
+        label: "accent seating",
+        visualBrief: "cognac leather accent armchair",
+        quantity: 1,
+        priority: "supporting"
+      }
+    ],
+    candidates: [
+      // Brief says avoid red: this must NOT survive as an alternate, even though it is a valid
+      // chair. Previously the -24 avoidColorTags penalty only demoted it.
+      evalCandidate("10000000-0000-4000-8000-000000000101", "Cigar Lounge Armchair Red", {
+        categoryNormalized: "chairs",
+        priceAed: 4200,
+        primaryImageUrl: "https://example.com/eval-red-armchair.jpg",
+        color: "red",
+        colorTags: ["red"],
+        materialTags: ["leather"]
+      }),
+      evalCandidate("10000000-0000-4000-8000-000000000102", "Cognac Leather Armchair", {
+        categoryNormalized: "chairs",
+        priceAed: 4400,
+        primaryImageUrl: "https://example.com/eval-cognac-armchair.jpg",
+        color: "cognac",
+        colorTags: ["cognac", "brown"],
+        materialTags: ["leather"]
+      }),
+      evalCandidate("10000000-0000-4000-8000-000000000103", "Camel Boucle Armchair", {
+        categoryNormalized: "chairs",
+        priceAed: 4600,
+        primaryImageUrl: "https://example.com/eval-camel-armchair.jpg",
+        color: "camel",
+        colorTags: ["camel", "tan"],
+        materialTags: ["boucle"]
+      })
+    ],
+    expectations: {
+      requiredRoleLabels: [],
+      allowedTopCandidateIdsByRole: {
+        "accent seating": [
+          "10000000-0000-4000-8000-000000000102",
+          "10000000-0000-4000-8000-000000000103"
+        ]
+      },
+      disallowedCandidateIdsByRole: {
+        "accent seating": ["10000000-0000-4000-8000-000000000101"]
+      },
+      expectedRejectedReasonsByRole: {
+        "accent seating": {
+          avoid_color: 1
         }
       }
     }

@@ -1547,6 +1547,7 @@ type ScoredRoleCandidate = {
   match: RoleScopedRankedProductMatch;
   roleScore: number;
   weaknesses: string[];
+  avoidColor: boolean;
 };
 
 function buildRolePool({
@@ -1595,7 +1596,8 @@ function buildRolePool({
         attributeScore: fit
       },
       roleScore,
-      weaknesses: [...fit.weaknessReasons, ...aestheticFit.weaknessReasons]
+      weaknesses: [...fit.weaknessReasons, ...aestheticFit.weaknessReasons],
+      avoidColor: avoidColorMatches(candidate, request.avoidColorTags).length > 0
     });
   }
 
@@ -1605,7 +1607,18 @@ function buildRolePool({
     rejectionReasons.lighting_role_fixture_mismatch = (rejectionReasons.lighting_role_fixture_mismatch ?? 0) + guardedCount;
   }
 
-  const candidates = diverseRoleCandidates(guardedScored, candidatesPerRole)
+  // Hard-exclude avoid-colour candidates from the visible option pool (selected AND alternates),
+  // not just demote them. The -24 avoidColorTags penalty alone let an off-brief piece (e.g. a
+  // bright-red armchair against "avoid bright red") survive as an alternate. Keep them only as a
+  // last resort so a required role is never left with an empty pool.
+  const cleanScored = guardedScored.filter(({ avoidColor }) => !avoidColor);
+  const pooledScored = cleanScored.length > 0 ? cleanScored : guardedScored;
+  const avoidColorExcludedCount = guardedScored.length - pooledScored.length;
+  if (avoidColorExcludedCount > 0) {
+    rejectionReasons.avoid_color = (rejectionReasons.avoid_color ?? 0) + avoidColorExcludedCount;
+  }
+
+  const candidates = diverseRoleCandidates(pooledScored, candidatesPerRole)
     .map(({ match }, index) => ({ ...match, score: Number((match.score - index * 0.001).toFixed(3)) }));
 
   return {
@@ -2080,8 +2093,13 @@ function roleGateRejectionReason(
     return "unavailable";
   }
 
+  // Budget adherence must reason on the LINE total (qty x price), not unit price. A role
+  // with quantity 2 whose unit price fits the budget can still blow the whole budget once
+  // doubled, and the line total is what the presentation shows. See selectedItemsTotalAed.
   const effectivePrice = candidate.salePriceAed ?? candidate.priceAed;
-  if (effectivePrice !== null && request.budgetMaxAed && effectivePrice > request.budgetMaxAed) {
+  const roleQuantity = Math.max(1, role.quantity || 1);
+  const lineTotal = effectivePrice === null ? null : effectivePrice * roleQuantity;
+  if (lineTotal !== null && request.budgetMaxAed && lineTotal > request.budgetMaxAed) {
     return "over_budget";
   }
 
