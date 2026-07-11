@@ -77,6 +77,7 @@ import {
 import {
   buildProductImagePreflightGate,
   preflightProductCandidateImages,
+  skippedProductImagePreflight,
   type ProductImagePreflightSummary
 } from "./product-image-preflight";
 import {
@@ -2781,11 +2782,15 @@ ${conceptPaletteText}`
       priority: "required"
     }));
   const staticRoles = mergeRoomRoles(blueprintRoles, legacyRequiredRoles);
-  const initialImagePreflight = await preflightProductCandidateImages(sourcingCandidates, {
-    timeoutMs: PRODUCT_SOURCING_IMAGE_PREFLIGHT_TIMEOUT_MS,
-    budgetMs: PRODUCT_SOURCING_IMAGE_PREFLIGHT_BUDGET_MS,
-    maxBytes: PRODUCT_SOURCING_MAX_IMAGE_BYTES
-  });
+  // Only fetch when the AI actually consumes product images; otherwise the gate and sanitized
+  // candidates are discarded, so a slow CDN would add up to the whole preflight budget for nothing.
+  const initialImagePreflight = PRODUCT_SOURCING_AI_PRODUCT_IMAGES_ENABLED
+    ? await preflightProductCandidateImages(sourcingCandidates, {
+        timeoutMs: PRODUCT_SOURCING_IMAGE_PREFLIGHT_TIMEOUT_MS,
+        budgetMs: PRODUCT_SOURCING_IMAGE_PREFLIGHT_BUDGET_MS,
+        maxBytes: PRODUCT_SOURCING_MAX_IMAGE_BYTES
+      })
+    : skippedProductImagePreflight(sourcingCandidates);
   const aiSourcingCandidates = PRODUCT_SOURCING_AI_PRODUCT_IMAGES_ENABLED
     ? initialImagePreflight.candidates
     : sourcingCandidates;
@@ -3205,11 +3210,13 @@ ${conceptPaletteText}`
     });
     const retryPools = retryPlan.roleScopedPools;
     const retryCandidates = retryPlan.candidates;
-    const retryImagePreflight = await preflightProductCandidateImages(retryCandidates, {
-      timeoutMs: PRODUCT_SOURCING_IMAGE_PREFLIGHT_TIMEOUT_MS,
-      budgetMs: PRODUCT_SOURCING_IMAGE_PREFLIGHT_BUDGET_MS,
-      maxBytes: PRODUCT_SOURCING_MAX_IMAGE_BYTES
-    });
+    const retryImagePreflight = PRODUCT_SOURCING_AI_PRODUCT_IMAGES_ENABLED
+      ? await preflightProductCandidateImages(retryCandidates, {
+          timeoutMs: PRODUCT_SOURCING_IMAGE_PREFLIGHT_TIMEOUT_MS,
+          budgetMs: PRODUCT_SOURCING_IMAGE_PREFLIGHT_BUDGET_MS,
+          maxBytes: PRODUCT_SOURCING_MAX_IMAGE_BYTES
+        })
+      : skippedProductImagePreflight(retryCandidates);
     retryProductImagePreflightSummary = retryImagePreflight.summary;
     const aiRetryCandidates = PRODUCT_SOURCING_AI_PRODUCT_IMAGES_ENABLED
       ? retryImagePreflight.candidates
