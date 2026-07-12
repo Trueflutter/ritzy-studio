@@ -1831,7 +1831,7 @@ export type GenerateConceptViewResult = {
   imageBase64: string;
 };
 
-export const CONCEPT_VIEW_PROMPT_VERSION = "concept-view.2026-07-10.1";
+export const CONCEPT_VIEW_PROMPT_VERSION = "concept-view.2026-07-13.1";
 
 export function buildConceptViewPrompt(input: {
   roomType: string;
@@ -1908,7 +1908,7 @@ export type GenerateFinalRenderViewInput = {
 
 export type GenerateFinalRenderViewResult = GenerateConceptViewResult;
 
-export const FINAL_RENDER_VIEW_PROMPT_VERSION = "final-render-view.2026-07-11.1";
+export const FINAL_RENDER_VIEW_PROMPT_VERSION = "final-render-view.2026-07-13.1";
 
 export function buildFinalRenderViewPrompt(input: {
   roomType: string;

@@ -26,8 +26,9 @@ const detailPrompt = buildConceptViewPrompt({
   conceptTitle: "Quiet Luxury Living"
 });
 
-assert.match(detailPrompt, /closer three-quarter composition/);
-assert.match(detailPrompt, /the primary sofa, coffee table, and accent seating/);
+assert.match(detailPrompt, /tight detail vignette/);
+assert.match(detailPrompt, /Crop well inside the full furniture group/);
+assert.match(detailPrompt, /one end of the primary sofa/);
 assert.equal(detailPrompt.includes("Concept notes:"), false);
 
 const combinedReverse = conceptViewCameraLanguage("Living & Dining", "reverse_wide");
@@ -35,7 +36,7 @@ assert.match(combinedReverse, /dining zone/);
 assert.match(combinedReverse, /divider/);
 
 const bedroomDetail = conceptViewCameraLanguage("Bedroom", "anchor_detail");
-assert.match(bedroomDetail, /bed, headboard, bedside tables/);
+assert.match(bedroomDetail, /one side of the headboard/);
 
 const diningReverse = conceptViewCameraLanguage("Dining Room", "reverse_wide");
 assert.match(diningReverse, /opposite side of the dining table/);
