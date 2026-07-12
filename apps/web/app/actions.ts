@@ -2,6 +2,7 @@
 
 import {
   analyzeInspirationImages,
+  evolinkCreditsToUsd,
   generateClarifyingQuestions,
   extractConceptImagePalette,
   generateConceptRevision,
@@ -61,6 +62,7 @@ import { after } from "next/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import { createClient } from "@/lib/supabase/server";
 import { FINAL_RENDER_STALE_MS } from "@/lib/render";
+import { sumOutcomeCredits } from "@/lib/ai-cost";
 import { CONCEPT_VIEW_KEYS, localSkuFidelityModeEnabled } from "@/lib/render-flags";
 import {
   type CatalogueReferenceImage,
@@ -271,7 +273,13 @@ async function generateAndStoreConceptViews({
           throw new Error(assetError.message);
         }
 
-        return { viewKey, ok: true as const, provider: view.imageProvider, fallbackUsed: view.imageFallbackUsed };
+        return {
+          viewKey,
+          ok: true as const,
+          provider: view.imageProvider,
+          fallbackUsed: view.imageFallbackUsed,
+          creditsUsed: view.imageCreditsUsed
+        };
       } catch (error) {
         console.error(`Concept view generation failed (${viewKey}, concept ${conceptId}):`, error);
         return {
@@ -293,6 +301,7 @@ async function generateAndStoreConceptViews({
         status: failed.length > 0 ? "failed" : "succeeded",
         completed_at: new Date().toISOString(),
         error_message: failed.length > 0 ? failed.map((outcome) => `${outcome.viewKey}: ${outcome.error}`).join("; ") : null,
+        cost_estimate_usd: evolinkCreditsToUsd(sumOutcomeCredits(outcomes)),
         output_summary: { conceptId, outcomes }
       })
       .eq("id", viewsJob.id);
@@ -2239,6 +2248,7 @@ export async function generateInitialConceptAction(formData: FormData) {
         provider: result.imageProvider,
         model: `${result.textModel} + ${result.imageModel}`,
         prompt_version: result.promptVersion,
+        cost_estimate_usd: evolinkCreditsToUsd(result.imageCreditsUsed),
         output_summary: {
           promptKey: result.promptKey,
           title: result.concept.title,
@@ -2250,7 +2260,8 @@ export async function generateInitialConceptAction(formData: FormData) {
           imagePromptVersion: result.promptVersion,
           imageLatencySeconds: result.imageLatencySeconds,
           imageFallbackUsed: result.imageFallbackUsed,
-          imageFallbackError: result.imageFallbackError ?? null
+          imageFallbackError: result.imageFallbackError ?? null,
+          imageCreditsUsed: result.imageCreditsUsed
         }
       })
       .eq("id", job.id);
@@ -4764,6 +4775,7 @@ export async function reviseConceptAction(formData: FormData) {
         provider: result.imageProvider,
         model: `${result.textModel} + ${result.imageModel}`,
         prompt_version: result.promptVersion,
+        cost_estimate_usd: evolinkCreditsToUsd(result.imageCreditsUsed),
         output_summary: {
           promptKey: result.promptKey,
           title: result.concept.title,
@@ -4773,7 +4785,8 @@ export async function reviseConceptAction(formData: FormData) {
           imageModel: result.imageModel,
           imageLatencySeconds: result.imageLatencySeconds,
           imageFallbackUsed: result.imageFallbackUsed,
-          imageFallbackError: result.imageFallbackError ?? null
+          imageFallbackError: result.imageFallbackError ?? null,
+          imageCreditsUsed: result.imageCreditsUsed
         }
       })
       .eq("id", job.id);

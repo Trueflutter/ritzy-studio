@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import {
   assessRenderSpatialQuality,
+  evolinkCreditsToUsd,
   generateFinalGroundedRender,
   generateFinalRenderView,
   spatialQaCorrectionLanguage
@@ -9,6 +10,7 @@ import {
 import { parseSpatialIntent, sortProductsForRenderReferences } from "@ritzy-studio/domain";
 import { revalidatePath } from "next/cache";
 
+import { sumOutcomeCredits } from "@/lib/ai-cost";
 import {
   CONCEPT_VIEW_KEYS,
   LOCAL_SKU_FIDELITY_RENDER_REFERENCE_LIMIT,
@@ -357,7 +359,11 @@ export async function runFinalRender({
           imageFallbackError: result.imageFallbackError ?? null,
           spatialQaVerdict: renderQaVerdict,
           spatialQaIssues: renderQaIssues,
-          spatialQaRegenerated: renderQaRegenerated
+          spatialQaRegenerated: renderQaRegenerated,
+          // render_jobs has no cost column; the hero's spend is recorded here and the
+          // views' spend on the final_render_views ai_job.
+          imageCreditsUsed: result.imageCreditsUsed,
+          costEstimateUsd: evolinkCreditsToUsd(result.imageCreditsUsed)
         }
       })
       .eq("id", job.id)
@@ -521,7 +527,8 @@ async function generateAndStoreFinalRenderViews({
           ok: true as const,
           assetId: viewAsset.id,
           provider: view.imageProvider,
-          fallbackUsed: view.imageFallbackUsed
+          fallbackUsed: view.imageFallbackUsed,
+          creditsUsed: view.imageCreditsUsed
         };
       } catch (error) {
         console.error(`Final render view generation failed (${viewKey}, render ${renderJobId}):`, error);
@@ -555,6 +562,7 @@ async function generateAndStoreFinalRenderViews({
         status: failed.length > 0 ? "failed" : "succeeded",
         completed_at: new Date().toISOString(),
         error_message: failed.length > 0 ? failed.map((outcome) => `${outcome.viewKey}: ${outcome.error}`).join("; ") : null,
+        cost_estimate_usd: evolinkCreditsToUsd(sumOutcomeCredits(outcomes)),
         output_summary: { renderJobId, outcomes }
       })
       .eq("id", viewsJob.id);

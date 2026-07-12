@@ -76,6 +76,8 @@ type ImageGenerationAttempt = {
   latencySeconds: number;
   fallbackUsed: boolean;
   error?: string | null;
+  // Gateway credits consumed by this generation (Evolink only; null for other providers).
+  creditsUsed?: number | null;
 };
 
 export type GenerateClarifyingQuestionsInput = {
@@ -190,6 +192,7 @@ export type GenerateInitialConceptResult = {
   imageLatencySeconds: number;
   imageFallbackUsed: boolean;
   imageFallbackError?: string | null;
+  imageCreditsUsed: number | null;
   analysis: {
     detectedRoomType: string;
     fixedArchitecture: string[];
@@ -278,6 +281,7 @@ export type GenerateFinalGroundedRenderResult = {
   imageLatencySeconds: number;
   imageFallbackUsed: boolean;
   imageFallbackError?: string | null;
+  imageCreditsUsed: number | null;
   imageBase64: string;
   revisedPrompt?: string | null;
 };
@@ -881,6 +885,22 @@ const EVOLINK_API_BASE = "https://api.evolink.ai";
 const EVOLINK_POLL_INTERVAL_MS = 3_000;
 const EVOLINK_POLL_TIMEOUT_MS = 300_000;
 const EVOLINK_MAX_REFERENCE_URLS = 14;
+// Evolink's public pricing pages list USD and credit figures side by side and both imply the
+// same rate: $0.494 = 33.6 credits and $2.250 = 153 credits, i.e. 68 credits per USD. The rate
+// is a gateway-level constant, not per-model; override via env if Evolink ever reprices.
+const EVOLINK_CREDITS_PER_USD_DEFAULT = 68;
+
+// Converts gateway credits into the USD estimate recorded on ai_jobs.cost_estimate_usd.
+export function evolinkCreditsToUsd(credits: number | null | undefined): number | null {
+  if (typeof credits !== "number" || !Number.isFinite(credits)) {
+    return null;
+  }
+  const configured = Number(process.env.EVOLINK_CREDITS_PER_USD);
+  const creditsPerUsd =
+    Number.isFinite(configured) && configured > 0 ? configured : EVOLINK_CREDITS_PER_USD_DEFAULT;
+  // ai_jobs.cost_estimate_usd is numeric(10, 4).
+  return Math.round((credits / creditsPerUsd) * 10_000) / 10_000;
+}
 
 type EvolinkTaskResponse = {
   id?: string;
@@ -888,6 +908,12 @@ type EvolinkTaskResponse = {
   results?: string[];
   error?: { message?: string } | string | null;
   fail_reason?: string | null;
+  usage?: {
+    billing_rule?: string;
+    credits_reserved?: number;
+    credits_used?: number;
+    user_group?: string;
+  } | null;
 };
 
 async function generateEvolinkImage({
@@ -984,6 +1010,15 @@ async function generateEvolinkImage({
 
       const imageBase64 = Buffer.from(await imageResponse.arrayBuffer()).toString("base64");
 
+      // Prefer the final consumption figure; fall back to the reservation (the submit
+      // response only carries credits_reserved) so spend is never silently unrecorded.
+      const creditsUsed =
+        task.usage?.credits_used ??
+        task.usage?.credits_reserved ??
+        submitPayload.usage?.credits_used ??
+        submitPayload.usage?.credits_reserved ??
+        null;
+
       return {
         provider: "evolink",
         model,
@@ -991,7 +1026,8 @@ async function generateEvolinkImage({
         revisedPrompt: null,
         latencySeconds: secondsSince(startedAt),
         fallbackUsed: false,
-        error: null
+        error: null,
+        creditsUsed
       };
     }
   }
@@ -1800,6 +1836,7 @@ export async function generateInitialConcept(
     imageLatencySeconds: imageResult.latencySeconds,
     imageFallbackUsed: imageResult.fallbackUsed,
     imageFallbackError: imageResult.error ?? null,
+    imageCreditsUsed: imageResult.creditsUsed ?? null,
     analysis: direction.roomAnalysis,
     concept: direction.concept,
     imageBase64: imageResult.imageBase64,
@@ -1828,6 +1865,7 @@ export type GenerateConceptViewResult = {
   imageLatencySeconds: number;
   imageFallbackUsed: boolean;
   imageFallbackError?: string | null;
+  imageCreditsUsed: number | null;
   imageBase64: string;
 };
 
@@ -1888,6 +1926,7 @@ export async function generateConceptView(
     imageLatencySeconds: imageResult.latencySeconds,
     imageFallbackUsed: imageResult.fallbackUsed,
     imageFallbackError: imageResult.error ?? null,
+    imageCreditsUsed: imageResult.creditsUsed ?? null,
     imageBase64: imageResult.imageBase64
   };
 }
@@ -1961,6 +2000,7 @@ export async function generateFinalRenderView(
     imageLatencySeconds: imageResult.latencySeconds,
     imageFallbackUsed: imageResult.fallbackUsed,
     imageFallbackError: imageResult.error ?? null,
+    imageCreditsUsed: imageResult.creditsUsed ?? null,
     imageBase64: imageResult.imageBase64
   };
 }
@@ -2203,6 +2243,7 @@ export async function generateConceptRevision(
     imageLatencySeconds: imageResult.latencySeconds,
     imageFallbackUsed: imageResult.fallbackUsed,
     imageFallbackError: imageResult.error ?? null,
+    imageCreditsUsed: imageResult.creditsUsed ?? null,
     analysis: direction.roomAnalysis,
     concept: direction.concept,
     imageBase64: imageResult.imageBase64,
@@ -2486,6 +2527,7 @@ export async function generateFinalGroundedRender(
     imageLatencySeconds: imageResult.latencySeconds,
     imageFallbackUsed: imageResult.fallbackUsed,
     imageFallbackError: imageResult.error ?? null,
+    imageCreditsUsed: imageResult.creditsUsed ?? null,
     imageBase64: imageResult.imageBase64,
     revisedPrompt: imageResult.revisedPrompt ?? null
   };
