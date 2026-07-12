@@ -2,12 +2,13 @@ import {
   Button,
   ButtonLink,
   DecorativeRule,
-  MarketingPanel,
+  JourneyNav,
   SectionEyebrow,
+  StepRail,
+  StudioHeader,
   SubmitButton
 } from "@ritzy-studio/ui";
 import Image from "next/image";
-import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
 import { createClient } from "@/lib/supabase/server";
@@ -71,95 +72,127 @@ export default async function RoomPhotosPage({
     })
   );
 
+  const photoCount = signedAssets.length;
+  const footerNote =
+    photoCount === 0
+      ? "Add your first photo to begin."
+      : `${photoCount === 1 ? "One photo" : `${photoCount} photos`} added. Add another or move on — `;
+
   return (
-    <main className="min-h-dvh bg-page text-ink">
-      <header className="flex min-h-20 items-center justify-between border-b border-line bg-surface px-5 md:px-8 lg:px-12 xl:px-16">
-        <Link className="font-display text-[28px] font-light text-ink" href="/">
-          Ri <span className="font-body text-caption font-medium uppercase text-ink-muted">Ritzy Studio</span>
-        </Link>
-        <ButtonLink href="/" leading="←" variant="chrome">
-          Back to studio
-        </ButtonLink>
-      </header>
+    <main className="flex min-h-dvh flex-col bg-page text-ink">
+      <StudioHeader>
+        <JourneyNav current="photos" />
+      </StudioHeader>
 
-      <section className="mx-auto max-w-[720px] px-5 py-8 md:px-8 lg:px-0">
-        <p className="font-body text-caption font-medium uppercase tracking-[0.32em] text-ink-muted">
-          Project — Photos — Brief — Generate — Critique — Match
-        </p>
-        <div className="mt-3 h-px w-32 bg-ink" />
+      <section className="mx-auto flex w-full max-w-[1440px] flex-1 flex-col px-5 py-10 md:px-8 lg:px-12">
+        <StepRail
+          aside="one thing to do here — add your photos"
+          steps={[
+            { numeral: 1, label: "Add your photos", state: "active" },
+            { numeral: 2, label: "The brief comes next", state: "todo" }
+          ]}
+        />
 
-        <SectionEyebrow className="mt-8">N° 05 — Photos</SectionEyebrow>
-        <DecorativeRule className="mt-5" />
-        <h1 className="mt-6 font-display text-display-m font-light leading-[1.05] tracking-[-0.015em] text-ink">
-          Upload the room you want to redesign.
-        </h1>
-        <p className="mt-4 font-body text-body-s text-ink-muted">
-          {project.name} · {room.name}
-          {room.name === room.room_type ? null : ` · ${room.room_type}`}
-        </p>
-        <p className="mt-3 max-w-[62ch] font-body text-body-s text-ink-secondary">
-          Two or three photos from different corners give the design real spatial coverage — walls
-          and openings one frame cannot see. Empty-room photos read the space most accurately; a
-          furnished room works too, and existing furniture will be redesigned.
-        </p>
-        <p className="mt-2 max-w-[62ch] font-body text-caption font-medium uppercase tracking-wider text-ink-muted">
-          01 · stand in a corner, capture the widest view — 02 · cross the room, shoot back — 03 ·
-          optional: the wall the first photo missed
-        </p>
-
-        {message ? (
-          <p className="mt-6 border border-line bg-surface px-4 py-3 font-display text-body-s italic text-ink-secondary">
-            {message}
-          </p>
-        ) : null}
-
-        <MarketingPanel className="mt-8 p-6 md:p-8" elevation="float" tone="paper">
-          <RoomPhotoUploader existingCount={signedAssets.length} roomId={roomId} userId={user.id} />
-        </MarketingPanel>
-
-        {signedAssets.length > 0 ? (
-          <div className="mt-8 grid grid-cols-2 gap-4 md:grid-cols-3">
-            {signedAssets.map((asset, index) => (
-              <figure className="border border-line bg-surface p-3" key={asset.id}>
-                <div className="flex aspect-square items-center justify-center bg-page">
-                  {asset.signedUrl ? (
-                    <Image
-                      alt={`${room.name} room photograph ${index + 1}`}
-                      className="max-h-full max-w-full object-contain"
-                      height={320}
-                      unoptimized
-                      src={asset.signedUrl}
-                      width={320}
-                    />
-                  ) : (
-                    <p className="font-display text-body-s italic text-error">
-                      image could not load
-                    </p>
-                  )}
-                </div>
-                <figcaption className="mt-3 font-body text-caption-tight font-medium uppercase text-ink-muted">
-                  photograph {String(index + 1).padStart(2, "0")}
-                </figcaption>
-                <form action={deleteRoomPhotoAction} className="mt-3">
-                  <input name="projectId" type="hidden" value={projectId} />
-                  <input name="roomId" type="hidden" value={roomId} />
-                  <input name="assetId" type="hidden" value={asset.id} />
-                  <SubmitButton className="h-10 w-full px-4" pendingLabel="Removing..." variant="destructive">
-                    Remove
-                  </SubmitButton>
-                </form>
-              </figure>
-            ))}
+        <div className="mt-10 grid gap-12 lg:grid-cols-[420px_minmax(0,1fr)] lg:gap-14">
+          <div>
+            <SectionEyebrow>Step 01 · N° 05 — The room as it is</SectionEyebrow>
+            <DecorativeRule className="mt-5" />
+            <h1 className="mt-6 font-display text-[44px] font-light leading-[1.05] tracking-[-0.015em] text-ink">
+              Photograph the room you want to <em className="italic">redesign.</em>
+            </h1>
+            <p className="mt-5 max-w-[44ch] font-body text-body-s leading-[1.7] text-ink-secondary">
+              Two or three photos from different corners give the design real spatial coverage — walls
+              and openings one frame cannot see. Empty rooms read most accurately; a furnished room
+              works too.
+            </p>
+            <div className="mt-6 flex flex-col gap-[10px]">
+              {[
+                "Stand in a corner, capture the widest view",
+                "Cross the room, shoot back",
+                "Optional — the wall the first photo missed"
+              ].map((line, index) => (
+                <p className="font-body text-body-s text-ink-muted" key={index}>
+                  <span className="font-body text-caption font-medium tracking-[0.2em] text-accent-deep">
+                    {String(index + 1).padStart(2, "0")}
+                  </span>
+                  &nbsp;&nbsp;{line}
+                </p>
+              ))}
+            </div>
           </div>
-        ) : null}
 
-        <div className="mt-8 flex items-center justify-end gap-6">
-          {signedAssets.length > 0 ? (
-            <ButtonLink href={`/projects/${projectId}/rooms/${roomId}/brief`}>
-              Continue to brief
+          <div>
+            {message ? (
+              <p className="mb-6 border border-line bg-surface px-4 py-3 font-display text-body-s italic text-ink-secondary">
+                {message}
+              </p>
+            ) : null}
+
+            <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+              {signedAssets.map((asset, index) => (
+                <figure key={asset.id}>
+                  <div className="h-[300px] overflow-hidden border border-line bg-page sm:h-[340px]">
+                    {asset.signedUrl ? (
+                      <Image
+                        alt={`${room.name} room photograph ${index + 1}`}
+                        className="h-full w-full object-cover"
+                        height={680}
+                        unoptimized
+                        src={asset.signedUrl}
+                        width={510}
+                      />
+                    ) : (
+                      <p className="flex h-full items-center justify-center font-display text-body-s italic text-error">
+                        image could not load
+                      </p>
+                    )}
+                  </div>
+                  <figcaption className="mt-[10px] flex items-baseline justify-between">
+                    <span className="font-body text-caption-tight font-medium uppercase tracking-[0.28em] text-ink-muted">
+                      Photograph {String(index + 1).padStart(2, "0")}
+                    </span>
+                    <form action={deleteRoomPhotoAction}>
+                      <input name="projectId" type="hidden" value={projectId} />
+                      <input name="roomId" type="hidden" value={roomId} />
+                      <input name="assetId" type="hidden" value={asset.id} />
+                      <SubmitButton
+                        className="text-error hover:text-accent-deep"
+                        pendingLabel="Removing…"
+                        variant="quiet"
+                      >
+                        remove
+                      </SubmitButton>
+                    </form>
+                  </figcaption>
+                </figure>
+              ))}
+
+              <div className="[&_label]:min-h-[300px] sm:[&_label]:min-h-[340px]">
+                <RoomPhotoUploader
+                  existingCount={signedAssets.length}
+                  roomId={roomId}
+                  userId={user.id}
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-auto flex flex-col items-start justify-between gap-6 border-t border-line-strong pt-7 sm:flex-row sm:items-center">
+          <p className="font-body text-body-s text-ink-muted">
+            {footerNote}
+            {photoCount > 0 ? (
+              <span className="text-ink">that is everything for this step.</span>
+            ) : null}
+          </p>
+          {photoCount > 0 ? (
+            <ButtonLink href={`/projects/${projectId}/rooms/${roomId}/brief`} trailing="→">
+              Continue to the brief
             </ButtonLink>
           ) : (
-            <Button disabled>Continue to brief</Button>
+            <Button disabled trailing="→">
+              Continue to the brief
+            </Button>
           )}
         </div>
       </section>

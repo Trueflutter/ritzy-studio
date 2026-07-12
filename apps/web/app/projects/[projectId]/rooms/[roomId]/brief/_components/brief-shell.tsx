@@ -1,5 +1,4 @@
-import { ButtonLink, DecorativeRule, SectionEyebrow } from "@ritzy-studio/ui";
-import Link from "next/link";
+import { ButtonLink, DecorativeRule, JourneyNav, SectionEyebrow, StudioHeader } from "@ritzy-studio/ui";
 import type { ReactNode } from "react";
 
 const steps = ["Style", "Inspiration", "Details", "Questions"] as const;
@@ -27,19 +26,9 @@ export function BriefShell({
 }) {
   return (
     <main className="min-h-dvh bg-page text-ink">
-      <header className="flex min-h-20 items-center justify-between border-b border-line bg-surface px-5 md:px-8 lg:px-12 xl:px-16">
-        <Link className="font-display text-[28px] font-light text-ink" href="/">
-          Ri <span className="font-body text-caption font-medium uppercase text-ink-muted">Ritzy Studio</span>
-        </Link>
-        <div className="flex items-center gap-3">
-          <ButtonLink href={backHref} leading="←" variant="chrome">
-            Previous step
-          </ButtonLink>
-          <ButtonLink href="/" variant="chrome">
-            Studio
-          </ButtonLink>
-        </div>
-      </header>
+      <StudioHeader>
+        <JourneyNav current="brief" showChecks />
+      </StudioHeader>
 
       <div className="mx-auto max-w-[1040px] px-5 py-12 md:px-8 lg:px-12 xl:px-16">
         <BriefProgress currentStep={currentStep} />

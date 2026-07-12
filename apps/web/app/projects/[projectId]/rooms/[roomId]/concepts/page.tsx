@@ -1,13 +1,12 @@
 import {
-  ButtonLink,
   DecorativeRule,
-  MarketingPanel,
+  JourneyNav,
   SectionEyebrow,
+  StudioHeader,
   SubmitButton,
   Textarea
 } from "@ritzy-studio/ui";
 import Image from "next/image";
-import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
 import { reviseConceptAction, selectConceptAction } from "@/app/actions";
@@ -101,9 +100,10 @@ export default async function ConceptsPage({
 
   const { data: roomPhoto } = await supabase
     .from("room_assets")
-    .select("id")
+    .select("id, storage_path")
     .eq("room_id", roomId)
     .eq("asset_type", "room_photo")
+    .order("created_at", { ascending: true })
     .limit(1)
     .maybeSingle();
 
@@ -178,6 +178,33 @@ export default async function ConceptsPage({
     })
   );
 
+  // "Your room, as it is" — the original photograph, shown desaturated beside the
+  // concept views so the designer can read the render against the real space.
+  const originalRoomPhotoUrl =
+    heroConcept && roomPhoto?.storage_path
+      ? (
+          await supabase.storage
+            .from("room-assets")
+            .createSignedUrl(roomPhoto.storage_path, 60 * 60)
+        ).data?.signedUrl ?? null
+      : null;
+
+  const heroThumbs: Array<{ id: string; caption: string; signedUrl: string | null; muted?: boolean }> = [
+    ...heroViews.map((view) => ({ id: view.id, caption: view.caption, signedUrl: view.signedUrl })),
+    ...(originalRoomPhotoUrl || roomPhoto
+      ? [
+          {
+            id: "original-room-photo",
+            caption: "Your room, as it is",
+            signedUrl: originalRoomPhotoUrl,
+            muted: true
+          }
+        ]
+      : [])
+  ];
+
+  const conceptVersion = conceptsWithImages.length;
+
   const hero = heroConcept
     ? {
         ...heroConcept,
@@ -187,244 +214,245 @@ export default async function ConceptsPage({
       }
     : null;
 
-  return (
-    <main className="min-h-dvh bg-page text-ink">
-      <header className="flex min-h-20 items-center justify-between border-b border-line bg-surface px-5 md:px-8 lg:px-12 xl:px-16">
-        <Link className="font-display text-[28px] font-light text-ink" href="/">
-          Ri <span className="font-body text-caption font-medium uppercase text-ink-muted">Ritzy Studio</span>
-        </Link>
-        <ButtonLink href="/" leading="←" variant="chrome">
-          Back to studio
-        </ButtonLink>
-      </header>
+  if (!hero) {
+    return (
+      <main className="min-h-dvh bg-page text-ink">
+        <StudioHeader>
+          <JourneyNav current="concepts" />
+        </StudioHeader>
 
-      <section className="mx-auto max-w-[1280px] px-5 py-8 md:px-8 lg:px-12 xl:px-16">
-        <p className="font-body text-caption font-medium uppercase tracking-[0.32em] text-ink-muted">
-          Project — Photos — Brief — Generate — Critique — Match
-        </p>
-        <div className="mt-3 h-px w-32 bg-ink" />
-
-        <div className="mt-10 flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
-          <div className="max-w-[860px]">
-            <SectionEyebrow>N° 10 — Concepts</SectionEyebrow>
-            <DecorativeRule className="mt-5" />
-            <h1 className="mt-6 font-display text-display-l font-light leading-[1.05] tracking-[-0.015em] text-ink">
-              {hero ? "Your room, reimagined." : "Generate the first room direction."}
-            </h1>
-            <p className="mt-4 font-body text-body-m text-ink-muted">
-              {project.name} · {room.name}
-              {room.name === room.room_type ? null : ` · ${room.room_type}`}
-            </p>
-          </div>
-
-          {hero ? (
-            <ButtonLink
-              href={`/projects/${projectId}/rooms/${roomId}/brief`}
-              leading="←"
-              variant="chrome"
-            >
-              Refine the brief
-            </ButtonLink>
-          ) : null}
-        </div>
-
-        {displayMessage ? (
-          <p className="mt-8 border border-line bg-surface px-4 py-3 font-display text-body-m italic text-ink-secondary">
-            {displayMessage}
+        <section className="mx-auto max-w-[1040px] px-5 py-12 md:px-8 lg:px-12">
+          <SectionEyebrow>N° 10 — Concepts</SectionEyebrow>
+          <DecorativeRule className="mt-5" />
+          <h1 className="mt-6 font-display text-[48px] font-light leading-[1.05] tracking-[-0.015em] text-ink">
+            Generate the first room <em className="italic">direction.</em>
+          </h1>
+          <p className="mt-4 font-body text-body-m text-ink-muted">
+            {project.name} · {room.name}
+            {room.name === room.room_type ? null : ` · ${room.room_type}`}
           </p>
-        ) : null}
 
-        {!hero ? (
+          {displayMessage ? (
+            <p className="mt-8 border border-line bg-surface px-4 py-3 font-display text-body-m italic text-ink-secondary">
+              {displayMessage}
+            </p>
+          ) : null}
+
           <ConceptGenerationPanel
             autoGenerate={autogenerate === "1"}
             canGenerate={canGenerate}
             projectId={projectId}
             roomId={roomId}
           />
-        ) : (
-          <>
-            <article className="mt-10">
-              <MarketingPanel className="p-[14px]" elevation="float" tone="paper">
-                <div className="flex aspect-[4/3] items-center justify-center overflow-hidden bg-page">
-                  {hero.signedUrl ? (
+        </section>
+      </main>
+    );
+  }
+
+  return (
+    <main className="min-h-dvh bg-page text-ink">
+      <StudioHeader>
+        <JourneyNav current="concepts" />
+      </StudioHeader>
+
+      <div className="grid grid-cols-1 border-b border-line lg:grid-cols-[minmax(0,1fr)_400px]">
+        {/* image column — the render dominates */}
+        <div className="bg-surface lg:border-r lg:border-line">
+          <div className="h-[380px] overflow-hidden md:h-[520px] lg:h-[660px]">
+            {hero.signedUrl ? (
+              <Image
+                alt={`${hero.title} — generated concept for ${room.name}`}
+                className="h-full w-full object-cover"
+                height={1320}
+                priority
+                src={hero.signedUrl}
+                unoptimized
+                width={1600}
+              />
+            ) : (
+              <p className="flex h-full items-center justify-center font-display text-body-s italic text-error">
+                render could not load
+              </p>
+            )}
+          </div>
+
+          {heroThumbs.length > 0 ? (
+            <div className="grid grid-cols-3 gap-px border-t border-line bg-line">
+              {heroThumbs.map((thumb) => (
+                <figure className="m-0 bg-surface" key={thumb.id}>
+                  <div className="h-[130px] overflow-hidden md:h-[170px]">
+                    {thumb.signedUrl ? (
+                      <Image
+                        alt={`${hero.title} — ${thumb.caption.toLowerCase()}`}
+                        className={`h-full w-full object-cover${thumb.muted ? " [filter:grayscale(0.25)]" : ""}`}
+                        height={340}
+                        src={thumb.signedUrl}
+                        unoptimized
+                        width={340}
+                      />
+                    ) : (
+                      <p className="flex h-full items-center justify-center px-2 text-center font-display text-caption italic text-error">
+                        view could not load
+                      </p>
+                    )}
+                  </div>
+                  <figcaption
+                    className={`px-4 pb-4 pt-3 font-body text-caption-tight font-medium uppercase tracking-[0.28em] ${
+                      thumb.muted ? "text-ink-subtle" : "text-ink-muted"
+                    }`}
+                  >
+                    {thumb.caption}
+                  </figcaption>
+                </figure>
+              ))}
+            </div>
+          ) : null}
+        </div>
+
+        {/* editorial rail — rationale reads as a note, decisions live in the margin */}
+        <aside className="flex flex-col bg-page px-6 py-11 md:px-10">
+          <SectionEyebrow>
+            N° 10 — Concepts · Version {conceptVersion}
+          </SectionEyebrow>
+          <DecorativeRule className="mt-4" />
+          <h1 className="mt-6 font-display text-[40px] font-light italic leading-[1.08] text-ink">
+            {hero.title}
+          </h1>
+
+          {displayMessage ? (
+            <p className="mt-6 border border-line bg-surface px-4 py-3 font-display text-body-s italic text-ink-secondary">
+              {displayMessage}
+            </p>
+          ) : null}
+
+          {hero.rationale ? (
+            <p className="mt-6 whitespace-pre-line font-body text-body-m leading-[1.7] text-ink-secondary">
+              {hero.rationale}
+            </p>
+          ) : null}
+
+          {hero.uncertainty ? (
+            <div className="mt-7 border-t border-line-strong pt-5">
+              <p className="font-body text-caption font-medium uppercase tracking-[0.32em] text-accent-deep">
+                What we assumed
+              </p>
+              <p className="mt-3 font-display text-body-l italic leading-[1.6] text-ink-secondary">
+                {hero.uncertainty}
+              </p>
+            </div>
+          ) : null}
+
+          {hero.critiques.length > 0 ? (
+            <div className="mt-7 border-t border-line-strong pt-5">
+              <p className="font-body text-caption font-medium uppercase tracking-[0.32em] text-ink-muted">
+                Past critiques
+              </p>
+              <div className="mt-4 space-y-3">
+                {hero.critiques.map((critique) => (
+                  <p
+                    className="border border-line bg-surface px-4 py-3 font-display text-body-s italic text-ink-secondary"
+                    key={critique.id}
+                  >
+                    {critique.critique_text}
+                  </p>
+                ))}
+              </div>
+            </div>
+          ) : null}
+
+          <div className="mt-7 flex flex-col gap-3 border-t border-line-strong pt-5">
+            <p className="font-body text-caption font-medium uppercase tracking-[0.32em] text-ink-muted">
+              If this direction works
+            </p>
+            <form action={selectConceptAction}>
+              <input name="projectId" type="hidden" value={projectId} />
+              <input name="roomId" type="hidden" value={roomId} />
+              <input name="conceptId" type="hidden" value={hero.id} />
+              <SubmitButton className="w-full" pendingLabel="Starting sourcing..." variant="primary">
+                Proceed to sourcing
+              </SubmitButton>
+            </form>
+          </div>
+
+          <div className="mt-6 flex flex-col gap-3 border-t border-line-strong pt-5">
+            <p className="font-body text-caption font-medium uppercase tracking-[0.32em] text-ink-muted">
+              If you&rsquo;d like changes
+            </p>
+            <form action={reviseConceptAction}>
+              <input name="projectId" type="hidden" value={projectId} />
+              <input name="roomId" type="hidden" value={roomId} />
+              <input name="conceptId" type="hidden" value={hero.id} />
+              <Textarea
+                id={`critique-${hero.id}`}
+                label="Describe what to change"
+                name="critique"
+                placeholder="make the palette warmer, keep the sofa placement, reduce ornament..."
+              />
+              <SubmitButton className="w-full" pendingLabel="Generating revision..." variant="secondary">
+                Generate revision
+              </SubmitButton>
+            </form>
+          </div>
+        </aside>
+      </div>
+
+      {earlierConcepts.length > 0 ? (
+        <section className="bg-page px-5 py-11 md:px-8 lg:px-12">
+          <div className="flex flex-col gap-1 sm:flex-row sm:items-baseline sm:justify-between">
+            <p className="font-body text-caption font-medium uppercase tracking-[0.32em] text-ink-muted">
+              Earlier versions
+            </p>
+            <p className="font-display text-button-quiet italic text-ink-subtle">
+              kept as quiet history — select one to bring it back
+            </p>
+          </div>
+          <div className="mt-5 grid grid-cols-2 gap-5 sm:grid-cols-3 lg:grid-cols-4">
+            {earlierConcepts.map((concept) => (
+              <figure className="m-0" key={concept.id}>
+                <div className="h-[150px] overflow-hidden border border-line md:h-[170px]">
+                  {concept.signedUrl ? (
                     <Image
-                      alt={`${hero.title} — generated concept for ${room.name}`}
-                      className="h-full w-full object-cover"
-                      height={1200}
-                      priority
-                      src={hero.signedUrl}
+                      alt={`${concept.title} — earlier concept for ${room.name}`}
+                      className="h-full w-full object-cover opacity-95"
+                      height={340}
+                      src={concept.signedUrl}
                       unoptimized
-                      width={1600}
+                      width={454}
                     />
                   ) : (
-                    <p className="font-display text-body-s italic text-error">render could not load</p>
+                    <p className="flex h-full items-center justify-center font-display text-caption italic text-error">
+                      render could not load
+                    </p>
                   )}
                 </div>
-              </MarketingPanel>
-
-              {heroViews.length > 0 ? (
-                <div className="mt-4 grid gap-4 md:grid-cols-2">
-                  {heroViews.map((view) => (
-                    <figure className="border border-line bg-surface p-3" key={view.id}>
-                      <div className="flex aspect-[16/9] items-center justify-center overflow-hidden bg-page">
-                        {view.signedUrl ? (
-                          <Image
-                            alt={`${hero.title} — ${view.caption.toLowerCase()}`}
-                            className="h-full w-full object-cover"
-                            height={540}
-                            src={view.signedUrl}
-                            unoptimized
-                            width={960}
-                          />
-                        ) : (
-                          <p className="font-display text-body-s italic text-error">
-                            view could not load
-                          </p>
-                        )}
-                      </div>
-                      <figcaption className="mt-3 font-body text-caption-tight font-medium uppercase text-ink-muted">
-                        {view.caption}
-                      </figcaption>
-                    </figure>
-                  ))}
-                </div>
-              ) : null}
-
-              <div className="mx-auto mt-10 max-w-[720px]">
-                <p className="font-body text-caption font-medium uppercase tracking-[0.32em] text-accent-deep">
-                  {hero.isSelected ? "Selected direction" : "Initial concept"}
-                </p>
-                <h2 className="mt-4 font-display text-display-m font-light italic leading-[1.1] text-ink">
-                  {hero.title}
-                </h2>
-                {hero.rationale ? (
-                  <p className="mt-6 whitespace-pre-line font-body text-body-l leading-relaxed text-ink-secondary text-justify">
-                    {hero.rationale}
-                  </p>
-                ) : null}
-
-                {hero.uncertainty ? (
-                  <div className="mt-8 border-t border-line pt-6">
-                    <p className="font-body text-caption font-medium uppercase tracking-[0.32em] text-accent-deep">
-                      What we assumed
-                    </p>
-                    <p className="mt-3 font-body text-body-l leading-relaxed text-ink-secondary text-justify">
-                      {hero.uncertainty}
-                    </p>
-                  </div>
-                ) : null}
-
-                {hero.critiques.length > 0 ? (
-                  <div className="mt-8 border-t border-line pt-6">
-                    <p className="font-body text-caption font-medium uppercase tracking-[0.32em] text-ink-muted">
-                      Past critiques
-                    </p>
-                    <div className="mt-4 space-y-3">
-                      {hero.critiques.map((critique) => (
-                        <p
-                          className="border border-line bg-page px-5 py-4 font-display text-body-m italic text-ink-secondary"
-                          key={critique.id}
-                        >
-                          {critique.critique_text}
-                        </p>
-                      ))}
-                    </div>
-                  </div>
-                ) : null}
-
-                <div className="mt-10 border-t border-line pt-8">
-                  <p className="font-body text-caption font-medium uppercase tracking-[0.32em] text-accent-deep">
-                    If this direction works
-                  </p>
-                  <form action={selectConceptAction} className="mt-5">
+                <figcaption className="mt-[10px] flex items-baseline justify-between gap-3">
+                  <span className="font-body text-caption-tight font-medium uppercase tracking-[0.28em] text-ink-muted">
+                    {concept.title}
+                  </span>
+                  <form action={selectConceptAction}>
                     <input name="projectId" type="hidden" value={projectId} />
                     <input name="roomId" type="hidden" value={roomId} />
-                    <input name="conceptId" type="hidden" value={hero.id} />
+                    <input name="conceptId" type="hidden" value={concept.id} />
                     <SubmitButton
-                      className="w-full"
-                      pendingLabel="Starting sourcing..."
-                      variant="primary"
+                      className="whitespace-nowrap"
+                      pendingLabel="Restoring…"
+                      trailing="→"
+                      variant="quiet"
                     >
-                      Proceed to sourcing
+                      restore
                     </SubmitButton>
                   </form>
-                </div>
-
-                <div className="mt-10 border-t border-line pt-8">
-                  <p className="font-body text-caption font-medium uppercase tracking-[0.32em] text-accent-deep">
-                    If you&rsquo;d like changes
-                  </p>
-                  <form action={reviseConceptAction} className="mt-5">
-                    <input name="projectId" type="hidden" value={projectId} />
-                    <input name="roomId" type="hidden" value={roomId} />
-                    <input name="conceptId" type="hidden" value={hero.id} />
-                    <Textarea
-                      id={`critique-${hero.id}`}
-                      label="Describe what to change"
-                      name="critique"
-                      placeholder="make the palette warmer, keep the sofa placement, reduce ornament..."
-                    />
-                    <SubmitButton className="w-full" pendingLabel="Generating revision..." variant="secondary">
-                      Generate revision
-                    </SubmitButton>
-                  </form>
-                </div>
-              </div>
-            </article>
-
-            {earlierConcepts.length > 0 ? (
-              <section className="mt-16">
-                <DecorativeRule />
-                <p className="mt-6 font-body text-caption font-medium uppercase tracking-[0.32em] text-ink-muted">
-                  Earlier versions
-                </p>
-                <p className="mt-3 max-w-[560px] font-body text-body-s text-ink-muted">
-                  Previous directions for this room. Select one to bring it back as the current
-                  concept.
-                </p>
-                <div className="mt-6 grid gap-6 md:grid-cols-3">
-                  {earlierConcepts.map((concept) => (
-                    <article className="border border-line bg-surface p-3" key={concept.id}>
-                      <div className="flex aspect-[4/3] items-center justify-center overflow-hidden bg-page">
-                        {concept.signedUrl ? (
-                          <Image
-                            alt={`${concept.title} — earlier concept for ${room.name}`}
-                            className="h-full w-full object-cover"
-                            height={600}
-                            src={concept.signedUrl}
-                            unoptimized
-                            width={800}
-                          />
-                        ) : (
-                          <p className="font-display text-body-s italic text-error">
-                            render could not load
-                          </p>
-                        )}
-                      </div>
-                      <h3 className="mt-4 font-display text-display-xs font-light italic leading-snug text-ink">
-                        {concept.title}
-                      </h3>
-                      <form action={selectConceptAction} className="mt-4">
-                        <input name="projectId" type="hidden" value={projectId} />
-                        <input name="roomId" type="hidden" value={roomId} />
-                        <input name="conceptId" type="hidden" value={concept.id} />
-                        <SubmitButton
-                          className="h-10 w-full px-4"
-                          pendingLabel="Selecting..."
-                          variant="secondary"
-                        >
-                          Make this the direction
-                        </SubmitButton>
-                      </form>
-                    </article>
-                  ))}
-                </div>
-              </section>
-            ) : null}
-          </>
-        )}
-
-      </section>
+                </figcaption>
+              </figure>
+            ))}
+            <div className="flex h-[150px] items-center justify-center border border-dashed border-line-strong md:h-[170px]">
+              <p className="font-display text-body-m italic text-ink-subtle">
+                version {conceptVersion} is current
+              </p>
+            </div>
+          </div>
+        </section>
+      ) : null}
     </main>
   );
 }
