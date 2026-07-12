@@ -5,7 +5,7 @@
   "outputDirectory": "apps/web/.next",
   "regions": ["bom1"],
   "functions": {
-    "apps/web/app/api/queues/final-render/route.ts": {
+    "app/api/queues/final-render/route.ts": {
       "experimentalTriggers": [
         {
           "type": "queue/v2beta",
