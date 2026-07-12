@@ -3,16 +3,11 @@
 import {
   analyzeInspirationImages,
   generateClarifyingQuestions,
-  assessRenderSpatialQuality,
   extractConceptImagePalette,
   generateConceptRevision,
   generateConceptView,
-  generateFinalGroundedRender,
-  generateFinalRenderView,
   generateInitialConcept,
-  sourceProductsFromConcept,
-  spatialQaCorrectionLanguage,
-  type ConceptViewKey
+  sourceProductsFromConcept
 } from "@ritzy-studio/ai";
 import type { Database } from "@ritzy-studio/db";
 import {
@@ -44,7 +39,6 @@ import {
   renderReferencePriorityForProduct,
   selectedItemsTotalAed,
   setUserModeSchema,
-  sortProductsForRenderReferences,
   scopedCategoriesForProductRole,
   substitutionModeSchema,
   summarizeRolePoolDiversity,
@@ -59,15 +53,24 @@ import {
   type RoleScopedCandidatePool,
   type RoomProductRoleSpec
 } from "@ritzy-studio/domain";
-import { productMatchingControlledPreviewGate } from "@ritzy-studio/config";
+import { productMatchingControlledPreviewGate, renderExecutionMode } from "@ritzy-studio/config";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { after } from "next/server";
-import sharp from "sharp";
 
 import { createServiceClient } from "@/lib/supabase/service";
 import { createClient } from "@/lib/supabase/server";
 import { FINAL_RENDER_STALE_MS } from "@/lib/render";
+import { CONCEPT_VIEW_KEYS, localSkuFidelityModeEnabled } from "@/lib/render-flags";
+import {
+  type CatalogueReferenceImage,
+  configuredImageModel,
+  configuredImageProvider,
+  fetchRemoteImage,
+  PRODUCT_SOURCING_MAX_IMAGE_BYTES,
+  visionImageDataUrl
+} from "@/lib/render-images";
+import { enqueueFinalRender, runFinalRender } from "@/lib/render-runner";
 import {
   appUrl,
   DESIGNER_MONTHLY_AMOUNT_USD,
@@ -109,7 +112,6 @@ const PRODUCT_SOURCING_IMAGE_PREFLIGHT_TIMEOUT_MS = 8_000;
 // Overall wall-clock budget for a whole preflight batch. Once spent, remaining candidates are
 // passed through optimistically (never rejected), so slow CDNs degrade to latency, not a block.
 const PRODUCT_SOURCING_IMAGE_PREFLIGHT_BUDGET_MS = 20_000;
-const PRODUCT_SOURCING_MAX_IMAGE_BYTES = 20 * 1024 * 1024;
 const PRODUCT_SOURCING_AI_CONCEPT_IMAGE_DETAIL = "low" as const;
 const PRODUCT_SOURCING_AI_CANDIDATE_IMAGE_LIMIT = 0;
 const PRODUCT_SOURCING_AI_CANDIDATE_IMAGE_DETAIL = "low" as const;
@@ -119,12 +121,6 @@ const CATALOGUE_GROUNDED_CONCEPT_PRODUCTS_PER_CATEGORY = 300;
 const CATALOGUE_GROUNDED_CONCEPT_CANDIDATES_PER_ROLE = 12;
 const CATALOGUE_GROUNDED_CONCEPT_FLAT_CANDIDATE_LIMIT = 48;
 const CATALOGUE_GROUNDED_CONCEPT_MIN_ATTRIBUTE_TOTAL = 35;
-// Real catalogue reference images (Home Centre media CDN) are frequently 2-3 MB and take longer
-// than a couple of seconds to download. At 2.5s the largest-image roles (rugs especially) had
-// EVERY candidate time out ("without a fetchable reference image"), which blocked the whole
-// concept ("we need a little more catalogue evidence"). The grounding loop breaks on the first
-// fetchable candidate, so a longer ceiling keeps the happy path fast while rescuing large images.
-const CATALOGUE_GROUNDED_CONCEPT_IMAGE_FETCH_TIMEOUT_MS = 12_000;
 // Per-image timeout is generous (large catalogue images), so bound the WHOLE grounding: without a
 // ceiling, a role whose top candidates all have unfetchable images would fetch each sequentially
 // (~24.75s incl. retry) and could stall the synchronous concept action for minutes. Once this
@@ -136,15 +132,8 @@ const CATALOGUE_GROUNDED_CONCEPT_USER_SAFE_BLOCK_MESSAGE =
 const CATALOGUE_GROUNDED_CONCEPT_REFERENCE_IMAGE_BLOCK_MESSAGE =
   "We found catalogue pieces for this room, but their reference images are not ready yet. Try again in a moment.";
 const LOCAL_SKU_FIDELITY_CANDIDATES_PER_ROLE = 18;
-const LOCAL_SKU_FIDELITY_RENDER_REFERENCE_LIMIT = 12;
 const INTERNAL_PILOT_SIGNUP_MESSAGE =
   "Internal pilot. Only ritzyinteriors.com email domains currently permitted";
-
-function productReferenceOrderingV2Enabled() {
-  return process.env.RITZY_PRODUCT_REFERENCE_ORDERING_V2_ENABLED === "true";
-}
-
-const CONCEPT_VIEW_KEYS: ConceptViewKey[] = ["reverse_wide", "anchor_detail"];
 
 // Downscaled data URLs for the candidate images an AI sourcing call will see.
 // Fetched app-side (with retry) so the vision provider never has to download
@@ -308,153 +297,6 @@ async function generateAndStoreConceptViews({
       })
       .eq("id", viewsJob.id);
   }
-}
-
-// Generates the additional camera angles for a completed final render and records them as
-// final-render room assets, appending their ids to the render job's output_asset_ids (hero first).
-// Runs inside after() AFTER the hero render is committed and the job marked succeeded, so a view
-// failure or a task timeout can never regress the render — the presentation just shows the hero
-// alone. Mirrors generateAndStoreConceptViews; each view is best-effort.
-async function generateAndStoreFinalRenderViews({
-  serviceSupabase,
-  userId,
-  roomId,
-  renderJobId,
-  heroAssetId,
-  roomType,
-  conceptTitle,
-  conceptDescription,
-  heroImageBytes,
-  heroImageStoragePath
-}: {
-  serviceSupabase: ReturnType<typeof createServiceClient>;
-  userId: string;
-  roomId: string;
-  renderJobId: string;
-  heroAssetId: string;
-  roomType: string;
-  conceptTitle: string;
-  conceptDescription?: string | null;
-  heroImageBytes: Buffer;
-  heroImageStoragePath: string;
-}) {
-  const { data: signedHero } = await serviceSupabase.storage
-    .from("generated-renders")
-    .createSignedUrl(heroImageStoragePath, 60 * 30);
-
-  const { data: viewsJob } = await serviceSupabase
-    .from("ai_jobs")
-    .insert({
-      user_id: userId,
-      room_id: roomId,
-      job_type: "final_render_views",
-      status: "running",
-      provider: configuredImageProvider(),
-      model: configuredImageModel(),
-      input_summary: { renderJobId, viewKeys: CONCEPT_VIEW_KEYS }
-    })
-    .select("id")
-    .single();
-
-  const outcomes = await Promise.all(
-    CONCEPT_VIEW_KEYS.map(async (viewKey) => {
-      try {
-        const view = await generateFinalRenderView({
-          roomType,
-          viewKey,
-          conceptTitle,
-          conceptDescription,
-          heroImageBytes,
-          heroImageMimeType: "image/png",
-          heroImageUrl: signedHero?.signedUrl ?? null
-        });
-        const viewPath = `${userId}/${roomId}/final-${renderJobId}-${viewKey}.png`;
-        const { error: uploadError } = await serviceSupabase.storage
-          .from("generated-renders")
-          .upload(viewPath, Buffer.from(view.imageBase64, "base64"), {
-            contentType: "image/png",
-            upsert: true
-          });
-
-        if (uploadError) {
-          throw new Error(uploadError.message);
-        }
-
-        const { data: viewAsset, error: assetError } = await serviceSupabase
-          .from("room_assets")
-          .insert({
-            room_id: roomId,
-            asset_type: "final_render",
-            storage_path: viewPath,
-            mime_type: "image/png",
-            is_primary: false,
-            view_key: viewKey
-          })
-          .select("id")
-          .single();
-
-        if (assetError || !viewAsset) {
-          throw new Error(assetError?.message ?? "Final render view asset insert returned no row.");
-        }
-
-        return {
-          viewKey,
-          ok: true as const,
-          assetId: viewAsset.id,
-          provider: view.imageProvider,
-          fallbackUsed: view.imageFallbackUsed
-        };
-      } catch (error) {
-        console.error(`Final render view generation failed (${viewKey}, render ${renderJobId}):`, error);
-        return {
-          viewKey,
-          ok: false as const,
-          error: error instanceof Error ? error.message : "Final render view generation failed."
-        };
-      }
-    })
-  );
-
-  const viewAssetIds = outcomes
-    .filter((outcome): outcome is Extract<(typeof outcomes)[number], { ok: true }> => outcome.ok)
-    .map((outcome) => outcome.assetId);
-  if (viewAssetIds.length > 0) {
-    // Append the view assets after the hero (index 0 stays the primary render). Guard on the job
-    // still being the succeeded owner so a reclaimed/superseded job is never mutated.
-    await serviceSupabase
-      .from("render_jobs")
-      .update({ output_asset_ids: [heroAssetId, ...viewAssetIds] })
-      .eq("id", renderJobId)
-      .eq("status", "succeeded");
-  }
-
-  if (viewsJob) {
-    const failed = outcomes.filter((outcome) => !outcome.ok);
-    await serviceSupabase
-      .from("ai_jobs")
-      .update({
-        status: failed.length > 0 ? "failed" : "succeeded",
-        completed_at: new Date().toISOString(),
-        error_message: failed.length > 0 ? failed.map((outcome) => `${outcome.viewKey}: ${outcome.error}`).join("; ") : null,
-        output_summary: { renderJobId, outcomes }
-      })
-      .eq("id", viewsJob.id);
-  }
-}
-
-function configuredImageProvider() {
-  return process.env.RITZY_IMAGE_PROVIDER ?? "openai";
-}
-
-function configuredImageModel() {
-  const provider = configuredImageProvider();
-  if (provider === "evolink") {
-    return process.env.EVOLINK_IMAGE_MODEL ?? "gemini-3.1-flash-image-preview";
-  }
-  if (provider === "gemini") {
-    return process.env.GEMINI_IMAGE_MODEL ?? "gemini-3.1-flash-image-preview";
-  }
-  return process.env.OPENAI_IMAGE_MODEL ?? "gpt-image-2";
 }
 
 function productMatchingEngineV1Enabled() {
@@ -1931,25 +1773,6 @@ async function storageImageDataUrl(
   const buffer = Buffer.from(await data.arrayBuffer());
   const contentType = mimeType ?? (data.type || "image/jpeg");
   return visionImageDataUrl(buffer, contentType);
-}
-
-function bytesToDataUrl(bytes: Buffer, mimeType: string) {
-  return `data:${mimeType};base64,${bytes.toString("base64")}`;
-}
-
-// Vision models tile images at ~1k px; sending multi-megabyte originals only
-// adds cost, latency, and gateway cost-estimate rejections. Downscale for
-// vision inputs; image-GENERATION references keep original bytes.
-async function visionImageDataUrl(bytes: Buffer, mimeType: string) {
-  try {
-    const resized = await sharp(bytes)
-      .resize(1024, 1024, { fit: "inside", withoutEnlargement: true })
-      .jpeg({ quality: 78 })
-      .toBuffer();
-    return `data:image/jpeg;base64,${resized.toString("base64")}`;
-  } catch {
-    return bytesToDataUrl(bytes, mimeType);
-  }
 }
 
 async function analyzeAndWriteInspirationForRoom({
@@ -4567,15 +4390,6 @@ export async function generateFinalRenderAction(formData: FormData) {
   if (roomDownloadError || !roomBlob) {
     redirect(`${redirectPath}?message=${encodeURIComponent("The original room photo could not be prepared for final rendering.")}`);
   }
-  const conceptImageAsset = Array.isArray(concept.primary_image_asset)
-    ? concept.primary_image_asset[0]
-    : concept.primary_image_asset;
-  const { data: conceptBlob } = conceptImageAsset?.storage_path
-    ? await serviceSupabase.storage
-        .from("generated-renders")
-        .download(conceptImageAsset.storage_path)
-    : { data: null };
-
   const selectedItemIdsRaw = formData.get("selectedItemIds")?.toString() ?? "";
   const selectedItemIds = selectedItemIdsRaw
     .split(",")
@@ -4700,21 +4514,28 @@ export async function generateFinalRenderAction(formData: FormData) {
   }
 
   const productIds = selectedProducts.map((item) => item.product!.id);
+  const executionMode = renderExecutionMode();
+  const renderJobInputSummary = {
+    selectionKey,
+    selectedShoppingItemIds,
+    productCount: selectedProducts.length,
+    conceptTitle: concept.title,
+    // The durable runner re-derives everything else from the job row; these two save it a
+    // lookup and survive even if the room/project rows change later.
+    userId: user.id,
+    revealPath,
+    executionPath: executionMode
+  };
   const { data: renderJob, error: renderJobError } = await supabase
     .from("render_jobs")
     .insert({
       room_id: roomId,
       concept_id: conceptId,
       shopping_list_id: shoppingListId,
-      status: "running",
+      status: "queued",
       input_asset_ids: [roomPhoto.id],
       product_ids: productIds,
-      input_summary: {
-        selectionKey,
-        selectedShoppingItemIds,
-        productCount: selectedProducts.length,
-        conceptTitle: concept.title
-      }
+      input_summary: renderJobInputSummary
     })
     .select("id")
     .single();
@@ -4727,217 +4548,33 @@ export async function generateFinalRenderAction(formData: FormData) {
     throw new Error(renderJobError.message);
   }
 
-  after(async () => {
+  // Durable path: hand the job id to the Vercel Queues consumer and return. The render then
+  // survives this request being torn down, and failed attempts are redelivered. Locally (and if
+  // enqueueing itself fails) fall back to the in-request after() task through the same runner.
+  let scheduleInline = executionMode === "inline";
+  if (executionMode === "queue") {
     try {
-      const productReferencesForRender = productReferenceOrderingV2Enabled()
-        ? sortProductsForRenderReferences(selectedProducts, room.room_type)
-        : selectedProducts;
-      const renderReferenceLimit = localSkuFidelityModeEnabled(room.room_type)
-        ? LOCAL_SKU_FIDELITY_RENDER_REFERENCE_LIMIT
-        : 8;
-      const productsForRender = await Promise.all(
-        productReferencesForRender.slice(0, renderReferenceLimit).map(async (item) => {
-          const product = item.product!;
-          const image = product.primary_image_url
-            ? await fetchRemoteImage(product.primary_image_url)
-            : null;
-          const dimensions = formatProductDimensionsForRender(product.dimensions?.[0] ?? null);
-
-          return {
-            name: product.name,
-            retailerName: product.retailer?.name ?? "Retailer",
-            category: item.category,
-            roleLabel: item.role_label ?? roleLabelFromSelectionReason(item.selection_reason) ?? item.category,
-            visualMatchReason: item.selection_reason,
-            description: product.description,
-            priceAed: item.unit_price_aed,
-            dimensions,
-            imageBytes: image?.bytes ?? null,
-            imageMimeType: image?.mimeType ?? null,
-            imageUrl: product.primary_image_url ?? null
-          };
-        })
-      );
-      const { data: signedRoomPhotoForRender } = await serviceSupabase.storage
-        .from("room-assets")
-        .createSignedUrl(roomPhoto.storage_path, 60 * 30);
-      const { data: signedConceptImageForRender } = conceptImageAsset?.storage_path
-        ? await serviceSupabase.storage
-            .from("generated-renders")
-            .createSignedUrl(conceptImageAsset.storage_path, 60 * 30)
-        : { data: null };
-      const { data: renderDesignBrief } = await serviceSupabase
-        .from("design_briefs")
-        .select("structured_json")
-        .eq("room_id", roomId)
-        .order("updated_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      const renderSpatialIntent = parseSpatialIntent(renderDesignBrief?.structured_json, room.room_type);
-      const renderSpatialIntentPrompt = {
-        focalPoint: renderSpatialIntent.focalPoint,
-        seatingPriority: renderSpatialIntent.seatingPriority,
-        diningSeatCount: renderSpatialIntent.diningSeatCount,
-        mustKeepClear: renderSpatialIntent.mustKeepClear
-      };
-      const renderInput = {
-        roomType: room.room_type,
-        spatialIntent: renderSpatialIntentPrompt,
-        roomPhotoBytes: Buffer.from(await roomBlob.arrayBuffer()),
-        roomPhotoMimeType: roomPhoto.mime_type,
-        roomPhotoUrl: signedRoomPhotoForRender?.signedUrl ?? null,
-        conceptImageBytes: conceptBlob ? Buffer.from(await conceptBlob.arrayBuffer()) : null,
-        conceptImageMimeType: conceptImageAsset?.mime_type ?? null,
-        conceptImageUrl: signedConceptImageForRender?.signedUrl ?? null,
-        conceptTitle: concept.title,
-        conceptDescription: concept.description,
-        products: productsForRender
-      };
-      let result = await generateFinalGroundedRender(renderInput);
-
-      // Post-render spatial QA: one corrective retry on a hard fail, then keep
-      // the better of the two attempts. QA failure never fails the render.
-      let renderQaVerdict: string | null = null;
-      let renderQaIssues: string[] = [];
-      let renderQaRegenerated = false;
-      try {
-        let qa = await assessRenderSpatialQuality({
-          imageUrl: await visionImageDataUrl(Buffer.from(result.imageBase64, "base64"), "image/png"),
-          roomType: room.room_type,
-          spatialIntent: renderSpatialIntentPrompt
-        });
-        if (qa.qa.verdict === "regenerate" && qa.qa.issues.length > 0) {
-          const retryResult = await generateFinalGroundedRender({
-            ...renderInput,
-            promptSuffix: spatialQaCorrectionLanguage([...qa.qa.issues])
-          });
-          const retryQa = await assessRenderSpatialQuality({
-            imageUrl: await visionImageDataUrl(Buffer.from(retryResult.imageBase64, "base64"), "image/png"),
-            roomType: room.room_type,
-            spatialIntent: renderSpatialIntentPrompt
-          });
-          if (retryQa.qa.verdict !== "regenerate") {
-            result = retryResult;
-            qa = retryQa;
-            renderQaRegenerated = true;
-          }
-        }
-        renderQaVerdict = qa.qa.verdict;
-        renderQaIssues = [...qa.qa.issues];
-      } catch (error) {
-        console.error("Final render spatial QA failed; shipping unreviewed render.", error);
-      }
-      const renderPath = `${user.id}/${roomId}/final-${renderJob.id}.png`;
-      const { error: uploadError } = await serviceSupabase.storage
-        .from("generated-renders")
-        .upload(renderPath, Buffer.from(result.imageBase64, "base64"), {
-          contentType: "image/png",
-          upsert: true
-        });
-
-      if (uploadError) {
-        throw new Error(uploadError.message);
-      }
-
-      const { data: renderAsset, error: renderAssetError } = await serviceSupabase
-        .from("room_assets")
-        .insert({
-          room_id: roomId,
-          asset_type: "final_render",
-          storage_path: renderPath,
-          mime_type: "image/png",
-          is_primary: false
-        })
-        .select("id")
-        .single();
-
-      if (renderAssetError) {
-        throw new Error(renderAssetError.message);
-      }
-
-      // Only record success if THIS job is still running. If a stale-retry reclaimed it (flipped
-      // it to failed) while we were rendering, the `.eq("status", "running")` filter matches no
-      // rows — do not resurrect the reclaimed job (that would duplicate work and leave two
-      // succeeded jobs for one selection); discard the render we just produced instead.
-      const { data: completedRows, error: completeError } = await serviceSupabase
-        .from("render_jobs")
-        .update({
-          status: "succeeded",
-          completed_at: new Date().toISOString(),
-          prompt_key: result.promptKey,
-          prompt_version: result.promptVersion,
-          model: result.imageModel,
-          output_asset_ids: [renderAsset.id],
-          input_summary: {
-            selectionKey,
-            selectedShoppingItemIds,
-            productCount: selectedProducts.length,
-            productImageReferencesUsed: productsForRender.filter((product) => product.imageBytes).length,
-            revisedPrompt: result.revisedPrompt ?? null,
-            imageProvider: result.imageProvider,
-            imageModel: result.imageModel,
-            imagePromptVersion: result.promptVersion,
-            imageLatencySeconds: result.imageLatencySeconds,
-            imageFallbackUsed: result.imageFallbackUsed,
-            imageFallbackError: result.imageFallbackError ?? null,
-            spatialQaVerdict: renderQaVerdict,
-            spatialQaIssues: renderQaIssues,
-            spatialQaRegenerated: renderQaRegenerated
-          }
-        })
-        .eq("id", renderJob.id)
-        .eq("status", "running")
-        .select("id");
-
-      // A DB error is NOT a reclamation — only an empty result set (0 rows, no error) means the
-      // job was reclaimed. On error, re-throw so the catch handles it; never delete the render
-      // we just produced on a transient failure.
-      if (completeError) {
-        throw new Error(completeError.message);
-      }
-      if (completedRows.length === 0) {
-        await serviceSupabase.storage.from("generated-renders").remove([renderPath]);
-        await serviceSupabase.from("room_assets").delete().eq("id", renderAsset.id);
-        return;
-      }
-
-      await serviceSupabase.from("rooms").update({ status: "rendering" }).eq("id", roomId);
-      revalidatePath(revealPath);
-
-      // The hero render is committed and the job is succeeded. Generate the additional camera
-      // angles best-effort in the same task: any failure or a task timeout leaves the hero-only
-      // presentation intact (its own try/catch keeps this off the render's failure path).
-      try {
-        await generateAndStoreFinalRenderViews({
-          serviceSupabase,
-          userId: user.id,
-          roomId,
-          renderJobId: renderJob.id,
-          heroAssetId: renderAsset.id,
-          roomType: room.room_type,
-          conceptTitle: concept.title,
-          conceptDescription: concept.description,
-          heroImageBytes: Buffer.from(result.imageBase64, "base64"),
-          heroImageStoragePath: renderPath
-        });
-        revalidatePath(revealPath);
-      } catch (error) {
-        console.error("Final render view generation failed; shipping hero-only render.", error);
-      }
+      await enqueueFinalRender(renderJob.id);
     } catch (error) {
-      // Same guard: never overwrite a job that was already reclaimed/finalised by another path.
+      console.error(
+        `Final render enqueue failed for job ${renderJob.id}; falling back to in-request execution.`,
+        error
+      );
+      scheduleInline = true;
       await serviceSupabase
         .from("render_jobs")
-        .update({
-          status: "failed",
-          completed_at: new Date().toISOString(),
-          error_message: error instanceof Error ? error.message : "Final render generation failed."
-        })
+        .update({ input_summary: { ...renderJobInputSummary, executionPath: "inline-fallback" } })
         .eq("id", renderJob.id)
-        .eq("status", "running");
-      revalidatePath(revealPath);
+        .eq("status", "queued");
     }
-  });
+  }
+  if (scheduleInline) {
+    after(() =>
+      runFinalRender({ renderJobId: renderJob.id, attempt: { mode: "inline" } }).catch((error) => {
+        console.error(`Inline final render execution failed for job ${renderJob.id}.`, error);
+      })
+    );
+  }
 
   revalidatePath(redirectPath);
   revalidatePath(revealPath);
@@ -5253,10 +4890,6 @@ type DesignBriefRow = Database["public"]["Tables"]["design_briefs"]["Row"];
 type AnsweredQuestionRow = {
   question: string;
   answer: string | null;
-};
-type CatalogueReferenceImage = {
-  bytes: Buffer;
-  mimeType: string;
 };
 type CatalogueGroundingProduct = {
   role: RoomProductRoleSpec;
@@ -5683,18 +5316,6 @@ async function buildCatalogueGroundedConceptPlan({
 
 function catalogueGroundingRoleKey(category: string, label: string) {
   return `${category}::${label}`.toLowerCase();
-}
-
-function localAestheticTasteGateEnabled() {
-  return process.env.RITZY_AESTHETIC_TASTE_GATE === "1";
-}
-
-function localSkuFidelityModeEnabled(roomType: string) {
-  return (
-    localAestheticTasteGateEnabled() &&
-    process.env.NODE_ENV !== "production" &&
-    roomType.toLowerCase().includes("living")
-  );
 }
 
 async function previousShoppingListRefreshHistory({
@@ -7607,37 +7228,6 @@ function normalizeSourcingCategory(category: string, roleLabel: string) {
   return normalizeProductMatchRoleResultCategory(category, roleLabel);
 }
 
-function roleLabelFromSelectionReason(selectionReason: string | null) {
-  return selectionReason?.match(/room role: ([^;]+)/)?.[1]?.trim() ?? null;
-}
-
-function formatProductDimensionsForRender(
-  dimensions:
-    | {
-        width_cm: number | null;
-        depth_cm: number | null;
-        height_cm: number | null;
-        source_text: string | null;
-      }
-    | null
-) {
-  if (!dimensions) {
-    return null;
-  }
-
-  if (dimensions.source_text) {
-    return dimensions.source_text;
-  }
-
-  const parts = [
-    dimensions.width_cm ? `W ${dimensions.width_cm} cm` : null,
-    dimensions.depth_cm ? `D ${dimensions.depth_cm} cm` : null,
-    dimensions.height_cm ? `H ${dimensions.height_cm} cm` : null
-  ].filter(Boolean);
-
-  return parts.length > 0 ? parts.join(" x ") : null;
-}
-
 function missingLocalSkuFidelityRenderRoles({
   roomType,
   selectedCategories
@@ -7668,86 +7258,3 @@ function formatAedValue(value: number) {
   })}`;
 }
 
-async function fetchRemoteImage(url: string): Promise<CatalogueReferenceImage | null> {
-  // Retailer CDNs rate-limit and flake; one quick retry rescues most transient
-  // failures without meaningfully slowing the happy path.
-  const first = await fetchRemoteImageOnce(url);
-  if (first) {
-    return first;
-  }
-  await new Promise((resolve) => setTimeout(resolve, 750));
-  return fetchRemoteImageOnce(url);
-}
-
-async function fetchRemoteImageOnce(url: string): Promise<CatalogueReferenceImage | null> {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), CATALOGUE_GROUNDED_CONCEPT_IMAGE_FETCH_TIMEOUT_MS);
-
-  try {
-    const response = await fetch(url, {
-      signal: controller.signal,
-      headers: {
-        "user-agent": "RitzyStudioBot/0.1 (+https://ritzy-studio.local; final render references)"
-      }
-    });
-
-    if (!response.ok) {
-      return null;
-    }
-
-    const mimeType = response.headers.get("content-type")?.split(";")[0] ?? "image/jpeg";
-    if (!["image/jpeg", "image/png", "image/webp"].includes(mimeType)) {
-      return null;
-    }
-
-    const contentLength = Number(response.headers.get("content-length"));
-    if (Number.isFinite(contentLength) && contentLength > PRODUCT_SOURCING_MAX_IMAGE_BYTES) {
-      return null;
-    }
-
-    const bytes = await readResponseBytesWithLimit(response, PRODUCT_SOURCING_MAX_IMAGE_BYTES);
-    if (!bytes) {
-      return null;
-    }
-
-    return {
-      bytes: Buffer.from(bytes),
-      mimeType
-    };
-  } catch {
-    return null;
-  } finally {
-    clearTimeout(timeout);
-  }
-}
-
-async function readResponseBytesWithLimit(response: Response, maxBytes: number) {
-  const reader = response.body?.getReader();
-  if (!reader) {
-    return null;
-  }
-
-  const chunks: Uint8Array[] = [];
-  let totalBytes = 0;
-
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) {
-      break;
-    }
-
-    if (!value) {
-      continue;
-    }
-
-    totalBytes += value.byteLength;
-    if (totalBytes > maxBytes) {
-      await reader.cancel();
-      return null;
-    }
-
-    chunks.push(value);
-  }
-
-  return Buffer.concat(chunks, totalBytes);
-}
