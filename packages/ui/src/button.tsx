@@ -2,7 +2,14 @@ import type { AnchorHTMLAttributes, ButtonHTMLAttributes, ReactNode } from "reac
 
 import { cx } from "./utils";
 
-export type ButtonVariant = "primary" | "secondary" | "accent" | "quiet" | "chrome" | "destructive";
+export type ButtonVariant =
+  | "primary"
+  | "secondary"
+  | "accent"
+  | "quiet"
+  | "chrome"
+  | "destructive"
+  | "paper";
 
 type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
   variant?: ButtonVariant;
@@ -22,7 +29,10 @@ const variantClasses: Record<ButtonVariant, string> = {
   chrome:
     "h-auto border-transparent bg-transparent px-0 py-1 font-body text-caption font-medium uppercase tracking-[0.32em] text-[var(--rs-text-muted)] hover:text-[var(--rs-text)] disabled:text-[var(--rs-text-disabled)]",
   destructive:
-    "border-[var(--rs-destructive)] bg-transparent text-[var(--rs-destructive)] hover:bg-[var(--rs-destructive)] hover:text-[var(--rs-surface)] disabled:border-[var(--rs-border-strong)] disabled:bg-transparent disabled:text-[var(--rs-text-disabled)]"
+    "border-[var(--rs-destructive)] bg-transparent text-[var(--rs-destructive)] hover:bg-[var(--rs-destructive)] hover:text-[var(--rs-surface)] disabled:border-[var(--rs-border-strong)] disabled:bg-transparent disabled:text-[var(--rs-text-disabled)]",
+  // Paper fill for use on ink surfaces (dark reveal + ledger bands).
+  paper:
+    "border-[var(--rs-text-on-ink)] bg-[var(--rs-text-on-ink)] text-[var(--rs-text)] hover:border-[var(--rs-surface)] hover:bg-[var(--rs-surface)] disabled:border-transparent disabled:bg-[rgba(242,237,228,0.3)] disabled:text-[var(--rs-text-muted)]"
 };
 
 export function Button({

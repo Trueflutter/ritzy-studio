@@ -1,6 +1,15 @@
-import { AnimatedStatus, AutoSubmit, ButtonLink, SubmitButton } from "@ritzy-studio/ui";
+import {
+  AnimatedStatus,
+  AutoSubmit,
+  ButtonLink,
+  DecorativeRule,
+  GradientPlaceholder,
+  JourneyNav,
+  SectionEyebrow,
+  StudioHeader,
+  SubmitButton
+} from "@ritzy-studio/ui";
 import Image from "next/image";
-import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
 import {
@@ -128,18 +137,9 @@ export default async function ProductMatchingPage({
   if (!shoppingList) {
     return (
       <main className="flex min-h-dvh flex-col bg-page text-ink">
-        <header className="flex min-h-20 items-center justify-between border-b border-line bg-surface px-5 md:px-8 lg:px-12 xl:px-16">
-          <Link className="font-display text-[28px] font-light text-ink" href="/">
-            Ri <span className="font-body text-caption font-medium uppercase text-ink-muted">Ritzy Studio</span>
-          </Link>
-          <ButtonLink
-            href={`/projects/${projectId}/rooms/${roomId}/concepts`}
-            leading="←"
-            variant="chrome"
-          >
-            Back to concepts
-          </ButtonLink>
-        </header>
+        <StudioHeader>
+          <JourneyNav current="sourcing" />
+        </StudioHeader>
 
         <section className="mx-auto flex w-full max-w-[640px] flex-1 flex-col items-center justify-center px-5 py-24 text-center">
           <p className="font-body text-caption font-medium uppercase tracking-[0.32em] text-ink-muted">
@@ -256,316 +256,346 @@ export default async function ProductMatchingPage({
   const latestRenderJob = (conceptRenderJobs ?? [])[0] ?? null;
 
   const shoppingItemsList = shoppingItems ?? [];
+  const latestRender = finalRenders[0] ?? null;
+  const heroSrc = latestRender?.signedUrl ?? signedConceptImage?.signedUrl ?? null;
+  const heroLabel = latestRender ? "Final render" : "Selected concept";
+  const estimatedTotal = shoppingList.estimated_total_aed;
+  const estimatedTotalDisplay =
+    estimatedTotal === null || estimatedTotal === undefined
+      ? "—"
+      : Number(estimatedTotal).toLocaleString("en-AE", { maximumFractionDigits: 0 });
+  const rowGrid =
+    "grid grid-cols-[96px_minmax(0,1fr)] items-center gap-x-7 gap-y-3 border-t border-line px-5 py-5 md:px-8 lg:grid-cols-[128px_minmax(0,1.4fr)_minmax(0,1fr)_140px_150px_190px] lg:px-12";
 
   return (
     <main className="min-h-dvh bg-page text-ink">
-      <header className="flex min-h-20 items-center justify-between border-b border-line bg-surface px-5 md:px-8 lg:px-12 xl:px-16">
-        <Link className="font-display text-[28px] font-light text-ink" href="/">
-          Ri <span className="font-body text-caption font-medium uppercase text-ink-muted">Ritzy Studio</span>
-        </Link>
-        <ButtonLink href={`/projects/${projectId}/rooms/${roomId}/concepts`} leading="←" variant="chrome">
-          Back to concepts
-        </ButtonLink>
-      </header>
+      <StudioHeader>
+        <JourneyNav current="sourcing" />
+      </StudioHeader>
 
-      <section className="mx-auto max-w-[1280px] px-5 py-8 md:px-8 lg:px-12 xl:px-16">
-        <p className="font-body text-caption font-medium uppercase tracking-[0.32em] text-ink-muted">
-          Project — Photos — Brief — Generate — Critique — Match
-        </p>
-        <div className="mt-3 h-px w-32 bg-ink" />
-
-        <div className="mt-10 max-w-[860px]">
-          <p className="font-body text-caption font-medium uppercase tracking-[0.32em] text-ink-muted">
-            N° 06 — Product Matching
-          </p>
-          <h1 className="mt-4 font-display text-display-l font-light leading-[1.05] tracking-[-0.015em] text-ink">
-            {finalRenders.length > 0
-              ? "Your grounded room is ready."
-              : "Pieces matched to your concept."}
-          </h1>
-          <p className="mt-4 font-body text-body-m text-ink-muted">
-            {project.name} · {room.name} · {room.room_type}
+      {/* top — the render stays central, the intro sits beside it */}
+      <div className="grid grid-cols-1 border-b border-line lg:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)]">
+        <div className="bg-surface lg:border-r lg:border-line">
+          <div className="h-[360px] overflow-hidden md:h-[480px] lg:h-[560px]">
+            {heroSrc ? (
+              <Image
+                alt={latestRender ? "Final grounded room render" : `${selectedConcept.title} concept render`}
+                className="h-full w-full object-cover"
+                height={1120}
+                priority
+                src={heroSrc}
+                unoptimized
+                width={1512}
+              />
+            ) : (
+              <p className="flex h-full items-center justify-center font-display text-body-s italic text-error">
+                selected render could not load
+              </p>
+            )}
+          </div>
+          <p className="border-t border-line px-6 py-[14px] font-body text-caption-tight font-medium uppercase tracking-[0.28em] text-ink-muted md:px-8">
+            {heroLabel} · {selectedConcept.title} — renders are design direction, the list below is the record
           </p>
         </div>
 
-        {message ? (
-          <p className="mt-8 border border-line bg-surface px-4 py-3 font-display text-body-m italic text-ink-secondary">
-            {message}
+        <div className="flex flex-col justify-center bg-page px-6 py-11 md:px-10">
+          <SectionEyebrow>N° 06 — Product Matching</SectionEyebrow>
+          <DecorativeRule className="mt-4" />
+          <h1 className="mt-6 font-display text-[48px] font-light leading-[1.05] tracking-[-0.015em] text-ink">
+            {finalRenders.length > 0 ? (
+              "Your grounded room is ready."
+            ) : (
+              <>
+                Pieces matched to <em className="italic">the concept.</em>
+              </>
+            )}
+          </h1>
+          <p className="mt-[18px] font-body text-body-m leading-[1.65] text-ink-secondary">
+            Sourced from the live UAE catalog against your palette, avoid-colours and budget. Swap any
+            piece; selected and alternate choices stay aligned.
           </p>
-        ) : null}
+          <p className="mt-2 font-body text-body-s text-ink-muted">
+            {project.name} · {room.name} · {room.room_type}
+          </p>
 
-        {(() => {
-          const latestRender = finalRenders[0] ?? null;
-          const heroSrc = latestRender?.signedUrl ?? signedConceptImage?.signedUrl ?? null;
-          const heroAlt = latestRender
-            ? "Final grounded room render"
-            : `${selectedConcept.title} concept render`;
-          const heroLabel = latestRender ? "Final render" : "Selected concept";
-
-          return (
-            <article className="mt-10 border border-line bg-surface p-[14px]">
-              <div className="flex aspect-[4/3] items-center justify-center overflow-hidden bg-page">
-                {heroSrc ? (
-                  <Image
-                    alt={heroAlt}
-                    className="h-full w-full object-cover"
-                    height={1200}
-                    priority
-                    unoptimized
-                    src={heroSrc}
-                    width={1600}
-                  />
-                ) : (
-                  <p className="font-display text-body-s italic text-error">
-                    selected render could not load
-                  </p>
-                )}
-              </div>
-              <div className="mx-auto mt-5 max-w-[880px] border-t border-line px-6 pb-8 pt-8 md:px-10">
-                <p className="font-body text-caption font-medium uppercase tracking-[0.32em] text-ink-muted">
-                  {heroLabel}
-                </p>
-                <h2 className="mt-3 font-display text-display-s font-light italic text-ink">
-                  {selectedConcept.title}
-                </h2>
-                {latestRender ? (
-                  <p className="mt-3 font-body text-body-s text-ink-muted">
-                    Rendered {new Date(latestRender.created_at).toLocaleDateString("en-AE")}
-                  </p>
-                ) : null}
-              </div>
-            </article>
-          );
-        })()}
-
-        <section className="mt-16 border-t border-line pt-10">
-          <div className="flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
-            <div className="max-w-[680px]">
-              <p className="font-body text-caption font-medium uppercase tracking-[0.32em] text-ink-muted">
-                Shopping plan
-              </p>
-              <h2 className="mt-4 font-display text-display-m font-light italic text-ink">
-                Sourced from the live catalog.
-              </h2>
-              <p className="mt-3 font-body text-body-s text-ink-muted">
-                Estimated total ·{" "}
-                <span className="font-display text-body-l font-light italic text-ink">
-                  {formatAed(shoppingList.estimated_total_aed)}
-                </span>
-              </p>
-            </div>
-
-            <div className="flex shrink-0 flex-col items-stretch gap-3 md:flex-row md:items-center">
-              <ButtonLink
-                href={`/projects/${projectId}/rooms/${roomId}/shopping-list`}
-                trailing="→"
-              >
-                Open shopping list
-              </ButtonLink>
-              <form action={groundProductsAction}>
-                <input name="projectId" type="hidden" value={projectId} />
-                <input name="roomId" type="hidden" value={roomId} />
-                <input name="conceptId" type="hidden" value={selectedConcept.id} />
-                <SubmitButton pendingLabel="Refreshing matches..." variant="secondary">
-                  Refresh matches
-                </SubmitButton>
-              </form>
-            </div>
+          <div className="mt-8 flex flex-wrap items-baseline gap-3">
+            <span className="font-body text-caption font-medium uppercase tracking-[0.32em] text-accent-deep [font-feature-settings:'tnum','lnum']">
+              AED
+            </span>
+            <span className="font-display text-[44px] font-light text-ink [font-feature-settings:'tnum','lnum']">
+              {estimatedTotalDisplay}
+            </span>
+            <span className="font-body text-caption font-medium uppercase tracking-[0.32em] text-ink-muted">
+              estimated · {shoppingItemsList.length} {shoppingItemsList.length === 1 ? "piece" : "pieces"}
+            </span>
           </div>
 
-          <div className="mt-10 grid gap-5 md:grid-cols-2 xl:grid-cols-3">
-            {shoppingItemsList.length > 0 ? (
-              shoppingItemsList.map((item) => {
-                const product = item.product;
-                const dimensions = product?.dimensions?.[0];
-                const warningText = [item.dimension_fit_note, item.selection_reason]
-                  .filter(Boolean)
-                  .join(" ");
+          <div className="mt-7 flex flex-col items-stretch gap-3 sm:flex-row sm:items-center">
+            <ButtonLink href={`/projects/${projectId}/rooms/${roomId}/shopping-list`} trailing="→">
+              Open shopping list
+            </ButtonLink>
+            <form action={groundProductsAction}>
+              <input name="projectId" type="hidden" value={projectId} />
+              <input name="roomId" type="hidden" value={roomId} />
+              <input name="conceptId" type="hidden" value={selectedConcept.id} />
+              <SubmitButton className="w-full" pendingLabel="Refreshing matches..." variant="secondary">
+                Refresh matches
+              </SubmitButton>
+            </form>
+          </div>
+        </div>
+      </div>
 
-                return (
-                  <article className="border border-line bg-surface p-[14px]" key={item.id}>
-                    <div className="aspect-square overflow-hidden border border-line bg-page">
-                      {product?.primary_image_url ? (
-                        <Image
-                          alt={`${product.name} product image`}
-                          className="h-full w-full object-cover"
-                          height={800}
-                          unoptimized
-                          src={product.primary_image_url}
-                          width={800}
-                        />
-                      ) : (
-                        <div className="flex h-full items-center justify-center">
-                          <p className="font-display text-body-s italic text-error">
-                            image missing
-                          </p>
-                        </div>
-                      )}
-                    </div>
-                    <div className="mt-5 px-[6px] pb-[6px]">
-                      <p className="font-body text-caption font-medium uppercase text-ink-muted">
-                        {product?.retailer?.name ?? "Retailer"} · {item.category}
-                      </p>
-                      <h3 className="mt-3 font-display text-display-xs font-light italic text-ink">
-                        {product?.name ?? "Product unavailable"}
-                      </h3>
-                      <div className="mt-4 space-y-2 font-body text-body-s text-ink-secondary">
-                        <p>
-                          Price: {formatAed(item.unit_price_aed)}
-                          {product?.sale_price_aed ? " sale" : ""}
-                        </p>
-                        <p>Availability: {product?.availability ?? "not available"}</p>
-                        <p>
-                          Dimensions:{" "}
-                          {dimensions?.source_text ??
-                            dimensionsText(dimensions?.width_cm, dimensions?.depth_cm, dimensions?.height_cm)}
-                        </p>
-                      </div>
-                      {warningText ? (
-                        <p className="mt-4 border border-line bg-page px-4 py-3 font-display text-body-s italic text-warning">
-                          {warningText}
-                        </p>
+      {message ? (
+        <p className="border-b border-line bg-surface px-5 py-3 font-display text-body-m italic text-ink-secondary md:px-8 lg:px-12">
+          {message}
+        </p>
+      ) : null}
+
+      {latestRender ? (
+        <p className="border-b border-line bg-surface px-5 py-3 font-body text-body-s text-ink-muted md:px-8 lg:px-12">
+          Grounded render made {new Date(latestRender.created_at).toLocaleDateString("en-AE")} — shown above.
+        </p>
+      ) : null}
+
+      {/* ledger — products as a materials record, not a retail grid */}
+      <div className="bg-surface">
+        <div className="flex flex-col gap-1 px-5 pt-6 sm:flex-row sm:items-baseline sm:justify-between md:px-8 lg:px-12">
+          <p className="font-body text-caption font-medium uppercase tracking-[0.32em] text-ink-muted">
+            The ledger — selected pieces
+          </p>
+          <p className="font-display text-button-quiet italic text-ink-subtle">
+            the shopping list remains the source of truth
+          </p>
+        </div>
+
+        {shoppingItemsList.length > 0 ? (
+          <div className="mt-[18px] flex flex-col">
+            {shoppingItemsList.map((item) => {
+              const product = item.product;
+              const dimensions = product?.dimensions?.[0];
+              const warningText = [item.dimension_fit_note, item.selection_reason]
+                .filter(Boolean)
+                .join(" ");
+              const quantity = item.quantity ?? 1;
+              const priceDisplay =
+                item.unit_price_aed === null || item.unit_price_aed === undefined
+                  ? null
+                  : Number(item.unit_price_aed).toLocaleString("en-AE", { maximumFractionDigits: 0 });
+
+              return (
+                <div className={rowGrid} key={item.id}>
+                  <div className="h-24 w-24 overflow-hidden border border-line bg-page">
+                    {product?.primary_image_url ? (
+                      <Image
+                        alt={`${product.name} product image`}
+                        className="h-full w-full object-cover"
+                        height={256}
+                        src={product.primary_image_url}
+                        unoptimized
+                        width={256}
+                      />
+                    ) : (
+                      <GradientPlaceholder
+                        caption={
+                          <>
+                            image
+                            <br />
+                            unavailable
+                          </>
+                        }
+                        captionClassName="text-[13px] leading-tight"
+                        className="h-full w-full"
+                      />
+                    )}
+                  </div>
+
+                  <div className="min-w-0">
+                    <p className="font-body text-caption-tight font-medium uppercase tracking-[0.28em] text-ink-muted">
+                      {product?.retailer?.name ?? "Retailer"} · {item.category}
+                    </p>
+                    <h3 className="mt-2 font-display text-display-xs font-light italic text-ink">
+                      {product?.name ?? "Product unavailable"}
+                      {quantity > 1 ? (
+                        <span className="ml-2 align-middle font-body text-caption-tight font-medium not-italic tracking-[0.2em] text-ink-muted">
+                          × {quantity}
+                        </span>
                       ) : null}
-                      {canAccessCommerce && product?.canonical_url ? (
-                        <ButtonLink
-                          className="mt-5"
-                          href={product.canonical_url}
-                          rel="noreferrer"
-                          target="_blank"
+                    </h3>
+                    {warningText ? (
+                      <p className="mt-2 font-display text-body-m italic leading-snug text-warning">
+                        {warningText}
+                      </p>
+                    ) : null}
+                    {canAccessCommerce && product?.canonical_url ? (
+                      <ButtonLink
+                        className="mt-2"
+                        href={product.canonical_url}
+                        rel="noreferrer"
+                        target="_blank"
+                        trailing="→"
+                        variant="quiet"
+                      >
+                        open retailer page
+                      </ButtonLink>
+                    ) : null}
+                  </div>
+
+                  <p className="font-body text-body-s text-ink-secondary [font-feature-settings:'tnum','lnum']">
+                    <span className="font-medium uppercase tracking-[0.2em] text-ink-muted lg:hidden">
+                      Dimensions:{" "}
+                    </span>
+                    {dimensions?.source_text ??
+                      dimensionsText(dimensions?.width_cm, dimensions?.depth_cm, dimensions?.height_cm)}
+                  </p>
+
+                  <p className={`font-body text-body-s ${availabilityTone(product?.availability)}`}>
+                    ● {product?.availability ?? "not available"}
+                  </p>
+
+                  <p className="lg:text-right [font-feature-settings:'tnum','lnum']">
+                    <span className="font-body text-caption font-medium uppercase tracking-[0.28em] text-accent-deep">
+                      AED{" "}
+                    </span>
+                    <span className="font-display text-[22px] font-normal text-ink">
+                      {priceDisplay ?? "not available"}
+                    </span>
+                    {product?.sale_price_aed ? (
+                      <span className="ml-1 font-body text-caption-tight uppercase tracking-[0.2em] text-accent-deep">
+                        sale
+                      </span>
+                    ) : null}
+                  </p>
+
+                  <div className="lg:text-right">
+                    {canAccessCommerce && shoppingList ? (
+                      <form action={substituteProductAction}>
+                        <input name="projectId" type="hidden" value={projectId} />
+                        <input name="roomId" type="hidden" value={roomId} />
+                        <input name="shoppingListId" type="hidden" value={shoppingList.id} />
+                        <input name="itemId" type="hidden" value={item.id} />
+                        <label className="sr-only" htmlFor={`mode-${item.id}`}>
+                          Swap request for {product?.name ?? "this piece"}
+                        </label>
+                        <select
+                          className="h-10 w-full border border-line-strong bg-transparent px-3 font-body text-body-s text-ink focus:outline focus:outline-2 focus:outline-offset-2 focus:outline-ring lg:w-auto lg:min-w-[150px]"
+                          id={`mode-${item.id}`}
+                          name="mode"
+                        >
+                          <option value="cheaper">cheaper option</option>
+                          <option value="closer_style">closer style</option>
+                          <option value="same_retailer">same retailer</option>
+                          <option value="in_stock">in stock only</option>
+                        </select>
+                        <SubmitButton
+                          className="mt-2 whitespace-nowrap lg:w-full lg:justify-end"
+                          pendingLabel="Swapping…"
                           trailing="→"
                           variant="quiet"
                         >
-                          open retailer page
-                        </ButtonLink>
-                      ) : null}
-                      {canAccessCommerce && shoppingList ? (
-                        <form action={substituteProductAction} className="mt-5 border-t border-line pt-5">
-                          <input name="projectId" type="hidden" value={projectId} />
-                          <input name="roomId" type="hidden" value={roomId} />
-                          <input name="shoppingListId" type="hidden" value={shoppingList.id} />
-                          <input name="itemId" type="hidden" value={item.id} />
-                          <label
-                            className="mb-3 block font-body text-caption font-medium uppercase text-ink-muted"
-                            htmlFor={`mode-${item.id}`}
-                          >
-                            Swap request
-                          </label>
-                          <select
-                            className="h-[52px] w-full border border-line-strong bg-transparent px-4 font-body text-body-s text-ink focus:outline focus:outline-2 focus:outline-offset-2 focus:outline-ring"
-                            id={`mode-${item.id}`}
-                            name="mode"
-                          >
-                            <option value="cheaper">cheaper option</option>
-                            <option value="closer_style">closer style</option>
-                            <option value="same_retailer">same retailer</option>
-                            <option value="in_stock">in stock only</option>
-                          </select>
-                          <SubmitButton className="mt-4 w-full" pendingLabel="Finding substitute..." variant="secondary">
-                            Swap this item
-                          </SubmitButton>
-                        </form>
-                      ) : null}
-                    </div>
-                  </article>
-                );
-              })
-            ) : (
-              <div className="border border-line bg-surface p-10 md:col-span-2 xl:col-span-3">
-                <p className="font-display text-display-xs font-light italic text-ink">
-                  No pieces sourced yet.
-                </p>
-                <p className="mt-3 max-w-[560px] font-body text-body-s text-ink-secondary">
-                  Press <span className="italic">Refresh matches</span> above to match catalog
-                  products with prices, dimensions, and retailer links.
-                </p>
-              </div>
-            )}
+                          swap
+                        </SubmitButton>
+                      </form>
+                    ) : (
+                      <span className="font-display text-button-quiet italic text-ink-disabled">—</span>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="border-t border-line px-5 py-12 md:px-8 lg:px-12">
+            <p className="font-display text-display-xs font-light italic text-ink">
+              No pieces sourced yet.
+            </p>
+            <p className="mt-3 max-w-[560px] font-body text-body-s text-ink-secondary">
+              Press <span className="italic">Refresh matches</span> above to match catalog products
+              with prices, dimensions, and retailer links.
+            </p>
+          </div>
+        )}
+      </div>
+
+      {/* ink CTA band — ground the concept with the sourced pieces */}
+      {shoppingList && shoppingItemsList.length > 0 ? (
+        <div className="flex flex-col gap-8 bg-[var(--rs-surface-ink)] px-5 py-9 md:px-8 lg:flex-row lg:items-center lg:justify-between lg:px-12">
+          <div className="max-w-[640px]">
+            <p className="font-body text-caption font-medium uppercase tracking-[0.32em] text-ink-on-dark-muted">
+              Final render
+            </p>
+            <p className="mt-[10px] font-display text-[28px] font-light text-ink-on-dark">
+              Ground the concept with{" "}
+              <em className="italic text-accent">these pieces.</em>
+            </p>
+            <p className="mt-2 font-body text-body-s text-ink-on-dark-muted">
+              The render uses your sourced product images as visual references. The shopping list
+              above remains the source of truth.
+            </p>
+            {latestRenderJob?.status === "failed" ? (
+              <p className="mt-4 font-display text-body-s italic text-accent">
+                {latestRenderJob.error_message ?? "Final render failed."}
+              </p>
+            ) : null}
+          </div>
+
+          <form action={generateFinalRenderAction} className="shrink-0">
+            <input name="projectId" type="hidden" value={projectId} />
+            <input name="roomId" type="hidden" value={roomId} />
+            <input name="conceptId" type="hidden" value={selectedConcept.id} />
+            <input name="shoppingListId" type="hidden" value={shoppingList?.id ?? ""} />
+            <SubmitButton pendingLabel="Generating final render..." variant="paper">
+              {finalRenders.length > 0 ? "Regenerate render" : "Generate final render"}
+            </SubmitButton>
+          </form>
+        </div>
+      ) : null}
+
+      {finalRenders.length > 1 ? (
+        <section className="bg-page px-5 py-11 md:px-8 lg:px-12">
+          <p className="font-body text-caption font-medium uppercase tracking-[0.32em] text-ink-muted">
+            Earlier renders
+          </p>
+          <div className="mt-5 grid gap-6 md:grid-cols-2 xl:grid-cols-3">
+            {finalRenders.slice(1).map((render) => (
+              <figure className="m-0" key={render.id}>
+                <div className="h-[220px] overflow-hidden border border-line bg-surface">
+                  {render.signedUrl ? (
+                    <Image
+                      alt="Earlier grounded room render"
+                      className="h-full w-full object-cover"
+                      height={640}
+                      src={render.signedUrl}
+                      unoptimized
+                      width={854}
+                    />
+                  ) : (
+                    <p className="flex h-full items-center justify-center font-display text-body-s italic text-error">
+                      render could not load
+                    </p>
+                  )}
+                </div>
+                <figcaption className="mt-[10px] font-body text-caption-tight font-medium uppercase tracking-[0.28em] text-ink-muted">
+                  {new Date(render.created_at).toLocaleDateString("en-AE")}
+                </figcaption>
+              </figure>
+            ))}
           </div>
         </section>
-
-        {shoppingList && shoppingItemsList.length > 0 ? (
-          <section className="mt-16 border-t border-line pt-10">
-            <div className="flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
-              <div className="max-w-[680px]">
-                <p className="font-body text-caption font-medium uppercase tracking-[0.32em] text-ink-muted">
-                  Final render
-                </p>
-                <h2 className="mt-4 font-display text-display-m font-light italic text-ink">
-                  {finalRenders.length > 0
-                    ? "The grounded render is live above."
-                    : "Generate the grounded render."}
-                </h2>
-                <p className="mt-3 max-w-[560px] font-body text-body-s text-ink-secondary">
-                  The render uses your sourced product images as visual references. The shopping
-                  list above remains the source of truth.
-                </p>
-                {latestRenderJob?.status === "failed" ? (
-                  <p className="mt-5 border border-line bg-surface px-4 py-3 font-display text-body-s italic text-error">
-                    {latestRenderJob.error_message ?? "Final render failed."}
-                  </p>
-                ) : null}
-              </div>
-
-              <form action={generateFinalRenderAction} className="shrink-0">
-                <input name="projectId" type="hidden" value={projectId} />
-                <input name="roomId" type="hidden" value={roomId} />
-                <input name="conceptId" type="hidden" value={selectedConcept.id} />
-                <input name="shoppingListId" type="hidden" value={shoppingList?.id ?? ""} />
-                <SubmitButton pendingLabel="Generating final render...">
-                  {finalRenders.length > 0 ? "Regenerate render" : "Generate final render"}
-                </SubmitButton>
-              </form>
-            </div>
-
-            {finalRenders.length > 1 ? (
-              <div className="mt-10">
-                <p className="font-body text-caption font-medium uppercase tracking-[0.32em] text-ink-muted">
-                  Earlier renders
-                </p>
-                <div className="mt-5 grid gap-6 md:grid-cols-2 xl:grid-cols-3">
-                  {finalRenders.slice(1).map((render) => (
-                    <article className="border border-line bg-surface p-[14px]" key={render.id}>
-                      <div className="flex aspect-[4/3] items-center justify-center overflow-hidden bg-page">
-                        {render.signedUrl ? (
-                          <Image
-                            alt="Earlier grounded room render"
-                            className="h-full w-full object-cover"
-                            height={900}
-                            unoptimized
-                            src={render.signedUrl}
-                            width={1200}
-                          />
-                        ) : (
-                          <p className="font-display text-body-s italic text-error">
-                            render could not load
-                          </p>
-                        )}
-                      </div>
-                      <div className="mt-5 border-t border-line px-[18px] pb-[18px] pt-5">
-                        <p className="font-body text-caption font-medium uppercase tracking-[0.32em] text-ink-muted">
-                          {new Date(render.created_at).toLocaleDateString("en-AE")}
-                        </p>
-                      </div>
-                    </article>
-                  ))}
-                </div>
-              </div>
-            ) : null}
-          </section>
-        ) : null}
-      </section>
+      ) : null}
     </main>
   );
 }
 
-function formatAed(value: number | null | undefined) {
-  if (value === null || value === undefined) {
-    return "AED not available";
+function availabilityTone(availability: string | null | undefined) {
+  const value = (availability ?? "").toLowerCase();
+  if (value.includes("out of stock") || value.includes("unavailable")) {
+    return "text-error";
   }
-
-  return `AED ${Number(value).toLocaleString("en-AE", {
-    maximumFractionDigits: 0
-  })}`;
+  if (value.includes("in stock") || value.includes("available")) {
+    return "text-success";
+  }
+  return "text-warning";
 }
 
 function dimensionsText(
