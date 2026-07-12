@@ -156,9 +156,9 @@ export default async function RoomPhotosPage({
                       <input name="roomId" type="hidden" value={roomId} />
                       <input name="assetId" type="hidden" value={asset.id} />
                       <SubmitButton
-                        className="h-8 border-none bg-transparent px-0 font-display text-button-quiet normal-case italic tracking-normal text-error hover:bg-transparent hover:text-accent-deep"
+                        className="text-error hover:text-accent-deep"
                         pendingLabel="Removing…"
-                        variant="destructive"
+                        variant="quiet"
                       >
                         remove
                       </SubmitButton>
