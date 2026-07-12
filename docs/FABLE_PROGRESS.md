@@ -454,3 +454,39 @@ render did not. Extended the `generateConceptView` pattern to the final render.
 - PR #2 (item 5, `fable/multi-angle-final-render`, stacked) — open, verified live.
 - No further queue items started. Env still HOSTED at time of writing — revert to local before
   handing back (`bash scripts/dev-harness/use-env.sh local` + restart dev server).
+
+## 2026-07-12 (session 5 — Claude Fable 5 — closing the remaining engineering queue)
+
+Prod verified green first (`/` 307 -> /login 200). Working the 5-item queue from
+FABLE_HANDOVER_NEXT_SESSION.md, one PR per item.
+
+### Item 1 — render durability via Vercel Queues (PR opened, PARKED at the merge gate)
+Branch `fable/render-durability-queue`. Plan (attacked + hardened by plan-attacker; two blocking
+findings fixed in design): `plans/2026-07-12_render-durability-queue.md`.
+- The final render's after() body moved verbatim into `apps/web/lib/render-runner.ts`
+  (`runFinalRender({ renderJobId, attempt })`), which re-fetches everything from the render_jobs
+  row. Claim CAS (queued|running -> running), unchanged success/failure CAS, terminal no-op on
+  redelivery, and ATTEMPT-UNIQUE hero storage paths (`final-<jobId>-<nonce>.png`) — the attacker
+  proved the old job-keyed path + upsert would let a redelivery overwrite a committed hero.
+- Action inserts `status: "queued"` + dispatches by `renderExecutionMode()` (packages/config):
+  queue on Vercel, inline after() locally / on enqueue failure (`executionPath` recorded).
+- Error contract: inline + validation errors + final queue attempt -> CAS-fail with the real
+  error; queue attempts below cap 3 rethrow so Queues redelivers (60s).
+- Consumer: `apps/web/app/api/queues/final-render/route.ts` (air-gapped `queue/v2beta` trigger in
+  vercel.json — the functions pattern must be FRAMEWORK-relative (`app/api/...`), the repo-relative
+  `apps/web/app/...` fails the build in 2s). maxDuration 800.
+- Presentation views window now measures from `completed_at` (retried renders would previously
+  fall outside the created_at-based window and never auto-reveal their views).
+- VERIFIED: local inline E2E through the real action (job queued -> claimed running ->
+  provider attempt; failure path CAS-failed with the real provider error + executionPath/userId/
+  revealPath stashed); redelivery no-op probe on a terminal job (PASS, 4ms, no provider call);
+  render.test.ts + render-reclamation.test.mjs + all package tests + pnpm check green; preview
+  deploy Ready with the trigger registered on the deployment (confirmed via deployments API).
+- BLOCKED (batched for Ayo): **Evolink credits exhausted** (needs ~4.6/render, 0.70 available) so
+  the SUCCESS path (hero+views) could not be re-verified anywhere; preview env secrets
+  (SUPABASE_SERVICE_ROLE_KEY etc. — the sandbox correctly refused both `vercel env pull` of prod
+  and secret writes to the preview scope) so the live durable-path proof (send -> consume ->
+  teardown survival -> forced-redelivery idempotency) is pending. Per the plan's merge gate the
+  PR is parked, NOT merge-ready, until that proof runs. Probe scripts left untracked in
+  scripts/dev-harness (`local-render-runner-verify.mjs`) and apps/web/lib
+  (`render-runner-noop-probe.mts`).
