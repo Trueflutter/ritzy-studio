@@ -450,18 +450,7 @@ export function buildInitialConceptSystemPrompt({
     .join("\n");
 }
 
-export function buildInitialConceptImagePrompt({
-  generationPrompt,
-  roomType,
-  hasInspirationImages,
-  catalogueProductSummary,
-  styleSlugs = [],
-  useInteriorPromptV2 = false,
-  strictSourceRoomPreservation = false,
-  spatialIntent = null,
-  measurements = null,
-  additionalRoomPhotoCount = 0
-}: {
+type InitialConceptImagePromptInput = {
   generationPrompt: string;
   roomType: string;
   hasInspirationImages?: boolean;
@@ -476,7 +465,64 @@ export function buildInitialConceptImagePrompt({
     roomDepthCm?: number | null;
     ceilingHeightCm?: number | null;
   } | null;
-}) {
+};
+
+// Evolink rejects image prompts past a ~4000-token cap. This prompt's prose measures
+// 5.27 chars/token on the o200k tokenizer (2026-07-13 audit); 17k chars is ~3,225 tokens at
+// that ratio and stays under the cap even at a pessimistic 4.4 chars/token. The clamp below
+// degrades the VARIABLE inputs (catalogue summary first, then the generation prompt) and
+// never touches the fixed design-language blocks, so a worst-case brief cannot push the
+// submit over the cap. See initial-concept-prompt-budget.test.ts for the adversarial proof.
+export const INITIAL_CONCEPT_IMAGE_PROMPT_CHAR_BUDGET = 17_000;
+const INITIAL_CONCEPT_GENERATION_PROMPT_FLOOR_CHARS = 800;
+
+export function buildInitialConceptImagePrompt(input: InitialConceptImagePromptInput) {
+  let current = { ...input };
+  let prompt = assembleInitialConceptImagePrompt(current);
+
+  // Give back the overflow from the catalogue summary first (anchors keep their leading,
+  // highest-priority lines and still reach the renderer as reference images; dropping the
+  // summary entirely also drops its fixed framing lines), then — as a last resort — from
+  // the generation prompt, never below a floor that keeps the concept direction intact.
+  // Iterative because each trim changes the assembled length non-linearly.
+  for (let pass = 0; pass < 4 && prompt.length > INITIAL_CONCEPT_IMAGE_PROMPT_CHAR_BUDGET; pass++) {
+    const overflow = prompt.length - INITIAL_CONCEPT_IMAGE_PROMPT_CHAR_BUDGET;
+    const summary = current.catalogueProductSummary ?? "";
+    if (summary.length > 0) {
+      const trimmed = truncateForPrompt(summary, summary.length - overflow);
+      current = { ...current, catalogueProductSummary: trimmed.length > 0 ? trimmed : null };
+    } else if (current.generationPrompt.length > INITIAL_CONCEPT_GENERATION_PROMPT_FLOOR_CHARS) {
+      current = {
+        ...current,
+        generationPrompt: truncateForPrompt(
+          current.generationPrompt,
+          Math.max(
+            INITIAL_CONCEPT_GENERATION_PROMPT_FLOOR_CHARS,
+            current.generationPrompt.length - overflow
+          )
+        )
+      };
+    } else {
+      break;
+    }
+    prompt = assembleInitialConceptImagePrompt(current);
+  }
+
+  return prompt;
+}
+
+function assembleInitialConceptImagePrompt({
+  generationPrompt,
+  roomType,
+  hasInspirationImages,
+  catalogueProductSummary,
+  styleSlugs = [],
+  useInteriorPromptV2 = false,
+  strictSourceRoomPreservation = false,
+  spatialIntent = null,
+  measurements = null,
+  additionalRoomPhotoCount = 0
+}: InitialConceptImagePromptInput) {
   if (!useInteriorPromptV2) {
     return [
       generationPrompt,
@@ -542,6 +588,9 @@ export function buildInitialConceptImagePrompt({
 }
 
 function truncateForPrompt(value: string, maxChars: number) {
+  if (maxChars <= 0) {
+    return "";
+  }
   const collapsed = value.replace(/\s+/g, " ").trim();
   return collapsed.length <= maxChars ? collapsed : `${collapsed.slice(0, maxChars - 1)}…`;
 }
@@ -1610,6 +1659,30 @@ function catalogueProductSummary(
     .join("\n");
 }
 
+// The image model has tight prompt-token limits; keep the anchor summary to the visual
+// facts the renderer can act on (mirrors the final render's slimming). Full descriptions
+// and selection rationales still reach the DIRECTION model via
+// catalogueProductDirectionContent — the text endpoint has generous limits.
+export function catalogueProductImageSummary(
+  products: NonNullable<GenerateInitialConceptInput["catalogueProducts"]>
+) {
+  return products
+    .map((product, index) =>
+      [
+        `${index + 1}. ${product.roleLabel}: ${product.name}`,
+        product.category ? `category: ${product.category}` : null,
+        product.description ? `description: ${truncateForPrompt(product.description, 140)}` : null,
+        product.color ? `color: ${product.color}` : null,
+        product.material ? `material: ${product.material}` : null,
+        product.styleTags?.length ? `style: ${product.styleTags.slice(0, 3).join(", ")}` : null,
+        product.dimensions ? `dimensions: ${product.dimensions}` : null
+      ]
+        .filter(Boolean)
+        .join("; ")
+    )
+    .join("\n");
+}
+
 function catalogueProductDirectionContent(
   products: NonNullable<GenerateInitialConceptInput["catalogueProducts"]>
 ) {
@@ -1748,7 +1821,7 @@ export async function generateInitialConcept(
     roomType: input.roomType,
     hasInspirationImages: Boolean(input.inspirationImageUrls?.length),
     catalogueProductSummary: input.catalogueProducts?.length
-      ? catalogueProductSummary(input.catalogueProducts)
+      ? catalogueProductImageSummary(input.catalogueProducts)
       : null,
     styleSlugs: input.styleSlugs,
     useInteriorPromptV2,

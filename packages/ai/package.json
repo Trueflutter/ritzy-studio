@@ -8,7 +8,7 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "tsx src/product-enrichment.test.ts && tsx src/product-sourcing-payload.test.ts && tsx src/initial-concept-prompt.test.ts && tsx src/concept-view-prompt.test.ts && tsx src/final-render-view-prompt.test.ts && tsx src/final-grounded-render-prompt.test.ts"
+    "test": "tsx src/product-enrichment.test.ts && tsx src/product-sourcing-payload.test.ts && tsx src/initial-concept-prompt.test.ts && tsx src/initial-concept-prompt-budget.test.ts && tsx src/concept-view-prompt.test.ts && tsx src/final-render-view-prompt.test.ts && tsx src/final-grounded-render-prompt.test.ts"
   },
   "dependencies": {
     "@ritzy-studio/config": "workspace:*",
