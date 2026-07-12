@@ -95,6 +95,9 @@ export default async function DashboardPage() {
         .select("room_id, storage_path, created_at")
         .in("room_id", roomIds)
         .eq("asset_type", "final_render")
+        // Hero renders only — multi-angle views (reverse/detail) carry a view_key and
+        // must never win the cover slot over the primary render.
+        .is("view_key", null)
         .order("created_at", { ascending: false })
     : { data: [] };
 

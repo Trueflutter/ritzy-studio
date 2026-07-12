@@ -38,17 +38,22 @@ export function JourneyNav({ current, showChecks = false, tone = "paper", classN
   return (
     <nav
       aria-label={`Journey — step ${currentIndex + 1} of ${STEPS.length}`}
-      className={cx("flex items-center gap-2", className)}
+      className={cx("flex flex-wrap items-center gap-y-1", className)}
     >
       {STEPS.map((step, index) => {
         const isPast = index < currentIndex;
         const isCurrent = index === currentIndex;
         const color = isCurrent ? currentColor : isPast ? pastColor : futureColor;
 
+        // Narrow screens show only the current step to avoid horizontal overflow;
+        // the full breadcrumb appears from the sm breakpoint up.
         return (
-          <span className="flex items-center gap-2" key={step.key}>
+          <span
+            className={cx("items-center gap-2", isCurrent ? "flex" : "hidden sm:flex")}
+            key={step.key}
+          >
             {index > 0 ? (
-              <span aria-hidden className={dashColor}>
+              <span aria-hidden className={cx("hidden sm:inline", dashColor)}>
                 —
               </span>
             ) : null}

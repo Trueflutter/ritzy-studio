@@ -237,6 +237,9 @@ export default async function ProductMatchingPage({
         .select("*")
         .eq("asset_type", "final_render")
         .in("id", conceptRenderAssetIds)
+        // Hero renders only — multi-angle views carry a view_key and must not be
+        // promoted into the hero slot (finalRenders[0]) by created_at ordering.
+        .is("view_key", null)
         .order("created_at", { ascending: false })
         .limit(4)
     : { data: [] };
