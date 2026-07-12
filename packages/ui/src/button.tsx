@@ -18,7 +18,7 @@ const variantClasses: Record<ButtonVariant, string> = {
   accent:
     "border-[var(--rs-accent)] bg-[var(--rs-accent)] text-[var(--rs-primary)] hover:border-[var(--rs-accent-deep)] hover:bg-[var(--rs-accent-deep)] disabled:border-[var(--rs-border-strong)] disabled:bg-transparent disabled:text-[var(--rs-text-disabled)]",
   quiet:
-    "h-auto border-transparent bg-transparent px-0 py-1 font-display text-[var(--rs-text)] italic tracking-normal hover:text-[var(--rs-accent-deep)] disabled:text-[var(--rs-text-disabled)]",
+    "h-auto border-transparent bg-transparent px-0 py-1 font-display text-[var(--rs-accent-deep)] italic tracking-normal hover:text-[var(--rs-accent)] disabled:text-[var(--rs-text-disabled)]",
   chrome:
     "h-auto border-transparent bg-transparent px-0 py-1 font-body text-caption font-medium uppercase tracking-[0.32em] text-[var(--rs-text-muted)] hover:text-[var(--rs-text)] disabled:text-[var(--rs-text-disabled)]",
   destructive:

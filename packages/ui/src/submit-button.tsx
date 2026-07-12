@@ -8,6 +8,8 @@ import { Button, type ButtonVariant } from "./button";
 type SubmitButtonProps = Omit<ButtonHTMLAttributes<HTMLButtonElement>, "type"> & {
   pendingLabel?: ReactNode;
   variant?: ButtonVariant;
+  leading?: ReactNode;
+  trailing?: ReactNode;
 };
 
 export function SubmitButton({
