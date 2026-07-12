@@ -2,12 +2,12 @@ import {
   AnimatedStatus,
   ButtonLink,
   DecorativeRule,
-  MarketingPanel,
+  JourneyNav,
   SectionEyebrow,
+  StudioHeader,
   SubmitButton
 } from "@ritzy-studio/ui";
 import Image from "next/image";
-import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
 import { generateFinalRenderAction } from "@/app/actions";
@@ -212,98 +212,87 @@ export default async function PresentationPage({
       ? listItems.reduce((total, item) => total + currentLineTotalAed(item), 0)
       : shoppingList?.estimated_total_aed;
   const roomLabel = `${project.client_name?.trim().split(/\s+/)[0] ?? "Your"}'s ${room.room_type.toLowerCase()}`;
+  const estimatedDisplay =
+    currentEstimateAed === null || currentEstimateAed === undefined
+      ? "not available"
+      : Number(currentEstimateAed).toLocaleString("en-AE", { maximumFractionDigits: 0 });
 
   return (
-    <main className="min-h-dvh bg-surface text-ink print:bg-surface">
+    <main className="min-h-dvh bg-[var(--rs-surface-ink)] text-ink-on-dark print:bg-surface print:text-ink">
       <RenderRefresh enabled={showRenderProgress || showViewProgress} />
-      <header className="flex min-h-20 items-center justify-between border-b border-line bg-surface px-5 md:px-8 lg:px-12 xl:px-16 print:hidden">
-        <Link className="font-display text-[28px] font-light text-ink" href="/">
-          Ri <span className="font-body text-caption font-medium uppercase text-ink-muted">Ritzy Studio</span>
-        </Link>
+      <StudioHeader className="print:hidden" tone="ink">
+        <div className="hidden items-center gap-6 sm:flex">
+          <JourneyNav current="presentation" tone="ink" />
+        </div>
         <div className="flex flex-wrap items-center justify-end gap-3">
-          <ButtonLink href="/" trailing="→" variant="secondary">
-            Studio
-          </ButtonLink>
-          <ButtonLink
-            href={`/projects/${projectId}/rooms/${roomId}/concepts`}
-            trailing="→"
-            variant="secondary"
-          >
-            Concepts
-          </ButtonLink>
           {commerceUnlocked ? (
             <ButtonLink
               href={`/projects/${projectId}/rooms/${roomId}/shopping-list`}
               trailing="→"
-              variant="primary"
+              variant="paper"
             >
               Shopping list
             </ButtonLink>
           ) : null}
         </div>
-      </header>
+      </StudioHeader>
 
-      <section className="mx-auto max-w-[1180px] px-5 py-12 md:px-8 lg:px-12 xl:px-16 print:px-0 print:py-0">
-        <div className="grid gap-10 lg:grid-cols-[minmax(0,1fr)_320px] print:block">
-          <div>
-            <SectionEyebrow>N° 11 — Room Preview</SectionEyebrow>
-            <DecorativeRule className="mt-5" />
-            <h1 className="mt-7 font-display text-display-l font-light leading-none tracking-[-0.015em] text-ink print:text-display-m">
-              {commerceUnlocked ? (project.client_name ?? project.name) : roomLabel}
-            </h1>
-            <p className="mt-4 font-body text-caption font-medium uppercase tracking-[0.18em] text-ink-muted">
-              {commerceUnlocked ? "Ritzy Studio Room Preview" : "The reveal"}
-            </p>
-            <p className="mt-5 max-w-[680px] font-body text-body-m text-ink-secondary">
-              {commerceUnlocked
-                ? `${room.name} · ${room.room_type} · ${project.location ?? "Dubai / UAE"}`
-                : "Your selected pieces, brought together in the room."}
-            </p>
-          </div>
-
-          <MarketingPanel as="aside" tone="paper" className="p-5 print:mt-8 print:shadow-none">
-            <p className="font-body text-caption font-medium uppercase text-ink-muted">
-              Estimated furniture total
-            </p>
-            <p className="mt-5 font-display text-display-xs font-light tracking-[-0.01em] text-ink">
-              {formatAed(currentEstimateAed)}
-            </p>
-            <p className="mt-4 font-body text-body-s text-ink-secondary">
-              {listItems.length} selected catalog item{listItems.length === 1 ? "" : "s"}
-              {commerceUnlocked ? "." : " included in this direction."}
-            </p>
-            {showShoppingListUnlock ? (
-              <div className="mt-6 border-t border-line pt-5">
-                <p className="mb-5 font-body text-body-s text-ink-secondary">
-                  Unlock the shopping list when you are ready to buy this room — retailer links and
-                  product details open after payment.
-                </p>
-                <UnlockShoppingListCta projectId={projectId} roomId={roomId} />
-                <ButtonLink
-                  className="mt-4"
-                  href={`/projects/${projectId}/rooms/${roomId}/shopping-list`}
-                  trailing="→"
-                  variant="secondary"
-                >
-                  Change selected pieces
-                </ButtonLink>
-              </div>
-            ) : null}
-          </MarketingPanel>
+      {/* title block — reveal name on the left, estimated total on the right */}
+      <div className="flex flex-col gap-8 px-5 pb-8 pt-14 md:px-8 lg:flex-row lg:items-end lg:justify-between lg:px-12 print:px-0 print:pt-8">
+        <div>
+          <p className="font-body text-caption font-medium uppercase tracking-[0.32em] text-accent print:text-accent-deep">
+            {commerceUnlocked ? "N° 11 — Room Preview" : "N° 11 — The reveal"}
+          </p>
+          <span aria-hidden className="mt-[18px] block h-px w-14 bg-accent" />
+          <h1 className="mt-6 font-display text-[52px] font-light leading-[0.98] tracking-[-0.015em] text-ink-on-dark md:text-[64px] lg:text-[72px] print:text-ink print:text-display-m">
+            {commerceUnlocked ? (project.client_name ?? project.name) : roomLabel}
+          </h1>
+          <p className="mt-[18px] max-w-[680px] font-body text-body-m text-ink-on-dark-muted print:text-ink-secondary">
+            {commerceUnlocked
+              ? `${room.name} · ${room.room_type} · ${project.location ?? "Dubai / UAE"}`
+              : "Your selected pieces, brought together in the room."}
+          </p>
         </div>
+        <div className="lg:pb-[6px] lg:text-right">
+          <p className="font-body text-caption font-medium uppercase tracking-[0.32em] text-ink-on-dark-muted print:text-ink-muted">
+            Estimated furniture total
+          </p>
+          <p className="mt-3 [font-feature-settings:'tnum','lnum']">
+            <span className="font-body text-caption font-medium uppercase tracking-[0.28em] text-accent">
+              AED{" "}
+            </span>
+            <span className="font-display text-[46px] font-light italic text-ink-on-dark print:text-ink">
+              {estimatedDisplay}
+            </span>
+          </p>
+          <p className="mt-2 font-body text-body-s text-ink-on-dark-muted print:text-ink-secondary [font-feature-settings:'tnum','lnum']">
+            {listItems.length} selected catalog item{listItems.length === 1 ? "" : "s"}
+            {commerceUnlocked ? "." : " included in this direction."}
+          </p>
+        </div>
+      </div>
 
-        <section className="mt-10 print:mt-8">
-          <div className="aspect-[3/2] border border-line bg-page">
-            {finalRenderUrl ? (
+      {/* hero render — full-bleed within the gutters */}
+      <div className="px-5 md:px-8 lg:px-12 print:px-0">
+        {finalRenderUrl ? (
+          <>
+            <div className="overflow-hidden">
               <Image
                 alt="Final client room render"
-                className="h-full w-full object-cover"
+                className="h-[420px] w-full object-cover md:h-[560px] lg:h-[720px]"
                 height={1024}
-                unoptimized
                 src={finalRenderUrl}
+                unoptimized
                 width={1536}
               />
-            ) : showRenderProgress ? (
+            </div>
+            <p className="mt-[14px] font-body text-caption-tight font-medium uppercase tracking-[0.28em] text-ink-on-dark-muted print:text-ink-muted">
+              Final render · hero view
+            </p>
+          </>
+        ) : (
+          <div className="aspect-[3/2] border border-line bg-page text-ink">
+            {showRenderProgress ? (
               <div className="flex h-full items-center justify-center p-8">
                 <div className="max-w-[520px] text-center">
                   <p className="font-body text-caption font-medium uppercase tracking-[0.32em] text-ink-muted">
@@ -346,54 +335,77 @@ export default async function PresentationPage({
               </div>
             )}
           </div>
-          {finalRenderUrl && additionalRenderViews.length > 0 ? (
-            <div className="mt-4 grid gap-4 sm:grid-cols-2 print:grid-cols-2">
-              {additionalRenderViews.map((view) => (
-                <figure key={view.url} className="border border-line bg-page">
-                  <div className="aspect-[3/2]">
-                    <Image
-                      alt={`Final client room render — ${view.label.toLowerCase()}`}
-                      className="h-full w-full object-cover"
-                      height={1024}
-                      unoptimized
-                      src={view.url}
-                      width={1536}
-                    />
-                  </div>
-                  <figcaption className="border-t border-line px-4 py-2 font-body text-caption font-medium uppercase tracking-[0.28em] text-ink-muted">
-                    {view.label}
-                  </figcaption>
-                </figure>
-              ))}
-            </div>
-          ) : null}
-        </section>
+        )}
 
-        <section className="mt-12 grid gap-8 lg:grid-cols-[360px_minmax(0,1fr)] print:block">
+        {finalRenderUrl && additionalRenderViews.length > 0 ? (
+          <div className="mt-9 grid gap-6 sm:grid-cols-2 print:grid-cols-2">
+            {additionalRenderViews.map((view) => (
+              <figure className="m-0" key={view.url}>
+                <div className="h-[240px] overflow-hidden md:h-[340px]">
+                  <Image
+                    alt={`Final client room render — ${view.label.toLowerCase()}`}
+                    className="h-full w-full object-cover"
+                    height={1024}
+                    src={view.url}
+                    unoptimized
+                    width={1536}
+                  />
+                </div>
+                <figcaption className="mt-3 font-body text-caption-tight font-medium uppercase tracking-[0.28em] text-ink-on-dark-muted print:text-ink-muted">
+                  {view.label}
+                </figcaption>
+              </figure>
+            ))}
+          </div>
+        ) : null}
+      </div>
+
+      {/* paper section — direction + the commerce gate breaks the ink */}
+      <div className="mt-14 bg-surface px-5 py-16 text-ink md:px-8 lg:px-12 print:mt-8">
+        <div className="grid gap-10 lg:grid-cols-[380px_minmax(0,1fr)] lg:gap-16">
           <div>
-            <SectionEyebrow>Design Direction</SectionEyebrow>
-            <DecorativeRule className="mt-5" />
-            <h2 className="mt-6 max-w-[420px] font-display text-display-s font-light tracking-[-0.015em] text-ink">
+            <SectionEyebrow>Design direction</SectionEyebrow>
+            <DecorativeRule className="mt-4" />
+            <h2 className="mt-5 font-display text-[36px] font-light italic leading-[1.1] text-ink">
               {selectedConcept?.title ?? "Selected concept pending"}
             </h2>
           </div>
-          <div className="whitespace-pre-line font-body text-body-s text-ink-secondary">
-            {selectedConcept?.description ??
-              "Select a concept and generate a final render before sharing this presentation."}
+          <div>
+            <p className="max-w-[66ch] whitespace-pre-line font-body text-body-m leading-[1.75] text-ink-secondary first-letter:float-left first-letter:pr-3 first-letter:pt-1 first-letter:font-display first-letter:text-[64px] first-letter:font-light first-letter:leading-[0.8] first-letter:text-accent">
+              {selectedConcept?.description ??
+                "Select a concept and generate a final render before sharing this presentation."}
+            </p>
+            <p className="mt-5 max-w-[60ch] font-display text-body-l italic leading-[1.6] text-ink-muted">
+              {commerceUnlocked
+                ? "The render is a best-effort visual composition and may not exactly reproduce every selected piece. Retailer links and product details live on the shopping list."
+                : "The render is a best-effort visual composition based on your selected pieces. Retailer links and product details live on the shopping list."}
+            </p>
           </div>
-        </section>
+        </div>
 
-        <MarketingPanel as="section" tone="paper" className="mt-10 p-5 print:shadow-none">
-          <p className="font-body text-caption font-medium uppercase text-ink-muted">
-            Notes
-          </p>
-          <p className="mt-4 font-body text-body-s text-ink-secondary">
-            {commerceUnlocked
-              ? "The render is a best-effort visual composition and may not exactly reproduce every selected piece. Retailer links and product details live on the shopping list."
-              : "The render is a best-effort visual composition based on your selected pieces. Unlock the shopping list to see retailer links and product details."}
-          </p>
-        </MarketingPanel>
-      </section>
+        {showShoppingListUnlock ? (
+          <div className="mt-14 flex flex-col gap-8 border-t border-line-strong pt-9 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <p className="font-body text-caption font-medium uppercase tracking-[0.32em] text-ink-muted">
+                The shopping list
+              </p>
+              <p className="mt-[10px] max-w-[56ch] font-body text-body-s leading-[1.6] text-ink-secondary">
+                Unlock the shopping list when you are ready to buy this room — retailer links and
+                product details open after payment.
+              </p>
+            </div>
+            <div className="flex shrink-0 flex-col gap-3 sm:flex-row">
+              <ButtonLink
+                href={`/projects/${projectId}/rooms/${roomId}/shopping-list`}
+                variant="secondary"
+              >
+                Change selected pieces
+              </ButtonLink>
+              <UnlockShoppingListCta projectId={projectId} roomId={roomId} />
+            </div>
+          </div>
+        ) : null}
+      </div>
     </main>
   );
 }
@@ -437,16 +449,6 @@ function FinalRenderForm({
       {button}
     </form>
   );
-}
-
-function formatAed(value: number | null | undefined) {
-  if (value === null || value === undefined) {
-    return "AED not available";
-  }
-
-  return `AED ${Number(value).toLocaleString("en-AE", {
-    maximumFractionDigits: 0
-  })}`;
 }
 
 function currentLineTotalAed(item: {
