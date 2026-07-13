@@ -253,10 +253,11 @@ const hostileIntent = parseSpatialIntent(
   },
   "Living Room"
 );
-if (hostileIntent.mustKeepClear.length > 6) {
-  throw new Error("mustKeepClear entry count not capped");
+const hostileKeepClear = hostileIntent.mustKeepClear ?? [];
+if (hostileKeepClear.length === 0 || hostileKeepClear.length > 6) {
+  throw new Error("mustKeepClear entry count not capped correctly");
 }
-for (const entry of hostileIntent.mustKeepClear) {
+for (const entry of hostileKeepClear) {
   if (entry.length > 160) {
     throw new Error("mustKeepClear entry length not capped");
   }
