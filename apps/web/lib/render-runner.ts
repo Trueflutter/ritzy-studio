@@ -48,6 +48,18 @@ export const FINAL_RENDER_MAX_QUEUE_ATTEMPTS = 3;
 // burn queue retries: they fail the job immediately in both modes.
 class FinalRenderValidationError extends Error {}
 
+// The reveal page self-refreshes every 12s (RenderRefresh), so revalidation is a freshness
+// optimization, never a correctness requirement — and it must never fail a render that has
+// already committed. revalidatePath also throws outright when no request store exists
+// (e.g. direct runner invocations from scripts/tests).
+function safeRevalidatePath(path: string) {
+  try {
+    revalidatePath(path);
+  } catch (error) {
+    console.warn(`revalidatePath failed for ${path}; the reveal poll will pick up the change.`, error);
+  }
+}
+
 export async function enqueueFinalRender(renderJobId: string): Promise<void> {
   // Dynamic import keeps the beta SDK off every actions.ts consumer's module graph; only the
   // queue execution path loads it.
@@ -407,7 +419,7 @@ export async function runFinalRender({
     }
 
     await serviceSupabase.from("rooms").update({ status: "rendering" }).eq("id", job.room_id);
-    revalidatePath(revealPath);
+    safeRevalidatePath(revealPath);
 
     // The hero render is committed and the job is succeeded. Generate the additional camera
     // angles: a view failure never regresses the hero, but in queue mode an incomplete set
@@ -438,7 +450,7 @@ export async function runFinalRender({
       .eq("id", job.id)
       .eq("status", "running");
     if (revealPath) {
-      revalidatePath(revealPath);
+      safeRevalidatePath(revealPath);
     }
   }
 }
@@ -465,7 +477,7 @@ async function runViewsPhase({
     console.error(`Final render view generation failed for job ${renderJobId}.`, error);
   }
   if (revealPath) {
-    revalidatePath(revealPath);
+    safeRevalidatePath(revealPath);
   }
   if (!complete && attempt.mode === "queue" && attempt.deliveryCount < FINAL_RENDER_MAX_QUEUE_ATTEMPTS) {
     throw new Error(
