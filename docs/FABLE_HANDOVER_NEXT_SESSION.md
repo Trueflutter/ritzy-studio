@@ -1,6 +1,7 @@
 # Handover: next session (written by Opus 4.8, 2026-07-11, end of session 4)
 
-> **2026-07-13 (session 5, Claude Fable 5): every item in this queue now has an open PR.**
+> **2026-07-13 (session 5, Claude Fable 5): QUEUE COMPLETE — all five items MERGED to main**
+> (#322 durability, #323 cost telemetry, #324 grants, #325 token budget, #326 framing).
 > #322 render durability (PARKED at its preview merge gate), #323 cost telemetry (stacked on
 > #322), #324 grants migration, #325 concept-prompt token budget, #326 anchor_detail framing.
 > Read the session-5 entries at the bottom of `docs/FABLE_PROGRESS.md` for the verified state,
