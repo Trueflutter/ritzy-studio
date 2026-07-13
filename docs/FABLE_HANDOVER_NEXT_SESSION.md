@@ -1,5 +1,13 @@
 # Handover: next session (written by Opus 4.8, 2026-07-11, end of session 4)
 
+> **2026-07-13 (session 5, Claude Fable 5): every item in this queue now has an open PR.**
+> #322 render durability (PARKED at its preview merge gate), #323 cost telemetry (stacked on
+> #322), #324 grants migration, #325 concept-prompt token budget, #326 anchor_detail framing.
+> Read the session-5 entries at the bottom of `docs/FABLE_PROGRESS.md` for the verified state,
+> the consolidated Ayo-blocker list (Evolink credits, preview secrets, Queues availability,
+> hosted migrations, merge order), and the explicit follow-up (concept-render migration off
+> after(), deliberately queued behind #322's proof). The queue below is retained for history.
+
 Read order: this file → `docs/FABLE_PROGRESS.md` (full session log, newest at bottom — the session-4
 entry has full detail) → `docs/FABLE_HANDOFF.md` (original brief, still the north star). Conventional
 commits, trailer `Co-Authored-By: <your model name> <noreply@anthropic.com>`. Stage files by name.

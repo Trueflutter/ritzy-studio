@@ -490,3 +490,50 @@ findings fixed in design): `plans/2026-07-12_render-durability-queue.md`.
   PR is parked, NOT merge-ready, until that proof runs. Probe scripts left untracked in
   scripts/dev-harness (`local-render-runner-verify.mjs`) and apps/web/lib
   (`render-runner-noop-probe.mts`).
+
+### Items 2-5 — all PRs opened (same session)
+- **Item 2, cost telemetry — PR #323** (branch `fable/cost-telemetry`, STACKED on #322 because the
+  final_render_views writer lives in lib/render-runner.ts there; retarget to main before merging if
+  #322's branch gets deleted). creditsUsed threads from the Evolink task payload through every
+  image result; ai_jobs.cost_estimate_usd written on initial_concept_generation, concept_revision,
+  concept_views, final_render_views (views sum outcomes); conversion 68 credits/USD (derived from
+  Evolink's public USD/credit pricing pairs; EVOLINK_CREDITS_PER_USD overrides). render_jobs has no
+  cost column — hero credits land in input_summary. Unit-tested; NOT live-verified (no credits).
+- **Item 3, grants migration — PR #324** (`fable/service-role-grants-migration`).
+  `20260713090000_service_role_grants.sql`: grants on all tables/sequences/functions + DEFAULT
+  PRIVILEGES so future migration-created objects stay covered. Verified on the local stack:
+  revoked a table grant, migration restored all 7 privileges; idempotent re-run clean; REST 200.
+- **Item 4, concept-prompt token audit — PR #325** (`fable/concept-prompt-token-audit`). PROVEN
+  over-cap: worst case assembles ~29.6k chars (~5.6k tokens at the MEASURED 5.27 chars/token via
+  o200k; hosted catalogue max description 1,631 chars across all 3,309 rows). Fix: image prompt
+  uses a slimmed catalogueProductImageSummary (direction model keeps full detail) + a 17k-char
+  budget clamp in buildInitialConceptImagePrompt degrading summary-then-generationPrompt only.
+  Also fixed truncateForPrompt(x, 0) returning nearly the whole string. Adversarial +
+  realistic-heavy regression tests added.
+- **Item 5, anchor_detail framing — PR #326** (`fable/anchor-detail-framing`). The detail view now
+  composes a tight vignette of a PORTION of the anchor group (seated eye height, shallow DoF,
+  explicit "do not re-compose the whole group/room"), per-room subjects; view prompt versions
+  bumped to 2026-07-13.1. Live visual pass pending Evolink credits.
+
+### Consolidated blockers for Ayo (batched, in priority order)
+1. **Evolink credits top-up** (~4.6 credits/render; 0.70 left). Blocks: #322's success-path +
+   durability proof, #323's live cost verification, #326's visual pass, any future E2E.
+2. **Preview env secrets, branch-scoped to `fable/render-durability-queue`**:
+   SUPABASE_SERVICE_ROLE_KEY, OPENAI_API_KEY (+ OPENAI_BASE_URL/OPENAI_TEXT_MODEL if previews
+   should route text via Evolink like local dev). The sandbox correctly refused to write these
+   autonomously. Blocks #322's on-preview durable-path proof (its explicit merge gate).
+3. **Vercel Queues availability on the team** — the trigger config deployed clean, but the first
+   live send() will reveal whether the beta needs enabling (docs flag "Permissions Required").
+   Fallback if it stalls: the cron-reaper plan B named in the plan.
+4. **Hosted migrations**: 20260710120000_concept_view_assets + 20260710153000_concept_palette are
+   still not applied to hosted (from session 2), and #324 adds 20260713090000_service_role_grants
+   (idempotent, safe). `supabase db push` after #324 merges.
+5. **Merge approvals** in order: #322 (after its gate clears) -> #323 (retarget to main first if
+   #322 merges with branch deletion) -> #324, #325, #326 (independent, any order).
+
+### Explicit follow-up queued (not in this session's PRs)
+- Concept-render migration off after() (generateInitialConceptAction's views + reviseConceptAction)
+  through the same runFinalRender pattern — deliberately AFTER #322 clears its preview proof, so
+  review feedback on the runner shape lands once, not three times. Deep-stacking a third unproven
+  PR on an unverifiable base (no credits) was the wrong trade.
+- Relax FINAL_RENDER_STALE_MS once queue retries are proven in production (kept as safety net).
