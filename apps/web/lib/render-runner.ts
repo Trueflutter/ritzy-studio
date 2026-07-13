@@ -86,8 +86,26 @@ export async function runFinalRender({
     return;
   }
 
-  // Terminal jobs are a no-op: a redelivery after success (or after a stale-reclaim marked the
-  // job failed) must never produce a second asset or resurrect the job.
+  // Failed jobs are terminal: a redelivery after a stale-reclaim must never resurrect them.
+  if (job.status === "failed") {
+    return;
+  }
+
+  // A succeeded job on redelivery means the hero committed but the delivery died before (or
+  // during) the angle views — repair ONLY the missing views. ensureFinalRenderViews is
+  // idempotent (deterministic per-view storage paths, asset-row dedupe, recomputed
+  // output_asset_ids), so a duplicate delivery after full success is a no-op.
+  if (job.status === "succeeded") {
+    const summary = ((job.input_summary ?? {}) as FinalRenderJobInputSummary) ?? {};
+    await runViewsPhase({
+      serviceSupabase,
+      renderJobId: job.id,
+      attempt,
+      revealPath: typeof summary.revealPath === "string" ? summary.revealPath : null
+    });
+    return;
+  }
+
   if (job.status !== "queued" && job.status !== "running") {
     return;
   }
@@ -380,25 +398,9 @@ export async function runFinalRender({
     revalidatePath(revealPath);
 
     // The hero render is committed and the job is succeeded. Generate the additional camera
-    // angles best-effort in the same task: any failure or a task timeout leaves the hero-only
-    // presentation intact (its own try/catch keeps this off the render's failure path).
-    try {
-      await generateAndStoreFinalRenderViews({
-        serviceSupabase,
-        userId,
-        roomId: job.room_id,
-        renderJobId: job.id,
-        heroAssetId: renderAsset.id,
-        roomType: room.room_type,
-        conceptTitle: concept.title,
-        conceptDescription: concept.description,
-        heroImageBytes: Buffer.from(result.imageBase64, "base64"),
-        heroImageStoragePath: renderPath
-      });
-      revalidatePath(revealPath);
-    } catch (error) {
-      console.error("Final render view generation failed; shipping hero-only render.", error);
-    }
+    // angles: a view failure never regresses the hero, but in queue mode an incomplete set
+    // rethrows so the redelivery repairs the missing views (the succeeded-job branch above).
+    await runViewsPhase({ serviceSupabase, renderJobId: job.id, attempt, revealPath });
   } catch (error) {
     // Queue attempts below the cap rethrow so Vercel Queues redelivers; the job stays `running`
     // and the existing stale-reclaim remains the user-visible safety net in the meantime.
@@ -429,136 +431,248 @@ export async function runFinalRender({
   }
 }
 
-// Generates the additional camera angles for a completed final render and records them as
-// final-render room assets, appending their ids to the render job's output_asset_ids (hero first).
-// Runs AFTER the hero render is committed and the job marked succeeded, so a view failure or a
-// task timeout can never regress the render — the presentation just shows the hero alone.
-// Mirrors generateAndStoreConceptViews; each view is best-effort.
-async function generateAndStoreFinalRenderViews({
+// Views phase wrapper with the queue/inline retry contract. The hero is already committed
+// and safe, so a views failure must never fail the job — but in queue mode, an incomplete
+// view set below the attempt cap rethrows so Vercel Queues redelivers and the next attempt
+// repairs only what is missing. Inline mode keeps today's best-effort behaviour.
+async function runViewsPhase({
   serviceSupabase,
-  userId,
-  roomId,
   renderJobId,
-  heroAssetId,
-  roomType,
-  conceptTitle,
-  conceptDescription,
-  heroImageBytes,
-  heroImageStoragePath
+  attempt,
+  revealPath
 }: {
   serviceSupabase: ReturnType<typeof createServiceClient>;
-  userId: string;
-  roomId: string;
   renderJobId: string;
-  heroAssetId: string;
-  roomType: string;
-  conceptTitle: string;
-  conceptDescription?: string | null;
-  heroImageBytes: Buffer;
-  heroImageStoragePath: string;
+  attempt: RenderRunAttempt;
+  revealPath: string | null;
 }) {
-  const { data: signedHero } = await serviceSupabase.storage
-    .from("generated-renders")
-    .createSignedUrl(heroImageStoragePath, 60 * 30);
+  let complete = false;
+  try {
+    complete = (await ensureFinalRenderViews({ serviceSupabase, renderJobId })).complete;
+  } catch (error) {
+    console.error(`Final render view generation failed for job ${renderJobId}.`, error);
+  }
+  if (revealPath) {
+    revalidatePath(revealPath);
+  }
+  if (!complete && attempt.mode === "queue" && attempt.deliveryCount < FINAL_RENDER_MAX_QUEUE_ATTEMPTS) {
+    throw new Error(
+      `Final render ${renderJobId} succeeded but its angle views are incomplete; requesting redelivery.`
+    );
+  }
+}
 
-  const { data: viewsJob } = await serviceSupabase
-    .from("ai_jobs")
-    .insert({
-      user_id: userId,
-      room_id: roomId,
-      job_type: "final_render_views",
-      status: "running",
-      provider: configuredImageProvider(),
-      model: configuredImageModel(),
-      input_summary: { renderJobId, viewKeys: CONCEPT_VIEW_KEYS }
-    })
-    .select("id")
-    .single();
+// Generates whatever camera-angle views are still MISSING for a succeeded final render and
+// appends them to the job's output_asset_ids (hero stays index 0). Idempotent by construction
+// so at-least-once delivery can re-run it safely: view storage paths are deterministic per
+// (job, viewKey), existing assets are detected up front (and again on an insert race), and
+// output_asset_ids is recomputed rather than appended. Everything is re-derived from the DB —
+// no in-memory state from the hero attempt is required, which is what lets a redelivery repair
+// views after the original function died.
+async function ensureFinalRenderViews({
+  serviceSupabase,
+  renderJobId
+}: {
+  serviceSupabase: ReturnType<typeof createServiceClient>;
+  renderJobId: string;
+}): Promise<{ complete: boolean }> {
+  const { data: job } = await serviceSupabase
+    .from("render_jobs")
+    .select("id, room_id, concept_id, status, output_asset_ids, input_summary")
+    .eq("id", renderJobId)
+    .maybeSingle();
 
-  const outcomes = await Promise.all(
-    CONCEPT_VIEW_KEYS.map(async (viewKey) => {
-      try {
-        const view = await generateFinalRenderView({
-          roomType,
-          viewKey,
-          conceptTitle,
-          conceptDescription,
-          heroImageBytes,
-          heroImageMimeType: "image/png",
-          heroImageUrl: signedHero?.signedUrl ?? null
-        });
-        const viewPath = `${userId}/${roomId}/final-${renderJobId}-${viewKey}.png`;
-        const { error: uploadError } = await serviceSupabase.storage
-          .from("generated-renders")
-          .upload(viewPath, Buffer.from(view.imageBase64, "base64"), {
-            contentType: "image/png",
-            upsert: true
+  const heroAssetId = job?.output_asset_ids?.[0];
+  if (!job || job.status !== "succeeded" || !heroAssetId) {
+    // Nothing to repair (reclaimed, superseded, or no committed hero) — do not block the ack.
+    return { complete: true };
+  }
+
+  const summary = ((job.input_summary ?? {}) as FinalRenderJobInputSummary) ?? {};
+  let userId = typeof summary.userId === "string" ? summary.userId : null;
+  if (!userId) {
+    const { data: room } = await serviceSupabase
+      .from("rooms")
+      .select("project_id")
+      .eq("id", job.room_id)
+      .maybeSingle();
+    const { data: project } = room
+      ? await serviceSupabase.from("projects").select("owner_user_id").eq("id", room.project_id).maybeSingle()
+      : { data: null };
+    userId = project?.owner_user_id ?? null;
+  }
+  if (!userId) {
+    return { complete: true };
+  }
+
+  const viewPathFor = (viewKey: string) => `${userId}/${job.room_id}/final-${job.id}-${viewKey}.png`;
+  const { data: existingViewAssets } = await serviceSupabase
+    .from("room_assets")
+    .select("id, storage_path")
+    .in(
+      "storage_path",
+      CONCEPT_VIEW_KEYS.map((viewKey) => viewPathFor(viewKey))
+    );
+  const viewAssetIdByKey = new Map<string, string>();
+  for (const viewKey of CONCEPT_VIEW_KEYS) {
+    const existing = (existingViewAssets ?? []).find((asset) => asset.storage_path === viewPathFor(viewKey));
+    if (existing) {
+      viewAssetIdByKey.set(viewKey, existing.id);
+    }
+  }
+  const missingViewKeys = CONCEPT_VIEW_KEYS.filter((viewKey) => !viewAssetIdByKey.has(viewKey));
+
+  if (missingViewKeys.length > 0) {
+    const { data: heroAsset } = await serviceSupabase
+      .from("room_assets")
+      .select("id, storage_path")
+      .eq("id", heroAssetId)
+      .maybeSingle();
+    if (!heroAsset) {
+      return { complete: true };
+    }
+    const { data: heroBlob } = await serviceSupabase.storage
+      .from("generated-renders")
+      .download(heroAsset.storage_path);
+    if (!heroBlob) {
+      throw new Error("Final render hero image could not be downloaded for view generation.");
+    }
+    const heroImageBytes = Buffer.from(await heroBlob.arrayBuffer());
+    const { data: signedHero } = await serviceSupabase.storage
+      .from("generated-renders")
+      .createSignedUrl(heroAsset.storage_path, 60 * 30);
+
+    const { data: room } = await serviceSupabase
+      .from("rooms")
+      .select("room_type")
+      .eq("id", job.room_id)
+      .maybeSingle();
+    const { data: concept } = job.concept_id
+      ? await serviceSupabase
+          .from("concepts")
+          .select("title, description")
+          .eq("id", job.concept_id)
+          .maybeSingle()
+      : { data: null };
+
+    // Tracked per attempt so silent failures are observable; only inserted when there is
+    // actual work, so duplicate deliveries after full success do not spam ai_jobs.
+    const { data: viewsJob } = await serviceSupabase
+      .from("ai_jobs")
+      .insert({
+        user_id: userId,
+        room_id: job.room_id,
+        job_type: "final_render_views",
+        status: "running",
+        provider: configuredImageProvider(),
+        model: configuredImageModel(),
+        input_summary: { renderJobId: job.id, viewKeys: missingViewKeys }
+      })
+      .select("id")
+      .single();
+
+    const outcomes = await Promise.all(
+      missingViewKeys.map(async (viewKey) => {
+        try {
+          const view = await generateFinalRenderView({
+            roomType: room?.room_type ?? "living room",
+            viewKey,
+            conceptTitle: concept?.title ?? "Final render",
+            conceptDescription: concept?.description,
+            heroImageBytes,
+            heroImageMimeType: "image/png",
+            heroImageUrl: signedHero?.signedUrl ?? null
           });
+          const viewPath = viewPathFor(viewKey);
+          const { error: uploadError } = await serviceSupabase.storage
+            .from("generated-renders")
+            .upload(viewPath, Buffer.from(view.imageBase64, "base64"), {
+              contentType: "image/png",
+              upsert: true
+            });
 
-        if (uploadError) {
-          throw new Error(uploadError.message);
+          if (uploadError) {
+            throw new Error(uploadError.message);
+          }
+
+          let { data: viewAsset, error: assetError } = await serviceSupabase
+            .from("room_assets")
+            .insert({
+              room_id: job.room_id,
+              asset_type: "final_render",
+              storage_path: viewPath,
+              mime_type: "image/png",
+              is_primary: false,
+              view_key: viewKey
+            })
+            .select("id")
+            .single();
+
+          // unique(storage_path): a concurrent duplicate delivery already inserted this view's
+          // row — adopt it instead of failing the outcome.
+          if (assetError?.code === "23505") {
+            const { data: raced } = await serviceSupabase
+              .from("room_assets")
+              .select("id")
+              .eq("storage_path", viewPath)
+              .maybeSingle();
+            viewAsset = raced ?? null;
+            assetError = null;
+          }
+          if (assetError || !viewAsset) {
+            throw new Error(assetError?.message ?? "Final render view asset insert returned no row.");
+          }
+
+          viewAssetIdByKey.set(viewKey, viewAsset.id);
+          return {
+            viewKey,
+            ok: true as const,
+            assetId: viewAsset.id,
+            provider: view.imageProvider,
+            fallbackUsed: view.imageFallbackUsed
+          };
+        } catch (error) {
+          console.error(`Final render view generation failed (${viewKey}, render ${job.id}):`, error);
+          return {
+            viewKey,
+            ok: false as const,
+            error: error instanceof Error ? error.message : "Final render view generation failed."
+          };
         }
+      })
+    );
 
-        const { data: viewAsset, error: assetError } = await serviceSupabase
-          .from("room_assets")
-          .insert({
-            room_id: roomId,
-            asset_type: "final_render",
-            storage_path: viewPath,
-            mime_type: "image/png",
-            is_primary: false,
-            view_key: viewKey
-          })
-          .select("id")
-          .single();
+    if (viewsJob) {
+      const failed = outcomes.filter((outcome) => !outcome.ok);
+      await serviceSupabase
+        .from("ai_jobs")
+        .update({
+          status: failed.length > 0 ? "failed" : "succeeded",
+          completed_at: new Date().toISOString(),
+          error_message:
+            failed.length > 0
+              ? failed.map((outcome) => `${outcome.viewKey}: ${outcome.error}`).join("; ")
+              : null,
+          output_summary: { renderJobId: job.id, outcomes }
+        })
+        .eq("id", viewsJob.id);
+    }
+  }
 
-        if (assetError || !viewAsset) {
-          throw new Error(assetError?.message ?? "Final render view asset insert returned no row.");
-        }
-
-        return {
-          viewKey,
-          ok: true as const,
-          assetId: viewAsset.id,
-          provider: view.imageProvider,
-          fallbackUsed: view.imageFallbackUsed
-        };
-      } catch (error) {
-        console.error(`Final render view generation failed (${viewKey}, render ${renderJobId}):`, error);
-        return {
-          viewKey,
-          ok: false as const,
-          error: error instanceof Error ? error.message : "Final render view generation failed."
-        };
-      }
-    })
+  // Recompute (not append) the asset list in stable order. Guard on the job still being the
+  // succeeded owner so a reclaimed/superseded job is never mutated.
+  const orderedViewAssetIds = CONCEPT_VIEW_KEYS.map((viewKey) => viewAssetIdByKey.get(viewKey)).filter(
+    (id): id is string => Boolean(id)
   );
-
-  const viewAssetIds = outcomes
-    .filter((outcome): outcome is Extract<(typeof outcomes)[number], { ok: true }> => outcome.ok)
-    .map((outcome) => outcome.assetId);
-  if (viewAssetIds.length > 0) {
-    // Append the view assets after the hero (index 0 stays the primary render). Guard on the job
-    // still being the succeeded owner so a reclaimed/superseded job is never mutated.
+  if (orderedViewAssetIds.length > 0) {
     await serviceSupabase
       .from("render_jobs")
-      .update({ output_asset_ids: [heroAssetId, ...viewAssetIds] })
+      .update({ output_asset_ids: [heroAssetId, ...orderedViewAssetIds] })
       .eq("id", renderJobId)
       .eq("status", "succeeded");
   }
 
-  if (viewsJob) {
-    const failed = outcomes.filter((outcome) => !outcome.ok);
-    await serviceSupabase
-      .from("ai_jobs")
-      .update({
-        status: failed.length > 0 ? "failed" : "succeeded",
-        completed_at: new Date().toISOString(),
-        error_message: failed.length > 0 ? failed.map((outcome) => `${outcome.viewKey}: ${outcome.error}`).join("; ") : null,
-        output_summary: { renderJobId, outcomes }
-      })
-      .eq("id", viewsJob.id);
-  }
+  return { complete: orderedViewAssetIds.length === CONCEPT_VIEW_KEYS.length };
 }
 
 function roleLabelFromSelectionReason(selectionReason: string | null) {
