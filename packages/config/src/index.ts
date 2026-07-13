@@ -47,6 +47,7 @@ const serverEnvSchema = z.object({
   RITZY_PRODUCT_MATCHING_ENGINE_V1_PREVIEW_ROOM_IDS: z.string().optional(),
   RITZY_PRODUCT_MATCHING_ENGINE_V1_PREVIEW_USER_IDS: z.string().optional(),
   RITZY_PRODUCT_MATCHING_ENGINE_V1_PREVIEW_USER_EMAILS: z.string().optional(),
+  RITZY_RENDER_EXECUTION: z.enum(["queue", "inline"]).optional(),
   STRIPE_SECRET_KEY: z.string().optional(),
   STRIPE_WEBHOOK_SECRET: z.string().optional()
 });
@@ -74,6 +75,22 @@ export function formatEnvError(error: unknown): string {
   }
 
   return error.issues.map((issue) => `${issue.path.join(".")}: ${issue.message}`).join("\n");
+}
+
+export type RenderExecutionMode = "queue" | "inline";
+
+// Where the final render executes after generateFinalRenderAction inserts the job.
+// "queue" = durable Vercel Queues consumer (only exists on Vercel infra);
+// "inline" = the in-request after() task (local dev, harness, and the production
+// fallback when enqueueing fails). RITZY_RENDER_EXECUTION is the explicit override
+// and the production kill-switch; without it, queue on Vercel, inline elsewhere.
+export function renderExecutionMode(
+  env: Record<string, string | undefined> = process.env
+): RenderExecutionMode {
+  if (env.RITZY_RENDER_EXECUTION === "queue" || env.RITZY_RENDER_EXECUTION === "inline") {
+    return env.RITZY_RENDER_EXECUTION;
+  }
+  return env.VERCEL ? "queue" : "inline";
 }
 
 export type ProductMatchingControlledPreviewGateInput = {

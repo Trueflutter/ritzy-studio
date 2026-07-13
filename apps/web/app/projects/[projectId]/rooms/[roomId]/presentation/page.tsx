@@ -124,7 +124,7 @@ export default async function PresentationPage({
   const { data: routedRenderJob } = renderJobId
     ? await serviceSupabase
         .from("render_jobs")
-        .select("id, status, error_message, created_at, output_asset_ids")
+        .select("id, status, error_message, created_at, completed_at, output_asset_ids")
         .eq("id", renderJobId)
         .eq("room_id", roomId)
         .maybeSingle()
@@ -133,7 +133,7 @@ export default async function PresentationPage({
     !routedRenderJob && shoppingList && selectedConcept
       ? await serviceSupabase
           .from("render_jobs")
-          .select("id, status, error_message, created_at, output_asset_ids")
+          .select("id, status, error_message, created_at, completed_at, output_asset_ids")
           .eq("room_id", roomId)
           .eq("concept_id", selectedConcept.id)
           .eq("shopping_list_id", shoppingList.id)
@@ -200,7 +200,12 @@ export default async function PresentationPage({
           .limit(1)
           .maybeSingle()
       : { data: null };
-  const renderRecentlySucceeded = isWithinFinalRenderViewsWindow(latestRenderJob?.created_at);
+  // Measure the views window from the hero's commit time, not the job's creation: with the
+  // durable queue path a retried render can commit minutes after created_at, and the window
+  // must cover the views that generate right after the hero lands.
+  const renderRecentlySucceeded = isWithinFinalRenderViewsWindow(
+    latestRenderJob?.completed_at ?? latestRenderJob?.created_at
+  );
   const viewsJobComplete =
     finalRenderViewsJob?.status === "succeeded" || finalRenderViewsJob?.status === "failed";
   const showViewProgress =

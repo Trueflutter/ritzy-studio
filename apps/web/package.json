@@ -19,6 +19,7 @@
     "@ritzy-studio/ui": "workspace:*",
     "@supabase/ssr": "^0.10.2",
     "@supabase/supabase-js": "^2.89.0",
+    "@vercel/queue": "^0.4.0",
     "dotenv": "^17.2.3",
     "next": "16.2.4",
     "react": "19.2.4",
