@@ -2,21 +2,18 @@ import assert from "node:assert/strict";
 
 import { sumOutcomeCredits } from "./ai-cost";
 
-// Sums only successful outcomes that actually reported credits.
+// Sums every outcome that reported credits — including failed outcomes, whose generation
+// still consumed them before the failure.
 assert.equal(
-  sumOutcomeCredits([
-    { ok: true, creditsUsed: 2.5 },
-    { ok: true, creditsUsed: 3 },
-    { ok: false, creditsUsed: 99 }
-  ]),
-  5.5
+  sumOutcomeCredits([{ creditsUsed: 2.5 }, { creditsUsed: 3 }, { creditsUsed: 4.5 }]),
+  10
 );
 
 // No reported credits (non-Evolink providers) must stay null, not 0.
 assert.equal(sumOutcomeCredits([]), null);
-assert.equal(sumOutcomeCredits([{ ok: true }, { ok: true, creditsUsed: null }]), null);
+assert.equal(sumOutcomeCredits([{}, { creditsUsed: null }]), null);
 
 // A partial report still sums what is known.
-assert.equal(sumOutcomeCredits([{ ok: true, creditsUsed: 4 }, { ok: true }]), 4);
+assert.equal(sumOutcomeCredits([{ creditsUsed: 4 }, {}]), 4);
 
 console.log("ai-cost tests passed");

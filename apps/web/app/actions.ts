@@ -236,6 +236,9 @@ async function generateAndStoreConceptViews({
 
   const outcomes = await Promise.all(
     CONCEPT_VIEW_KEYS.map(async (viewKey) => {
+      // Captured outside the try so a post-generation failure still reports the credits the
+      // generation consumed (review P2).
+      let creditsUsed: number | null = null;
       try {
         const view = await generateConceptView({
           roomType,
@@ -247,6 +250,7 @@ async function generateAndStoreConceptViews({
           heroImageMimeType: "image/png",
           heroImageUrl: signedHero?.signedUrl ?? null
         });
+        creditsUsed = view.imageCreditsUsed;
         const viewPath = `${userId}/${roomId}/${conceptId}-${viewKey}.png`;
         const { error: uploadError } = await serviceSupabase.storage
           .from("generated-renders")
@@ -278,13 +282,14 @@ async function generateAndStoreConceptViews({
           ok: true as const,
           provider: view.imageProvider,
           fallbackUsed: view.imageFallbackUsed,
-          creditsUsed: view.imageCreditsUsed
+          creditsUsed
         };
       } catch (error) {
         console.error(`Concept view generation failed (${viewKey}, concept ${conceptId}):`, error);
         return {
           viewKey,
           ok: false as const,
+          creditsUsed,
           error: error instanceof Error ? error.message : "Concept view generation failed."
         };
       }
