@@ -605,3 +605,11 @@ Remaining follow-ups (next session): migrate the CONCEPT renders off after() thr
 runFinalRender pattern (the last after() reliability gap — concept views + revision); consider
 relaxing FINAL_RENDER_STALE_MS once queue retries have production mileage; production
 OPENAI_API_KEY billing state still needs Ayo's confirmation (see prior entry's PRODUCTION RISK).
+
+### Production proof (post-merge, 2026-07-13)
+Ran the teardown proof against www.ritzystudio.app itself (job 134832c3): executionPath
+"queue", browser killed at t+5s, hero + views completed server-side. Spatial QA detected a hard
+fail and ran its one corrective regen — both generations' credits recorded (9.2368 -> $0.1358),
+proving the P2 cost fix live. QA succeeding also confirms production's direct OPENAI_API_KEY is
+alive — the prior PRODUCTION RISK flag is cleared by live evidence. The beta blocker is closed
+where beta users live.
