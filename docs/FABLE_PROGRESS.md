@@ -454,3 +454,135 @@ render did not. Extended the `generateConceptView` pattern to the final render.
 - PR #2 (item 5, `fable/multi-angle-final-render`, stacked) — open, verified live.
 - No further queue items started. Env still HOSTED at time of writing — revert to local before
   handing back (`bash scripts/dev-harness/use-env.sh local` + restart dev server).
+
+## 2026-07-12 (session 5 — Claude Fable 5 — closing the remaining engineering queue)
+
+Prod verified green first (`/` 307 -> /login 200). Working the 5-item queue from
+FABLE_HANDOVER_NEXT_SESSION.md, one PR per item.
+
+### Item 1 — render durability via Vercel Queues (PR opened, PARKED at the merge gate)
+Branch `fable/render-durability-queue`. Plan (attacked + hardened by plan-attacker; two blocking
+findings fixed in design): `plans/2026-07-12_render-durability-queue.md`.
+- The final render's after() body moved verbatim into `apps/web/lib/render-runner.ts`
+  (`runFinalRender({ renderJobId, attempt })`), which re-fetches everything from the render_jobs
+  row. Claim CAS (queued|running -> running), unchanged success/failure CAS, terminal no-op on
+  redelivery, and ATTEMPT-UNIQUE hero storage paths (`final-<jobId>-<nonce>.png`) — the attacker
+  proved the old job-keyed path + upsert would let a redelivery overwrite a committed hero.
+- Action inserts `status: "queued"` + dispatches by `renderExecutionMode()` (packages/config):
+  queue on Vercel, inline after() locally / on enqueue failure (`executionPath` recorded).
+- Error contract: inline + validation errors + final queue attempt -> CAS-fail with the real
+  error; queue attempts below cap 3 rethrow so Queues redelivers (60s).
+- Consumer: `apps/web/app/api/queues/final-render/route.ts` (air-gapped `queue/v2beta` trigger in
+  vercel.json — the functions pattern must be FRAMEWORK-relative (`app/api/...`), the repo-relative
+  `apps/web/app/...` fails the build in 2s). maxDuration 800.
+- Presentation views window now measures from `completed_at` (retried renders would previously
+  fall outside the created_at-based window and never auto-reveal their views).
+- VERIFIED: local inline E2E through the real action (job queued -> claimed running ->
+  provider attempt; failure path CAS-failed with the real provider error + executionPath/userId/
+  revealPath stashed); redelivery no-op probe on a terminal job (PASS, 4ms, no provider call);
+  render.test.ts + render-reclamation.test.mjs + all package tests + pnpm check green; preview
+  deploy Ready with the trigger registered on the deployment (confirmed via deployments API).
+- BLOCKED (batched for Ayo): **Evolink credits exhausted** (needs ~4.6/render, 0.70 available) so
+  the SUCCESS path (hero+views) could not be re-verified anywhere; preview env secrets
+  (SUPABASE_SERVICE_ROLE_KEY etc. — the sandbox correctly refused both `vercel env pull` of prod
+  and secret writes to the preview scope) so the live durable-path proof (send -> consume ->
+  teardown survival -> forced-redelivery idempotency) is pending. Per the plan's merge gate the
+  PR is parked, NOT merge-ready, until that proof runs. Probe scripts left untracked in
+  scripts/dev-harness (`local-render-runner-verify.mjs`) and apps/web/lib
+  (`render-runner-noop-probe.mts`).
+
+### Items 2-5 — all PRs opened (same session)
+- **Item 2, cost telemetry — PR #323** (branch `fable/cost-telemetry`, STACKED on #322 because the
+  final_render_views writer lives in lib/render-runner.ts there; retarget to main before merging if
+  #322's branch gets deleted). creditsUsed threads from the Evolink task payload through every
+  image result; ai_jobs.cost_estimate_usd written on initial_concept_generation, concept_revision,
+  concept_views, final_render_views (views sum outcomes); conversion 68 credits/USD (derived from
+  Evolink's public USD/credit pricing pairs; EVOLINK_CREDITS_PER_USD overrides). render_jobs has no
+  cost column — hero credits land in input_summary. Unit-tested; NOT live-verified (no credits).
+- **Item 3, grants migration — PR #324** (`fable/service-role-grants-migration`).
+  `20260713090000_service_role_grants.sql`: grants on all tables/sequences/functions + DEFAULT
+  PRIVILEGES so future migration-created objects stay covered. Verified on the local stack:
+  revoked a table grant, migration restored all 7 privileges; idempotent re-run clean; REST 200.
+- **Item 4, concept-prompt token audit — PR #325** (`fable/concept-prompt-token-audit`). PROVEN
+  over-cap: worst case assembles ~29.6k chars (~5.6k tokens at the MEASURED 5.27 chars/token via
+  o200k; hosted catalogue max description 1,631 chars across all 3,309 rows). Fix: image prompt
+  uses a slimmed catalogueProductImageSummary (direction model keeps full detail) + a 17k-char
+  budget clamp in buildInitialConceptImagePrompt degrading summary-then-generationPrompt only.
+  Also fixed truncateForPrompt(x, 0) returning nearly the whole string. Adversarial +
+  realistic-heavy regression tests added.
+- **Item 5, anchor_detail framing — PR #326** (`fable/anchor-detail-framing`). The detail view now
+  composes a tight vignette of a PORTION of the anchor group (seated eye height, shallow DoF,
+  explicit "do not re-compose the whole group/room"), per-room subjects; view prompt versions
+  bumped to 2026-07-13.1. Live visual pass pending Evolink credits.
+
+### Consolidated blockers for Ayo (batched, in priority order)
+1. **Evolink credits top-up** (~4.6 credits/render; 0.70 left). Blocks: #322's success-path +
+   durability proof, #323's live cost verification, #326's visual pass, any future E2E.
+2. **Preview env secrets, branch-scoped to `fable/render-durability-queue`**:
+   SUPABASE_SERVICE_ROLE_KEY, OPENAI_API_KEY (+ OPENAI_BASE_URL/OPENAI_TEXT_MODEL if previews
+   should route text via Evolink like local dev). The sandbox correctly refused to write these
+   autonomously. Blocks #322's on-preview durable-path proof (its explicit merge gate).
+3. **Vercel Queues availability on the team** — the trigger config deployed clean, but the first
+   live send() will reveal whether the beta needs enabling (docs flag "Permissions Required").
+   Fallback if it stalls: the cron-reaper plan B named in the plan.
+4. **Hosted migrations**: 20260710120000_concept_view_assets + 20260710153000_concept_palette are
+   still not applied to hosted (from session 2), and #324 adds 20260713090000_service_role_grants
+   (idempotent, safe). `supabase db push` after #324 merges.
+5. **Merge approvals** in order: #322 (after its gate clears) -> #323 (retarget to main first if
+   #322 merges with branch deletion) -> #324, #325, #326 (independent, any order).
+
+### Explicit follow-up queued (not in this session's PRs)
+- Concept-render migration off after() (generateInitialConceptAction's views + reviseConceptAction)
+  through the same runFinalRender pattern — deliberately AFTER #322 clears its preview proof, so
+  review feedback on the runner shape lands once, not three times. Deep-stacking a third unproven
+  PR on an unverifiable base (no credits) was the wrong trade.
+- Relax FINAL_RENDER_STALE_MS once queue retries are proven in production (kept as safety net).
+
+## 2026-07-13 (session 5 continued — review round + full verification, all gates cleared)
+
+Ayo relayed the fresh review (322/323/325 request-changes, 324/326 approve) and cleared the
+blockers: Evolink had 660 credits (the LOCAL env files + .env.local.hosted's OPENAI_API_KEY
+carried an EXHAUSTED older key — sha-fingerprinted, swapped to the funded account; Vercel
+prod/preview EVOLINK_API_KEY was already the funded one), approved the preview secret writes,
+Queues handling, and the hosted db push.
+
+### Review fixes (all pushed + commented for re-review)
+- 322 P1: views phase now independently repairable — redelivery of a succeeded job runs
+  ensureFinalRenderViews (only-missing regeneration, deterministic paths, 23505 dedupe,
+  recomputed output_asset_ids); queue mode rethrows on incomplete views below the cap. Plus
+  safeRevalidatePath (revalidatePath throws outside a request store and sat on the post-commit
+  path). 323 P2: spend now counts discarded QA regens + failed view attempts. 325 P2:
+  mustKeepClear bounded 6x160 at parseSpatialIntent AND spatialLayoutLanguage (reviewer's
+  20k repro is a regression test at both layers).
+
+### THE DURABLE PATH IS PROVEN (#322 merge gate satisfied)
+- Vercel Queues is ENABLED on the team — send() just worked (executionPath "queue").
+- Teardown survival x2 on preview (hosted + Evolink): browser killed t+5s, consumer completed
+  hero+views (jobs fd16e833, f8992147; second run QA=pass after the key fix).
+- Forced-redelivery idempotency through the REAL queue: temp preview-only debug enqueue route
+  (de980ec, reverted c511963) re-enqueued a succeeded job twice — consumer invoked twice
+  (runtime logs), zero mutations.
+- Local: success E2E (nonce hero, views), crash-during-views repair (32s, hero untouched),
+  terminal no-op (24ms), stale-reclaim vs in-flight race (discard, zero orphans).
+- Preview access: deployment protection (SSO) is ON for previews — session-3's open previews
+  are gone; use the Vercel MCP get_access_to_vercel_url share links (23h) for harness runs.
+
+### Cost telemetry live-verified (#323)
+Hero 4.6308 credits -> $0.0681 in input_summary; views ai_job cost_estimate_usd $0.1269 from
+outcomes [4.3137, 4.3138]. Evolink usage payload parses as coded; 68 credits/USD holds.
+
+### Merged + ops
+- #324 MERGED (grants). Hosted migration history REPAIRED (5 already-applied migrations were
+  never recorded: the 3 May ones + both 20260710 ones — verified applied via REST schema probes
+  before repairing) and 20260713090000_service_role_grants pushed to hosted. Prod re-verified 307.
+- #326 MERGED after visual validation: anchor_detail now a true close vignette (sofa end +
+  table edge + rug texture), product-identical across all 3 angles (render a9ca4a5c).
+- Preview env (branch-scoped to fable/render-durability-queue): SUPABASE_SERVICE_ROLE_KEY,
+  OPENAI_API_KEY (funded), OPENAI_BASE_URL, OPENAI_TEXT_MODEL.
+
+### Open
+- #322, #323 (stacked, retarget before base-branch deletion), #325 await re-review + Ayo's
+  merge word. PRODUCTION RISK flagged: prod's OPENAI_API_KEY (direct OpenAI, set 65d ago) was
+  quota-exhausted on 2026-07-10 — if billing wasn't fixed, prod text calls (concepts, QA,
+  sourcing) fail; images are fine (funded Evolink key). Confirm or route prod text via Evolink.
+- Concept-render migration off after() remains the named follow-up once #322 merges.

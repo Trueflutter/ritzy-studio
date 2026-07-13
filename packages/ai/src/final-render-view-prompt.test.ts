@@ -30,8 +30,9 @@ const detailPrompt = buildFinalRenderViewPrompt({
   conceptTitle: "Cognac Calm Living"
 });
 
-assert.match(detailPrompt, /closer three-quarter composition/);
-assert.match(detailPrompt, /the primary sofa, coffee table, and accent seating/);
+assert.match(detailPrompt, /tight detail vignette/);
+assert.match(detailPrompt, /Crop well inside the full furniture group/);
+assert.match(detailPrompt, /one end of the primary sofa/);
 assert.equal(detailPrompt.includes("Design notes:"), false);
 
 // The camera language is genuinely shared with concept views (regression guard).

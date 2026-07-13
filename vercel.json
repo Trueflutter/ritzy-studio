@@ -3,5 +3,16 @@
   "framework": "nextjs",
   "installCommand": "pnpm install --frozen-lockfile",
   "outputDirectory": "apps/web/.next",
-  "regions": ["bom1"]
+  "regions": ["bom1"],
+  "functions": {
+    "app/api/queues/final-render/route.ts": {
+      "experimentalTriggers": [
+        {
+          "type": "queue/v2beta",
+          "topic": "final-render",
+          "retryAfterSeconds": 60
+        }
+      ]
+    }
+  }
 }

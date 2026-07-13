@@ -367,15 +367,23 @@ export function spatialLayoutLanguage(roomType: string, intent?: SpatialPromptIn
 
 export type ConceptViewKey = "reverse_wide" | "anchor_detail";
 
-const anchorGroupLanguage: Record<RitzyRoomType, string> = {
-  living: "the seating group: the primary sofa, coffee table, and accent seating composed over the rug",
+// Subjects for the anchor_detail view. Each is deliberately a PORTION of the room's anchor
+// group, not the group itself: the hero is already a wide establishing shot of the full
+// group, so a "closer three-quarter of the seating group" read as a near-duplicate angle
+// (session-4 finding). The detail view earns its place as an intimate vignette — materials,
+// texture, and styling at touching distance.
+const anchorDetailLanguage: Record<RitzyRoomType, string> = {
+  living:
+    "one end of the primary sofa with its arm and seat cushions, the nearest corner of the coffee table with its styling, and the rug texture beneath them",
   living_dining:
-    "the living-zone seating group: the primary sofa, coffee table, and accent seating composed over the living rug, with the dining zone readable beyond it",
-  dining: "the dining group: the dining table, its chairs, and the centered over-table fixture",
-  bedroom: "the bed wall: the bed, headboard, bedside tables, and bedside lighting over the rug",
-  bathroom: "the vanity wall: the vanity, mirror, and lighting composition",
-  office: "the work setup: the desk, task chair, and shelving or storage behind it",
-  default: "the room's main furniture group"
+    "one end of the primary sofa with its arm and seat cushions, the nearest corner of the coffee table with its styling, and the living rug's texture beneath them, with the dining zone softly out of focus beyond",
+  dining:
+    "one corner of the dining table with two chairs, the tabletop styling, and the lower edge of the over-table fixture",
+  bedroom:
+    "one side of the headboard, a single bedside table with its lamp and styling, and the layered bedding beside it",
+  bathroom: "the vanity counter with its basin and styling, and the lower edge of the mirror above it",
+  office: "the desk surface with its task lamp and styling, and the back edge of the task chair",
+  default: "one corner of the room's main furniture group and its styling"
 };
 
 const reverseWideLanguage: Record<RitzyRoomType, string> = {
@@ -402,7 +410,7 @@ export function conceptViewCameraLanguage(roomType: string, viewKey: ConceptView
     return reverseWideLanguage[resolved];
   }
 
-  return `The camera moves to a closer three-quarter composition of ${anchorGroupLanguage[resolved]}, at standing eye height, composing it as the clear subject of the frame with realistic perspective.`;
+  return `The camera moves in for a tight detail vignette of ${anchorDetailLanguage[resolved]}, at seated eye height, with the subject filling the frame, a shallow natural depth of field, and realistic perspective. Crop well inside the full furniture group so most of the room falls out of frame; do not re-compose the whole furniture group or the whole room — this is an intimate detail study of materials, texture, and styling.`;
 }
 
 export function conceptViewConsistencyLanguage() {
