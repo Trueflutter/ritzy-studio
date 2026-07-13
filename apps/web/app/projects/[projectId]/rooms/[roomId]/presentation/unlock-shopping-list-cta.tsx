@@ -60,7 +60,7 @@ export function UnlockShoppingListCta({
                     className="mt-4 font-display text-display-xs font-light italic text-ink"
                     id="shopping-list-confirm-title"
                   >
-                    Generate the final shopping list for AED 500?
+                    Generate the final shopping list for AED 99?
                   </h2>
                   <p className="mt-4 font-body text-body-s text-ink-secondary">
                     This opens the full shopping list with retailer links, product details, and

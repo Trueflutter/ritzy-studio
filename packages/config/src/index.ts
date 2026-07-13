@@ -48,6 +48,7 @@ const serverEnvSchema = z.object({
   RITZY_PRODUCT_MATCHING_ENGINE_V1_PREVIEW_USER_IDS: z.string().optional(),
   RITZY_PRODUCT_MATCHING_ENGINE_V1_PREVIEW_USER_EMAILS: z.string().optional(),
   RITZY_RENDER_EXECUTION: z.enum(["queue", "inline"]).optional(),
+  RITZY_SIGNUP_ALLOWLIST: z.string().optional(),
   STRIPE_SECRET_KEY: z.string().optional(),
   STRIPE_WEBHOOK_SECRET: z.string().optional()
 });
@@ -91,6 +92,29 @@ export function renderExecutionMode(
     return env.RITZY_RENDER_EXECUTION;
   }
   return env.VERCEL ? "queue" : "inline";
+}
+
+// Who may create an account. RITZY_SIGNUP_ALLOWLIST is a comma-separated mix of full email
+// addresses and domains (with or without a leading @); "*" opens signup to everyone. Unset,
+// it preserves the original internal-pilot gate: ritzyinteriors.com only.
+export function signupAllowed(
+  email: string,
+  env: Record<string, string | undefined> = process.env
+): boolean {
+  const normalized = email.trim().toLowerCase();
+  // Exactly one @ with non-empty local and domain parts: values like
+  // "foo@ritzyinteriors.com@evil.com" or "@ritzyinteriors.com" must never resolve to an
+  // allowlisted domain, regardless of what downstream auth would do with them.
+  const parts = normalized.split("@");
+  if (parts.length !== 2 || !parts[0] || !parts[1]) {
+    return false;
+  }
+  const domain = parts[1];
+  const entries = (env.RITZY_SIGNUP_ALLOWLIST ?? "ritzyinteriors.com")
+    .split(",")
+    .map((entry) => entry.trim().toLowerCase().replace(/^@/, ""))
+    .filter(Boolean);
+  return entries.some((entry) => entry === "*" || entry === normalized || entry === domain);
 }
 
 export type ProductMatchingControlledPreviewGateInput = {
