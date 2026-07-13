@@ -586,3 +586,22 @@ outcomes [4.3137, 4.3138]. Evolink usage payload parses as coded; 68 credits/USD
   quota-exhausted on 2026-07-10 — if billing wasn't fixed, prod text calls (concepts, QA,
   sourcing) fail; images are fine (funded Evolink key). Confirm or route prod text via Evolink.
 - Concept-render migration off after() remains the named follow-up once #322 merges.
+
+## 2026-07-13 (session 5 wrap — QUEUE COMPLETE, all five items merged)
+
+Re-review verdicts: #322 approve, #323 approve-after-322, #325 approve-after-test-fix (the new
+domain regression test tripped typecheck — mustKeepClear is optional on SpatialIntent; fixed with
+a fallback + non-empty assertion, workspace typecheck green). Merged in order: #322 -> retarget
+#323 to main -> #323 -> #325 (both needed a trivial merge-from-main first; ai package.json test
+script resolved as the union). #324 and #326 had merged earlier in the session.
+
+FINAL STATE: the full Fable engineering queue (FABLE_HANDOVER_NEXT_SESSION.md items 1-5) is
+merged to main. The final render is durable in production — Vercel Queues execution, teardown
+survival and forced-redelivery idempotency proven on preview, views independently repairable,
+cost telemetry recording real credits, concept prompts bounded under the Evolink cap, and the
+anchor_detail angle framing a true detail vignette (visually validated).
+
+Remaining follow-ups (next session): migrate the CONCEPT renders off after() through the same
+runFinalRender pattern (the last after() reliability gap — concept views + revision); consider
+relaxing FINAL_RENDER_STALE_MS once queue retries have production mileage; production
+OPENAI_API_KEY billing state still needs Ayo's confirmation (see prior entry's PRODUCTION RISK).
