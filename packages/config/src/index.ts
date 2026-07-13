@@ -102,10 +102,14 @@ export function signupAllowed(
   env: Record<string, string | undefined> = process.env
 ): boolean {
   const normalized = email.trim().toLowerCase();
-  const domain = normalized.split("@")[1] ?? "";
-  if (!domain) {
+  // Exactly one @ with non-empty local and domain parts: values like
+  // "foo@ritzyinteriors.com@evil.com" or "@ritzyinteriors.com" must never resolve to an
+  // allowlisted domain, regardless of what downstream auth would do with them.
+  const parts = normalized.split("@");
+  if (parts.length !== 2 || !parts[0] || !parts[1]) {
     return false;
   }
+  const domain = parts[1];
   const entries = (env.RITZY_SIGNUP_ALLOWLIST ?? "ritzyinteriors.com")
     .split(",")
     .map((entry) => entry.trim().toLowerCase().replace(/^@/, ""))
