@@ -104,6 +104,14 @@ const spatialSeatingPriorityValues: readonly SpatialSeatingPriority[] = [
 
 // Reads the structured spatial intent captured by the brief out of
 // design_briefs.structured_json. Tolerant of missing/legacy data.
+const MUST_KEEP_CLEAR_MAX_ENTRIES = 6;
+const MUST_KEEP_CLEAR_MAX_ENTRY_CHARS = 160;
+
+function boundSpatialIntentText(value: string, maxChars: number) {
+  const collapsed = value.replace(/\s+/g, " ").trim();
+  return collapsed.length <= maxChars ? collapsed : `${collapsed.slice(0, maxChars - 1)}…`;
+}
+
 export function parseSpatialIntent(value: unknown, roomType: string): SpatialIntent {
   const layoutMode = spatialLayoutModeForRoomType(roomType);
   const record =
@@ -128,12 +136,20 @@ export function parseSpatialIntent(value: unknown, roomType: string): SpatialInt
       ? Math.min(Math.round(diningSeatCountRaw), 16)
       : null;
   const mustKeepClearRaw = record?.mustKeepClear;
-  const mustKeepClear =
+  const mustKeepClearEntries =
     typeof mustKeepClearRaw === "string" && mustKeepClearRaw.trim().length > 0
-      ? [mustKeepClearRaw.trim()]
+      ? [mustKeepClearRaw]
       : Array.isArray(mustKeepClearRaw)
         ? mustKeepClearRaw.filter((entry): entry is string => typeof entry === "string" && entry.length > 0)
         : [];
+  // mustKeepClear is the only free-text field here (focal point and seating priority are
+  // enum-validated) and it flows verbatim into image prompts, which carry a hard provider
+  // token cap. Bound it at this parse boundary so no consumer can be blown past its budget
+  // by a hostile or accidental oversized brief value.
+  const mustKeepClear = mustKeepClearEntries
+    .slice(0, MUST_KEEP_CLEAR_MAX_ENTRIES)
+    .map((entry) => boundSpatialIntentText(entry, MUST_KEEP_CLEAR_MAX_ENTRY_CHARS))
+    .filter((entry) => entry.length > 0);
 
   const livingLike = layoutMode === "living_only" || layoutMode === "living_plus_dining";
   if (livingLike && focalPoint === "unknown") {
