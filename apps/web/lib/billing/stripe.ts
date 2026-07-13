@@ -1,6 +1,8 @@
 import Stripe from "stripe";
 
-export const HOMEOWNER_ROOM_UNLOCK_AMOUNT_AED = 50000;
+// Beta pricing (2026-07-13, Ayo): AED 99 per room unlock. Stripe amounts are in fils.
+export const HOMEOWNER_ROOM_UNLOCK_AMOUNT_AED = 9900;
+export const HOMEOWNER_ROOM_UNLOCK_PRICE_AED = HOMEOWNER_ROOM_UNLOCK_AMOUNT_AED / 100;
 export const DESIGNER_MONTHLY_AMOUNT_USD = 9900;
 
 let stripeClient: Stripe | null = null;

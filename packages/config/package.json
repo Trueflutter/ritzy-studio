@@ -10,7 +10,7 @@
     "zod": "^4.1.13"
   },
   "scripts": {
-    "test": "tsx src/product-matching-controlled-preview-gate.test.ts && tsx src/render-execution-mode.test.ts",
+    "test": "tsx src/product-matching-controlled-preview-gate.test.ts && tsx src/render-execution-mode.test.ts && tsx src/signup-allowlist.test.ts",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {

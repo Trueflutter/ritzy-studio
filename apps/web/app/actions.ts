@@ -54,7 +54,7 @@ import {
   type RoleScopedCandidatePool,
   type RoomProductRoleSpec
 } from "@ritzy-studio/domain";
-import { productMatchingControlledPreviewGate, renderExecutionMode } from "@ritzy-studio/config";
+import { productMatchingControlledPreviewGate, renderExecutionMode, signupAllowed } from "@ritzy-studio/config";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { after } from "next/server";
@@ -77,7 +77,8 @@ import {
   appUrl,
   DESIGNER_MONTHLY_AMOUNT_USD,
   getStripe,
-  HOMEOWNER_ROOM_UNLOCK_AMOUNT_AED
+  HOMEOWNER_ROOM_UNLOCK_AMOUNT_AED,
+  HOMEOWNER_ROOM_UNLOCK_PRICE_AED
 } from "@/lib/billing/stripe";
 import {
   buildProductImagePreflightGate,
@@ -572,7 +573,7 @@ export async function signUpAction(formData: FormData) {
   const password = String(formData.get("password") ?? "");
   const name = optionalString(formData, "name");
 
-  if (!email.toLowerCase().endsWith("@ritzyinteriors.com")) {
+  if (!signupAllowed(email)) {
     redirect(`/login?message=${encodeURIComponent(INTERNAL_PILOT_SIGNUP_MESSAGE)}`);
   }
 
@@ -836,7 +837,7 @@ export async function createHomeownerRoomUnlockCheckoutAction(formData: FormData
         .from("room_unlocks")
         .update({
           status: "pending",
-          price_aed: 500,
+          price_aed: HOMEOWNER_ROOM_UNLOCK_PRICE_AED,
           billing_provider: "stripe",
           billing_checkout_id: session.id,
           updated_at: new Date().toISOString()
@@ -847,7 +848,7 @@ export async function createHomeownerRoomUnlockCheckoutAction(formData: FormData
         room_id: roomId,
         user_id: user.id,
         status: "pending",
-        price_aed: 500,
+        price_aed: HOMEOWNER_ROOM_UNLOCK_PRICE_AED,
         billing_provider: "stripe",
         billing_checkout_id: session.id
       });
