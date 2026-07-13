@@ -537,3 +537,52 @@ findings fixed in design): `plans/2026-07-12_render-durability-queue.md`.
   review feedback on the runner shape lands once, not three times. Deep-stacking a third unproven
   PR on an unverifiable base (no credits) was the wrong trade.
 - Relax FINAL_RENDER_STALE_MS once queue retries are proven in production (kept as safety net).
+
+## 2026-07-13 (session 5 continued — review round + full verification, all gates cleared)
+
+Ayo relayed the fresh review (322/323/325 request-changes, 324/326 approve) and cleared the
+blockers: Evolink had 660 credits (the LOCAL env files + .env.local.hosted's OPENAI_API_KEY
+carried an EXHAUSTED older key — sha-fingerprinted, swapped to the funded account; Vercel
+prod/preview EVOLINK_API_KEY was already the funded one), approved the preview secret writes,
+Queues handling, and the hosted db push.
+
+### Review fixes (all pushed + commented for re-review)
+- 322 P1: views phase now independently repairable — redelivery of a succeeded job runs
+  ensureFinalRenderViews (only-missing regeneration, deterministic paths, 23505 dedupe,
+  recomputed output_asset_ids); queue mode rethrows on incomplete views below the cap. Plus
+  safeRevalidatePath (revalidatePath throws outside a request store and sat on the post-commit
+  path). 323 P2: spend now counts discarded QA regens + failed view attempts. 325 P2:
+  mustKeepClear bounded 6x160 at parseSpatialIntent AND spatialLayoutLanguage (reviewer's
+  20k repro is a regression test at both layers).
+
+### THE DURABLE PATH IS PROVEN (#322 merge gate satisfied)
+- Vercel Queues is ENABLED on the team — send() just worked (executionPath "queue").
+- Teardown survival x2 on preview (hosted + Evolink): browser killed t+5s, consumer completed
+  hero+views (jobs fd16e833, f8992147; second run QA=pass after the key fix).
+- Forced-redelivery idempotency through the REAL queue: temp preview-only debug enqueue route
+  (de980ec, reverted c511963) re-enqueued a succeeded job twice — consumer invoked twice
+  (runtime logs), zero mutations.
+- Local: success E2E (nonce hero, views), crash-during-views repair (32s, hero untouched),
+  terminal no-op (24ms), stale-reclaim vs in-flight race (discard, zero orphans).
+- Preview access: deployment protection (SSO) is ON for previews — session-3's open previews
+  are gone; use the Vercel MCP get_access_to_vercel_url share links (23h) for harness runs.
+
+### Cost telemetry live-verified (#323)
+Hero 4.6308 credits -> $0.0681 in input_summary; views ai_job cost_estimate_usd $0.1269 from
+outcomes [4.3137, 4.3138]. Evolink usage payload parses as coded; 68 credits/USD holds.
+
+### Merged + ops
+- #324 MERGED (grants). Hosted migration history REPAIRED (5 already-applied migrations were
+  never recorded: the 3 May ones + both 20260710 ones — verified applied via REST schema probes
+  before repairing) and 20260713090000_service_role_grants pushed to hosted. Prod re-verified 307.
+- #326 MERGED after visual validation: anchor_detail now a true close vignette (sofa end +
+  table edge + rug texture), product-identical across all 3 angles (render a9ca4a5c).
+- Preview env (branch-scoped to fable/render-durability-queue): SUPABASE_SERVICE_ROLE_KEY,
+  OPENAI_API_KEY (funded), OPENAI_BASE_URL, OPENAI_TEXT_MODEL.
+
+### Open
+- #322, #323 (stacked, retarget before base-branch deletion), #325 await re-review + Ayo's
+  merge word. PRODUCTION RISK flagged: prod's OPENAI_API_KEY (direct OpenAI, set 65d ago) was
+  quota-exhausted on 2026-07-10 — if billing wasn't fixed, prod text calls (concepts, QA,
+  sourcing) fail; images are fine (funded Evolink key). Confirm or route prod text via Evolink.
+- Concept-render migration off after() remains the named follow-up once #322 merges.
