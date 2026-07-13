@@ -345,9 +345,21 @@ export function spatialLayoutLanguage(roomType: string, intent?: SpatialPromptIn
   }
 
   if (intent?.mustKeepClear && intent.mustKeepClear.length > 0) {
-    parts.push(
-      `Keep these areas completely clear of furniture and decor, exactly as the user asked: ${intent.mustKeepClear.join("; ")}.`
-    );
+    // Defense in depth behind parseSpatialIntent's parse-boundary bounding: this free-text
+    // user input flows into image prompts with a hard provider token cap, so bound it here
+    // too for callers that assemble intent directly.
+    const boundedKeepClear = intent.mustKeepClear
+      .slice(0, 6)
+      .map((entry) => {
+        const collapsed = entry.replace(/\s+/g, " ").trim();
+        return collapsed.length <= 160 ? collapsed : `${collapsed.slice(0, 159)}…`;
+      })
+      .filter((entry) => entry.length > 0);
+    if (boundedKeepClear.length > 0) {
+      parts.push(
+        `Keep these areas completely clear of furniture and decor, exactly as the user asked: ${boundedKeepClear.join("; ")}.`
+      );
+    }
   }
 
   return parts.length > 0 ? parts.join(" ") : null;

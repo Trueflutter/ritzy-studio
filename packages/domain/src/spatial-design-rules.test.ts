@@ -239,6 +239,29 @@ assert.equal(hardVerdicts.length, hardCheckableSpatialRuleIds.length);
 assert.equal(hardVerdicts.find((verdict) => verdict.ruleId === "C1")?.status, "pass");
 assert.equal(hardVerdicts.find((verdict) => verdict.ruleId === "L10")?.status, "pass");
 
+// Oversized free-text mustKeepClear is bounded at the parse boundary: entries capped at 6,
+// each collapsed and truncated, so downstream image prompts cannot be blown past their
+// provider token caps by a hostile or accidental brief value.
+const hostileIntent = parseSpatialIntent(
+  {
+    spatialIntent: {
+      mustKeepClear: [
+        "x".repeat(20_000),
+        ...Array.from({ length: 10 }, (_, index) => `zone ${index}`)
+      ]
+    }
+  },
+  "Living Room"
+);
+if (hostileIntent.mustKeepClear.length > 6) {
+  throw new Error("mustKeepClear entry count not capped");
+}
+for (const entry of hostileIntent.mustKeepClear) {
+  if (entry.length > 160) {
+    throw new Error("mustKeepClear entry length not capped");
+  }
+}
+
 console.log("spatial design rule tests passed");
 
 function verifiedMeasurements(wallLengthCm: number, roomDepthCm: number): SpatialRoomFacts["measurements"] {

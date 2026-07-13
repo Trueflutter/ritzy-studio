@@ -103,6 +103,21 @@ assert.ok(
   "clamp must bound even a raw full-detail summary"
 );
 
+// Hostile spatial intent (reviewer repro): a 20k-char mustKeepClear entry must not blow the
+// prompt past the budget — bounded in the prompt layer even when parseSpatialIntent is
+// bypassed and intent is assembled directly.
+const hostileIntentPrompt = buildInitialConceptImagePrompt({
+  ...worstCase,
+  spatialIntent: {
+    ...worstCase.spatialIntent,
+    mustKeepClear: ["x".repeat(20_000), "the terrace door swing"]
+  }
+});
+assert.ok(
+  hostileIntentPrompt.length <= INITIAL_CONCEPT_IMAGE_PROMPT_CHAR_BUDGET,
+  `hostile mustKeepClear blew the budget: ${hostileIntentPrompt.length}`
+);
+
 // A modest everyday case passes through untouched.
 const modest = buildInitialConceptImagePrompt({
   generationPrompt: "A calm bedroom concept with walnut accents.",
