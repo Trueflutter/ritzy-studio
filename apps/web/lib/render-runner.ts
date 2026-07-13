@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import {
   assessRenderSpatialQuality,
+  evolinkCreditsToUsd,
   generateFinalGroundedRender,
   generateFinalRenderView,
   spatialQaCorrectionLanguage
@@ -9,6 +10,7 @@ import {
 import { parseSpatialIntent, sortProductsForRenderReferences } from "@ritzy-studio/domain";
 import { revalidatePath } from "next/cache";
 
+import { sumOutcomeCredits } from "@/lib/ai-cost";
 import {
   CONCEPT_VIEW_KEYS,
   LOCAL_SKU_FIDELITY_RENDER_REFERENCE_LIMIT,
@@ -297,6 +299,9 @@ export async function runFinalRender({
       products: productsForRender
     };
     let result = await generateFinalGroundedRender(renderInput);
+    // Total image spend for this attempt, INCLUDING a discarded spatial-QA regen — the
+    // discarded generation still consumed credits (review P2).
+    let renderImageCreditsUsed = result.imageCreditsUsed;
 
     // Post-render spatial QA: one corrective retry on a hard fail, then keep
     // the better of the two attempts. QA failure never fails the render.
@@ -314,6 +319,9 @@ export async function runFinalRender({
           ...renderInput,
           promptSuffix: spatialQaCorrectionLanguage([...qa.qa.issues])
         });
+        if (typeof retryResult.imageCreditsUsed === "number") {
+          renderImageCreditsUsed = (renderImageCreditsUsed ?? 0) + retryResult.imageCreditsUsed;
+        }
         const retryQa = await assessRenderSpatialQuality({
           imageUrl: await visionImageDataUrl(Buffer.from(retryResult.imageBase64, "base64"), "image/png"),
           roomType: room.room_type,
@@ -387,7 +395,11 @@ export async function runFinalRender({
           imageFallbackError: result.imageFallbackError ?? null,
           spatialQaVerdict: renderQaVerdict,
           spatialQaIssues: renderQaIssues,
-          spatialQaRegenerated: renderQaRegenerated
+          spatialQaRegenerated: renderQaRegenerated,
+          // render_jobs has no cost column; the hero's spend (including any discarded QA
+          // regen) is recorded here and the views' spend on the final_render_views ai_job.
+          imageCreditsUsed: renderImageCreditsUsed,
+          costEstimateUsd: evolinkCreditsToUsd(renderImageCreditsUsed)
         }
       })
       .eq("id", job.id)
@@ -585,6 +597,9 @@ async function ensureFinalRenderViews({
 
     const outcomes = await Promise.all(
       missingViewKeys.map(async (viewKey) => {
+        // Captured outside the try so a post-generation failure (upload, asset insert) still
+        // reports the credits the generation consumed (review P2).
+        let creditsUsed: number | null = null;
         try {
           const view = await generateFinalRenderView({
             roomType: room?.room_type ?? "living room",
@@ -595,6 +610,7 @@ async function ensureFinalRenderViews({
             heroImageMimeType: "image/png",
             heroImageUrl: signedHero?.signedUrl ?? null
           });
+          creditsUsed = view.imageCreditsUsed;
           const viewPath = viewPathFor(viewKey);
           const { error: uploadError } = await serviceSupabase.storage
             .from("generated-renders")
@@ -641,13 +657,15 @@ async function ensureFinalRenderViews({
             ok: true as const,
             assetId: viewAsset.id,
             provider: view.imageProvider,
-            fallbackUsed: view.imageFallbackUsed
+            fallbackUsed: view.imageFallbackUsed,
+            creditsUsed
           };
         } catch (error) {
           console.error(`Final render view generation failed (${viewKey}, render ${job.id}):`, error);
           return {
             viewKey,
             ok: false as const,
+            creditsUsed,
             error: error instanceof Error ? error.message : "Final render view generation failed."
           };
         }
@@ -665,6 +683,7 @@ async function ensureFinalRenderViews({
             failed.length > 0
               ? failed.map((outcome) => `${outcome.viewKey}: ${outcome.error}`).join("; ")
               : null,
+          cost_estimate_usd: evolinkCreditsToUsd(sumOutcomeCredits(outcomes)),
           output_summary: { renderJobId: job.id, outcomes }
         })
         .eq("id", viewsJob.id);
