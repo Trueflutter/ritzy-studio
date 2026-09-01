@@ -33,8 +33,8 @@ import {
   classifyProductSourcingFailure,
   productSourcingGenericFailureMessage,
   productSourcingTimeoutMessage
-} from "@/app/product-sourcing-failure";
-import { buildProductSourcingTimeoutDiagnostics } from "@/app/product-sourcing-timeout-diagnostics";
+} from "@/lib/product-sourcing-failure";
+import { buildProductSourcingTimeoutDiagnostics } from "@/lib/product-sourcing-timeout-diagnostics";
 
 type StructuredBriefJson = Record<string, unknown> & {
   visualPreferences?: unknown;

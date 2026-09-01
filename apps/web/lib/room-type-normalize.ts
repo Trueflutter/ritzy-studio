@@ -1,4 +1,4 @@
-import type { CatalogFirstRoomType } from "@ritzy-studio/domain";
+import { isCombinedLivingDining, type CatalogFirstRoomType } from "@ritzy-studio/domain";
 
 // Moved from the retired catalog-first planner family (Gate 1 disposition): the
 // pipeline's internal room-type key normalization, kept next to its one consumer
@@ -7,7 +7,7 @@ import type { CatalogFirstRoomType } from "@ritzy-studio/domain";
 export function normalizeCatalogFirstRoomType(roomType: string | CatalogFirstRoomType): CatalogFirstRoomType {
   const normalized = roomType.trim().toLowerCase().replace(/[\s-]+/g, "_");
 
-  if (isCombinedLivingDiningRoomType(roomType)) {
+  if (isCombinedLivingDining(roomType)) {
     return "living_dining";
   }
 
@@ -34,15 +34,4 @@ export function normalizeCatalogFirstRoomType(roomType: string | CatalogFirstRoo
   }
 
   throw new Error(`Unsupported catalog-first room type: ${roomType}`);
-}
-
-function isCombinedLivingDiningRoomType(value: string) {
-  const normalized = value
-    .trim()
-    .toLowerCase()
-    .replace(/&/g, " and ")
-    .replace(/[/_-]/g, " ")
-    .replace(/\s+/g, " ");
-
-  return /\bliving\b/.test(normalized) && /\bdining\b/.test(normalized);
 }

@@ -32,18 +32,18 @@ import {
   isProviderImageDownloadError,
   isProductSourcingTimeoutError,
   productSourcingTimeoutMessage
-} from "@/app/product-sourcing-failure";
-import { buildProductSourcingTextFallbackResult } from "@/app/product-sourcing-text-fallback";
+} from "@/lib/product-sourcing-failure";
+import { buildProductSourcingTextFallbackResult } from "@/lib/product-sourcing-text-fallback";
 import {
   productSourcingRetryFallbackEvidenceForStrategy,
   productSourcingVisualStrategy
-} from "@/app/product-sourcing-visual-strategy";
+} from "@/lib/product-sourcing-visual-strategy";
 import {
   buildProductImagePreflightGate,
   preflightProductCandidateImages,
   skippedProductImagePreflight,
   type ProductImagePreflightSummary
-} from "@/app/product-image-preflight";
+} from "@/lib/product-image-preflight";
 
 import {
   LOCAL_SKU_FIDELITY_CANDIDATES_PER_ROLE,
