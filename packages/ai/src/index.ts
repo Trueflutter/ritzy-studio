@@ -1089,7 +1089,7 @@ async function generateEvolinkImage({
   quality: "1K" | "2K" | "4K";
   baseUrl?: string;
 }): Promise<ImageGenerationAttempt> {
-  const apiBase = baseUrl ?? EVOLINK_API_BASE;
+  const apiBase = baseUrl?.trim() || EVOLINK_API_BASE;
   if (!apiKey) {
     throw new Error("EVOLINK_API_KEY is required for Evolink image generation.");
   }

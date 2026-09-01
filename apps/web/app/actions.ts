@@ -9,7 +9,8 @@ import {
   generateConceptView,
   generateInitialConcept,
   sourceProductsFromConcept,
-  sumUsdCostsStrict
+  sumUsdCostsStrict,
+  resolveStageTextModel
 } from "@ritzy-studio/ai";
 import type { Database } from "@ritzy-studio/db";
 import {
@@ -1526,7 +1527,7 @@ export async function saveDesignBriefAction(formData: FormData) {
       job_type: "clarifying_questions",
       status: "running",
       provider: "openai",
-      model: configuredTextModel(),
+      model: resolveStageTextModel("clarifying_questions", process.env, configuredTextModel()),
       prompt_version: null,
       input_summary: inputSummary
     })
@@ -1832,7 +1833,7 @@ async function analyzeAndWriteInspirationForRoom({
       job_type: "inspiration_analysis",
       status: "running",
       provider: "openai",
-      model: configuredTextModel(),
+      model: resolveStageTextModel("inspiration_analysis", process.env, configuredTextModel()),
       prompt_version: null,
       input_summary: { inspirationAssetCount: signedUrls.length }
     })
@@ -2192,7 +2193,7 @@ export async function generateInitialConceptAction(formData: FormData) {
       job_type: "initial_concept_generation",
       status: "running",
       provider: configuredImageProvider(),
-      model: `${configuredTextModel()} + ${configuredImageModel()}`,
+      model: `${resolveStageTextModel("concept_direction", process.env, configuredTextModel())} + ${configuredImageModel()}`,
       prompt_version: null,
       input_summary: {
         roomId,
@@ -2664,7 +2665,7 @@ ${conceptPaletteText}`
       job_type: "product_visual_sourcing",
       status: "running",
       provider: "openai",
-      model: configuredTextModel(),
+      model: resolveStageTextModel("product_sourcing", process.env, configuredTextModel()),
       prompt_version: null,
       input_summary: {
         roomId,
@@ -4730,7 +4731,7 @@ export async function reviseConceptAction(formData: FormData) {
       job_type: "concept_revision",
       status: "running",
       provider: configuredImageProvider(),
-      model: `${configuredTextModel()} + ${configuredImageModel()}`,
+      model: `${resolveStageTextModel("revision_direction", process.env, configuredTextModel())} + ${configuredImageModel()}`,
       prompt_version: null,
       input_summary: {
         roomId,
