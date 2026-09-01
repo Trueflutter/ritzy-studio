@@ -185,7 +185,15 @@ async function resolvesToPublicAddress(host: string): Promise<boolean> {
   }
   try {
     const dns = await import("node:dns/promises");
-    const results = await dns.lookup(host, { all: true, verbatim: true });
+    // A hanging resolver must not stall the pipeline before any fetch timeout can
+    // apply; past the bound we fall through to the fetch's own failure mode.
+    const results = await Promise.race([
+      dns.lookup(host, { all: true, verbatim: true }),
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), 2_000))
+    ]);
+    if (!results) {
+      return true;
+    }
     return results.every((entry) => !isPrivateOrLocalHost(entry.address));
   } catch {
     // Resolution failure: let the fetch fail on its own terms rather than
@@ -244,17 +252,30 @@ export async function followGuardedRedirects(
     allowlist,
     fetchImpl = fetch,
     timeoutMs = PREFLIGHT_TIMEOUT_MS,
+    overallTimeoutMs,
     method = "GET"
   }: {
     allowlist: Set<string>;
     fetchImpl?: ReferenceFetchImpl;
     timeoutMs?: number;
+    // Hard ceiling across ALL hops and DNS screens; per-hop timeouts alone would
+    // let a redirect chain multiply the stated deadline. Defaults to 2x the per-hop
+    // timeout.
+    overallTimeoutMs?: number;
     method?: "HEAD" | "GET";
   }
 ): Promise<{ ok: true; response: Response; finalUrl: string } | { ok: false; reason: string }> {
   let currentUrl = url;
+  let currentMethod: "HEAD" | "GET" = method;
+  const overallDeadline = Date.now() + (overallTimeoutMs ?? timeoutMs * 2);
 
   for (let hop = 0; hop <= PREFLIGHT_MAX_REDIRECTS; hop += 1) {
+    const remaining = overallDeadline - Date.now();
+    if (remaining <= 0) {
+      return { ok: false, reason: "overall fetch deadline exceeded" };
+    }
+    const hopTimeout = Math.min(timeoutMs, remaining);
+
     const verdict = checkReferenceImageUrl(currentUrl, allowlist);
     if (!verdict.ok) {
       return { ok: false, reason: verdict.reason };
@@ -268,9 +289,9 @@ export async function followGuardedRedirects(
 
     let response: Response;
     try {
-      response = await fetchWithTimeout(fetchImpl, currentUrl, method, timeoutMs);
-      if (method === "HEAD" && (response.status === 405 || response.status === 501 || response.status === 403)) {
-        response = await fetchWithTimeout(fetchImpl, currentUrl, "GET", timeoutMs);
+      response = await fetchWithTimeout(fetchImpl, currentUrl, currentMethod, hopTimeout);
+      if (currentMethod === "HEAD" && (response.status === 405 || response.status === 501 || response.status === 403)) {
+        response = await fetchWithTimeout(fetchImpl, currentUrl, "GET", hopTimeout);
       }
     } catch (error) {
       return { ok: false, reason: `guarded fetch failed: ${(error as Error).message}` };
@@ -282,16 +303,25 @@ export async function followGuardedRedirects(
       if (!location) {
         return { ok: false, reason: "redirect without location" };
       }
-      let next: string;
+      let next: URL;
       try {
-        next = new URL(location, currentUrl).toString();
+        next = new URL(location, currentUrl);
       } catch {
         return { ok: false, reason: `unparseable redirect target ${location}` };
       }
-      if (next === currentUrl) {
+      // No plaintext downgrade mid-chain: an https reference must stay https, or a
+      // network-position attacker could swap the image bytes on the clear hop.
+      if (new URL(currentUrl).protocol === "https:" && next.protocol !== "https:") {
+        return { ok: false, reason: `refusing https-to-${next.protocol.replace(":", "")} redirect downgrade` };
+      }
+      if (next.toString() === currentUrl) {
         return { ok: false, reason: "redirect loop" };
       }
-      currentUrl = next;
+      // 303 semantically converts the follow-up to GET.
+      if (response.status === 303) {
+        currentMethod = "GET";
+      }
+      currentUrl = next.toString();
       continue;
     }
 
@@ -369,15 +399,23 @@ export async function preflightReferenceImage(
     allowlist,
     fetchImpl = fetch,
     timeoutMs = PREFLIGHT_TIMEOUT_MS,
+    overallTimeoutMs,
     maxBytes = PREFLIGHT_MAX_BYTES
   }: {
     allowlist: Set<string>;
     fetchImpl?: ReferenceFetchImpl;
     timeoutMs?: number;
+    overallTimeoutMs?: number;
     maxBytes?: number;
   }
 ): Promise<ReferencePreflightResult> {
-  const followed = await followGuardedRedirects(url, { allowlist, fetchImpl, timeoutMs, method: "HEAD" });
+  const followed = await followGuardedRedirects(url, {
+    allowlist,
+    fetchImpl,
+    timeoutMs,
+    overallTimeoutMs,
+    method: "HEAD"
+  });
   if (!followed.ok) {
     return { ok: false, reason: followed.reason };
   }

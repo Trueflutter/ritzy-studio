@@ -195,7 +195,7 @@ function mockFetch(routes: Record<string, MockResponse | MockResponse[]>) {
     fetchImpl: impl
   });
   assert.equal(result.ok, false);
-  assert.ok(!result.ok && /private or local host/.test(result.reason ?? ""), `reason was: ${!result.ok ? result.reason : ""}`);
+  assert.ok(!result.ok && /(private or local host|downgrade)/.test(result.reason ?? ""), `reason was: ${!result.ok ? result.reason : ""}`);
   assert.ok(
     !seen.some((entry) => entry.includes("169.254.169.254")),
     `private target must never be fetched; saw: ${seen.join(", ")}`
@@ -316,6 +316,50 @@ function mockFetch(routes: Record<string, MockResponse | MockResponse[]>) {
   const bytes = await readResponseBytesCapped(response, 1024, 300);
   assert.equal(bytes, null);
   assert.ok(Date.now() - startedAt < 2_000, "deadline did not bound the read");
+}
+
+// A redirect that downgrades https to http is refused even between allowlisted hosts.
+{
+  const { impl, seen } = mockFetch({
+    "https://media.homecentre.com/downgrade.jpg": {
+      status: 302,
+      headers: { location: "http://media.homecentre.com/downgrade.jpg" }
+    }
+  });
+  const result = await preflightReferenceImage("https://media.homecentre.com/downgrade.jpg", {
+    allowlist,
+    fetchImpl: impl
+  });
+  assert.equal(result.ok, false);
+  assert.ok(!result.ok && /downgrade/.test(result.reason ?? ""), `reason: ${!result.ok ? result.reason : ""}`);
+  assert.ok(!seen.some((entry) => entry.startsWith("HEAD http://") || entry.startsWith("GET http://")));
+}
+
+// The follower enforces an OVERALL deadline across hops: a chain of slow redirects
+// cannot multiply the per-hop timeout.
+{
+  const slowHop = (target: string): MockResponse => ({ status: 302, headers: { location: target } });
+  const routes: Record<string, MockResponse | MockResponse[]> = {
+    "https://media.homecentre.com/s1.jpg": slowHop("https://media.homecentre.com/s2.jpg"),
+    "https://media.homecentre.com/s2.jpg": slowHop("https://media.homecentre.com/s3.jpg"),
+    "https://media.homecentre.com/s3.jpg": { status: 200, headers: { "content-type": "image/jpeg" } }
+  };
+  const { impl } = mockFetch(routes);
+  const slowImpl = async (input: string | URL, init?: { method?: string }) => {
+    await new Promise((resolve) => setTimeout(resolve, 120));
+    return impl(input, init);
+  };
+  const startedAt = Date.now();
+  const result = await preflightReferenceImage("https://media.homecentre.com/s1.jpg", {
+    allowlist,
+    fetchImpl: slowImpl,
+    timeoutMs: 5_000,
+    // overall ceiling below the summed hop delays: must fail on the deadline
+    overallTimeoutMs: 200
+  });
+  assert.equal(result.ok, false);
+  assert.ok(!result.ok && /deadline/.test(result.reason ?? ""), `reason: ${!result.ok ? result.reason : ""}`);
+  assert.ok(Date.now() - startedAt < 2_000);
 }
 
 console.log("reference-guard tests passed");

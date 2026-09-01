@@ -108,6 +108,8 @@ async function fetchRemoteImageOnce(
       allowlist,
       fetchImpl,
       timeoutMs: CATALOGUE_GROUNDED_CONCEPT_IMAGE_FETCH_TIMEOUT_MS,
+      // Redirect chains must not multiply the per-fetch deadline.
+      overallTimeoutMs: CATALOGUE_GROUNDED_CONCEPT_IMAGE_FETCH_TIMEOUT_MS,
       method: "GET"
     });
     if (!followed.ok || !followed.response.ok) {
