@@ -6,8 +6,6 @@ import {
   generateClarifyingQuestions,
   extractConceptImagePalette,
   generateConceptRevision,
-  generateConceptView,
-  generateInitialConcept,
   sourceProductsFromConcept,
   stageTextConfig,
   sumImagePlusTextUsd,
@@ -24,10 +22,8 @@ import {
   buildPersistedSelectionSnapshot,
   composeRoomProductOptions,
   conceptPaletteMatchingText,
-  deriveSpatialDesignerWarnings,
   fitSelectionToBudget,
   parseConceptImagePalette,
-  parseSpatialIntent,
   enhancedProductRolesForRoom,
   productRolesForRoom,
   rankProductMatches,
@@ -50,8 +46,13 @@ import { redirect } from "next/navigation";
 import { after } from "next/server";
 
 import { createServiceClient } from "@/lib/supabase/service";
-import { normalizeCatalogFirstRoomType } from "@/lib/room-type-normalize";
 import { selectShoppingItem, substituteProduct } from "@/lib/services/selection-swap";
+import {
+  generateAndStoreConceptViews,
+  generateInitialConceptForRoom,
+  selectConcept
+} from "@/lib/services/concept-generation";
+import { storageImageDataUrl } from "@/lib/services/storage-images";
 import {
   CATALOGUE_GROUNDED_CONCEPT_REFERENCE_IMAGE_BLOCK_MESSAGE,
   CATALOGUE_GROUNDED_CONCEPT_USER_SAFE_BLOCK_MESSAGE,
@@ -65,7 +66,6 @@ import {
   PRODUCT_SOURCING_IMAGE_PREFLIGHT_BUDGET_MS,
   PRODUCT_SOURCING_IMAGE_PREFLIGHT_TIMEOUT_MS,
   bestThemeAlignedOptionForRole,
-  buildCatalogueGroundedConceptPlan,
   catalogUnavailableMessage,
   catalogueGroundingAnchorsForConcept,
   ensureLocalSkuFidelitySupportOptions,
@@ -73,7 +73,6 @@ import {
   fetchProductsById,
   formatAedValue,
   isRecord,
-  likedStyleSlugsFromStructuredBrief,
   matchToSourcingCandidate,
   mergeProductMatchCandidates,
   mergeRoomRoles,
@@ -103,8 +102,7 @@ import {
 } from "@/lib/services/sourcing-support";
 import { createClient } from "@/lib/supabase/server";
 import { FINAL_RENDER_STALE_MS } from "@/lib/render";
-import { sumOutcomeCredits } from "@/lib/ai-cost";
-import { CONCEPT_VIEW_KEYS, localSkuFidelityModeEnabled } from "@/lib/render-flags";
+import { localSkuFidelityModeEnabled } from "@/lib/render-flags";
 import {
   configuredImageModel,
   configuredImageProvider,
@@ -151,128 +149,6 @@ const INTERNAL_PILOT_SIGNUP_MESSAGE =
 // Generates the additional camera angles for a stored concept and records them as
 // concept-linked room assets. Runs inside after(): view failures must never fail
 // the concept itself, so each view is best-effort.
-async function generateAndStoreConceptViews({
-  serviceSupabase,
-  userId,
-  roomId,
-  conceptId,
-  roomType,
-  conceptTitle,
-  conceptDescription,
-  conceptGenerationPrompt,
-  heroImageBytes,
-  heroImageStoragePath
-}: {
-  serviceSupabase: ReturnType<typeof createServiceClient>;
-  userId: string;
-  roomId: string;
-  conceptId: string;
-  roomType: string;
-  conceptTitle: string;
-  conceptDescription?: string | null;
-  conceptGenerationPrompt?: string | null;
-  heroImageBytes: Buffer;
-  heroImageStoragePath: string;
-}) {
-  const { data: signedHero } = await serviceSupabase.storage
-    .from("generated-renders")
-    .createSignedUrl(heroImageStoragePath, 60 * 30);
-
-  // Tracked as an ai_job so silent failures are observable and retryable; the
-  // two views generate in parallel to stay well inside the task lifetime.
-  const { data: viewsJob } = await serviceSupabase
-    .from("ai_jobs")
-    .insert({
-      user_id: userId,
-      room_id: roomId,
-      job_type: "concept_views",
-      status: "running",
-      provider: configuredImageProvider(),
-      model: configuredImageModel(),
-      input_summary: { conceptId, viewKeys: CONCEPT_VIEW_KEYS }
-    })
-    .select("id")
-    .single();
-
-  const outcomes = await Promise.all(
-    CONCEPT_VIEW_KEYS.map(async (viewKey) => {
-      // Captured outside the try so a post-generation failure still reports the credits the
-      // generation consumed (review P2).
-      let creditsUsed: number | null = null;
-      try {
-        const view = await generateConceptView({
-          roomType,
-          viewKey,
-          conceptTitle,
-          conceptDescription,
-          conceptGenerationPrompt,
-          heroImageBytes,
-          heroImageMimeType: "image/png",
-          heroImageUrl: signedHero?.signedUrl ?? null
-        });
-        creditsUsed = view.imageCreditsUsed;
-        const viewPath = `${userId}/${roomId}/${conceptId}-${viewKey}.png`;
-        const { error: uploadError } = await serviceSupabase.storage
-          .from("generated-renders")
-          .upload(viewPath, Buffer.from(view.imageBase64, "base64"), {
-            contentType: "image/png",
-            upsert: true
-          });
-
-        if (uploadError) {
-          throw new Error(uploadError.message);
-        }
-
-        const { error: assetError } = await serviceSupabase.from("room_assets").insert({
-          room_id: roomId,
-          asset_type: "concept_render",
-          storage_path: viewPath,
-          mime_type: "image/png",
-          is_primary: false,
-          concept_id: conceptId,
-          view_key: viewKey
-        });
-
-        if (assetError) {
-          throw new Error(assetError.message);
-        }
-
-        return {
-          viewKey,
-          ok: true as const,
-          provider: view.imageProvider,
-          fallbackUsed: view.imageFallbackUsed,
-          creditsUsed
-        };
-      } catch (error) {
-        console.error(`Concept view generation failed (${viewKey}, concept ${conceptId}):`, error);
-        return {
-          viewKey,
-          ok: false as const,
-          creditsUsed,
-          error: error instanceof Error ? error.message : "Concept view generation failed."
-        };
-      }
-    })
-  );
-
-  if (viewsJob) {
-    const failed = outcomes.filter((outcome) => !outcome.ok);
-    await serviceSupabase
-      .from("ai_jobs")
-      .update({
-        // Any missing view is a failed job: partial success must stay visible
-        // and retryable by status, not silently ship a one-view concept.
-        status: failed.length > 0 ? "failed" : "succeeded",
-        completed_at: new Date().toISOString(),
-        error_message: failed.length > 0 ? failed.map((outcome) => `${outcome.viewKey}: ${outcome.error}`).join("; ") : null,
-        cost_estimate_usd: evolinkCreditsToUsd(sumOutcomeCredits(outcomes)),
-        output_summary: { conceptId, outcomes }
-      })
-      .eq("id", viewsJob.id);
-  }
-}
-
 function productMatchingEngineV1Enabled() {
   return process.env.RITZY_PRODUCT_MATCHING_ENGINE_V1_ENABLED === "true";
 }
@@ -340,17 +216,6 @@ function optionalNumber(formData: FormData, key: string) {
   const number = Number(value);
   return Number.isFinite(number) ? number : undefined;
 }
-
-function hasRequiredRoomSize(measurements: {
-  wall_length_cm?: number | null;
-  room_depth_cm?: number | null;
-  ceiling_height_cm?: number | null;
-}) {
-  return Boolean(
-    measurements.wall_length_cm && measurements.room_depth_cm && measurements.ceiling_height_cm
-  );
-}
-
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
 type ServiceSupabaseClient = ReturnType<typeof createServiceClient>;
@@ -1601,22 +1466,6 @@ async function ensureInspirationAnalysisBeforeDetails({
 // signed URLs can expire mid-flow and are unreachable from the provider when the
 // storage host is not public (e.g. local development). The bytes are small and
 // already one storage read away.
-async function storageImageDataUrl(
-  client: ServiceSupabaseClient | SupabaseServerClient,
-  bucket: string,
-  path: string,
-  mimeType?: string | null
-) {
-  const { data, error } = await client.storage.from(bucket).download(path);
-  if (error || !data) {
-    return null;
-  }
-
-  const buffer = Buffer.from(await data.arrayBuffer());
-  const contentType = mimeType ?? (data.type || "image/jpeg");
-  return visionImageDataUrl(buffer, contentType);
-}
-
 async function analyzeAndWriteInspirationForRoom({
   inspirationAssets,
   requireSignedUrls = false,
@@ -1753,442 +1602,40 @@ export async function generateInitialConceptAction(formData: FormData) {
     redirect("/login");
   }
 
-  const { data: room } = await supabase
-    .from("rooms")
-    .select("id, room_type")
-    .eq("id", roomId)
-    .eq("project_id", projectId)
-    .single();
-
-  if (!room) {
-    redirect("/");
-  }
-
-  const { data: project } = await supabase
-    .from("projects")
-    .select("id, budget_max_aed")
-    .eq("id", projectId)
-    .single();
-
-  if (!project) {
-    redirect("/");
-  }
-
-  await requireDesignerFreeRoomAccess(user.id, roomId, redirectPath);
-
-  const { data: designBrief } = await supabase
-    .from("design_briefs")
-    .select("*")
-    .eq("room_id", roomId)
-    .order("updated_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  if (!designBrief) {
-    redirect(`/projects/${projectId}/rooms/${roomId}/brief`);
-  }
-
-  const { data: existingConcept } = await supabase
-    .from("concepts")
-    .select("id")
-    .eq("room_id", roomId)
-    .eq("design_brief_id", designBrief.id)
-    .in("status", ["generated", "selected"])
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  if (existingConcept) {
-    redirect(`${redirectPath}?message=${encodeURIComponent("Initial concept already generated.")}`);
-  }
-
-  const { data: roomPhotos = [] } = await supabase
-    .from("room_assets")
-    .select("*")
-    .eq("room_id", roomId)
-    .eq("asset_type", "room_photo")
-    .order("created_at", { ascending: true })
-    .limit(3);
-  const roomPhoto = roomPhotos?.[0] ?? null;
-  const additionalRoomPhotoAssets = (roomPhotos ?? []).slice(1);
-
-  if (!roomPhoto) {
-    redirect(`/projects/${projectId}/rooms/${roomId}/photos`);
-  }
-
   const serviceSupabase = createServiceClient();
-  const runningSince = new Date(Date.now() - 15 * 60 * 1000).toISOString();
-  const { data: runningConceptJob } = await serviceSupabase
-    .from("ai_jobs")
-    .select("id")
-    .eq("room_id", roomId)
-    .eq("job_type", "initial_concept_generation")
-    .eq("status", "running")
-    .gte("created_at", runningSince)
-    .contains("input_summary", { designBriefId: designBrief.id })
-    .limit(1)
-    .maybeSingle();
 
-  if (runningConceptJob) {
-    redirect(`${redirectPath}?message=${encodeURIComponent("Concept generation is already running.")}`);
-  }
-
-  const { data: signedPhoto } = await supabase.storage
-    .from("room-assets")
-    .createSignedUrl(roomPhoto.storage_path, 60 * 30);
-
-  const { data: inspirationAssets = [] } = await supabase
-    .from("room_assets")
-    .select("id, storage_path")
-    .eq("room_id", roomId)
-    .eq("asset_type", "inspiration_image")
-    .order("created_at", { ascending: true })
-    .limit(6);
-
-  const signedInspirationUrls = (
-    await Promise.all(
-      (inspirationAssets ?? []).map((asset) =>
-        storageImageDataUrl(supabase, "room-assets", asset.storage_path)
-      )
-    )
-  ).filter((url): url is string => Boolean(url));
-
-  const { data: photoBlob, error: downloadError } = await supabase.storage
-    .from("room-assets")
-    .download(roomPhoto.storage_path);
-
-  if (!signedPhoto?.signedUrl || downloadError || !photoBlob) {
-    redirect(`${redirectPath}?message=${encodeURIComponent("The room photo could not be prepared for generation.")}`);
-  }
-
-  const additionalRoomPhotos = (
-    await Promise.all(
-      additionalRoomPhotoAssets.map(async (asset) => {
-        const { data: blob, error: blobError } = await supabase.storage
-          .from("room-assets")
-          .download(asset.storage_path);
-        if (blobError || !blob) {
-          return null;
-        }
-        const bytes = Buffer.from(await blob.arrayBuffer());
-        const { data: signed } = await supabase.storage
-          .from("room-assets")
-          .createSignedUrl(asset.storage_path, 60 * 30);
-        return {
-          url: await visionImageDataUrl(bytes, asset.mime_type),
-          referenceUrl: signed?.signedUrl ?? null,
-          bytes,
-          mimeType: asset.mime_type
-        };
-      })
-    )
-  ).filter((photo): photo is NonNullable<typeof photo> => Boolean(photo));
-
-  const { data: floorPlanAsset } = await supabase
-    .from("room_assets")
-    .select("storage_path, mime_type")
-    .eq("room_id", roomId)
-    .eq("asset_type", "floor_plan")
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  const floorPlanImageUrl = floorPlanAsset?.mime_type?.startsWith("image/")
-    ? await storageImageDataUrl(supabase, "room-assets", floorPlanAsset.storage_path, floorPlanAsset.mime_type)
-    : null;
-
-  const { data: measurements } = await supabase
-    .from("room_measurements")
-    .select("*")
-    .eq("room_id", roomId)
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  // Measurements no longer hard-gate generation: a user who just wants to snap a
-  // photo still gets a concept, with the missing-scale assumption recorded and
-  // surfaced instead of a dead end.
-  const measurementsMissing = !measurements || !hasRequiredRoomSize(measurements);
-
-  const spatialIntent = parseSpatialIntent(designBrief.structured_json, room.room_type);
-  const spatialWarnings = deriveSpatialDesignerWarnings({
-    roomType: normalizeCatalogFirstRoomType(room.room_type),
-    intent: spatialIntent,
-    measurements: measurements
-      ? {
-          wallLengthCm: measurements.wall_length_cm,
-          roomDepthCm: measurements.room_depth_cm,
-          ceilingHeightCm: measurements.ceiling_height_cm,
-          source: measurements.source,
-          confidence: measurements.confidence
-        }
-      : null
-  });
-  const spatialAssumptions = [
-    ...(spatialIntent.assumptions ?? []),
-    ...(measurementsMissing
-      ? ["Room measurements were not provided; furniture scale is directional until dimensions are added."]
-      : [])
-  ];
-
-  const { data: answeredQuestions = [] } = await supabase
-    .from("clarifying_questions")
-    .select("question, answer")
-    .eq("design_brief_id", designBrief.id)
-    .eq("status", "answered")
-    .order("created_at", { ascending: true })
-    .order("id", { ascending: true });
-
-  const catalogueGroundingPlan = await buildCatalogueGroundedConceptPlan({
-    serviceSupabase,
-    roomType: room.room_type,
-    budgetMaxAed: project.budget_max_aed,
-    roomMeasurements: measurements
-      ? {
-          wallLengthCm: measurements.wall_length_cm,
-          roomDepthCm: measurements.room_depth_cm
-        }
-      : null,
-    designBrief,
-    answeredQuestions: answeredQuestions ?? []
-  });
-
-  if (catalogueGroundingPlan.blockers.length > 0) {
-    // Record WHY grounding blocked; the user-facing message is deliberately
-    // generic, and without this record the blockers are undiagnosable.
-    await serviceSupabase.from("ai_jobs").insert({
-      user_id: user.id,
-      room_id: roomId,
-      job_type: "initial_concept_generation",
-      status: "failed",
-      provider: configuredImageProvider(),
-      model: configuredImageModel(),
-      error_message: "Catalogue grounding blocked before generation.",
-      input_summary: {
-        roomId,
-        designBriefId: designBrief.id,
-        blockers: catalogueGroundingPlan.blockers,
-        catalogueGrounding: catalogueGroundingPlan.summary
-      }
-    });
-    redirect(
-      `${redirectPath}?message=${encodeURIComponent(CATALOGUE_GROUNDED_CONCEPT_USER_SAFE_BLOCK_MESSAGE)}`
-    );
-  }
-
-  const catalogueProducts = await Promise.all(
-    catalogueGroundingPlan.products.map(async ({ match, role, referenceImage }) => ({
-      name: match.name,
-      retailerName: match.retailerName,
-      category: match.categoryNormalized,
-      roleLabel: role.label,
-      selectionReason: match.selectionReason,
-      description: match.description,
-      color: match.color,
-      material: match.material,
-      styleTags: match.styleTags,
-      colorTags: match.colorTags,
-      materialTags: match.materialTags,
-      dimensions: match.dimensions?.sourceText ?? null,
-      primaryImageUrl: match.primaryImageUrl,
-      imageBytes: referenceImage.bytes,
-      imageMimeType: referenceImage.mimeType,
-      visionImageUrl: await visionImageDataUrl(referenceImage.bytes, referenceImage.mimeType)
-    }))
+  const result = await generateInitialConceptForRoom(
+    { supabase, serviceSupabase },
+    { userId: user.id, projectId, roomId },
+    {
+      ensureEntitled: () => requireDesignerFreeRoomAccess(user.id, roomId, redirectPath),
+      defer: (task) =>
+        after(async () => {
+          await task();
+          revalidatePath(redirectPath);
+        })
+    }
   );
-  const missingCatalogueReferenceImages = catalogueProducts
-    .filter((product) => !product.imageBytes || !product.imageMimeType)
-    .map((product) => product.roleLabel);
 
-  if (missingCatalogueReferenceImages.length > 0) {
-    redirect(
-      `${redirectPath}?message=${encodeURIComponent(
-        CATALOGUE_GROUNDED_CONCEPT_REFERENCE_IMAGE_BLOCK_MESSAGE
-      )}`
-    );
-  }
-
-  const { data: job, error: jobError } = await serviceSupabase
-    .from("ai_jobs")
-    .insert({
-      user_id: user.id,
-      room_id: roomId,
-      job_type: "initial_concept_generation",
-      status: "running",
-      provider: configuredImageProvider(),
-      model: `${stageTextConfig("concept_direction", configuredTextModel()).model} + ${configuredImageModel()}`,
-      prompt_version: null,
-      input_summary: {
-        roomId,
-        designBriefId: designBrief.id,
-        roomPhotoAssetId: roomPhoto.id,
-        catalogueGrounding: catalogueGroundingPlan.summary,
-        inspirationAssetCount: signedInspirationUrls.length,
-        answeredQuestionCount: answeredQuestions?.length ?? 0
-      }
-    })
-    .select("id")
-    .single();
-
-  if (jobError) {
-    throw new Error(jobError.message);
-  }
-
-  try {
-    const photoBytes = Buffer.from(await photoBlob.arrayBuffer());
-    const result = await generateInitialConcept({
-      roomType: room.room_type,
-      roomPhotoUrl: await visionImageDataUrl(photoBytes, roomPhoto.mime_type),
-      roomPhotoReferenceUrl: signedPhoto.signedUrl,
-      roomPhotoBytes: photoBytes,
-      roomPhotoMimeType: roomPhoto.mime_type,
-      additionalRoomPhotos,
-      catalogueProducts,
-      inspirationImageUrls: signedInspirationUrls,
-      floorPlanImageUrl,
-      spatialIntent: {
-        focalPoint: spatialIntent.focalPoint,
-        seatingPriority: spatialIntent.seatingPriority,
-        diningSeatCount: spatialIntent.diningSeatCount,
-        mustKeepClear: spatialIntent.mustKeepClear
-      },
-      styleSlugs: likedStyleSlugsFromStructuredBrief(designBrief.structured_json),
-      styleNotes: designBrief.style_notes,
-      colorNotes: designBrief.color_notes,
-      budgetNotes: designBrief.budget_notes,
-      functionalRequirements: designBrief.functional_requirements,
-      avoidNotes: designBrief.avoid_notes,
-      inspirationNotes: designBrief.inspiration_notes,
-      clarifyingAnswers: (answeredQuestions ?? [])
-        .filter((question) => question.answer)
-        .map((question) => ({
-          question: question.question,
-          answer: question.answer ?? ""
-        })),
-      measurements: measurements
-        ? {
-            wallLengthCm: measurements.wall_length_cm,
-            roomDepthCm: measurements.room_depth_cm,
-            ceilingHeightCm: measurements.ceiling_height_cm,
-            notes: measurements.notes
-          }
-        : null
-    });
-
-    await serviceSupabase
-      .from("ai_jobs")
-      .update({
-        status: "succeeded",
-        completed_at: new Date().toISOString(),
-        provider: result.imageProvider,
-        model: `${result.textModel} + ${result.imageModel}`,
-        prompt_version: result.promptVersion,
-        cost_estimate_usd: sumImagePlusTextUsd(evolinkCreditsToUsd(result.imageCreditsUsed), result.textCostUsd),
-        output_summary: {
-          promptKey: result.promptKey,
-          title: result.concept.title,
-          catalogueGrounding: catalogueGroundingPlan.summary,
-          uncertaintyNotes: result.analysis.uncertaintyNotes,
-          revisedPrompt: result.revisedPrompt ?? null,
-          imageProvider: result.imageProvider,
-          imageModel: result.imageModel,
-          imagePromptVersion: result.promptVersion,
-          imageLatencySeconds: result.imageLatencySeconds,
-          imageFallbackUsed: result.imageFallbackUsed,
-          imageFallbackError: result.imageFallbackError ?? null,
-          imageCreditsUsed: result.imageCreditsUsed
-        }
-      })
-      .eq("id", job.id);
-
-    const { data: concept, error: conceptError } = await supabase
-      .from("concepts")
-      .insert({
-        room_id: roomId,
-        design_brief_id: designBrief.id,
-        generation_job_id: job.id,
-        title: result.concept.title,
-        description: [
-          result.concept.rationale,
-          "",
-          `Uncertainty: ${[
-            result.concept.uncertaintyNote,
-            ...spatialAssumptions,
-            ...spatialWarnings
-              .filter((warning) => warning.code !== "spatial_geometry_missing")
-              .map((warning) => warning.message)
-          ].join(" ")}`
-        ].join("\n"),
-        status: "generated"
-      })
-      .select("id")
-      .single();
-
-    if (conceptError) {
-      throw new Error(conceptError.message);
-    }
-
-    const renderPath = `${user.id}/${roomId}/${concept.id}.png`;
-    const renderBytes = Buffer.from(result.imageBase64, "base64");
-    const { error: uploadError } = await serviceSupabase.storage
-      .from("generated-renders")
-      .upload(renderPath, renderBytes, {
-        contentType: "image/png",
-        upsert: true
-      });
-
-    if (uploadError) {
-      throw new Error(uploadError.message);
-    }
-
-    const { data: renderAsset, error: renderAssetError } = await supabase
-      .from("room_assets")
-      .insert({
-        room_id: roomId,
-        asset_type: "concept_render",
-        storage_path: renderPath,
-        mime_type: "image/png",
-        is_primary: true
-      })
-      .select("id")
-      .single();
-
-    if (renderAssetError) {
-      throw new Error(renderAssetError.message);
-    }
-
-    await supabase
-      .from("concepts")
-      .update({ primary_image_asset_id: renderAsset.id })
-      .eq("id", concept.id);
-
-    await supabase.from("rooms").update({ status: "concepting" }).eq("id", roomId);
-
-    after(async () => {
-      await generateAndStoreConceptViews({
-        serviceSupabase,
-        userId: user.id,
-        roomId,
-        conceptId: concept.id,
-        roomType: room.room_type,
-        conceptTitle: result.concept.title,
-        conceptDescription: result.concept.rationale,
-        conceptGenerationPrompt: result.concept.generationPrompt,
-        heroImageBytes: renderBytes,
-        heroImageStoragePath: renderPath
-      });
-      revalidatePath(redirectPath);
-    });
-  } catch (error) {
-    await serviceSupabase
-      .from("ai_jobs")
-      .update({
-        status: "failed",
-        completed_at: new Date().toISOString(),
-        error_message: error instanceof Error ? error.message : "Initial concept generation failed."
-      })
-      .eq("id", job.id);
-
-    redirect(`${redirectPath}?message=${encodeURIComponent("Concept generation failed. The brief and room photo are still saved.")}`);
+  switch (result.status) {
+    case "room_not_found":
+      redirect("/");
+    case "missing_brief":
+      redirect(`/projects/${projectId}/rooms/${roomId}/brief`);
+    case "already_generated":
+      redirect(`${redirectPath}?message=${encodeURIComponent("Initial concept already generated.")}`);
+    case "missing_photo":
+      redirect(`/projects/${projectId}/rooms/${roomId}/photos`);
+    case "already_running":
+      redirect(`${redirectPath}?message=${encodeURIComponent("Concept generation is already running.")}`);
+    case "photo_unprepared":
+      redirect(`${redirectPath}?message=${encodeURIComponent("The room photo could not be prepared for generation.")}`);
+    case "grounding_blocked":
+      redirect(`${redirectPath}?message=${encodeURIComponent(CATALOGUE_GROUNDED_CONCEPT_USER_SAFE_BLOCK_MESSAGE)}`);
+    case "reference_images_missing":
+      redirect(`${redirectPath}?message=${encodeURIComponent(CATALOGUE_GROUNDED_CONCEPT_REFERENCE_IMAGE_BLOCK_MESSAGE)}`);
+    case "generation_failed":
+      redirect(`${redirectPath}?message=${encodeURIComponent("Concept generation failed. The brief and room photo are still saved.")}`);
   }
 
   revalidatePath(redirectPath);
@@ -2209,8 +1656,7 @@ export async function selectConceptAction(formData: FormData) {
     redirect("/login");
   }
 
-  await supabase.from("concepts").update({ status: "rejected" }).eq("room_id", roomId);
-  await supabase.from("concepts").update({ status: "selected" }).eq("id", conceptId);
+  await selectConcept(supabase, { roomId, conceptId });
 
   const redirectPath = `/projects/${projectId}/rooms/${roomId}/product-matching`;
   revalidatePath(redirectPath);

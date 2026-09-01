@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 
 import { selectShoppingItem, substituteProduct } from "./selection-swap";
+import { fakeSupabase, type RecordedCall } from "./supabase-test-double";
 
 // Service-level tests with a recording fake Supabase client: the service owns the
 // persisted state transitions, so the tests pin WHICH rows are read and written,
@@ -8,63 +9,6 @@ import { selectShoppingItem, substituteProduct } from "./selection-swap";
 // or network dependency.
 
 process.env.NEXT_PUBLIC_SUPABASE_URL ??= "https://example-project.supabase.co";
-
-type Recorded = {
-  table: string;
-  op: "select" | "update";
-  filters: Array<[string, unknown]>;
-  not: Array<[string, unknown]>;
-  payload?: Record<string, unknown>;
-  single: boolean;
-};
-
-type Responder = (call: Recorded) => { data?: unknown; error?: { message: string } | null };
-
-function fakeClient(respond: Responder) {
-  const calls: Recorded[] = [];
-  function from(table: string) {
-    const call: Recorded = { table, op: "select", filters: [], not: [], single: false };
-    const builder: Record<string, unknown> = {
-      select() {
-        return builder;
-      },
-      update(payload: Record<string, unknown>) {
-        call.op = "update";
-        call.payload = payload;
-        return builder;
-      },
-      eq(column: string, value: unknown) {
-        call.filters.push([column, value]);
-        return builder;
-      },
-      not(column: string, operator: string, value: unknown) {
-        call.not.push([column, `${operator}:${value}`]);
-        return builder;
-      },
-      order() {
-        return builder;
-      },
-      limit() {
-        return builder;
-      },
-      single() {
-        call.single = true;
-        return builder;
-      },
-      maybeSingle() {
-        call.single = true;
-        return builder;
-      },
-      then(resolve: (value: { data: unknown; error: unknown }) => unknown) {
-        calls.push(call);
-        const result = respond(call);
-        return resolve({ data: result.data ?? null, error: result.error ?? null });
-      }
-    };
-    return builder;
-  }
-  return { client: { from } as never, calls };
-}
 
 function productRow(overrides: Record<string, unknown>) {
   return {
@@ -93,7 +37,7 @@ function productRow(overrides: Record<string, unknown>) {
 async function main() {
   // --- selectShoppingItem: one pick per role, total recalculated from selected rows only
   {
-    const { client, calls } = fakeClient((call) => {
+    const { client, calls } = fakeSupabase((call) => {
       if (call.table === "shopping_list_items" && call.op === "select" && call.single) {
         return { data: { id: "item-2", category: "sofas" } };
       }
@@ -134,7 +78,7 @@ async function main() {
 
   // --- selectShoppingItem: unknown item writes nothing
   {
-    const { client, calls } = fakeClient(() => ({ data: null }));
+    const { client, calls } = fakeSupabase(() => ({ data: null }));
     const result = await selectShoppingItem(client, { shoppingListId: "list-1", itemId: "missing" });
     assert.deepEqual(result, { status: "not_found" });
     assert.equal(calls.filter((call) => call.op === "update").length, 0);
@@ -142,8 +86,8 @@ async function main() {
 
   // --- substituteProduct: missing project resolves not_found with zero writes
   {
-    const { client } = fakeClient(() => ({ data: null }));
-    const { client: service, calls: serviceCalls } = fakeClient(() => ({ data: null }));
+    const { client } = fakeSupabase(() => ({ data: null }));
+    const { client: service, calls: serviceCalls } = fakeSupabase(() => ({ data: null }));
     const result = await substituteProduct(
       { supabase: client, serviceSupabase: service },
       { projectId: "p", roomId: "r", shoppingListId: "l", itemId: "i", mode: "cheaper" }
@@ -157,8 +101,8 @@ async function main() {
     const currentProduct = productRow({ id: "00000000-0000-4000-8000-000000000001", name: "Current sofa", price_aed: 3000 });
     const cheaper = productRow({ id: "00000000-0000-4000-8000-000000000002", name: "Cheaper sofa", price_aed: 2000 });
 
-    const userUpdates: Recorded[] = [];
-    const { client } = fakeClient((call) => {
+    const userUpdates: RecordedCall[] = [];
+    const { client } = fakeSupabase((call) => {
       if (call.op === "update") {
         userUpdates.push(call);
         return { data: null };
@@ -184,7 +128,7 @@ async function main() {
       }
       return { data: null };
     });
-    const { client: service } = fakeClient((call) => {
+    const { client: service } = fakeSupabase((call) => {
       if (call.table === "shopping_list_items" && call.single) {
         return {
           data: {
@@ -227,8 +171,8 @@ async function main() {
   // --- substituteProduct: no candidate pool resolves no_replacement with no writes
   {
     const currentProduct = productRow({ id: "00000000-0000-4000-8000-000000000001", price_aed: 3000 });
-    const userUpdates: Recorded[] = [];
-    const { client } = fakeClient((call) => {
+    const userUpdates: RecordedCall[] = [];
+    const { client } = fakeSupabase((call) => {
       if (call.op === "update") {
         userUpdates.push(call);
         return { data: null };
@@ -241,7 +185,7 @@ async function main() {
       if (call.table === "shopping_list_items") return { data: [] };
       return { data: null };
     });
-    const { client: service } = fakeClient((call) => {
+    const { client: service } = fakeSupabase((call) => {
       if (call.table === "shopping_list_items" && call.single) {
         return { data: { id: "item-1", category: "sofas", quantity: 1, unit_price_aed: 3000, line_total_aed: 3000, product: currentProduct } };
       }
