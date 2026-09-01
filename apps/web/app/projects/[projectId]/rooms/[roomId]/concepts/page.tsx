@@ -10,6 +10,7 @@ import Image from "next/image";
 import { notFound, redirect } from "next/navigation";
 
 import { reviseConceptAction, selectConceptAction } from "@/app/actions";
+import { RevisionProgress } from "./revision-progress";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import { ConceptGenerationPanel } from "./concept-generation-panel";
@@ -391,6 +392,7 @@ export default async function ConceptsPage({
               <SubmitButton className="w-full" pendingLabel="Generating revision..." variant="secondary">
                 Generate revision
               </SubmitButton>
+              <RevisionProgress />
             </form>
           </div>
         </aside>
