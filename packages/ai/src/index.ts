@@ -1251,8 +1251,12 @@ async function generateEvolinkImage({
         throw new Error(`Evolink result image download failed with HTTP ${imageResponse.status}.`);
       }
       const resultContentType = imageResponse.headers.get("content-type")?.split(";")[0]?.trim().toLowerCase() ?? "";
-      if (resultContentType && !resultContentType.startsWith("image/")) {
-        throw new Error(`Evolink result was not an image (content type ${resultContentType}).`);
+      if (!resultContentType.startsWith("image/")) {
+        throw new Error(
+          resultContentType
+            ? `Evolink result was not an image (content type ${resultContentType}).`
+            : "Evolink result had no content type; refusing to store it as an image."
+        );
       }
 
       const resultBytes = await readResponseBytesCapped(imageResponse, 30 * 1024 * 1024, 60_000);

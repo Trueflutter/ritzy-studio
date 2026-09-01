@@ -99,9 +99,14 @@ function isPrivateOrLocalHost(host: string): boolean {
   }
   if (lowered.includes(":")) {
     // IPv6 literal (URL.hostname strips the brackets): loopback, unspecified,
-    // link-local, and unique-local ranges are refused.
+    // link-local, and unique-local ranges are refused; IPv4-mapped addresses
+    // (::ffff:a.b.c.d) are judged by their embedded IPv4 value.
     if (lowered === "::1" || lowered === "::" || lowered.startsWith("fe80:") || lowered.startsWith("fc") || lowered.startsWith("fd")) {
       return true;
+    }
+    const mapped = lowered.match(/^::ffff:(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})$/);
+    if (mapped) {
+      return isPrivateOrLocalHost(mapped[1]);
     }
     return false;
   }
@@ -313,14 +318,27 @@ export async function readResponseBytesCapped(
   let totalBytes = 0;
   try {
     while (true) {
-      const chunk = deadline
-        ? await Promise.race([
+      let chunk: ReadableStreamReadResult<Uint8Array>;
+      if (deadline) {
+        // Each race's losing timer is cleared, or a multi-chunk body would leave
+        // hundreds of pending timers retaining the worker.
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        try {
+          chunk = await Promise.race([
             reader.read(),
-            new Promise<never>((_, rejectFn) =>
-              setTimeout(() => rejectFn(new Error("body read deadline exceeded")), Math.max(1, deadline - Date.now()))
-            )
-          ])
-        : await reader.read();
+            new Promise<never>((_, rejectFn) => {
+              timer = setTimeout(
+                () => rejectFn(new Error("body read deadline exceeded")),
+                Math.max(1, deadline - Date.now())
+              );
+            })
+          ]);
+        } finally {
+          clearTimeout(timer);
+        }
+      } else {
+        chunk = await reader.read();
+      }
       const { done, value } = chunk;
       if (done) {
         break;

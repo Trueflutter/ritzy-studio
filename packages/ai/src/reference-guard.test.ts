@@ -58,6 +58,8 @@ const privateTargets = [
   "http://192.168.1.10/a.png",
   "http://169.254.169.254/latest/meta-data",
   "http://[::1]/a.jpg",
+  "http://[::ffff:169.254.169.254]/latest",
+  "http://[::ffff:127.0.0.1]/a.jpg",
   "http://internal.local/a.jpg",
   "http://0.0.0.0/x.png"
 ];
