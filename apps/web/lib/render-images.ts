@@ -87,17 +87,18 @@ export async function fetchRemoteImage(
 
   // Retailer CDNs rate-limit and flake; one quick retry rescues most transient
   // failures without meaningfully slowing the happy path.
-  const first = await fetchRemoteImageOnce(guarded.url, allowlist, fetchImpl);
+  const first = await fetchRemoteImageOnce(guarded.url, allowlist, stripHosts, fetchImpl);
   if (first) {
     return first;
   }
   await new Promise((resolve) => setTimeout(resolve, 750));
-  return fetchRemoteImageOnce(guarded.url, allowlist, fetchImpl);
+  return fetchRemoteImageOnce(guarded.url, allowlist, stripHosts, fetchImpl);
 }
 
 async function fetchRemoteImageOnce(
   url: string,
   allowlist: Set<string>,
+  stripHosts: string[] | undefined,
   fetchImpl: FetchImpl
 ): Promise<CatalogueReferenceImage | null> {
   // Never throws: any failure (refusal, redirect escape, HTTP error, mid-body reset,
@@ -110,6 +111,7 @@ async function fetchRemoteImageOnce(
       timeoutMs: CATALOGUE_GROUNDED_CONCEPT_IMAGE_FETCH_TIMEOUT_MS,
       // Redirect chains must not multiply the per-fetch deadline.
       overallTimeoutMs: CATALOGUE_GROUNDED_CONCEPT_IMAGE_FETCH_TIMEOUT_MS,
+      stripQueryHosts: stripHosts,
       method: "GET"
     });
     if (!followed.ok || !followed.response.ok) {

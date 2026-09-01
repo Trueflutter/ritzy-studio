@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   buildReferenceHostAllowlist,
   checkReferenceImageUrl,
+  followGuardedRedirects,
   preflightReferenceImage,
   readResponseBytesCapped,
   sanitizeReferenceImageUrl
@@ -200,6 +201,59 @@ function mockFetch(routes: Record<string, MockResponse | MockResponse[]>) {
     !seen.some((entry) => entry.includes("169.254.169.254")),
     `private target must never be fetched; saw: ${seen.join(", ")}`
   );
+}
+
+// A redirect landing on a 2XL URL with the poison resize params is sanitized BEFORE
+// it is fetched or returned: the poisoned form must never appear in the fetch log,
+// and finalUrl comes back param-free. This runs through preflightReferenceImage, the
+// production entry point, so it also proves the strip list threads down the stack.
+{
+  const { impl, seen } = mockFetch({
+    "https://media.homecentre.com/moved-to-2xl.jpg": {
+      status: 302,
+      headers: {
+        location: "https://2xlhome.com/media/catalog/product/sofa.jpg?width=600&height=492&canvas="
+      }
+    },
+    "https://2xlhome.com/media/catalog/product/sofa.jpg": {
+      status: 200,
+      headers: { "content-type": "image/jpeg" }
+    }
+  });
+  const result = await preflightReferenceImage("https://media.homecentre.com/moved-to-2xl.jpg", {
+    allowlist,
+    fetchImpl: impl
+  });
+  assert.equal(result.ok, true, `preflight failed: ${result.reason ?? ""}`);
+  assert.equal(result.finalUrl, "https://2xlhome.com/media/catalog/product/sofa.jpg");
+  assert.ok(
+    !seen.some((entry) => entry.includes("width=600")),
+    `poisoned redirect target was fetched un-sanitized; saw: ${seen.join(", ")}`
+  );
+}
+
+// CONFIGURED strip hosts (not just the 2XL default) apply per hop: the option is
+// threaded into every redirect re-check, not consumed once at the entry URL.
+{
+  const { impl, seen } = mockFetch({
+    "https://media.homecentre.com/moved-to-gumlet.jpg": {
+      status: 302,
+      headers: { location: "https://prodmarinamedia.gumlet.io/p.jpg?w=600" }
+    },
+    "https://prodmarinamedia.gumlet.io/p.jpg": {
+      status: 200,
+      headers: { "content-type": "image/jpeg" }
+    }
+  });
+  const result = await followGuardedRedirects("https://media.homecentre.com/moved-to-gumlet.jpg", {
+    allowlist,
+    stripQueryHosts: ["prodmarinamedia.gumlet.io"],
+    fetchImpl: impl,
+    method: "HEAD"
+  });
+  assert.equal(result.ok, true);
+  assert.ok(result.ok && result.finalUrl === "https://prodmarinamedia.gumlet.io/p.jpg");
+  assert.ok(!seen.some((entry) => entry.includes("w=600")), `configured strip host ignored on hop: ${seen.join(", ")}`);
 }
 
 // A redirect within the allowlist is followed (bounded) and passes.

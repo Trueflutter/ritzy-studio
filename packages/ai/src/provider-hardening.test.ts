@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { generateKeyPairSync } from "node:crypto";
 import http from "node:http";
 import { once } from "node:events";
 
@@ -6,6 +7,7 @@ import {
   createOpenAiImageFallbackClient,
   generateClarifyingQuestions,
   generateConceptView,
+  generateGeminiImage,
   hardenReferenceUrls,
   textTimeoutMs
 } from "./index";
@@ -307,6 +309,62 @@ assert.throws(
     );
     const elapsed = Date.now() - startedAt;
     assert.ok(elapsed < 15_000, `expected bounded submit failure, took ${elapsed}ms`);
+  } finally {
+    restore();
+    server.closeAllConnections?.();
+    server.close();
+  }
+}
+
+// --- Gemini: the Vertex token exchange runs INSIDE the image deadline -------------
+
+// A never-responding OAuth token endpoint must not hang the pipeline: the abort
+// controller now exists before getVertexAuthContext, so the auth fetch is bounded
+// by the same configurable deadline as the Gemini request itself.
+{
+  const server = http.createServer((req) => {
+    void req; // never respond
+  });
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  const origin = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
+
+  // A real (throwaway) RSA key so signJwt succeeds and the test reaches the token fetch.
+  const { privateKey } = generateKeyPairSync("rsa", {
+    modulusLength: 2048,
+    publicKeyEncoding: { type: "spki", format: "pem" },
+    privateKeyEncoding: { type: "pkcs8", format: "pem" }
+  });
+  const credentialsBase64 = Buffer.from(
+    JSON.stringify({
+      client_email: "hardening-test@test.iam.gserviceaccount.com",
+      private_key: privateKey,
+      token_uri: `${origin}/token`,
+      project_id: "hardening-test"
+    })
+  ).toString("base64");
+
+  const restore = applyEnv({
+    GOOGLE_APPLICATION_CREDENTIALS_JSON_BASE64: credentialsBase64,
+    GOOGLE_APPLICATION_CREDENTIALS: undefined,
+    GOOGLE_OAUTH_ACCESS_TOKEN: undefined,
+    VERTEX_ACCESS_TOKEN: undefined,
+    RITZY_GEMINI_TIMEOUT_MS: "1000"
+  });
+  const startedAt = Date.now();
+  try {
+    await assert.rejects(
+      generateGeminiImage({
+        prompt: "Deadline regression",
+        references: [],
+        model: "gemini-test",
+        projectId: "hardening-test",
+        location: "us-central1"
+      }),
+      /timed out/i
+    );
+    const elapsed = Date.now() - startedAt;
+    assert.ok(elapsed < 6_000, `auth must be bounded by the Gemini deadline, took ${elapsed}ms`);
   } finally {
     restore();
     server.closeAllConnections?.();

@@ -923,7 +923,9 @@ async function generateOpenAiImage({
   };
 }
 
-async function generateGeminiImage({
+// Exported for the timeout regression test: the Vertex token exchange must be inside
+// the image deadline, and that is only provable against this function directly.
+export async function generateGeminiImage({
   prompt,
   references,
   model,
@@ -937,20 +939,24 @@ async function generateGeminiImage({
   location: string;
 }): Promise<ImageGenerationAttempt> {
   const startedAt = Date.now();
-  const auth = await getVertexAuthContext();
-  const resolvedProjectId = projectId || auth.projectId;
-
-  if (!resolvedProjectId) {
-    throw new Error("GOOGLE_CLOUD_PROJECT is required for Gemini image generation.");
-  }
-
+  // The deadline covers EVERYTHING, including the service-account token exchange: a
+  // hanging OAuth request must not run outside the Gemini timeout.
+  const deadlineMs = Number(process.env.RITZY_GEMINI_TIMEOUT_MS) || 60_000;
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 60_000);
-  const endpoint = `https://aiplatform.googleapis.com/v1/projects/${encodeURIComponent(
-    resolvedProjectId
-  )}/locations/${encodeURIComponent(location)}/publishers/google/models/${encodeURIComponent(model)}:generateContent`;
+  const timeout = setTimeout(() => controller.abort(), deadlineMs);
 
   try {
+    const auth = await getVertexAuthContext(controller.signal);
+    const resolvedProjectId = projectId || auth.projectId;
+
+    if (!resolvedProjectId) {
+      throw new Error("GOOGLE_CLOUD_PROJECT is required for Gemini image generation.");
+    }
+
+    const endpoint = `https://aiplatform.googleapis.com/v1/projects/${encodeURIComponent(
+      resolvedProjectId
+    )}/locations/${encodeURIComponent(location)}/publishers/google/models/${encodeURIComponent(model)}:generateContent`;
+
     const response = await fetch(endpoint, {
       method: "POST",
       headers: {
@@ -1005,7 +1011,7 @@ async function generateGeminiImage({
     };
   } catch (error) {
     if (error instanceof Error && error.name === "AbortError") {
-      throw new Error("Gemini image generation timed out after 60 seconds.");
+      throw new Error(`Gemini image generation timed out after ${Math.round(deadlineMs / 1000)} seconds.`);
     }
 
     throw error;
@@ -1071,7 +1077,7 @@ export async function hardenReferenceUrls(
 
       // Preflight repeats the policy check on its first hop and then proves
       // deliverability; a failed reference keeps its bytes and inlines.
-      const preflight = await preflightReferenceImage(guarded.url, { allowlist, fetchImpl });
+      const preflight = await preflightReferenceImage(guarded.url, { allowlist, fetchImpl, stripQueryHosts: stripHosts });
       if (!preflight.ok) {
         console.warn(`[reference-guard] inlining "${reference.name}" after failed preflight: ${preflight.reason}`);
         return { ...reference, url: null };
@@ -2938,7 +2944,7 @@ let cachedVertexToken:
     }
   | null = null;
 
-async function getVertexAuthContext() {
+async function getVertexAuthContext(signal?: AbortSignal) {
   const directToken = process.env.GOOGLE_OAUTH_ACCESS_TOKEN ?? process.env.VERTEX_ACCESS_TOKEN;
 
   if (directToken) {
@@ -2993,6 +2999,7 @@ async function getVertexAuthContext() {
   });
   const tokenResponse = await fetch(credentials.token_uri ?? "https://oauth2.googleapis.com/token", {
     method: "POST",
+    signal,
     headers: {
       "Content-Type": "application/x-www-form-urlencoded"
     },

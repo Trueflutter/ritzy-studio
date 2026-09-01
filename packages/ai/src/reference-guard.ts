@@ -253,6 +253,7 @@ export async function followGuardedRedirects(
     fetchImpl = fetch,
     timeoutMs = PREFLIGHT_TIMEOUT_MS,
     overallTimeoutMs,
+    stripQueryHosts,
     method = "GET"
   }: {
     allowlist: Set<string>;
@@ -262,6 +263,10 @@ export async function followGuardedRedirects(
     // let a redirect chain multiply the stated deadline. Defaults to 2x the per-hop
     // timeout.
     overallTimeoutMs?: number;
+    // Hosts whose query strings are stripped on EVERY hop, so a redirect landing on
+    // a known-breaking URL shape (the 2XL resize params) is sanitized before it is
+    // fetched or returned as finalUrl.
+    stripQueryHosts?: string[] | null;
     method?: "HEAD" | "GET";
   }
 ): Promise<{ ok: true; response: Response; finalUrl: string } | { ok: false; reason: string }> {
@@ -276,10 +281,13 @@ export async function followGuardedRedirects(
     }
     const hopTimeout = Math.min(timeoutMs, remaining);
 
-    const verdict = checkReferenceImageUrl(currentUrl, allowlist);
-    if (!verdict.ok) {
-      return { ok: false, reason: verdict.reason };
+    // Full policy per hop: sanitize (strip-host query removal) THEN check, so a
+    // redirect target is never fetched or returned in its poisoned form.
+    const guarded = guardReferenceUrl(currentUrl, { allowlist, stripQueryHosts });
+    if (!guarded.ok) {
+      return { ok: false, reason: guarded.reason };
     }
+    currentUrl = guarded.url;
 
     // Only run the DNS screen for the real network fetch; injected test fetchers
     // never touch the network.
@@ -400,12 +408,14 @@ export async function preflightReferenceImage(
     fetchImpl = fetch,
     timeoutMs = PREFLIGHT_TIMEOUT_MS,
     overallTimeoutMs,
+    stripQueryHosts,
     maxBytes = PREFLIGHT_MAX_BYTES
   }: {
     allowlist: Set<string>;
     fetchImpl?: ReferenceFetchImpl;
     timeoutMs?: number;
     overallTimeoutMs?: number;
+    stripQueryHosts?: string[] | null;
     maxBytes?: number;
   }
 ): Promise<ReferencePreflightResult> {
@@ -414,6 +424,7 @@ export async function preflightReferenceImage(
     fetchImpl,
     timeoutMs,
     overallTimeoutMs,
+    stripQueryHosts,
     method: "HEAD"
   });
   if (!followed.ok) {
