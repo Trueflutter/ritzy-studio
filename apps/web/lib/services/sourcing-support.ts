@@ -75,10 +75,6 @@ const CATALOGUE_GROUNDED_CONCEPT_MIN_ATTRIBUTE_TOTAL = 35;
 // wall-clock budget is spent, stop evaluating further candidates and block fast instead. The happy
 // path (first candidate resolves in a few seconds) never approaches it.
 const CATALOGUE_GROUNDED_CONCEPT_IMAGE_FETCH_BUDGET_MS = 90_000;
-export const CATALOGUE_GROUNDED_CONCEPT_USER_SAFE_BLOCK_MESSAGE =
-  "We need a little more catalogue evidence before building this room direction. Try broadening the style or colour notes, then generate again.";
-export const CATALOGUE_GROUNDED_CONCEPT_REFERENCE_IMAGE_BLOCK_MESSAGE =
-  "We found catalogue pieces for this room, but their reference images are not ready yet. Try again in a moment.";
 export const LOCAL_SKU_FIDELITY_CANDIDATES_PER_ROLE = 18;
 
 // Downscaled data URLs for the candidate images an AI sourcing call will see.
@@ -2523,9 +2519,4 @@ export function missingLocalSkuFidelityRenderRoles({
     .map((role) => role.label);
 }
 
-export function formatAedValue(value: number) {
-  return `AED ${value.toLocaleString("en-AE", {
-    maximumFractionDigits: 0
-  })}`;
-}
 

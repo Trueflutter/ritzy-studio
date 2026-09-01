@@ -36,9 +36,6 @@ import {
   refreshShoppingOptions
 } from "@/lib/services/product-sourcing";
 import {
-  CATALOGUE_GROUNDED_CONCEPT_REFERENCE_IMAGE_BLOCK_MESSAGE,
-  CATALOGUE_GROUNDED_CONCEPT_USER_SAFE_BLOCK_MESSAGE,
-  formatAedValue,
   missingLocalSkuFidelityRenderRoles,
   productToMatchCandidate,
   structuredBriefJson,
@@ -58,7 +55,7 @@ import {
 import {
   inspirationAnalysisContinueDecision,
   INSPIRATION_ANALYSIS_CONTINUE_FAILURE_MESSAGE
-} from "./inspiration-analysis-continue";
+} from "@/lib/inspiration-analysis-continue";
 
 const INTERNAL_PILOT_SIGNUP_MESSAGE =
   "Internal pilot. Only ritzyinteriors.com email domains currently permitted";
@@ -1495,9 +1492,9 @@ export async function generateInitialConceptAction(formData: FormData) {
     case "photo_unprepared":
       redirect(`${redirectPath}?message=${encodeURIComponent("The room photo could not be prepared for generation.")}`);
     case "grounding_blocked":
-      redirect(`${redirectPath}?message=${encodeURIComponent(CATALOGUE_GROUNDED_CONCEPT_USER_SAFE_BLOCK_MESSAGE)}`);
+      redirect(`${redirectPath}?message=${encodeURIComponent("We need a little more catalogue evidence before building this room direction. Try broadening the style or colour notes, then generate again.")}`);
     case "reference_images_missing":
-      redirect(`${redirectPath}?message=${encodeURIComponent(CATALOGUE_GROUNDED_CONCEPT_REFERENCE_IMAGE_BLOCK_MESSAGE)}`);
+      redirect(`${redirectPath}?message=${encodeURIComponent("We found catalogue pieces for this room, but their reference images are not ready yet. Try again in a moment.")}`);
     case "generation_failed":
       redirect(`${redirectPath}?message=${encodeURIComponent("Concept generation failed. The brief and room photo are still saved.")}`);
   }
@@ -1561,6 +1558,12 @@ export async function groundProductsAction(formData: FormData) {
   revalidatePath(redirectPath);
   revalidatePath(successRedirectPath);
   redirect(successRedirectPath);
+}
+
+function formatAedValue(value: number) {
+  return `AED ${value.toLocaleString("en-AE", {
+    maximumFractionDigits: 0
+  })}`;
 }
 
 export async function substituteProductAction(formData: FormData) {
