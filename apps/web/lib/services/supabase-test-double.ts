@@ -7,6 +7,7 @@ export type RecordedCall = {
   op: "select" | "update" | "insert";
   filters: Array<[string, unknown]>;
   not: Array<[string, unknown]>;
+  neq: Array<[string, unknown]>;
   contains: Array<[string, unknown]>;
   gte: Array<[string, unknown]>;
   in: Array<[string, unknown]>;
@@ -34,6 +35,7 @@ export function fakeSupabase(respond: Responder, respondStorage: StorageResponde
       op: "select",
       filters: [],
       not: [],
+      neq: [],
       contains: [],
       gte: [],
       in: [],
@@ -59,6 +61,10 @@ export function fakeSupabase(respond: Responder, respondStorage: StorageResponde
       },
       not(column: string, operator: string, value: unknown) {
         call.not.push([column, `${operator}:${value}`]);
+        return builder;
+      },
+      neq(column: string, value: unknown) {
+        call.neq.push([column, value]);
         return builder;
       },
       contains(column: string, value: unknown) {

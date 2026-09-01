@@ -306,5 +306,4 @@ export async function reviseConceptForRoom(
   }
 
   return { status: "revised", conceptId: revisedConceptId };
-  return { status: "revised", conceptId: revisedConceptId };
 }
