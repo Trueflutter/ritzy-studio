@@ -569,7 +569,10 @@ export async function signInAction(formData: FormData) {
   }
 
   revalidatePath("/", "layout");
-  redirect("/onboarding");
+  // The dashboard routes unknown-mode users to onboarding itself; sending every
+  // returning sign-in to /onboarding re-asked the already-answered mode question
+  // on every login (I-4: observed on production, reproduced on any environment).
+  redirect("/");
 }
 
 export async function signUpAction(formData: FormData) {

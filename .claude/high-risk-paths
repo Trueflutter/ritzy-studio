@@ -1,0 +1,8 @@
+# Files matching these globs make a plan HIGH risk tier (rollout/rollback section,
+# codex cross-model pass). Seeded by plan S0 step 4.
+apps/web/lib/billing/**
+apps/web/app/api/stripe/**
+supabase/migrations/**
+apps/web/app/api/queues/**
+apps/web/lib/render-runner.ts
+packages/ingestion/**
