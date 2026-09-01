@@ -2,9 +2,27 @@ import {
   fitConfidenceUsePolicy,
   type MeasurementConfidence,
   type MeasurementSourceKind
-} from "./measurement-intelligence";
+} from "./measurement-confidence";
 
-import type { CatalogFirstRoomType, RoomBundleRole } from "./catalog-first-room-generation";
+// Kept from the retired catalog-first planner family (Gate 1 disposition): the
+// pipeline's internal room-type key and the role shape the spatial rules accept.
+export type CatalogFirstRoomType = "living_room" | "living_dining" | "dining_room" | "bedroom" | "home_office";
+
+export type CatalogFirstRoleImportance = "anchor" | "supporting" | "styling";
+
+export type CatalogFirstRoleInclusion = "always" | "space_allows" | "catalog_supports";
+
+export type RoomBundleRole = {
+  id: string;
+  roomType: CatalogFirstRoomType;
+  label: string;
+  category: string;
+  acceptedCategories: readonly string[];
+  quantity: number;
+  required: boolean;
+  importance: CatalogFirstRoleImportance;
+  includeWhen: CatalogFirstRoleInclusion;
+};
 
 export type SpatialLayoutMode =
   | "living_only"

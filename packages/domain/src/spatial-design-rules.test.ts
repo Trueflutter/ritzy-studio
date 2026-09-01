@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
 
-import { catalogFirstRolesForRoom, type RoomBundleRole } from "./catalog-first-room-generation";
 import {
   deriveSpatialDesignerWarnings,
   evaluateHardCheckableSpatialRules,
@@ -9,6 +8,7 @@ import {
   parseSpatialIntent,
   spatialDesignRules,
   spatialLayoutModeForRoomType,
+  type RoomBundleRole,
   type SpatialRoomFacts
 } from "./spatial-design-rules";
 
@@ -126,9 +126,41 @@ assert.equal(
   "needs_measurement"
 );
 
+// Literal copies of the retired catalog-first blueprint roles for living and dining
+// (the planner family is deleted; C6 still needs realistic combined-zone fixtures).
+function fixtureRole(
+  roomType: RoomBundleRole["roomType"],
+  id: string,
+  label: string,
+  category: string,
+  quantity: number,
+  required: boolean,
+  importance: RoomBundleRole["importance"],
+  includeWhen: RoomBundleRole["includeWhen"],
+  acceptedCategories: readonly string[] = [category]
+): RoomBundleRole {
+  return { id, roomType, label, category, acceptedCategories, quantity, required, importance, includeWhen };
+}
+
 const combinedRoles = [
-  ...catalogFirstRolesForRoom("living_room"),
-  ...catalogFirstRolesForRoom("dining_room")
+  fixtureRole("living_room", "sofa", "sofa", "sofas", 1, true, "anchor", "always"),
+  fixtureRole("living_room", "rug", "rug", "rugs", 1, true, "anchor", "always"),
+  fixtureRole("living_room", "coffee_table", "coffee table", "coffee_tables", 1, true, "anchor", "always"),
+  fixtureRole("living_room", "tv_media_console", "TV/media console", "storage", 1, false, "supporting", "catalog_supports", [
+    "storage",
+    "media_units",
+    "tv_units"
+  ]),
+  fixtureRole("living_room", "lighting", "lighting", "lighting", 2, false, "supporting", "catalog_supports"),
+  fixtureRole("living_room", "cushions", "cushions", "decor", 4, false, "styling", "catalog_supports"),
+  fixtureRole("dining_room", "dining_table", "dining table", "dining_tables", 1, true, "anchor", "always"),
+  fixtureRole("dining_room", "dining_chairs", "dining chairs", "chairs", 6, true, "anchor", "always"),
+  fixtureRole("dining_room", "lighting", "lighting", "lighting", 1, false, "supporting", "catalog_supports"),
+  fixtureRole("dining_room", "sideboard_console", "sideboard/console", "storage", 1, false, "supporting", "catalog_supports", [
+    "storage",
+    "sideboards",
+    "consoles"
+  ])
 ] as readonly RoomBundleRole[];
 
 assert.equal(

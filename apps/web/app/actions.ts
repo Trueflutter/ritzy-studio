@@ -28,7 +28,6 @@ import {
   conceptPaletteMatchingText,
   deriveSpatialDesignerWarnings,
   fitSelectionToBudget,
-  normalizeCatalogFirstRoomType,
   parseConceptImagePalette,
   parseSpatialIntent,
   filterSubstitutionCandidates,
@@ -65,6 +64,7 @@ import { redirect } from "next/navigation";
 import { after } from "next/server";
 
 import { createServiceClient } from "@/lib/supabase/service";
+import { normalizeCatalogFirstRoomType } from "@/lib/room-type-normalize";
 import { createClient } from "@/lib/supabase/server";
 import { FINAL_RENDER_STALE_MS } from "@/lib/render";
 import { sumOutcomeCredits } from "@/lib/ai-cost";

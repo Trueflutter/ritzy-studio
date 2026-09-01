@@ -159,24 +159,14 @@ export type CreateHomeownerRoomInput = z.infer<typeof createHomeownerRoomSchema>
 
 export * from "./product-enrichment";
 export * from "./product-matching";
-export * from "./catalog-first-room-generation";
-export * from "./catalog-first-product-matching";
-export * from "./catalog-first-orchestration-planner";
-export * from "./catalog-first-plan-assembly";
-export * from "./catalog-first-dry-run";
-export * from "./catalog-first-dry-run-fixtures";
-export * from "./catalog-first-dry-run-fixture-report";
 export * from "./product-matching-confidence";
-export * from "./measurement-intelligence";
 export * from "./product-matching-dimensions";
+export * from "./measurement-confidence";
 export * from "./spatial-design-rules";
 export * from "./product-matching-evidence";
 export * from "./product-matching-freshness";
 export * from "./product-matching-pool-diversity";
 export * from "./product-matching-pool-quality";
 export * from "./product-matching-pool-qa-rollup";
-export * from "./measurement-layout-seed";
-export * from "./measurement-layout-seed-dry-run";
-export * from "./measurement-layout-seed-row-adapter";
 export * from "./entitlements";
 export * from "./style-preferences";
