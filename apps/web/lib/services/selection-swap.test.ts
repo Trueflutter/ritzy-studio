@@ -84,16 +84,30 @@ async function main() {
     assert.equal(calls.filter((call) => call.op === "update").length, 0);
   }
 
-  // --- substituteProduct: missing project resolves not_found with zero writes
+  // --- substituteProduct: missing project resolves not_found with zero writes,
+  // and the commerce gate runs BEFORE the first read or write
   {
-    const { client } = fakeSupabase(() => ({ data: null }));
-    const { client: service, calls: serviceCalls } = fakeSupabase(() => ({ data: null }));
+    const events: string[] = [];
+    const { client } = fakeSupabase((call) => {
+      events.push(`${call.op}:${call.table}`);
+      return { data: null };
+    });
+    const { client: service, calls: serviceCalls } = fakeSupabase((call) => {
+      events.push(`${call.op}:${call.table}`);
+      return { data: null };
+    });
     const result = await substituteProduct(
       { supabase: client, serviceSupabase: service },
-      { projectId: "p", roomId: "r", shoppingListId: "l", itemId: "i", mode: "cheaper" }
+      { projectId: "p", roomId: "r", shoppingListId: "l", itemId: "i", mode: "cheaper" },
+      {
+        ensureEntitled: async () => {
+          events.push("ensureEntitled");
+        }
+      }
     );
     assert.deepEqual(result, { status: "not_found" });
     assert.equal(serviceCalls.filter((call) => call.op === "update").length, 0);
+    assert.equal(events[0], "ensureEntitled", `gate must precede all DB work; saw ${events.join(", ")}`);
   }
 
   // --- substituteProduct: cheaper swap updates the row, keeps quantity, recalculates
@@ -152,7 +166,8 @@ async function main() {
 
     const result = await substituteProduct(
       { supabase: client, serviceSupabase: service },
-      { projectId: "p", roomId: "r", shoppingListId: "l", itemId: "item-1", mode: "cheaper" }
+      { projectId: "p", roomId: "r", shoppingListId: "l", itemId: "item-1", mode: "cheaper" },
+      { ensureEntitled: async () => {} }
     );
 
     assert.equal(result.status, "swapped");
@@ -197,7 +212,8 @@ async function main() {
 
     const result = await substituteProduct(
       { supabase: client, serviceSupabase: service },
-      { projectId: "p", roomId: "r", shoppingListId: "l", itemId: "item-1", mode: "cheaper" }
+      { projectId: "p", roomId: "r", shoppingListId: "l", itemId: "item-1", mode: "cheaper" },
+      { ensureEntitled: async () => {} }
     );
     assert.deepEqual(result, { status: "no_replacement" });
     assert.equal(userUpdates.length, 0);

@@ -34,8 +34,17 @@ export type SubstituteProductResult =
 
 export async function substituteProduct(
   { supabase, serviceSupabase }: { supabase: UserSupabaseClient; serviceSupabase: ServiceSupabaseClient },
-  { projectId, roomId, shoppingListId, itemId, mode }: SubstituteProductInput
+  { projectId, roomId, shoppingListId, itemId, mode }: SubstituteProductInput,
+  {
+    ensureEntitled
+  }: {
+    // The commerce paywall gate, injected so it runs at the exact pre-extraction
+    // position (before any read or write) and the suite can pin that ordering.
+    ensureEntitled: () => Promise<void>;
+  }
 ): Promise<SubstituteProductResult> {
+  await ensureEntitled();
+
   const { data: project } = await supabase
     .from("projects")
     .select("id, budget_max_aed")

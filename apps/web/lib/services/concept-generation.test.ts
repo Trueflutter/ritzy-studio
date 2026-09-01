@@ -79,11 +79,15 @@ async function main() {
 
   // --- An existing generated concept short-circuits before any job insert
   {
+    let dedupeCall: RecordedCall | null = null;
     const { client } = fakeSupabase((call) => {
       if (call.table === "rooms") return { data: { id: "room-1", room_type: "Living Room" } };
       if (call.table === "projects") return { data: { id: "proj-1", budget_max_aed: null } };
       if (call.table === "design_briefs") return { data: { id: "brief-1" } };
-      if (call.table === "concepts") return { data: { id: "concept-1" } };
+      if (call.table === "concepts") {
+        dedupeCall = call;
+        return { data: { id: "concept-1" } };
+      }
       return { data: null };
     });
     const { client: service, calls: serviceCalls } = fakeSupabase(() => ({ data: null }));
@@ -94,6 +98,12 @@ async function main() {
     );
     assert.deepEqual(result, { status: "already_generated" });
     assert.equal(serviceCalls.filter((call: RecordedCall) => call.op === "insert").length, 0);
+    // The dedupe is scoped to THIS brief: dropping design_brief_id would let a
+    // stale concept from an edited brief block regeneration forever.
+    const filters = Object.fromEntries((dedupeCall as RecordedCall | null)?.filters ?? []);
+    assert.equal(filters.room_id, "room-1");
+    assert.equal(filters.design_brief_id, "brief-1");
+    assert.deepEqual((dedupeCall as RecordedCall | null)?.in?.[0], ["status", ["generated", "selected"]]);
   }
 
   // --- No room photo resolves missing_photo

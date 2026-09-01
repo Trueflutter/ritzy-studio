@@ -192,6 +192,38 @@ async function main() {
     assert.equal(rows[0].line_total_aed, 1500);
   }
 
+  // --- refreshShoppingOptions: selected pick present but the pool is exhausted
+  // (every catalog candidate already in the list): no_change, and the reject
+  // write must NOT have fired (rejection only happens once replacements exist)
+  {
+    const { client, calls } = fakeSupabase((call) => {
+      if (call.table === "shopping_lists") return { data: { id: "list-1", concept_id: "concept-1" } };
+      if (call.table === "rooms") return { data: { id: "room-1", room_type: "Living Room" } };
+      if (call.table === "projects") return { data: { id: "proj-1", budget_max_aed: null } };
+      if (call.table === "concepts") return { data: { title: "T", description: null } };
+      if (call.table === "shopping_list_items") {
+        return {
+          data: [
+            { id: "i1", product_id: "00000000-0000-4000-8000-000000000001", status: "selected", ...ITEM_TEMPLATE },
+            { id: "i2", product_id: "00000000-0000-4000-8000-000000000002", status: "option", ...ITEM_TEMPLATE }
+          ]
+        };
+      }
+      return { data: null };
+    });
+    const { client: service } = fakeSupabase(() => ({ data: [] }));
+    const result = await refreshShoppingOptions(
+      { supabase: client, serviceSupabase: service },
+      REFILL_INPUT
+    );
+    assert.deepEqual(result, { status: "no_change" });
+    assert.equal(
+      calls.filter((call: RecordedCall) => call.op !== "select").length,
+      0,
+      "an exhausted pool must not reject the shopper's existing options"
+    );
+  }
+
   // --- findMoreShoppingOptions: zero candidates resolves no_candidates without insert
   {
     const { client, calls } = fakeSupabase((call) => {

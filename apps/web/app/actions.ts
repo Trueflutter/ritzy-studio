@@ -1580,12 +1580,12 @@ export async function substituteProductAction(formData: FormData) {
     redirect("/login");
   }
 
-  await requireRoomCommerceAccess(roomId, redirectPath);
   const serviceSupabase = createServiceClient();
 
   const result = await substituteProduct(
     { supabase, serviceSupabase },
-    { projectId, roomId, shoppingListId, itemId, mode }
+    { projectId, roomId, shoppingListId, itemId, mode },
+    { ensureEntitled: () => requireRoomCommerceAccess(roomId, redirectPath) }
   );
 
   if (result.status === "not_found") {
