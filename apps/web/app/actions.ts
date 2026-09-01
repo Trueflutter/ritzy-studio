@@ -15,7 +15,6 @@ import {
 } from "@ritzy-studio/ai";
 import type { Database } from "@ritzy-studio/db";
 import {
-  createHomeownerRoomSchema,
   createProjectSchema,
   createRoomSchema,
   designBriefSchema,
@@ -688,81 +687,6 @@ export async function setUserModeAction(formData: FormData) {
 
   revalidatePath("/", "layout");
   redirect("/projects/new");
-}
-
-export async function createHomeownerRoomAction(formData: FormData) {
-  const parsed = createHomeownerRoomSchema.parse({
-    roomName: String(formData.get("roomName") ?? "").trim(),
-    roomType: String(formData.get("roomType") ?? "").trim(),
-    location: optionalString(formData, "location"),
-    budgetMaxAed: optionalNumber(formData, "budgetMaxAed")
-  });
-  const supabase = await createClient();
-  const {
-    data: { user },
-    error: userError
-  } = await supabase.auth.getUser();
-
-  if (userError || !user) {
-    redirect("/login");
-  }
-
-  const now = new Date().toISOString();
-  const { error: profileError } = await supabase.from("user_profiles").upsert({
-    user_id: user.id,
-    display_name: user.user_metadata?.name ?? user.email ?? null,
-    intended_mode: "homeowner",
-    onboarding_completed_at: now
-  });
-
-  if (profileError) {
-    redirect(`/onboarding?message=${encodeURIComponent(profileError.message)}`);
-  }
-
-  const { data: project, error: projectError } = await supabase
-    .from("projects")
-    .insert({
-      owner_user_id: user.id,
-      name: parsed.projectName,
-      location: parsed.location ?? "Dubai",
-      budget_max_aed: parsed.budgetMaxAed ?? null,
-      status: "active"
-    })
-    .select("id")
-    .single();
-
-  if (projectError || !project) {
-    redirect(`/onboarding?message=${encodeURIComponent(projectError?.message ?? "Project could not be created.")}`);
-  }
-
-  const { data: room, error: roomError } = await supabase
-    .from("rooms")
-    .insert({
-      project_id: project.id,
-      name: parsed.roomName,
-      room_type: parsed.roomType,
-      status: "draft"
-    })
-    .select("id")
-    .single();
-
-  if (roomError || !room) {
-    redirect(`/onboarding?message=${encodeURIComponent(roomError?.message ?? "Room could not be created.")}`);
-  }
-
-  const serviceSupabase = createServiceClient();
-  await serviceSupabase.from("entitlement_events").insert({
-    user_id: user.id,
-    room_id: room.id,
-    event_type: "user_mode_set",
-    source: "onboarding",
-    metadata_json: {
-      intended_mode: "homeowner"
-    }
-  });
-
-  revalidatePath("/", "layout");
-  redirect(`/projects/${project.id}/rooms/${room.id}/photos?message=${encodeURIComponent("Room created. Upload photographs to begin.")}`);
 }
 
 export async function createHomeownerRoomUnlockCheckoutAction(formData: FormData) {
@@ -1618,43 +1542,6 @@ export async function saveDesignBriefAction(formData: FormData) {
   }
 
   redirect(`${briefRootPath}/questions/0`);
-}
-
-export async function saveClarifyingAnswersAction(formData: FormData) {
-  const projectId = String(formData.get("projectId") ?? "");
-  const roomId = String(formData.get("roomId") ?? "");
-  const supabase = await createClient();
-  const {
-    data: { user },
-    error: userError
-  } = await supabase.auth.getUser();
-
-  if (userError || !user) {
-    redirect("/login");
-  }
-
-  const updates = Array.from(formData.entries())
-    .filter(([key]) => key.startsWith("answer:"))
-    .map(([key, value]) => ({
-      id: key.replace("answer:", ""),
-      answer: String(value ?? "").trim()
-    }))
-    .filter((update) => update.id.length > 0);
-
-  for (const update of updates) {
-    await supabase
-      .from("clarifying_questions")
-      .update({
-        answer: update.answer.length > 0 ? update.answer : null,
-        status: update.answer.length > 0 ? "answered" : "open",
-        answered_at: update.answer.length > 0 ? new Date().toISOString() : null
-      })
-      .eq("id", update.id);
-  }
-
-  const redirectPath = `/projects/${projectId}/rooms/${roomId}/brief`;
-  revalidatePath(redirectPath);
-  redirect(`${redirectPath}?message=${encodeURIComponent("Clarifying answers saved.")}`);
 }
 
 export async function saveClarifyingQuestionAction(formData: FormData) {
@@ -4020,33 +3907,6 @@ export async function selectShoppingItemAction(input: {
   await supabase
     .from("shopping_list_items")
     .update({ status: "selected" })
-    .eq("id", itemId)
-    .eq("shopping_list_id", shoppingListId);
-
-  await recalculateShoppingListTotal(supabase, shoppingListId);
-  revalidatePath(`/projects/${projectId}/rooms/${roomId}/shopping-list`);
-}
-
-export async function rejectShoppingItemAction(input: {
-  projectId: string;
-  roomId: string;
-  shoppingListId: string;
-  itemId: string;
-}) {
-  const { projectId, roomId, shoppingListId, itemId } = input;
-  const supabase = await createClient();
-  const {
-    data: { user },
-    error: userError
-  } = await supabase.auth.getUser();
-
-  if (userError || !user) {
-    redirect("/login");
-  }
-
-  await supabase
-    .from("shopping_list_items")
-    .update({ status: "rejected" })
     .eq("id", itemId)
     .eq("shopping_list_id", shoppingListId);
 

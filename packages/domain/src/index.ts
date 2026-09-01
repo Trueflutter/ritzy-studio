@@ -117,18 +117,6 @@ export const setUserModeSchema = z.object({
   intendedMode: userIntendedModeSchema
 });
 
-export const createHomeownerRoomSchema = z
-  .object({
-    roomName: z.string().min(1),
-    roomType: z.string().min(1).transform(normalizeRoomType),
-    location: z.string().optional(),
-    budgetMaxAed: z.number().nonnegative().optional()
-  })
-  .transform((value) => ({
-    ...value,
-    projectName: `${value.roomName} redesign`
-  }));
-
 export const designBriefSchema = z.object({
   projectId: z.uuid(),
   roomId: z.uuid(),
@@ -155,7 +143,6 @@ export type CreateRoomInput = z.infer<typeof createRoomSchema>;
 export type CreateProjectWithRoomInput = z.infer<typeof createProjectWithRoomSchema>;
 export type DesignBriefInput = z.infer<typeof designBriefSchema>;
 export type SetUserModeInput = z.infer<typeof setUserModeSchema>;
-export type CreateHomeownerRoomInput = z.infer<typeof createHomeownerRoomSchema>;
 
 export * from "./product-enrichment";
 export * from "./product-matching";
