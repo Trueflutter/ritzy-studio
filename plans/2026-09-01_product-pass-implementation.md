@@ -166,3 +166,7 @@ Rollback
 - Code: revert the slice PR; no slice leaves a schema in a state the previous code cannot read (additive-only guarantees this).
 - Data: ledger and plan tables are append-only or status-driven; erroneous grants are corrected by compensating ledger entries, never by row deletion; refresh runs are observable per row and stoppable per retailer.
 - Flags: new behavior behind config where risk warrants (visual sourcing candidate count, QA enforcement, harness gate), each with a documented off value that restores prior behavior.
+
+## Deviations
+
+- S0 step 2: queue-path render cost recording turned out to already exist in `apps/web/lib/render-runner.ts` (the success write records `costEstimateUsd`); the Phase 0 null on Bolaji's queue run was production deploy lag, not missing code. The step's remaining work (spatial-QA text cost added to the render sum, text-stage cost recording) shipped as planned.
