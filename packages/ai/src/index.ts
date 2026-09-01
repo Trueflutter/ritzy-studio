@@ -55,6 +55,7 @@ import sharp from "sharp";
 import {
   buildReferenceHostAllowlist,
   checkReferenceImageUrl,
+  followGuardedRedirects,
   guardReferenceUrl,
   preflightReferenceImage,
   readResponseBytesCapped
@@ -1213,33 +1214,48 @@ async function generateEvolinkImage({
         throw new Error("Evolink image generation completed without a result image URL.");
       }
 
-      // The result URL is data from the gateway response: allow the configured
-      // gateway's own origin (operator-trusted, covers stubs) or an allowlisted
-      // public host; refuse anything else, and cap the download.
-      const resultAllowed = (() => {
+      // The result URL is data from the gateway response. Two trusted cases only:
+      // the configured gateway's own origin (operator-trusted, covers stubs), fetched
+      // with redirects REFUSED outright; or an allowlisted public host, fetched
+      // through the guarded redirect follower so no hop can escape policy. Either
+      // way the download is capped and deadline-bound.
+      let imageResponse: Response;
+      const sameOriginAsGateway = (() => {
         try {
-          if (new URL(resultUrl).origin === new URL(apiBase).origin) {
-            return true;
-          }
+          return new URL(resultUrl).origin === new URL(apiBase).origin;
         } catch {
           return false;
         }
+      })();
+      if (sameOriginAsGateway) {
+        imageResponse = await fetch(resultUrl, {
+          redirect: "manual",
+          signal: AbortSignal.timeout(60_000)
+        });
+        if (imageResponse.status >= 300 && imageResponse.status < 400) {
+          throw new Error("Evolink result URL attempted a redirect; refusing.");
+        }
+      } else {
         const allowlist = buildReferenceHostAllowlist({
           configured: process.env.RITZY_REFERENCE_IMAGE_HOSTS,
           supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL
         });
-        return checkReferenceImageUrl(resultUrl, allowlist).ok;
-      })();
-      if (!resultAllowed) {
-        throw new Error(`Evolink returned a result URL outside trusted hosts: ${resultUrl.slice(0, 80)}`);
+        const followed = await followGuardedRedirects(resultUrl, { allowlist, timeoutMs: 60_000, method: "GET" });
+        if (!followed.ok) {
+          throw new Error(`Evolink result URL refused: ${followed.reason}`);
+        }
+        imageResponse = followed.response;
       }
-      const imageResponse = await fetch(resultUrl, { signal: AbortSignal.timeout(60_000) });
 
       if (!imageResponse.ok) {
         throw new Error(`Evolink result image download failed with HTTP ${imageResponse.status}.`);
       }
+      const resultContentType = imageResponse.headers.get("content-type")?.split(";")[0]?.trim().toLowerCase() ?? "";
+      if (resultContentType && !resultContentType.startsWith("image/")) {
+        throw new Error(`Evolink result was not an image (content type ${resultContentType}).`);
+      }
 
-      const resultBytes = await readResponseBytesCapped(imageResponse, 30 * 1024 * 1024);
+      const resultBytes = await readResponseBytesCapped(imageResponse, 30 * 1024 * 1024, 60_000);
       if (!resultBytes) {
         throw new Error("Evolink result image exceeded the 30MB download cap or had no body.");
       }

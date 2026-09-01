@@ -168,6 +168,27 @@ export function checkReferenceImageUrl(url: string, allowlist: Set<string>): Ref
 
 export type ReferenceFetchImpl = (input: string | URL, init?: RequestInit) => Promise<Response>;
 
+// DNS-level check: an allowlisted hostname whose CURRENT resolution is a private
+// address (compromised or rebound DNS) is refused before any connection. Node's
+// fetch still resolves independently afterwards, so a fast-flux TOCTOU window
+// remains; closing it fully needs a pinned-address dispatcher, which is documented
+// as an accepted residual for this fixed, operator-curated allowlist.
+async function resolvesToPublicAddress(host: string): Promise<boolean> {
+  // IP literals were already screened by isPrivateOrLocalHost.
+  if (/^[\d.]+$/.test(host) || host.includes(":")) {
+    return true;
+  }
+  try {
+    const dns = await import("node:dns/promises");
+    const results = await dns.lookup(host, { all: true, verbatim: true });
+    return results.every((entry) => !isPrivateOrLocalHost(entry.address));
+  } catch {
+    // Resolution failure: let the fetch fail on its own terms rather than
+    // misreporting a policy refusal.
+    return true;
+  }
+}
+
 async function fetchWithTimeout(
   fetchImpl: ReferenceFetchImpl,
   url: string,
@@ -232,6 +253,12 @@ export async function followGuardedRedirects(
     const verdict = checkReferenceImageUrl(currentUrl, allowlist);
     if (!verdict.ok) {
       return { ok: false, reason: verdict.reason };
+    }
+
+    // Only run the DNS screen for the real network fetch; injected test fetchers
+    // never touch the network.
+    if (fetchImpl === fetch && !(await resolvesToPublicAddress(new URL(currentUrl).hostname))) {
+      return { ok: false, reason: `host ${new URL(currentUrl).hostname} resolves to a private address` };
     }
 
     let response: Response;
@@ -345,8 +372,8 @@ export async function preflightReferenceImage(
   }
 
   const contentType = response.headers.get("content-type")?.split(";")[0]?.trim().toLowerCase() ?? "";
-  if (contentType && !contentType.startsWith("image/")) {
-    return { ok: false, reason: `non-image content type ${contentType}` };
+  if (!contentType || !contentType.startsWith("image/")) {
+    return { ok: false, reason: contentType ? `non-image content type ${contentType}` : "missing content type" };
   }
 
   const contentLength = Number(response.headers.get("content-length"));
