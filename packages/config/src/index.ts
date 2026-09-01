@@ -56,6 +56,12 @@ const serverEnvSchema = z.object({
   // Client-side deadline (ms) for text/vision provider calls; unset uses the ai
   // package default of 90000.
   RITZY_TEXT_TIMEOUT_MS: z.string().optional(),
+  // The OpenAI SDK reads OPENAI_BASE_URL implicitly; declaring it here makes the
+  // gateway override visible to validation and to the fallback-credential guard.
+  OPENAI_BASE_URL: z.string().optional(),
+  // Distinct credential for the api.openai.com image fallback when the primary key
+  // belongs to a gateway (OPENAI_BASE_URL set).
+  OPENAI_FALLBACK_API_KEY: z.string().optional(),
   RITZY_SIGNUP_ALLOWLIST: z.string().optional(),
   STRIPE_SECRET_KEY: z.string().optional(),
   STRIPE_WEBHOOK_SECRET: z.string().optional()

@@ -66,9 +66,9 @@ export {
   sanitizeReferenceImageUrl
 } from "./reference-guard";
 
-import { estimateTextCostUsd } from "./text-cost";
+import { estimateTextCostUsd, sumUsdCostsStrict } from "./text-cost";
 
-export { estimateTextCostUsd, sumUsdCosts } from "./text-cost";
+export { estimateTextCostUsd, sumUsdCosts, sumUsdCostsStrict } from "./text-cost";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 type ImageProvider = "gemini" | "openai" | "evolink";
@@ -713,18 +713,32 @@ function textTimeoutMs(env: { RITZY_TEXT_TIMEOUT_MS?: string }): number {
 }
 
 function createTextClient(env: { OPENAI_API_KEY: string; RITZY_TEXT_TIMEOUT_MS?: string }): OpenAI {
-  return new OpenAI({ apiKey: env.OPENAI_API_KEY, timeout: textTimeoutMs(env), maxRetries: 1 });
+  return new OpenAI({ apiKey: env.OPENAI_API_KEY, timeout: textTimeoutMs(env), maxRetries: 0 });
 }
 
 // The image fallback must be a genuinely distinct provider: pin api.openai.com so an
 // OPENAI_BASE_URL gateway override (the config that made the old fallback 404 on
 // /v1/images/edits) can never route the fallback through the failing primary.
-function createOpenAiImageFallbackClient(env: { OPENAI_API_KEY: string }): OpenAI {
+function createOpenAiImageFallbackClient(env: {
+  OPENAI_API_KEY: string;
+  OPENAI_FALLBACK_API_KEY?: string;
+  OPENAI_BASE_URL?: string;
+}): OpenAI {
+  // A gateway credential (the config that sets OPENAI_BASE_URL) cannot authenticate
+  // against api.openai.com; pairing it with the pin would just turn the dead
+  // fallback's 404 into a dead fallback's 401. Require a real credential: a
+  // dedicated fallback key, or the primary key only when no gateway override is set.
+  const apiKey = env.OPENAI_FALLBACK_API_KEY ?? (env.OPENAI_BASE_URL ? null : env.OPENAI_API_KEY);
+  if (!apiKey) {
+    throw new Error(
+      "No distinct OpenAI fallback credential: OPENAI_BASE_URL routes the primary key through a gateway and OPENAI_FALLBACK_API_KEY is unset."
+    );
+  }
   return new OpenAI({
-    apiKey: env.OPENAI_API_KEY,
+    apiKey,
     baseURL: "https://api.openai.com/v1",
     timeout: IMAGE_CALL_TIMEOUT_MS,
-    maxRetries: 1
+    maxRetries: 0
   });
 }
 
@@ -806,7 +820,7 @@ async function generateImageWithConfiguredProvider({
   }
 
   return generateOpenAiImage({
-    client: new OpenAI({ apiKey: env.OPENAI_API_KEY, timeout: IMAGE_CALL_TIMEOUT_MS, maxRetries: 1 }),
+    client: new OpenAI({ apiKey: env.OPENAI_API_KEY, timeout: IMAGE_CALL_TIMEOUT_MS, maxRetries: 0 }),
     prompt,
     references,
     model: env.OPENAI_IMAGE_MODEL,
@@ -1120,11 +1134,18 @@ async function generateEvolinkImage({
   while (Date.now() < deadline) {
     await new Promise((resolve) => setTimeout(resolve, EVOLINK_POLL_INTERVAL_MS));
 
-    const pollResponse = await fetch(`${EVOLINK_API_BASE}/v1/tasks/${encodeURIComponent(submitPayload.id)}`, {
-      method: "GET",
-      headers,
-      signal: AbortSignal.timeout(15_000)
-    });
+    let pollResponse: Response;
+    try {
+      pollResponse = await fetch(`${EVOLINK_API_BASE}/v1/tasks/${encodeURIComponent(submitPayload.id)}`, {
+        method: "GET",
+        headers,
+        signal: AbortSignal.timeout(15_000)
+      });
+    } catch {
+      // One slow or dropped status poll must not abandon a live task; the outer
+      // EVOLINK_POLL_TIMEOUT_MS deadline still bounds the loop.
+      continue;
+    }
     const task = (await pollResponse.json().catch(() => null)) as EvolinkTaskResponse | null;
 
     if (!pollResponse.ok) {
@@ -1144,7 +1165,7 @@ async function generateEvolinkImage({
         throw new Error("Evolink image generation completed without a result image URL.");
       }
 
-      const imageResponse = await fetch(resultUrl);
+      const imageResponse = await fetch(resultUrl, { signal: AbortSignal.timeout(60_000) });
 
       if (!imageResponse.ok) {
         throw new Error(`Evolink result image download failed with HTTP ${imageResponse.status}.`);
@@ -2472,6 +2493,7 @@ export async function generateProductEnrichment(
 
   return {
     promptKey: productMetadataEnrichmentPrompt.key,
+    textCostUsd: estimateTextCostUsd(env.OPENAI_TEXT_MODEL, response.usage),
     promptVersion: productMetadataEnrichmentPrompt.version,
     model: env.OPENAI_TEXT_MODEL,
     sourceHash,

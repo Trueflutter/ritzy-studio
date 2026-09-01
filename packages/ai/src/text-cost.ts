@@ -39,3 +39,13 @@ export function sumUsdCosts(...values: Array<number | null | undefined>): number
   const total = known.reduce((sum, value) => sum + value, 0);
   return Math.round(total * 1_000_000) / 1_000_000;
 }
+
+// Strict variant for totals whose components must ALL be known: any unknown input
+// makes the whole total unknown, so a missing image cost can never masquerade as a
+// cheap text-only run.
+export function sumUsdCostsStrict(...values: Array<number | null | undefined>): number | null {
+  if (values.some((value) => typeof value !== "number" || !Number.isFinite(value))) {
+    return null;
+  }
+  return sumUsdCosts(...values);
+}

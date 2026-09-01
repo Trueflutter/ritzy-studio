@@ -9,7 +9,7 @@ import {
   generateConceptView,
   generateInitialConcept,
   sourceProductsFromConcept,
-  sumUsdCosts
+  sumUsdCostsStrict
 } from "@ritzy-studio/ai";
 import type { Database } from "@ritzy-studio/db";
 import {
@@ -2257,7 +2257,7 @@ export async function generateInitialConceptAction(formData: FormData) {
         provider: result.imageProvider,
         model: `${result.textModel} + ${result.imageModel}`,
         prompt_version: result.promptVersion,
-        cost_estimate_usd: sumUsdCosts(evolinkCreditsToUsd(result.imageCreditsUsed), result.textCostUsd),
+        cost_estimate_usd: sumUsdCostsStrict(evolinkCreditsToUsd(result.imageCreditsUsed), result.textCostUsd),
         output_summary: {
           promptKey: result.promptKey,
           title: result.concept.title,
@@ -4786,7 +4786,7 @@ export async function reviseConceptAction(formData: FormData) {
         provider: result.imageProvider,
         model: `${result.textModel} + ${result.imageModel}`,
         prompt_version: result.promptVersion,
-        cost_estimate_usd: sumUsdCosts(evolinkCreditsToUsd(result.imageCreditsUsed), result.textCostUsd),
+        cost_estimate_usd: sumUsdCostsStrict(evolinkCreditsToUsd(result.imageCreditsUsed), result.textCostUsd),
         output_summary: {
           promptKey: result.promptKey,
           title: result.concept.title,

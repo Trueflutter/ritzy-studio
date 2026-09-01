@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 
-import { estimateTextCostUsd, sumUsdCosts } from "./text-cost";
+import { estimateTextCostUsd, sumUsdCosts, sumUsdCostsStrict } from "./text-cost";
 
 // Known models price by published per-1M token rates.
 // gpt-5-mini: $0.25 input / $2.00 output per 1M.
@@ -33,5 +33,11 @@ assert.equal(sumUsdCosts(0.05, null, 0.01), 0.06);
 assert.equal(sumUsdCosts(null, undefined), null);
 assert.equal(sumUsdCosts(0.1), 0.1);
 assert.equal(sumUsdCosts(), null);
+
+// Strict sums: any unknown component makes the total unknown (a fallback image with
+// unrecorded credits cannot masquerade as a cheap text-only run).
+assert.equal(sumUsdCostsStrict(null, 0.01), null);
+assert.equal(sumUsdCostsStrict(0.05, 0.01), 0.06);
+assert.equal(sumUsdCostsStrict(undefined), null);
 
 console.log("text-cost tests passed");
