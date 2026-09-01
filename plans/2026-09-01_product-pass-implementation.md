@@ -171,3 +171,13 @@ Rollback
 
 - S0 step 2: queue-path render cost recording turned out to already exist in `apps/web/lib/render-runner.ts` (the success write records `costEstimateUsd`); the Phase 0 null on Bolaji's queue run was production deploy lag, not missing code. The step's remaining work (spatial-QA text cost added to the render sum, text-stage cost recording) shipped as planned.
 - S0 step 4 (I-4): the "production onboarding redirect" was not deployment drift. Production runs the same commit as main (verified via the Vercel API: dpl_FPNfRFaBNQNnVRWXoQbAJF73rACg = 9a8f520). The real defect is universal: `signInAction` unconditionally redirected every returning sign-in to `/onboarding`, re-asking the answered mode question on every login; Phase 0's local walks only ever signed in with fresh unset-mode accounts, which masked it. Fixed with the one-line root change (sign-in redirects to `/`; the dashboard already routes unknown-mode users to onboarding). The onboarding screen's returning-user handling is reworked properly in S6.
+
+## Verification
+
+S0 (slice complete, 2026-09-01):
+- AC 1 PASS (live): fresh room 6bd820e2 anchored the exact Phase 0 poison product (2XL Olaf rug, resize params in the stored URL) and generated successfully via Evolink on unmodified S0 code, no fallback. Unit fixture coverage in reference-guard.test.ts.
+- AC 2 PASS (live): with EVOLINK_BASE_URL stubbed to an instant-500 server, room 026d05f7 generated successfully via the pinned api.openai.com fallback; job row records provider openai, gpt-image-2, fallbackUsed true, and the stub's error message. Cost recorded honestly null (image credits unknown on fallback, strict-sum behavior).
+- AC 3 PASS (harness): a hanging provider stub with RITZY_TEXT_TIMEOUT_MS=3000 surfaced "Request timed out" at 3017 ms, no retry doubling (maxRetries 0).
+- AC 4 PARTIAL: text stages now record cost_estimate_usd (live rows: clarifying $0.0016 on gpt-5-mini; concept $0.0749 image+text summed); the per-room aggregation query ships in S9 as planned.
+- I-4 PASS (live): returning homeowner sign-in lands on the dashboard; root cause was signInAction's unconditional /onboarding redirect (production runs the same commit as main, Vercel-verified), not deploy drift.
+- Gates: pnpm check green (lint, typecheck, build), full workspace test suites green including the three new suites (reference-guard, text-cost, model-routing).
