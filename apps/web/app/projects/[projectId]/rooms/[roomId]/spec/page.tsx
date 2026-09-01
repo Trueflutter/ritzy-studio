@@ -122,12 +122,26 @@ async function SpecLedgerSection({
             ? "Reading the approved concept failed. Your concept and brief are untouched."
             : "The approved concept image is not ready to read. Your concept and brief are untouched."}
         </p>
-        <a
-          className="mt-6 inline-block border border-ink px-6 py-3 font-body text-caption font-medium uppercase tracking-[0.32em] text-ink"
-          href={`/projects/${projectId}/rooms/${roomId}/spec`}
-        >
-          Retry
-        </a>
+        <div className="mt-6 flex flex-wrap justify-center gap-3">
+          <a
+            className="inline-block border border-ink bg-ink px-6 py-3 font-body text-caption font-medium uppercase tracking-[0.32em] text-paper"
+            href={`/projects/${projectId}/rooms/${roomId}/spec`}
+          >
+            Retry
+          </a>
+          <a
+            className="inline-block border border-ink px-6 py-3 font-body text-caption font-medium uppercase tracking-[0.32em] text-ink"
+            href={`/projects/${projectId}/rooms/${roomId}/concepts`}
+          >
+            Back to concepts
+          </a>
+          <a
+            className="inline-block border border-line px-6 py-3 font-body text-caption font-medium uppercase tracking-[0.32em] text-ink-secondary"
+            href={`/projects/${projectId}/rooms/${roomId}/product-matching`}
+          >
+            Continue to sourcing without the spec
+          </a>
+        </div>
       </div>
     );
   }

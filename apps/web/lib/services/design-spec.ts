@@ -138,18 +138,22 @@ export async function ensureRoomDesignSpec(
         : null
     });
 
-    // Upsert semantics on (room, concept): a concurrent first visit loses the
-    // race harmlessly and reads the winner's row back.
+    // Upsert on (room, concept): a concurrent first visit converges on one row,
+    // and a previously stored MALFORMED row is replaced instead of colliding on
+    // the unique constraint forever.
     const { data: inserted, error: insertError } = await supabase
       .from("room_design_specs")
-      .insert({
-        room_id: roomId,
-        concept_id: concept.id,
-        objects: extraction.objects,
-        must_preserve: extraction.mustPreserve,
-        status: "extracted",
-        extraction_job_id: job?.id ?? null
-      })
+      .upsert(
+        {
+          room_id: roomId,
+          concept_id: concept.id,
+          objects: extraction.objects,
+          must_preserve: extraction.mustPreserve,
+          status: "extracted",
+          extraction_job_id: job?.id ?? null
+        },
+        { onConflict: "room_id,concept_id" }
+      )
       .select("*")
       .single();
 

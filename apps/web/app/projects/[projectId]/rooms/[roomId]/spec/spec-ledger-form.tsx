@@ -68,7 +68,10 @@ export function SpecLedgerForm({
                 aria-label={`Piece ${index + 1} name`}
                 className={chipClass}
                 defaultValue={object.label}
+                maxLength={120}
+                minLength={2}
                 name={`object-${index}-label`}
+                required
                 type="text"
               />
             </div>
@@ -78,8 +81,10 @@ export function SpecLedgerForm({
                 className={chipClass}
                 defaultValue={object.quantity}
                 inputMode="numeric"
+                max={24}
                 min={1}
                 name={`object-${index}-quantity`}
+                required
                 type="number"
               />
             </div>
@@ -88,6 +93,7 @@ export function SpecLedgerForm({
                 aria-label={`Piece ${index + 1} size`}
                 className={chipClass}
                 defaultValue={object.sizeDescriptor ?? ""}
+                maxLength={200}
                 name={`object-${index}-sizeDescriptor`}
                 placeholder="size, in plain words"
                 type="text"
@@ -101,6 +107,7 @@ export function SpecLedgerForm({
                 aria-label={`Piece ${index + 1} capacity`}
                 className={chipClass}
                 defaultValue={object.capacity ?? ""}
+                maxLength={120}
                 name={`object-${index}-capacity`}
                 placeholder="e.g. seats 6"
                 type="text"

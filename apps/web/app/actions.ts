@@ -1538,7 +1538,8 @@ export async function confirmDesignSpecAction(formData: FormData) {
     redirect("/login");
   }
 
-  const objectCount = Number(formData.get("objectCount") ?? 0);
+  // Clamped to the schema maximum so a crafted count cannot spin the loop.
+  const objectCount = Math.min(Number(formData.get("objectCount")) || 0, 30);
   const objects = [];
   for (let index = 0; index < objectCount; index += 1) {
     if (formData.get(`object-${index}-remove`) === "on") {
