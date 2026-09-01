@@ -1988,18 +1988,14 @@ export async function reviseConceptAction(formData: FormData) {
   switch (result.status) {
     case "not_found":
       redirect("/");
-    case "anchored":
-      redirect(
-        `${redirectPath}?message=${encodeURIComponent(
-          "This room direction is ready for sourcing. To make changes, adjust selected pieces after the shopping list is built."
-        )}`
-      );
     case "missing_brief":
       redirect(`/projects/${projectId}/rooms/${roomId}/brief`);
     case "missing_photo":
       redirect(`/projects/${projectId}/rooms/${roomId}/photos`);
     case "photo_unprepared":
       redirect(`${redirectPath}?message=${encodeURIComponent("The original room photo could not be prepared for revision.")}`);
+    case "concept_image_unprepared":
+      redirect(`${redirectPath}?message=${encodeURIComponent("The previous concept image could not be prepared for revision. Try again in a moment.")}`);
     case "revision_failed":
       redirect(`${redirectPath}?message=${encodeURIComponent("Concept revision failed. The critique was saved.")}`);
   }

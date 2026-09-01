@@ -14,7 +14,12 @@ import {
   conceptProductSourcingJsonSchema,
   conceptProductSourcingPrompt,
   conceptProductSourcingResponseSchema,
+  conceptRevisionJsonSchema,
   conceptRevisionPrompt,
+  conceptRevisionResponseSchema,
+  revisionVisualDiffJsonSchema,
+  revisionVisualDiffPrompt,
+  revisionVisualDiffResponseSchema,
   conceptPaletteJsonSchema,
   conceptPalettePrompt,
   conceptPaletteResponseSchema,
@@ -246,7 +251,30 @@ export type GenerateConceptRevisionInput = GenerateInitialConceptInput & {
     title: string;
     description?: string | null;
   };
+  // The image being edited: the previous concept render. The revision is a
+  // reference-preserving edit of THIS image, with the room photos as
+  // architecture ground truth.
+  previousConceptImage: {
+    bytes: Buffer;
+    mimeType: string;
+    url?: string | null;
+  };
   critique: string;
+};
+
+export type GenerateConceptRevisionResult = GenerateInitialConceptResult & {
+  changePlan: {
+    mustChange: string[];
+    mustPreserve: string[];
+  };
+};
+
+export type RevisionVisualDiffResult = {
+  changeApplied: "yes" | "partial" | "no";
+  unintendedChanges: string[];
+  summary: string;
+  textCostUsd?: number | null;
+  model: string;
 };
 
 export type GenerateProductEnrichmentResult = {
@@ -1194,6 +1222,11 @@ async function generateEvolinkImage({
   }
 
   throw new Error(`Evolink image generation timed out after ${EVOLINK_POLL_TIMEOUT_MS / 1000} seconds.`);
+}
+
+// Downscaled data URL for a vision input; same pipeline as image references.
+async function visionDataUrl(bytes: Buffer, mimeType: string) {
+  return referenceDataUrl({ bytes, mimeType, name: "vision-input", url: null });
 }
 
 async function referenceDataUrl(reference: ImageGenerationReference) {
@@ -2252,7 +2285,7 @@ export function spatialQaCorrectionLanguage(issues: string[]) {
 
 export async function generateConceptRevision(
   input: GenerateConceptRevisionInput
-): Promise<GenerateInitialConceptResult> {
+): Promise<GenerateConceptRevisionResult> {
   const env = parseServerEnv(process.env);
   const client = createTextClient(env);
   const { model: stageModel, requestParams: stageRequestParams } = stageTextConfig("revision_direction", env.OPENAI_TEXT_MODEL);
@@ -2288,10 +2321,47 @@ export async function generateConceptRevision(
             text: JSON.stringify(revisionInput)
           },
           {
+            type: "input_text",
+            text: "The next image is the PREVIOUS concept being revised. Derive the change plan and generation prompt as an edit of this image."
+          },
+          {
+            type: "input_image",
+            image_url: await visionDataUrl(input.previousConceptImage.bytes, input.previousConceptImage.mimeType),
+            detail: "high"
+          },
+          {
+            type: "input_text",
+            text: "The next image is a photo of the real room. It is the architecture ground truth."
+          },
+          {
             type: "input_image",
             image_url: input.roomPhotoUrl,
             detail: "high"
-          }
+          },
+          ...(input.additionalRoomPhotos ?? []).flatMap((photo, index) => [
+            {
+              type: "input_text" as const,
+              text: `Additional photo ${index + 2} of the SAME room from another corner. Use it to understand walls, openings, and proportions the first photo cannot see.`
+            },
+            {
+              type: "input_image" as const,
+              image_url: photo.url,
+              detail: "high" as const
+            }
+          ]),
+          ...(input.floorPlanImageUrl
+            ? [
+                {
+                  type: "input_text" as const,
+                  text: "The next image is the room's floor plan. Use it for the room's true footprint and circulation."
+                },
+                {
+                  type: "input_image" as const,
+                  image_url: input.floorPlanImageUrl,
+                  detail: "high" as const
+                }
+              ]
+            : [])
         ]
       }
     ],
@@ -2299,34 +2369,52 @@ export async function generateConceptRevision(
       format: {
         type: "json_schema",
         name: "ritzy_concept_revision",
-        schema: initialConceptJsonSchema,
+        schema: conceptRevisionJsonSchema,
         strict: true
       }
     }
   });
 
-  const direction = initialConceptResponseSchema.parse(JSON.parse(directionResponse.output_text));
+  const direction = conceptRevisionResponseSchema.parse(JSON.parse(directionResponse.output_text));
   const imagePrompt = [
     direction.concept.generationPrompt,
     "",
-    "Use the uploaded original room photo as the base image.",
-    "Apply the designer critique while preserving approved qualities from the previous concept.",
-    "Preserve visible architecture, walls, windows, doors, ceiling details, AC vents, sockets, built-ins, and fixed bathroom fixtures where present.",
+    "This is a reference-preserving EDIT. The FIRST input image is the previous concept: use it as the base image and keep everything not listed under MUST CHANGE visually identical.",
+    "The following room photos are the architecture ground truth. Preserve visible architecture, walls, windows, doors, ceiling details, AC vents, sockets, and built-ins exactly.",
+    "MUST CHANGE (apply every item):",
+    ...direction.changePlan.mustChange.map((item, index) => `${index + 1}. ${item}`),
+    direction.changePlan.mustPreserve.length > 0 ? "MUST PRESERVE (keep visually identical):" : null,
+    ...direction.changePlan.mustPreserve.map((item, index) => `${index + 1}. ${item}`),
+    "Preserve the previous concept's palette and material register unless a MUST CHANGE item changes it.",
     "Output must look like a photorealistic editorial interior photograph, not an illustration, 3D showroom render, sketch, or mood board.",
     "Use physically plausible scale, natural shadows, realistic upholstery grain, wood texture, rug fibers, wall finish, and lighting falloff.",
-    "Keep the source-photo camera perspective and lens feel. Do not add text labels, prices, product names, or retailer claims."
-  ].join("\n");
+    "Keep the previous concept's camera perspective and lens feel. Do not add text labels, prices, product names, or retailer claims."
+  ]
+    .filter((line): line is string => line !== null)
+    .join("\n");
 
   const imageResult = await generateImageWithConfiguredProvider({
     prompt: imagePrompt,
     references: [
       {
+        bytes: input.previousConceptImage.bytes,
+        mimeType: input.previousConceptImage.mimeType,
+        name: "previous-concept",
+        url: publicReferenceUrl(input.previousConceptImage.url),
+        required: true
+      },
+      {
         bytes: input.roomPhotoBytes,
         mimeType: input.roomPhotoMimeType,
         name: "room",
-        url: publicReferenceUrl(input.roomPhotoReferenceUrl ?? input.roomPhotoUrl),
-        required: true
-      }
+        url: publicReferenceUrl(input.roomPhotoReferenceUrl ?? input.roomPhotoUrl)
+      },
+      ...(input.additionalRoomPhotos ?? []).slice(0, 2).map((photo, index) => ({
+        bytes: photo.bytes,
+        mimeType: photo.mimeType,
+        name: `room-angle-${index + 2}`,
+        url: publicReferenceUrl(photo.referenceUrl ?? photo.url)
+      }))
     ],
     noImageErrorMessage: "OpenAI image revision returned no image data."
   });
@@ -2345,7 +2433,80 @@ export async function generateConceptRevision(
     analysis: direction.roomAnalysis,
     concept: direction.concept,
     imageBase64: imageResult.imageBase64,
-    revisedPrompt: imageResult.revisedPrompt ?? null
+    revisedPrompt: imageResult.revisedPrompt ?? null,
+    changePlan: direction.changePlan
+  };
+}
+
+// Judges a revision against its change plan: did the asked change happen, did
+// anything outside the plan drift. Non-fatal by contract: callers treat a thrown
+// error as "diff unavailable", never as a failed revision.
+export async function assessRevisionVisualDiff({
+  previousImage,
+  revisedImage,
+  mustChange,
+  mustPreserve
+}: {
+  previousImage: { bytes: Buffer; mimeType: string };
+  revisedImage: { bytes: Buffer; mimeType: string };
+  mustChange: string[];
+  mustPreserve: string[];
+}): Promise<RevisionVisualDiffResult> {
+  const env = parseServerEnv(process.env);
+  const client = createTextClient(env);
+  const { model: stageModel, requestParams: stageRequestParams } = stageTextConfig("spatial_qa", env.OPENAI_TEXT_MODEL);
+
+  const response = await client.responses.create({
+    max_output_tokens: 4000,
+    ...stageRequestParams,
+    input: [
+      {
+        role: "system",
+        content: revisionVisualDiffPrompt.system
+      },
+      {
+        role: "user",
+        content: [
+          {
+            type: "input_text",
+            text: JSON.stringify({ changePlan: { mustChange, mustPreserve } })
+          },
+          {
+            type: "input_text",
+            text: "Image 1: the PREVIOUS concept."
+          },
+          {
+            type: "input_image",
+            image_url: await visionDataUrl(previousImage.bytes, previousImage.mimeType),
+            detail: "high"
+          },
+          {
+            type: "input_text",
+            text: "Image 2: the REVISED concept."
+          },
+          {
+            type: "input_image",
+            image_url: await visionDataUrl(revisedImage.bytes, revisedImage.mimeType),
+            detail: "high"
+          }
+        ]
+      }
+    ],
+    text: {
+      format: {
+        type: "json_schema",
+        name: "ritzy_revision_visual_diff",
+        schema: revisionVisualDiffJsonSchema,
+        strict: true
+      }
+    }
+  });
+
+  const verdict = revisionVisualDiffResponseSchema.parse(JSON.parse(response.output_text));
+  return {
+    ...verdict,
+    model: stageModel,
+    textCostUsd: estimateTextCostUsd(stageModel, response.usage)
   };
 }
 

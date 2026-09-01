@@ -342,6 +342,84 @@ export const initialConceptJsonSchema = {
 
 export type InitialConceptResponse = z.infer<typeof initialConceptResponseSchema>;
 
+// Revision extends the concept response with the critique-derived change plan:
+// what must change, and what must stay visually identical. The visual-diff QA
+// judges the revised image against exactly these two lists.
+export const conceptRevisionResponseSchema = initialConceptResponseSchema.extend({
+  changePlan: z.object({
+    mustChange: z.array(z.string().min(2).max(160)).min(1).max(10),
+    mustPreserve: z.array(z.string().min(2).max(160)).max(14)
+  })
+});
+
+export const conceptRevisionJsonSchema = {
+  ...initialConceptJsonSchema,
+  properties: {
+    ...initialConceptJsonSchema.properties,
+    changePlan: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        mustChange: {
+          type: "array",
+          minItems: 1,
+          maxItems: 10,
+          items: { type: "string", minLength: 2, maxLength: 160 }
+        },
+        mustPreserve: {
+          type: "array",
+          maxItems: 14,
+          items: { type: "string", minLength: 2, maxLength: 160 }
+        }
+      },
+      required: ["mustChange", "mustPreserve"]
+    }
+  },
+  required: ["roomAnalysis", "concept", "changePlan"]
+} as const;
+
+export type ConceptRevisionResponse = z.infer<typeof conceptRevisionResponseSchema>;
+
+// Visual-diff QA over a revision: did the asked change happen, did anything
+// outside the change plan drift. The summary is written to concepts.diff_summary
+// and shown on the concepts screen.
+export const revisionVisualDiffPrompt = {
+  key: "concept.revision_visual_diff",
+  version: "2026-09-01.1",
+  system: [
+    "You are Ritzy Studio's revision QA reviewer.",
+    "Image 1 is the PREVIOUS concept. Image 2 is the REVISED concept.",
+    "Judge the revision against the provided change plan only.",
+    "changeApplied: yes when every mustChange item is visibly applied in image 2; partial when some are; no when none are.",
+    "unintendedChanges: elements that differ between the images but appear in neither mustChange nor mustPreserve as an allowed change — palette shifts, swapped furniture, moved layout, altered architecture. Empty when the edit stayed scoped.",
+    "summary: one or two plain sentences a homeowner understands, stating what changed and whether anything drifted. No scores, no jargon.",
+    "Be strict about architecture: any wall, window, door, or opening difference is always an unintended change."
+  ].join("\n")
+} as const;
+
+export const revisionVisualDiffResponseSchema = z.object({
+  changeApplied: z.enum(["yes", "partial", "no"]),
+  unintendedChanges: z.array(z.string().min(2).max(200)).max(10),
+  summary: z.string().min(8).max(400)
+});
+
+export const revisionVisualDiffJsonSchema = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    changeApplied: { type: "string", enum: ["yes", "partial", "no"] },
+    unintendedChanges: {
+      type: "array",
+      maxItems: 10,
+      items: { type: "string", minLength: 2, maxLength: 200 }
+    },
+    summary: { type: "string", minLength: 8, maxLength: 400 }
+  },
+  required: ["changeApplied", "unintendedChanges", "summary"]
+} as const;
+
+export type RevisionVisualDiffResponse = z.infer<typeof revisionVisualDiffResponseSchema>;
+
 export const conceptProductSourcingPrompt = {
   key: "sourcing.concept_visual_product_match",
   version: "2026-05-22.1",
@@ -499,12 +577,15 @@ export type ConceptProductSourcingResponse = z.infer<typeof conceptProductSourci
 
 export const conceptRevisionPrompt = {
   key: "concept.revision_from_critique",
-  version: "2026-05-04.1",
+  version: "2026-09-01.1",
   system: [
     "You are Ritzy Studio's concept revision assistant.",
-    "Use the original room photo, previous concept, and designer critique to create one revised concept direction.",
-    "Preserve approved qualities from the previous concept unless the critique explicitly changes them.",
+    "A revision is a reference-preserving EDIT of the previous concept image, not a new concept.",
+    "Inputs: the previous concept image, all photos of the real room, the floor plan when provided, the saved brief, and the designer critique.",
+    "First derive a change plan from the critique: mustChange lists exactly what the critique asks to change; mustPreserve lists the elements of the previous concept that the critique does not touch and that must stay visually identical (palette register, key furniture, layout, lighting mood, architecture).",
+    "The generation prompt must direct an image EDIT of the previous concept image: apply every mustChange item, keep every mustPreserve item, and change nothing else.",
     "Keep the room architecture stable and identify uncertainty plainly.",
+    "Preserve the previous concept's palette and material register unless the critique explicitly changes it.",
     "The revised image direction must read as a photorealistic interior-design photograph, not an illustration, sketch, collage, CGI showroom, or mood board.",
     "Do not claim real product availability or exact SKU matching.",
     "Return a practical generation prompt for image editing."
