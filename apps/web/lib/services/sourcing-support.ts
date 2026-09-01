@@ -26,7 +26,7 @@ import {
   type RoomProductRoleSpec
 } from "@ritzy-studio/domain";
 
-import { createServiceClient } from "@/lib/supabase/service";
+import type { ServiceSupabaseClient } from "@/lib/services/supabase-clients";
 import { localSkuFidelityModeEnabled } from "@/lib/render-flags";
 import { fetchRemoteImage, visionImageDataUrl, type CatalogueReferenceImage } from "@/lib/render-images";
 import {
@@ -108,7 +108,7 @@ export async function recentlyUsedProductIdsForUser({
   userId,
   excludeRoomId
 }: {
-  serviceSupabase: ReturnType<typeof createServiceClient>;
+  serviceSupabase: ServiceSupabaseClient;
   userId: string;
   excludeRoomId: string;
 }): Promise<string[]> {
@@ -191,7 +191,7 @@ async function fetchCatalogueGroundingProductWindow({
   serviceSupabase,
   roles
 }: {
-  serviceSupabase: ReturnType<typeof createServiceClient>;
+  serviceSupabase: ServiceSupabaseClient;
   roles: RoomProductRoleSpec[];
 }) {
   const categories = Array.from(new Set(roles.flatMap((role) => Array.from(scopedCategoriesForProductRole(role)))));
@@ -229,7 +229,7 @@ export async function fetchProductsById({
   serviceSupabase,
   productIds
 }: {
-  serviceSupabase: ReturnType<typeof createServiceClient>;
+  serviceSupabase: ServiceSupabaseClient;
   productIds: string[];
 }) {
   if (productIds.length === 0) {
@@ -260,7 +260,7 @@ export async function fetchLocalSkuFidelityRoleWindowCandidates({
   roles,
   conceptText
 }: {
-  serviceSupabase: ReturnType<typeof createServiceClient>;
+  serviceSupabase: ServiceSupabaseClient;
   roomType: string;
   roles: RoomProductRoleSpec[];
   conceptText: string;
@@ -324,7 +324,7 @@ export async function buildCatalogueGroundedConceptPlan({
   designBrief,
   answeredQuestions
 }: {
-  serviceSupabase: ReturnType<typeof createServiceClient>;
+  serviceSupabase: ServiceSupabaseClient;
   roomType: string;
   budgetMaxAed: number | null;
   roomMeasurements: {
@@ -591,7 +591,7 @@ export async function previousShoppingListRefreshHistory({
   roomId,
   conceptId
 }: {
-  serviceSupabase: ReturnType<typeof createServiceClient>;
+  serviceSupabase: ServiceSupabaseClient;
   roomId: string;
   conceptId: string;
 }): Promise<ProductRefreshDiversityHistory[]> {
@@ -1078,7 +1078,7 @@ export async function catalogueGroundingAnchorsForConcept({
   serviceSupabase,
   generationJobId
 }: {
-  serviceSupabase: ReturnType<typeof createServiceClient>;
+  serviceSupabase: ServiceSupabaseClient;
   generationJobId: string | null;
 }): Promise<CatalogueGroundingAnchor[]> {
   if (!generationJobId) {

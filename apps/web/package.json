@@ -9,7 +9,7 @@
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
     "validate-env": "tsx scripts/validate-env.ts",
-    "test": "tsx app/inspiration-analysis-continue.test.ts && tsx app/product-image-preflight.test.ts && tsx app/product-sourcing-failure.test.ts && tsx app/product-sourcing-text-fallback.test.ts && tsx app/product-sourcing-timeout-diagnostics.test.ts && tsx app/product-sourcing-visual-strategy.test.ts && tsx app/room-type-selector.test.tsx && tsx lib/ai-cost.test.ts && tsx lib/render.test.ts && tsx lib/render-images.test.ts && tsx lib/room-type-normalize.test.ts"
+    "test": "tsx app/inspiration-analysis-continue.test.ts && tsx app/product-image-preflight.test.ts && tsx app/product-sourcing-failure.test.ts && tsx app/product-sourcing-text-fallback.test.ts && tsx app/product-sourcing-timeout-diagnostics.test.ts && tsx app/product-sourcing-visual-strategy.test.ts && tsx app/room-type-selector.test.tsx && tsx lib/ai-cost.test.ts && tsx lib/render.test.ts && tsx lib/render-images.test.ts && tsx lib/room-type-normalize.test.ts && tsx lib/services/selection-swap.test.ts"
   },
   "dependencies": {
     "@ritzy-studio/ai": "workspace:*",
