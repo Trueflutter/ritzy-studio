@@ -176,9 +176,10 @@ function mockFetch(routes: Record<string, MockResponse | MockResponse[]>) {
   assert.ok(seen.some((s) => s.startsWith("GET ")));
 }
 
-// A redirect to a non-allowlisted or private host is refused mid-flight.
+// A redirect to a non-allowlisted or private host is refused BEFORE it is fetched:
+// the refusal reason names the policy, and the private target never sees a request.
 {
-  const { impl } = mockFetch({
+  const { impl, seen } = mockFetch({
     "https://media.homecentre.com/redirect.jpg": {
       status: 302,
       headers: { location: "http://169.254.169.254/latest" }
@@ -189,6 +190,11 @@ function mockFetch(routes: Record<string, MockResponse | MockResponse[]>) {
     fetchImpl: impl
   });
   assert.equal(result.ok, false);
+  assert.ok(!result.ok && /private or local host/.test(result.reason ?? ""), `reason was: ${!result.ok ? result.reason : ""}`);
+  assert.ok(
+    !seen.some((entry) => entry.includes("169.254.169.254")),
+    `private target must never be fetched; saw: ${seen.join(", ")}`
+  );
 }
 
 // A redirect within the allowlist is followed (bounded) and passes.

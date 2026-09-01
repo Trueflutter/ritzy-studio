@@ -22,6 +22,10 @@ export function estimateTextCostUsd(model: string, usage: TextUsage): number | n
   if (!rates) {
     return null;
   }
+  // A usage object with neither token field is unknown, not free.
+  if (usage.input_tokens == null && usage.output_tokens == null) {
+    return null;
+  }
   const inputTokens = usage.input_tokens ?? 0;
   const outputTokens = usage.output_tokens ?? 0;
   const usd = (inputTokens * rates.input + outputTokens * rates.output) / 1_000_000;
@@ -48,4 +52,17 @@ export function sumUsdCostsStrict(...values: Array<number | null | undefined>): 
     return null;
   }
   return sumUsdCosts(...values);
+}
+
+// Image-plus-text totals: the image component is load-bearing (an unknown image cost
+// must null the total so a fallback run never reads as a cheap text-only run), but an
+// unknown text component must not discard known image credits.
+export function sumImagePlusTextUsd(
+  imageUsd: number | null | undefined,
+  textUsd: number | null | undefined
+): number | null {
+  if (typeof imageUsd !== "number" || !Number.isFinite(imageUsd)) {
+    return null;
+  }
+  return sumUsdCosts(imageUsd, textUsd ?? 0);
 }

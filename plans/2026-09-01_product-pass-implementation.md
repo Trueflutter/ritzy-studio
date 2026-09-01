@@ -175,9 +175,9 @@ Rollback
 ## Verification
 
 S0 (slice complete, 2026-09-01):
-- AC 1 PASS (live): fresh room 6bd820e2 anchored the exact Phase 0 poison product (2XL Olaf rug, resize params in the stored URL) and generated successfully via Evolink on unmodified S0 code, no fallback. Unit fixture coverage in reference-guard.test.ts.
-- AC 2 PASS (live): with EVOLINK_BASE_URL stubbed to an instant-500 server, room 026d05f7 generated successfully via the pinned api.openai.com fallback; job row records provider openai, gpt-image-2, fallbackUsed true, and the stub's error message. Cost recorded honestly null (image credits unknown on fallback, strict-sum behavior).
-- AC 3 PASS (harness): a hanging provider stub with RITZY_TEXT_TIMEOUT_MS=3000 surfaced "Request timed out" at 3017 ms, no retry doubling (maxRetries 0).
+- AC 1 PASS (live + automated): fresh room 6bd820e2 anchored the exact Phase 0 poison product (2XL Olaf rug, resize params in the stored URL) and generated successfully via Evolink on unmodified S0 code, no fallback. Unit fixture coverage in reference-guard.test.ts; the hardening wiring (a refused or poisoned URL can never reach the gateway submit payload) is pinned end to end against a stub gateway in provider-hardening.test.ts.
+- AC 2 PASS (live + automated): with EVOLINK_BASE_URL stubbed to an instant-500 server, room 026d05f7 generated successfully via the pinned api.openai.com fallback; job row records provider openai, gpt-image-2, fallbackUsed true, and the stub's error message; cost recorded honestly null (image cost unknown on fallback). The fallback credential matrix, base-URL pin, and gateway-key fail-fast are pinned by provider-hardening.test.ts.
+- AC 3 PASS (live + automated): a hanging provider stub with RITZY_TEXT_TIMEOUT_MS=3000 surfaced "Request timed out" at 3017 ms; the committed stalling-stub test asserts bounded failure and exactly one attempt in CI (provider-hardening.test.ts), plus textTimeoutMs parsing cases.
 - AC 4 PARTIAL: text stages now record cost_estimate_usd (live rows: clarifying $0.0016 on gpt-5-mini; concept $0.0749 image+text summed); the per-room aggregation query ships in S9 as planned.
 - I-4 PASS (live): returning homeowner sign-in lands on the dashboard; root cause was signInAction's unconditional /onboarding redirect (production runs the same commit as main, Vercel-verified), not deploy drift.
 - Gates: pnpm check green (lint, typecheck, build), full workspace test suites green including the three new suites (reference-guard, text-cost, model-routing).

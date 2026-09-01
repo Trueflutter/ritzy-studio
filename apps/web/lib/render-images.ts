@@ -2,8 +2,9 @@ import sharp from "sharp";
 
 import {
   buildReferenceHostAllowlist,
-  checkReferenceImageUrl,
-  sanitizeReferenceImageUrl
+  followGuardedRedirects,
+  guardReferenceUrl,
+  readResponseBytesCapped
 } from "@ritzy-studio/ai";
 import { configuredImageModelName, configuredImageProvider as configImageProvider } from "@ritzy-studio/config";
 
@@ -61,128 +62,74 @@ function remoteImageAllowlist() {
   });
 }
 
-export async function fetchRemoteImage(url: string): Promise<CatalogueReferenceImage | null> {
-  // Every remote image fetch goes through the reference guard: known-breaking resize
-  // params stripped, hosts restricted to the retailer/storage allowlist, redirects
-  // re-validated hop by hop. Refusals return null, which callers already treat as
-  // "no fetchable reference image".
+type FetchImpl = (input: string | URL, init?: RequestInit) => Promise<Response>;
+
+export async function fetchRemoteImage(
+  url: string,
+  fetchImpl: FetchImpl = fetch
+): Promise<CatalogueReferenceImage | null> {
+  // Every remote image fetch goes through the shared reference guard: known-breaking
+  // resize params stripped, hosts restricted to the retailer/storage allowlist,
+  // redirects re-validated hop by hop by the ONE follower in @ritzy-studio/ai.
+  // Refusals return null, which callers already treat as "no fetchable reference
+  // image".
   const allowlist = remoteImageAllowlist();
   const stripHosts = process.env.RITZY_REFERENCE_STRIP_QUERY_HOSTS
     ?.split(",")
     .map((entry) => entry.trim())
     .filter(Boolean);
-  const sanitized = sanitizeReferenceImageUrl(url, stripHosts);
-  const verdict = checkReferenceImageUrl(sanitized, allowlist);
-  if (!verdict.ok) {
+  const guarded = guardReferenceUrl(url, { allowlist, stripQueryHosts: stripHosts });
+  if (!guarded.ok) {
     // Distinct from a CDN flake: this URL was refused by policy, not unreachable.
-    console.warn(`[reference-guard] refusing remote image fetch: ${verdict.reason}`);
+    console.warn(`[reference-guard] refusing remote image fetch: ${guarded.reason}`);
     return null;
   }
 
   // Retailer CDNs rate-limit and flake; one quick retry rescues most transient
   // failures without meaningfully slowing the happy path.
-  const first = await fetchRemoteImageOnce(sanitized, allowlist);
+  const first = await fetchRemoteImageOnce(guarded.url, allowlist, fetchImpl);
   if (first) {
     return first;
   }
   await new Promise((resolve) => setTimeout(resolve, 750));
-  return fetchRemoteImageOnce(sanitized, allowlist);
+  return fetchRemoteImageOnce(guarded.url, allowlist, fetchImpl);
 }
-
-const REMOTE_IMAGE_MAX_REDIRECTS = 3;
 
 async function fetchRemoteImageOnce(
   url: string,
   allowlist: Set<string>,
-  redirectDepth = 0
+  fetchImpl: FetchImpl
 ): Promise<CatalogueReferenceImage | null> {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), CATALOGUE_GROUNDED_CONCEPT_IMAGE_FETCH_TIMEOUT_MS);
-
-  try {
-    const response = await fetch(url, {
-      signal: controller.signal,
-      redirect: "manual",
-      headers: {
-        "user-agent": "RitzyStudioBot/0.1 (+https://ritzy-studio.local; final render references)"
-      }
-    });
-
-    if ([301, 302, 303, 307, 308].includes(response.status)) {
-      const location = response.headers.get("location");
-      if (!location || redirectDepth >= REMOTE_IMAGE_MAX_REDIRECTS) {
-        return null;
-      }
-      let next: string;
-      try {
-        next = new URL(location, url).toString();
-      } catch {
-        return null;
-      }
-      if (!checkReferenceImageUrl(next, allowlist).ok) {
-        return null;
-      }
-      clearTimeout(timeout);
-      return fetchRemoteImageOnce(next, allowlist, redirectDepth + 1);
-    }
-
-    if (!response.ok) {
-      return null;
-    }
-
-    const mimeType = response.headers.get("content-type")?.split(";")[0] ?? "image/jpeg";
-    if (!["image/jpeg", "image/png", "image/webp"].includes(mimeType)) {
-      return null;
-    }
-
-    const contentLength = Number(response.headers.get("content-length"));
-    if (Number.isFinite(contentLength) && contentLength > PRODUCT_SOURCING_MAX_IMAGE_BYTES) {
-      return null;
-    }
-
-    const bytes = await readResponseBytesWithLimit(response, PRODUCT_SOURCING_MAX_IMAGE_BYTES);
-    if (!bytes) {
-      return null;
-    }
-
-    return {
-      bytes: Buffer.from(bytes),
-      mimeType
-    };
-  } catch {
+  const followed = await followGuardedRedirects(url, {
+    allowlist,
+    fetchImpl,
+    timeoutMs: CATALOGUE_GROUNDED_CONCEPT_IMAGE_FETCH_TIMEOUT_MS,
+    method: "GET"
+  });
+  if (!followed.ok || !followed.response.ok) {
     return null;
-  } finally {
-    clearTimeout(timeout);
   }
-}
+  const response = followed.response;
 
-async function readResponseBytesWithLimit(response: Response, maxBytes: number) {
-  const reader = response.body?.getReader();
-  if (!reader) {
+  const mimeType = response.headers.get("content-type")?.split(";")[0] ?? "image/jpeg";
+  if (!["image/jpeg", "image/png", "image/webp"].includes(mimeType)) {
+    void response.body?.cancel().catch(() => {});
     return null;
   }
 
-  const chunks: Uint8Array[] = [];
-  let totalBytes = 0;
-
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) {
-      break;
-    }
-
-    if (!value) {
-      continue;
-    }
-
-    totalBytes += value.byteLength;
-    if (totalBytes > maxBytes) {
-      await reader.cancel();
-      return null;
-    }
-
-    chunks.push(value);
+  const contentLength = Number(response.headers.get("content-length"));
+  if (Number.isFinite(contentLength) && contentLength > PRODUCT_SOURCING_MAX_IMAGE_BYTES) {
+    void response.body?.cancel().catch(() => {});
+    return null;
   }
 
-  return Buffer.concat(chunks, totalBytes);
+  const bytes = await readResponseBytesCapped(response, PRODUCT_SOURCING_MAX_IMAGE_BYTES);
+  if (!bytes) {
+    return null;
+  }
+
+  return {
+    bytes: Buffer.from(bytes),
+    mimeType
+  };
 }

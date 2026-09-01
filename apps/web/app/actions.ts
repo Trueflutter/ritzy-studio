@@ -9,8 +9,9 @@ import {
   generateConceptView,
   generateInitialConcept,
   sourceProductsFromConcept,
-  sumUsdCostsStrict,
-  resolveStageTextModel
+  stageTextConfig,
+  sumImagePlusTextUsd,
+  sumUsdCosts
 } from "@ritzy-studio/ai";
 import type { Database } from "@ritzy-studio/db";
 import {
@@ -1530,7 +1531,7 @@ export async function saveDesignBriefAction(formData: FormData) {
       job_type: "clarifying_questions",
       status: "running",
       provider: "openai",
-      model: resolveStageTextModel("clarifying_questions", process.env, configuredTextModel()),
+      model: stageTextConfig("clarifying_questions", configuredTextModel()).model,
       prompt_version: null,
       input_summary: inputSummary
     })
@@ -1836,7 +1837,7 @@ async function analyzeAndWriteInspirationForRoom({
       job_type: "inspiration_analysis",
       status: "running",
       provider: "openai",
-      model: resolveStageTextModel("inspiration_analysis", process.env, configuredTextModel()),
+      model: stageTextConfig("inspiration_analysis", configuredTextModel()).model,
       prompt_version: null,
       input_summary: { inspirationAssetCount: signedUrls.length }
     })
@@ -2196,7 +2197,7 @@ export async function generateInitialConceptAction(formData: FormData) {
       job_type: "initial_concept_generation",
       status: "running",
       provider: configuredImageProvider(),
-      model: `${resolveStageTextModel("concept_direction", process.env, configuredTextModel())} + ${configuredImageModel()}`,
+      model: `${stageTextConfig("concept_direction", configuredTextModel()).model} + ${configuredImageModel()}`,
       prompt_version: null,
       input_summary: {
         roomId,
@@ -2263,7 +2264,7 @@ export async function generateInitialConceptAction(formData: FormData) {
         provider: result.imageProvider,
         model: `${result.textModel} + ${result.imageModel}`,
         prompt_version: result.promptVersion,
-        cost_estimate_usd: sumUsdCostsStrict(evolinkCreditsToUsd(result.imageCreditsUsed), result.textCostUsd),
+        cost_estimate_usd: sumImagePlusTextUsd(evolinkCreditsToUsd(result.imageCreditsUsed), result.textCostUsd),
         output_summary: {
           promptKey: result.promptKey,
           title: result.concept.title,
@@ -2554,11 +2555,13 @@ export async function groundProductsAction(formData: FormData) {
   // rendered (extracted once, cached on the concept row), not only against the
   // concept's text tokens. Extraction failure degrades to text-only matching.
   let conceptPalette = parseConceptImagePalette(concept.palette_json);
+  let paletteTextCostUsd: number | null = null;
   if (!conceptPalette) {
     try {
       const paletteResult = await extractConceptImagePalette({
         imageUrl: conceptSignedImage.signedUrl
       });
+      paletteTextCostUsd = paletteResult.textCostUsd ?? null;
       conceptPalette = paletteResult.palette;
       await serviceSupabase
         .from("concepts")
@@ -2668,7 +2671,7 @@ ${conceptPaletteText}`
       job_type: "product_visual_sourcing",
       status: "running",
       provider: "openai",
-      model: resolveStageTextModel("product_sourcing", process.env, configuredTextModel()),
+      model: stageTextConfig("product_sourcing", configuredTextModel()).model,
       prompt_version: null,
       input_summary: {
         roomId,
@@ -2781,7 +2784,7 @@ ${conceptPaletteText}`
         completed_at: new Date().toISOString(),
         model: sourcingResult.model,
         prompt_version: sourcingResult.promptVersion,
-        cost_estimate_usd: "textCostUsd" in sourcingResult ? (sourcingResult.textCostUsd ?? null) : null,
+        cost_estimate_usd: sumUsdCosts(sourcingResult.textCostUsd, paletteTextCostUsd),
         output_summary: {
           promptKey: sourcingResult.promptKey,
           needCount: sourcingResult.needs.length,
@@ -3149,7 +3152,7 @@ ${conceptPaletteText}`
           completed_at: new Date().toISOString(),
           model: sourcingResult.model,
           prompt_version: sourcingResult.promptVersion,
-          cost_estimate_usd: "textCostUsd" in sourcingResult ? (sourcingResult.textCostUsd ?? null) : null,
+          cost_estimate_usd: sumUsdCosts(sourcingResult.textCostUsd, paletteTextCostUsd),
           output_summary: {
             promptKey: sourcingResult.promptKey,
             needCount: sourcingResult.needs.length,
@@ -4734,7 +4737,7 @@ export async function reviseConceptAction(formData: FormData) {
       job_type: "concept_revision",
       status: "running",
       provider: configuredImageProvider(),
-      model: `${resolveStageTextModel("revision_direction", process.env, configuredTextModel())} + ${configuredImageModel()}`,
+      model: `${stageTextConfig("revision_direction", configuredTextModel()).model} + ${configuredImageModel()}`,
       prompt_version: null,
       input_summary: {
         roomId,
@@ -4792,7 +4795,7 @@ export async function reviseConceptAction(formData: FormData) {
         provider: result.imageProvider,
         model: `${result.textModel} + ${result.imageModel}`,
         prompt_version: result.promptVersion,
-        cost_estimate_usd: sumUsdCostsStrict(evolinkCreditsToUsd(result.imageCreditsUsed), result.textCostUsd),
+        cost_estimate_usd: sumImagePlusTextUsd(evolinkCreditsToUsd(result.imageCreditsUsed), result.textCostUsd),
         output_summary: {
           promptKey: result.promptKey,
           title: result.concept.title,

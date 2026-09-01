@@ -8,8 +8,12 @@ const serverEnvSchema = z.object({
   GEMINI_IMAGE_MODEL: z.string().min(1, "GEMINI_IMAGE_MODEL is required").default("gemini-3.1-flash-image-preview"),
   EVOLINK_API_KEY: z.string().optional(),
   // Evolink gateway origin; overridable so tests and the zero-cost E2E suite can stub
-  // the image provider the same way OPENAI_BASE_URL allows for text.
-  EVOLINK_BASE_URL: z.string().optional(),
+  // the image provider the same way OPENAI_BASE_URL allows for text. Empty or blank
+  // values resolve to the default.
+  EVOLINK_BASE_URL: z.preprocess(
+    (value) => (typeof value === "string" && value.trim() ? value.trim() : undefined),
+    z.string().default("https://api.evolink.ai")
+  ),
   EVOLINK_IMAGE_MODEL: z
     .string()
     .min(1, "EVOLINK_IMAGE_MODEL is required")

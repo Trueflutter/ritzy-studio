@@ -6,8 +6,8 @@ import {
   generateFinalGroundedRender,
   generateFinalRenderView,
   spatialQaCorrectionLanguage,
-  sumUsdCosts,
-  sumUsdCostsStrict
+  sumImagePlusTextUsd,
+  sumUsdCosts
 } from "@ritzy-studio/ai";
 import { parseSpatialIntent, sortProductsForRenderReferences } from "@ritzy-studio/domain";
 import { revalidatePath } from "next/cache";
@@ -405,7 +405,7 @@ export async function runFinalRender({
           // regen) is recorded here and the views' spend on the final_render_views ai_job.
           imageCreditsUsed: renderImageCreditsUsed,
           spatialQaTextCostUsd: renderQaTextCostUsd,
-          costEstimateUsd: sumUsdCostsStrict(evolinkCreditsToUsd(renderImageCreditsUsed), renderQaTextCostUsd)
+          costEstimateUsd: sumImagePlusTextUsd(evolinkCreditsToUsd(renderImageCreditsUsed), renderQaTextCostUsd)
         }
       })
       .eq("id", job.id)

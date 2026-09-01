@@ -55,21 +55,43 @@ import sharp from "sharp";
 import {
   buildReferenceHostAllowlist,
   checkReferenceImageUrl,
+  guardReferenceUrl,
   preflightReferenceImage,
-  sanitizeReferenceImageUrl
+  readResponseBytesCapped
 } from "./reference-guard";
 
 export {
   buildReferenceHostAllowlist,
   checkReferenceImageUrl,
+  followGuardedRedirects,
+  guardReferenceUrl,
   preflightReferenceImage,
+  readResponseBytesCapped,
   sanitizeReferenceImageUrl
 } from "./reference-guard";
 
-import { estimateTextCostUsd, sumUsdCostsStrict } from "./text-cost";
-import { resolveStageTextEffort, resolveStageTextModel } from "./model-routing";
+import { estimateTextCostUsd } from "./text-cost";
+import { resolveStageTextEffort, resolveStageTextModel, type TextStage } from "./model-routing";
 
-export { estimateTextCostUsd, sumUsdCosts, sumUsdCostsStrict } from "./text-cost";
+// One composed lookup per stage: the model for calls AND job labels, plus the request
+// params to spread into responses.create. A single stage string per call site keeps
+// job-row attribution and the actual call in lockstep.
+export function stageTextConfig(
+  stage: TextStage,
+  baseModel?: string,
+  env: Record<string, string | undefined> = process.env
+): { model: string; requestParams: { model: string; reasoning?: { effort: "minimal" | "low" | "medium" | "high" } } } {
+  const resolvedBase = baseModel ?? serverEnvTextModel();
+  const model = resolveStageTextModel(stage, env, resolvedBase);
+  const effort = resolveStageTextEffort(stage, env);
+  return { model, requestParams: { model, ...(effort ? { reasoning: { effort } } : {}) } };
+}
+
+function serverEnvTextModel(): string {
+  return parseServerEnv(process.env).OPENAI_TEXT_MODEL;
+}
+
+export { estimateTextCostUsd, sumImagePlusTextUsd, sumUsdCosts, sumUsdCostsStrict } from "./text-cost";
 export { resolveStageTextEffort, resolveStageTextModel, TEXT_STAGES } from "./model-routing";
 export type { TextStage, TextEffort } from "./model-routing";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -710,7 +732,7 @@ export function buildFinalGroundedRenderPrompt({
 const DEFAULT_TEXT_TIMEOUT_MS = 90_000;
 const IMAGE_CALL_TIMEOUT_MS = 240_000;
 
-function textTimeoutMs(env: { RITZY_TEXT_TIMEOUT_MS?: string }): number {
+export function textTimeoutMs(env: { RITZY_TEXT_TIMEOUT_MS?: string }): number {
   const configured = Number(env.RITZY_TEXT_TIMEOUT_MS);
   return Number.isFinite(configured) && configured > 0 ? configured : DEFAULT_TEXT_TIMEOUT_MS;
 }
@@ -722,7 +744,18 @@ function createTextClient(env: { OPENAI_API_KEY: string; RITZY_TEXT_TIMEOUT_MS?:
 // The image fallback must be a genuinely distinct provider: pin api.openai.com so an
 // OPENAI_BASE_URL gateway override (the config that made the old fallback 404 on
 // /v1/images/edits) can never route the fallback through the failing primary.
-function createOpenAiImageFallbackClient(env: {
+function isOpenAiOwnOrigin(baseUrl: string | undefined): boolean {
+  if (!baseUrl || !baseUrl.trim()) {
+    return true;
+  }
+  try {
+    return new URL(baseUrl).origin === "https://api.openai.com";
+  } catch {
+    return false;
+  }
+}
+
+export function createOpenAiImageFallbackClient(env: {
   OPENAI_API_KEY: string;
   OPENAI_FALLBACK_API_KEY?: string;
   OPENAI_BASE_URL?: string;
@@ -731,7 +764,8 @@ function createOpenAiImageFallbackClient(env: {
   // against api.openai.com; pairing it with the pin would just turn the dead
   // fallback's 404 into a dead fallback's 401. Require a real credential: a
   // dedicated fallback key, or the primary key only when no gateway override is set.
-  const apiKey = env.OPENAI_FALLBACK_API_KEY ?? (env.OPENAI_BASE_URL ? null : env.OPENAI_API_KEY);
+  const apiKey =
+    env.OPENAI_FALLBACK_API_KEY ?? (isOpenAiOwnOrigin(env.OPENAI_BASE_URL) ? env.OPENAI_API_KEY : null);
   if (!apiKey) {
     throw new Error(
       "No distinct OpenAI fallback credential: OPENAI_BASE_URL routes the primary key through a gateway and OPENAI_FALLBACK_API_KEY is unset."
@@ -806,20 +840,26 @@ async function generateImageWithConfiguredProvider({
       });
     } catch (error) {
       const fallbackError = formatImageGenerationError(error);
-      const fallbackAttempt = await generateOpenAiImage({
-        client: createOpenAiImageFallbackClient(env),
-        prompt,
-        references,
-        model: env.OPENAI_IMAGE_MODEL,
-        noImageErrorMessage
-      });
+      try {
+        const fallbackAttempt = await generateOpenAiImage({
+          client: createOpenAiImageFallbackClient(env),
+          prompt,
+          references,
+          model: env.OPENAI_IMAGE_MODEL,
+          noImageErrorMessage
+        });
 
-      return {
-        ...fallbackAttempt,
-        latencySeconds: secondsSince(startedAt),
-        fallbackUsed: true,
-        error: fallbackError
-      };
+        return {
+          ...fallbackAttempt,
+          latencySeconds: secondsSince(startedAt),
+          fallbackUsed: true,
+          error: fallbackError
+        };
+      } catch (fallbackFailure) {
+        throw new Error(
+          `Gemini image generation failed (${fallbackError}); OpenAI fallback also failed (${formatImageGenerationError(fallbackFailure)}).`
+        );
+      }
     }
   }
 
@@ -1002,9 +1042,10 @@ function publicReferenceUrl(url: string | null | undefined) {
 // outside the reference-image allowlist, and preflight deliverability. A reference
 // that fails hardening keeps its bytes and loses its URL, so the provider inlines it
 // as a data URL instead of dying on an unfetchable or hostile link.
-async function hardenReferenceUrls(
+export async function hardenReferenceUrls(
   references: ImageGenerationReference[],
-  env: { RITZY_REFERENCE_IMAGE_HOSTS?: string; RITZY_REFERENCE_STRIP_QUERY_HOSTS?: string; NEXT_PUBLIC_SUPABASE_URL: string }
+  env: { RITZY_REFERENCE_IMAGE_HOSTS?: string; RITZY_REFERENCE_STRIP_QUERY_HOSTS?: string; NEXT_PUBLIC_SUPABASE_URL: string },
+  fetchImpl?: (input: string | URL, init?: RequestInit) => Promise<Response>
 ): Promise<ImageGenerationReference[]> {
   const allowlist = buildReferenceHostAllowlist({
     configured: env.RITZY_REFERENCE_IMAGE_HOSTS,
@@ -1021,25 +1062,25 @@ async function hardenReferenceUrls(
         return reference;
       }
 
-      const sanitized = sanitizeReferenceImageUrl(remoteUrl, stripHosts);
-      const verdict = checkReferenceImageUrl(sanitized, allowlist);
-      if (!verdict.ok) {
-        console.warn(`[reference-guard] dropping URL for "${reference.name}": ${verdict.reason}`);
+      const guarded = guardReferenceUrl(remoteUrl, { allowlist, stripQueryHosts: stripHosts });
+      if (!guarded.ok) {
+        console.warn(`[reference-guard] inlining "${reference.name}": ${guarded.reason}`);
         return { ...reference, url: null };
       }
 
-      const preflight = await preflightReferenceImage(sanitized, { allowlist });
+      // Preflight repeats the policy check on its first hop and then proves
+      // deliverability; a failed reference keeps its bytes and inlines.
+      const preflight = await preflightReferenceImage(guarded.url, { allowlist, fetchImpl });
       if (!preflight.ok) {
         console.warn(`[reference-guard] inlining "${reference.name}" after failed preflight: ${preflight.reason}`);
         return { ...reference, url: null };
       }
 
-      return { ...reference, url: preflight.finalUrl ?? sanitized };
+      return { ...reference, url: preflight.finalUrl ?? guarded.url };
     })
   );
 }
 
-const EVOLINK_API_BASE = "https://api.evolink.ai";
 const EVOLINK_POLL_INTERVAL_MS = 3_000;
 const EVOLINK_POLL_TIMEOUT_MS = 300_000;
 const EVOLINK_MAX_REFERENCE_URLS = 14;
@@ -1087,9 +1128,9 @@ async function generateEvolinkImage({
   model: string;
   apiKey?: string;
   quality: "1K" | "2K" | "4K";
-  baseUrl?: string;
+  baseUrl: string;
 }): Promise<ImageGenerationAttempt> {
-  const apiBase = baseUrl?.trim() || EVOLINK_API_BASE;
+  const apiBase = baseUrl;
   if (!apiKey) {
     throw new Error("EVOLINK_API_KEY is required for Evolink image generation.");
   }
@@ -1172,13 +1213,37 @@ async function generateEvolinkImage({
         throw new Error("Evolink image generation completed without a result image URL.");
       }
 
+      // The result URL is data from the gateway response: allow the configured
+      // gateway's own origin (operator-trusted, covers stubs) or an allowlisted
+      // public host; refuse anything else, and cap the download.
+      const resultAllowed = (() => {
+        try {
+          if (new URL(resultUrl).origin === new URL(apiBase).origin) {
+            return true;
+          }
+        } catch {
+          return false;
+        }
+        const allowlist = buildReferenceHostAllowlist({
+          configured: process.env.RITZY_REFERENCE_IMAGE_HOSTS,
+          supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL
+        });
+        return checkReferenceImageUrl(resultUrl, allowlist).ok;
+      })();
+      if (!resultAllowed) {
+        throw new Error(`Evolink returned a result URL outside trusted hosts: ${resultUrl.slice(0, 80)}`);
+      }
       const imageResponse = await fetch(resultUrl, { signal: AbortSignal.timeout(60_000) });
 
       if (!imageResponse.ok) {
         throw new Error(`Evolink result image download failed with HTTP ${imageResponse.status}.`);
       }
 
-      const imageBase64 = Buffer.from(await imageResponse.arrayBuffer()).toString("base64");
+      const resultBytes = await readResponseBytesCapped(imageResponse, 30 * 1024 * 1024);
+      if (!resultBytes) {
+        throw new Error("Evolink result image exceeded the 30MB download cap or had no body.");
+      }
+      const imageBase64 = resultBytes.toString("base64");
 
       // Prefer the final consumption figure; fall back to the reservation (the submit
       // response only carries credits_reserved) so spend is never silently unrecorded.
@@ -1242,8 +1307,7 @@ export async function generateClarifyingQuestions(
 ): Promise<GenerateClarifyingQuestionsResult> {
   const env = parseServerEnv(process.env);
   const client = createTextClient(env);
-  const stageModel = resolveStageTextModel("clarifying_questions", process.env, env.OPENAI_TEXT_MODEL);
-  const stageEffort = resolveStageTextEffort("clarifying_questions", process.env);
+  const { model: stageModel, requestParams: stageRequestParams } = stageTextConfig("clarifying_questions", env.OPENAI_TEXT_MODEL);
   const { inspirationImageUrls, ...briefInput } = input;
   const modePrompt =
     input.intendedMode === "homeowner"
@@ -1259,8 +1323,7 @@ export async function generateClarifyingQuestions(
 
   const response = await client.responses.create({
     max_output_tokens: 4000,
-    model: stageModel,
-    ...(stageEffort ? { reasoning: { effort: stageEffort } } : {}),
+    ...stageRequestParams,
     input: [
       {
         role: "system",
@@ -1314,13 +1377,11 @@ export async function analyzeInspirationImages(
 ): Promise<AnalyzeInspirationImagesResult> {
   const env = parseServerEnv(process.env);
   const client = createTextClient(env);
-  const stageModel = resolveStageTextModel("inspiration_analysis", process.env, env.OPENAI_TEXT_MODEL);
-  const stageEffort = resolveStageTextEffort("inspiration_analysis", process.env);
+  const { model: stageModel, requestParams: stageRequestParams } = stageTextConfig("inspiration_analysis", env.OPENAI_TEXT_MODEL);
 
   const response = await client.responses.create({
     max_output_tokens: 4000,
-    model: stageModel,
-    ...(stageEffort ? { reasoning: { effort: stageEffort } } : {}),
+    ...stageRequestParams,
     input: [
       {
         role: "system",
@@ -1373,8 +1434,7 @@ export async function sourceProductsFromConcept(
 ): Promise<SourceProductsFromConceptResult> {
   const env = parseServerEnv(process.env);
   const client = createTextClient(env);
-  const stageModel = resolveStageTextModel("product_sourcing", process.env, env.OPENAI_TEXT_MODEL);
-  const stageEffort = resolveStageTextEffort("product_sourcing", process.env);
+  const { model: stageModel, requestParams: stageRequestParams } = stageTextConfig("product_sourcing", env.OPENAI_TEXT_MODEL);
   const candidateLimit = 36;
   const allowedProductIds = new Set(input.candidates.map((candidate) => candidate.id));
   const roleCandidatePools = input.roleCandidatePools ?? [];
@@ -1427,8 +1487,7 @@ export async function sourceProductsFromConcept(
 
   const response = await client.responses.create({
     max_output_tokens: 32000,
-    model: stageModel,
-    ...(stageEffort ? { reasoning: { effort: stageEffort } } : {}),
+    ...stageRequestParams,
     input: [
       {
         role: "system",
@@ -1896,8 +1955,7 @@ export async function generateInitialConcept(
 ): Promise<GenerateInitialConceptResult> {
   const env = parseServerEnv(process.env);
   const client = createTextClient(env);
-  const stageModel = resolveStageTextModel("concept_direction", process.env, env.OPENAI_TEXT_MODEL);
-  const stageEffort = resolveStageTextEffort("concept_direction", process.env);
+  const { model: stageModel, requestParams: stageRequestParams } = stageTextConfig("concept_direction", env.OPENAI_TEXT_MODEL);
   const useInteriorPromptV2 = env.RITZY_INTERIOR_PROMPT_V2_ENABLED;
 
   const brief = {
@@ -1915,8 +1973,7 @@ export async function generateInitialConcept(
 
   const directionResponse = await client.responses.create({
     max_output_tokens: 24000,
-    model: stageModel,
-    ...(stageEffort ? { reasoning: { effort: stageEffort } } : {}),
+    ...stageRequestParams,
     input: [
       {
         role: "system",
@@ -2235,13 +2292,11 @@ export async function extractConceptImagePalette(
 ): Promise<ExtractConceptImagePaletteResult> {
   const env = parseServerEnv(process.env);
   const client = createTextClient(env);
-  const stageModel = resolveStageTextModel("concept_palette", process.env, env.OPENAI_TEXT_MODEL);
-  const stageEffort = resolveStageTextEffort("concept_palette", process.env);
+  const { model: stageModel, requestParams: stageRequestParams } = stageTextConfig("concept_palette", env.OPENAI_TEXT_MODEL);
 
   const response = await client.responses.create({
     max_output_tokens: 4000,
-    model: stageModel,
-    ...(stageEffort ? { reasoning: { effort: stageEffort } } : {}),
+    ...stageRequestParams,
     input: [
       {
         role: "system",
@@ -2303,8 +2358,7 @@ export async function assessRenderSpatialQuality(
 ): Promise<AssessRenderSpatialQualityResult> {
   const env = parseServerEnv(process.env);
   const client = createTextClient(env);
-  const stageModel = resolveStageTextModel("spatial_qa", process.env, env.OPENAI_TEXT_MODEL);
-  const stageEffort = resolveStageTextEffort("spatial_qa", process.env);
+  const { model: stageModel, requestParams: stageRequestParams } = stageTextConfig("spatial_qa", env.OPENAI_TEXT_MODEL);
 
   const context = [
     `Room type: ${input.roomType}.`,
@@ -2320,8 +2374,7 @@ export async function assessRenderSpatialQuality(
 
   const response = await client.responses.create({
     max_output_tokens: 4000,
-    model: stageModel,
-    ...(stageEffort ? { reasoning: { effort: stageEffort } } : {}),
+    ...stageRequestParams,
     input: [
       {
         role: "system",
@@ -2375,8 +2428,7 @@ export async function generateConceptRevision(
 ): Promise<GenerateInitialConceptResult> {
   const env = parseServerEnv(process.env);
   const client = createTextClient(env);
-  const stageModel = resolveStageTextModel("revision_direction", process.env, env.OPENAI_TEXT_MODEL);
-  const stageEffort = resolveStageTextEffort("revision_direction", process.env);
+  const { model: stageModel, requestParams: stageRequestParams } = stageTextConfig("revision_direction", env.OPENAI_TEXT_MODEL);
   const revisionInput = {
     roomType: input.roomType,
     previousConcept: input.previousConcept,
@@ -2395,8 +2447,7 @@ export async function generateConceptRevision(
 
   const directionResponse = await client.responses.create({
     max_output_tokens: 24000,
-    model: stageModel,
-    ...(stageEffort ? { reasoning: { effort: stageEffort } } : {}),
+    ...stageRequestParams,
     input: [
       {
         role: "system",
@@ -2493,15 +2544,13 @@ export async function generateProductEnrichment(
 ): Promise<GenerateProductEnrichmentResult> {
   const env = parseServerEnv(process.env);
   const client = createTextClient(env);
-  const stageModel = resolveStageTextModel("product_enrichment", process.env, env.OPENAI_TEXT_MODEL);
-  const stageEffort = resolveStageTextEffort("product_enrichment", process.env);
+  const { model: stageModel, requestParams: stageRequestParams } = stageTextConfig("product_enrichment", env.OPENAI_TEXT_MODEL);
   const parsedInput = productEnrichmentInputSchema.parse(input);
   const sourceHash = createProductEnrichmentSourceHash(parsedInput);
 
   const response = await client.responses.create({
     max_output_tokens: 8000,
-    model: stageModel,
-    ...(stageEffort ? { reasoning: { effort: stageEffort } } : {}),
+    ...stageRequestParams,
     input: [
       {
         role: "system",

@@ -194,23 +194,38 @@ function isRedirect(status: number): boolean {
   return status === 301 || status === 302 || status === 303 || status === 307 || status === 308;
 }
 
-// Verifies a reference URL is actually deliverable before it is handed to an image
-// provider whose whole task dies on a bad reference. Manual redirect handling so every
-// hop stays inside the allowlist; HEAD first, GET fallback for HEAD-rejecting CDNs.
-export async function preflightReferenceImage(
+// One-call policy verdict: sanitize then check. Both URL-selection (Evolink) and
+// byte-fetch (render-images) paths compose exactly this, so a policy change lands in
+// one place.
+export function guardReferenceUrl(
+  url: string,
+  {
+    allowlist,
+    stripQueryHosts
+  }: { allowlist: Set<string>; stripQueryHosts?: string[] | null }
+): ReferenceUrlVerdict {
+  const sanitized = sanitizeReferenceImageUrl(url, stripQueryHosts);
+  const verdict = checkReferenceImageUrl(sanitized, allowlist);
+  return verdict.ok ? { ok: true, url: sanitized } : verdict;
+}
+
+// The single allowlist-validated redirect follower. Every hop is re-checked against
+// the allowlist and private-address rules BEFORE it is fetched; the final Response is
+// returned to the caller (body unread). HEAD-rejecting hosts fall back to GET.
+export async function followGuardedRedirects(
   url: string,
   {
     allowlist,
     fetchImpl = fetch,
     timeoutMs = PREFLIGHT_TIMEOUT_MS,
-    maxBytes = PREFLIGHT_MAX_BYTES
+    method = "GET"
   }: {
     allowlist: Set<string>;
     fetchImpl?: ReferenceFetchImpl;
     timeoutMs?: number;
-    maxBytes?: number;
+    method?: "HEAD" | "GET";
   }
-): Promise<ReferencePreflightResult> {
+): Promise<{ ok: true; response: Response; finalUrl: string } | { ok: false; reason: string }> {
   let currentUrl = url;
 
   for (let hop = 0; hop <= PREFLIGHT_MAX_REDIRECTS; hop += 1) {
@@ -221,17 +236,16 @@ export async function preflightReferenceImage(
 
     let response: Response;
     try {
-      response = await fetchWithTimeout(fetchImpl, currentUrl, "HEAD", timeoutMs);
-      if (response.status === 405 || response.status === 501 || response.status === 403) {
+      response = await fetchWithTimeout(fetchImpl, currentUrl, method, timeoutMs);
+      if (method === "HEAD" && (response.status === 405 || response.status === 501 || response.status === 403)) {
         response = await fetchWithTimeout(fetchImpl, currentUrl, "GET", timeoutMs);
-        // Headers are all we need; an unconsumed body pins its pooled socket under undici.
-        void response.body?.cancel().catch(() => {});
       }
     } catch (error) {
-      return { ok: false, reason: `preflight fetch failed: ${(error as Error).message}` };
+      return { ok: false, reason: `guarded fetch failed: ${(error as Error).message}` };
     }
 
     if (isRedirect(response.status)) {
+      void response.body?.cancel().catch(() => {});
       const location = response.headers.get("location");
       if (!location) {
         return { ok: false, reason: "redirect without location" };
@@ -249,22 +263,76 @@ export async function preflightReferenceImage(
       continue;
     }
 
-    if (!response.ok) {
-      return { ok: false, reason: `preflight HTTP ${response.status}` };
-    }
-
-    const contentType = response.headers.get("content-type")?.split(";")[0]?.trim().toLowerCase() ?? "";
-    if (contentType && !contentType.startsWith("image/")) {
-      return { ok: false, reason: `non-image content type ${contentType}` };
-    }
-
-    const contentLength = Number(response.headers.get("content-length"));
-    if (Number.isFinite(contentLength) && contentLength > maxBytes) {
-      return { ok: false, reason: `content length ${contentLength} exceeds cap ${maxBytes}` };
-    }
-
-    return { ok: true, finalUrl: currentUrl };
+    return { ok: true, response, finalUrl: currentUrl };
   }
 
   return { ok: false, reason: `exceeded ${PREFLIGHT_MAX_REDIRECTS} redirects` };
+}
+
+// Reads a response body with a hard byte ceiling; null when the stream exceeds it.
+export async function readResponseBytesCapped(response: Response, maxBytes: number): Promise<Buffer | null> {
+  const reader = response.body?.getReader();
+  if (!reader) {
+    return null;
+  }
+  const chunks: Uint8Array[] = [];
+  let totalBytes = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) {
+      break;
+    }
+    if (!value) {
+      continue;
+    }
+    totalBytes += value.byteLength;
+    if (totalBytes > maxBytes) {
+      await reader.cancel();
+      return null;
+    }
+    chunks.push(value);
+  }
+  return Buffer.concat(chunks, totalBytes);
+}
+
+// Verifies a reference URL is actually deliverable before it is handed to an image
+// provider whose whole task dies on a bad reference. Thin wrapper over the shared
+// follower; HEAD first, GET fallback for HEAD-rejecting CDNs.
+export async function preflightReferenceImage(
+  url: string,
+  {
+    allowlist,
+    fetchImpl = fetch,
+    timeoutMs = PREFLIGHT_TIMEOUT_MS,
+    maxBytes = PREFLIGHT_MAX_BYTES
+  }: {
+    allowlist: Set<string>;
+    fetchImpl?: ReferenceFetchImpl;
+    timeoutMs?: number;
+    maxBytes?: number;
+  }
+): Promise<ReferencePreflightResult> {
+  const followed = await followGuardedRedirects(url, { allowlist, fetchImpl, timeoutMs, method: "HEAD" });
+  if (!followed.ok) {
+    return { ok: false, reason: followed.reason };
+  }
+  const { response, finalUrl } = followed;
+  // Headers are all we need; an unconsumed body pins its pooled socket under undici.
+  void response.body?.cancel().catch(() => {});
+
+  if (!response.ok) {
+    return { ok: false, reason: `preflight HTTP ${response.status}` };
+  }
+
+  const contentType = response.headers.get("content-type")?.split(";")[0]?.trim().toLowerCase() ?? "";
+  if (contentType && !contentType.startsWith("image/")) {
+    return { ok: false, reason: `non-image content type ${contentType}` };
+  }
+
+  const contentLength = Number(response.headers.get("content-length"));
+  if (Number.isFinite(contentLength) && contentLength > maxBytes) {
+    return { ok: false, reason: `content length ${contentLength} exceeds cap ${maxBytes}` };
+  }
+
+  return { ok: true, finalUrl };
 }

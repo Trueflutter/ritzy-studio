@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 
-import { estimateTextCostUsd, sumUsdCosts, sumUsdCostsStrict } from "./text-cost";
+import { estimateTextCostUsd, sumImagePlusTextUsd, sumUsdCosts, sumUsdCostsStrict } from "./text-cost";
 
 // Known models price by published per-1M token rates.
 // gpt-5-mini: $0.25 input / $2.00 output per 1M.
@@ -39,5 +39,14 @@ assert.equal(sumUsdCosts(), null);
 assert.equal(sumUsdCostsStrict(null, 0.01), null);
 assert.equal(sumUsdCostsStrict(0.05, 0.01), 0.06);
 assert.equal(sumUsdCostsStrict(undefined), null);
+
+// A present-but-empty usage object is unknown, not free.
+assert.equal(estimateTextCostUsd("gpt-5-mini", {}), null);
+
+// Image+text totals: unknown image nulls the total; unknown text keeps known image.
+assert.equal(sumImagePlusTextUsd(null, 0.01), null);
+assert.equal(sumImagePlusTextUsd(0.07, null), 0.07);
+assert.equal(sumImagePlusTextUsd(0.07, 0.005), 0.075);
+assert.equal(sumImagePlusTextUsd(undefined, undefined), null);
 
 console.log("text-cost tests passed");
