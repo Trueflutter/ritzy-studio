@@ -1491,10 +1491,6 @@ export async function generateInitialConceptAction(formData: FormData) {
       redirect(`${redirectPath}?message=${encodeURIComponent("Concept generation is already running.")}`);
     case "photo_unprepared":
       redirect(`${redirectPath}?message=${encodeURIComponent("The room photo could not be prepared for generation.")}`);
-    case "grounding_blocked":
-      redirect(`${redirectPath}?message=${encodeURIComponent("We need a little more catalogue evidence before building this room direction. Try broadening the style or colour notes, then generate again.")}`);
-    case "reference_images_missing":
-      redirect(`${redirectPath}?message=${encodeURIComponent("We found catalogue pieces for this room, but their reference images are not ready yet. Try again in a moment.")}`);
     case "generation_failed":
       redirect(`${redirectPath}?message=${encodeURIComponent("Concept generation failed. The brief and room photo are still saved.")}`);
   }

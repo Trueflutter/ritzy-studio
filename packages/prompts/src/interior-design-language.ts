@@ -510,3 +510,21 @@ function isCombinedLivingDiningRoomType(value: string) {
 
   return /\bliving\b/.test(normalized) && /\bdining\b/.test(normalized);
 }
+
+// The palette-register guardrail (product direction, 2026-09-01): AI-generated
+// interiors gravitate to a default beige-brown scheme. The register must be
+// DERIVED from the brief, the user's colour notes, and the inspiration corpus,
+// never defaulted; when the brief is silent, the model commits to one deliberate
+// register drawn from a top-end residential vocabulary instead of drifting to
+// the attractor. Not an anti-beige rule: a warm-neutral brief still gets its
+// warm-neutral room, stated as a choice.
+export function paletteRegisterLanguage() {
+  return [
+    "Palette and material register:",
+    "Derive the palette and materiality from the brief's own words, the user's colour notes, and the inspiration images. The brief is the authority on colour.",
+    "Never fall back to a generic beige-brown scheme by default. If the brief asks for cool, dark, saturated, or bold colour, commit to that register fully: wall finish, textiles, stone, timber tone, and metal finish all follow it.",
+    "If the brief gives no colour direction, choose ONE deliberate register that suits the room's natural light and architecture, and name it in the concept rationale. Register vocabulary used by top-end residential studios: quiet-luxury layered neutrals with a contrast accent; organic-modern textured off-whites with dark timber; warm gallery white with sculptural walnut; soft-Mediterranean plaster with terracotta and olive; new-classic stone, bronze, and deep wood; deep forest green with brass and smoked oak; ink-blue moody study with saddle leather; restful tonal bedroom with one grounded accent.",
+    "A register is a commitment: state the two or three dominant hues, the accent, and the materials that carry each of them.",
+    "Colours or materials the user asked to avoid may never appear as a dominant surface."
+  ].join("\n");
+}

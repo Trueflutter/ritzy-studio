@@ -45,7 +45,8 @@ import {
   inspirationAnalysisResponseSchema,
   productMetadataEnrichmentJsonSchema,
   productMetadataEnrichmentPrompt,
-  type ConceptProductSourcingResponse
+  type ConceptProductSourcingResponse,
+  paletteRegisterLanguage
 } from "@ritzy-studio/prompts";
 import { createHash, createSign } from "node:crypto";
 import { readFile } from "node:fs/promises";
@@ -184,26 +185,6 @@ export type GenerateInitialConceptInput = {
     referenceUrl?: string | null;
     bytes: Buffer;
     mimeType: string;
-  }>;
-  catalogueProducts?: Array<{
-    name: string;
-    retailerName: string;
-    category: string | null;
-    roleLabel: string;
-    selectionReason: string;
-    description?: string | null;
-    color?: string | null;
-    material?: string | null;
-    styleTags?: string[];
-    colorTags?: string[];
-    materialTags?: string[];
-    dimensions?: string | null;
-    primaryImageUrl?: string | null;
-    imageBytes?: Buffer | null;
-    imageMimeType?: string | null;
-    // Downscaled data URL for vision inputs; imageBytes stay full-res for
-    // image-generation references.
-    visionImageUrl?: string | null;
   }>;
   inspirationImageUrls?: string[];
   // Data URL of the uploaded floor plan image, when one exists. Read by the
@@ -418,8 +399,9 @@ export type ValidatedConceptProductSourcingResult = Pick<
   "selectedProducts" | "roleResults" | "missingRoles"
 >;
 
-const INITIAL_CONCEPT_PROMPT_V2_VERSION = "2026-05-21.2";
-const FINAL_GROUNDED_RENDER_PROMPT_V2_VERSION = "2026-05-21.2";
+// Concept-first (S2): single prompt path, no pre-approval catalogue anchors.
+const INITIAL_CONCEPT_PROMPT_VERSION = "2026-09-01.1";
+const FINAL_GROUNDED_RENDER_PROMPT_VERSION = "2026-09-01.1";
 const ENHANCED_RITZY_IMAGE_STYLING_VERSION = "enhanced-ritzy-styling-2026-05-21.1";
 const STRICT_SOURCE_ROOM_PRESERVATION_VERSION = "strict-source-room-preservation-2026-05-27.1";
 
@@ -479,26 +461,21 @@ function roomMeasurementsLanguage(measurements?: {
 
 export function buildInitialConceptSystemPrompt({
   roomType,
-  styleSlugs = [],
-  useInteriorPromptV2 = false
+  styleSlugs = []
 }: {
   roomType: string;
   styleSlugs?: string[];
-  useInteriorPromptV2?: boolean;
 }) {
-  if (!useInteriorPromptV2) {
-    return initialConceptPrompt.system;
-  }
-
   return [
     initialConceptPrompt.system,
     "",
-    "Ritzy interior design language v2:",
+    "Ritzy interior design language:",
     sourceRoomPreservationLanguage(roomType),
     globalPhotorealismLanguage(),
     roomDesignLanguage(roomType),
     roomBlueprintDefaultsLanguage(roomType),
-    styleDesignLanguage(styleSlugs)
+    styleDesignLanguage(styleSlugs),
+    paletteRegisterLanguage()
   ]
     .filter(Boolean)
     .join("\n");
@@ -508,9 +485,7 @@ type InitialConceptImagePromptInput = {
   generationPrompt: string;
   roomType: string;
   hasInspirationImages?: boolean;
-  catalogueProductSummary?: string | null;
   styleSlugs?: string[];
-  useInteriorPromptV2?: boolean;
   strictSourceRoomPreservation?: boolean;
   spatialIntent?: SpatialPromptIntent | null;
   additionalRoomPhotoCount?: number;
@@ -534,18 +509,13 @@ export function buildInitialConceptImagePrompt(input: InitialConceptImagePromptI
   let current = { ...input };
   let prompt = assembleInitialConceptImagePrompt(current);
 
-  // Give back the overflow from the catalogue summary first (anchors keep their leading,
-  // highest-priority lines and still reach the renderer as reference images; dropping the
-  // summary entirely also drops its fixed framing lines), then — as a last resort — from
-  // the generation prompt, never below a floor that keeps the concept direction intact.
-  // Iterative because each trim changes the assembled length non-linearly.
+  // Give back the overflow from the generation prompt (the only variable input now
+  // that concepts are catalogue-free pre-approval), never below a floor that keeps
+  // the concept direction intact. Iterative because each trim changes the assembled
+  // length non-linearly.
   for (let pass = 0; pass < 4 && prompt.length > INITIAL_CONCEPT_IMAGE_PROMPT_CHAR_BUDGET; pass++) {
     const overflow = prompt.length - INITIAL_CONCEPT_IMAGE_PROMPT_CHAR_BUDGET;
-    const summary = current.catalogueProductSummary ?? "";
-    if (summary.length > 0) {
-      const trimmed = truncateForPrompt(summary, summary.length - overflow);
-      current = { ...current, catalogueProductSummary: trimmed.length > 0 ? trimmed : null };
-    } else if (current.generationPrompt.length > INITIAL_CONCEPT_GENERATION_PROMPT_FLOOR_CHARS) {
+    if (current.generationPrompt.length > INITIAL_CONCEPT_GENERATION_PROMPT_FLOOR_CHARS) {
       current = {
         ...current,
         generationPrompt: truncateForPrompt(
@@ -569,52 +539,18 @@ function assembleInitialConceptImagePrompt({
   generationPrompt,
   roomType,
   hasInspirationImages,
-  catalogueProductSummary,
   styleSlugs = [],
-  useInteriorPromptV2 = false,
   strictSourceRoomPreservation = false,
   spatialIntent = null,
   measurements = null,
   additionalRoomPhotoCount = 0
 }: InitialConceptImagePromptInput) {
-  if (!useInteriorPromptV2) {
-    return [
-      generationPrompt,
-      "",
-      additionalRoomPhotoCount > 0
-        ? `The first ${additionalRoomPhotoCount + 1} input images are photos of the SAME room from different corners. Use the FIRST photo's camera perspective as the base image; use the other angles only to understand the room's true walls, openings, and proportions.`
-        : "Use the uploaded room photo as the base image.",
-      hasInspirationImages
-        ? "Use the uploaded inspiration images as style references for palette, materials, atmosphere, and composition. Do not reproduce them exactly."
-        : null,
-      "Preserve visible architecture, walls, windows, doors, ceiling details, AC vents, sockets, built-ins, and fixed bathroom fixtures where present.",
-      strictSourceRoomPreservation ? strictSourceRoomPreservationLanguage() : null,
-      roomBlueprintDefaultsLanguage(roomType),
-      spatialLayoutLanguage(roomType, spatialIntent),
-      roomMeasurementsLanguage(measurements),
-      enhancedRitzyInteriorStylingLanguage({ mode: "initial-concept" }),
-      catalogueProductSummary
-        ? [
-            "Catalogue-grounded concept references:",
-            catalogueProductSummary,
-            "Compose the movable furniture, rugs, lighting, art, and decor from these selected catalogue references first. Preserve their room role, silhouette or shape language, color family, material, scale, and distinctive visible features wherever possible. Do not invent alternate anchor furniture when a selected catalogue reference exists for that role."
-          ].join("\n")
-        : null,
-      "Redesign movable furniture, lighting, textiles, accessories, and decor according to the concept direction.",
-      "Output must look like a photorealistic editorial interior photograph, not an illustration, 3D showroom render, sketch, or mood board.",
-      "Use physically plausible scale, natural shadows, realistic upholstery grain, wood texture, rug fibers, wall finish, and lighting falloff.",
-      "Keep the source-photo camera perspective and lens feel. Do not add text labels, prices, product names, or retailer claims."
-    ]
-      .filter(Boolean)
-      .join("\n");
-  }
-
   return [
     generationPrompt,
     "",
     additionalRoomPhotoCount > 0
-        ? `The first ${additionalRoomPhotoCount + 1} input images are photos of the SAME room from different corners. Use the FIRST photo's camera perspective as the base image; use the other angles only to understand the room's true walls, openings, and proportions.`
-        : "Use the uploaded room photo as the base image.",
+      ? `The first ${additionalRoomPhotoCount + 1} input images are photos of the SAME room from different corners. Use the FIRST photo's camera perspective as the base image; use the other angles only to understand the room's true walls, openings, and proportions.`
+      : "Use the uploaded room photo as the base image.",
     hasInspirationImages
       ? "Use the uploaded inspiration images as style references for palette, materials, atmosphere, and composition. Do not reproduce them exactly."
       : null,
@@ -625,15 +561,9 @@ function assembleInitialConceptImagePrompt({
     spatialLayoutLanguage(roomType, spatialIntent),
     roomMeasurementsLanguage(measurements),
     styleDesignLanguage(styleSlugs),
+    paletteRegisterLanguage(),
     globalPhotorealismLanguage(),
     enhancedRitzyInteriorStylingLanguage({ mode: "initial-concept" }),
-    catalogueProductSummary
-      ? [
-          "Catalogue-grounded concept references:",
-          catalogueProductSummary,
-          "Compose the movable furniture, rugs, lighting, art, and decor from these selected catalogue references first. Preserve their room role, silhouette or shape language, color family, material, scale, and distinctive visible features wherever possible. Do not invent alternate anchor furniture when a selected catalogue reference exists for that role."
-        ].join("\n")
-      : null,
     "Redesign movable furniture, lighting, textiles, accessories, and decor according to the concept direction.",
     "Keep the source-photo camera perspective and lens feel. Do not add text labels, prices, product names, retailer claims, or fake product labels."
   ]
@@ -655,7 +585,6 @@ export function buildFinalGroundedRenderPrompt({
   conceptDescription,
   hasConceptImage,
   productSummary,
-  useFinalRenderPromptV2 = false,
   strictSourceRoomPreservation = false,
   spatialIntent = null
 }: {
@@ -664,46 +593,17 @@ export function buildFinalGroundedRenderPrompt({
   conceptDescription?: string | null;
   hasConceptImage?: boolean;
   productSummary: string;
-  useFinalRenderPromptV2?: boolean;
   spatialIntent?: SpatialPromptIntent | null;
   strictSourceRoomPreservation?: boolean;
 }) {
-  if (!useFinalRenderPromptV2) {
-    return [
-      finalGroundedRenderPrompt.system,
-      "",
-      sourceRoomPreservationLanguage(roomType),
-      roomSpatialPlacementGuardrailLanguage(roomType),
-      spatialLayoutLanguage(roomType, spatialIntent),
-      strictSourceRoomPreservation ? strictSourceRoomPreservationLanguage() : null,
-      `Selected concept: ${conceptTitle}`,
-      conceptDescription ? `Concept notes: ${conceptDescription}` : null,
-      hasConceptImage
-        ? "The second input image is the approved concept image. Preserve its overall design intent while replacing invented items with the selected catalog products."
-        : null,
-      "",
-      "Selected catalog products:",
-      productSummary,
-      "",
-      "Generate a polished final client-facing photorealistic interior photograph.",
-      "The final image must be product-grounded: main visible furniture and decor should correspond to the selected catalog products by room role, silhouette, color family, and material where possible.",
-      enhancedRitzyInteriorStylingLanguage({ mode: "final-grounded-render" }),
-      "Do not introduce alternate sofas, armchairs, coffee tables, rugs, wall art, or decor that are not represented in the selected catalog references.",
-      "Use realistic camera exposure, natural shadows, true material texture, believable furniture scale, and residential lighting.",
-      "Avoid illustration, generic CGI showroom smoothness, warped furniture, and impossible reflections.",
-      "Keep the shopping list as the source of truth; the image is a best-effort visual composition."
-    ]
-      .filter(Boolean)
-      .join("\n");
-  }
-
   return [
     finalGroundedRenderPrompt.system,
     "",
-    "Ritzy final render language v2:",
+    "Ritzy final render language:",
     sourceRoomPreservationLanguage(roomType),
     strictSourceRoomPreservation ? strictSourceRoomPreservationLanguage() : null,
     roomDesignLanguage(roomType),
+    roomSpatialPlacementGuardrailLanguage(roomType),
     spatialLayoutLanguage(roomType, spatialIntent),
     globalPhotorealismLanguage(),
     finalRenderProductFidelityLanguage(),
@@ -1889,92 +1789,12 @@ function sourcingRoleKey(category: string, roleLabel: string) {
   return `${category}::${roleLabel}`.toLowerCase().replace(/[^a-z0-9:]+/g, "_");
 }
 
-function catalogueProductSummary(
-  products: NonNullable<GenerateInitialConceptInput["catalogueProducts"]>
-) {
-  return products
-    .map((product, index) =>
-      [
-        `${index + 1}. ${product.roleLabel}: ${product.name}`,
-        product.category ? `category: ${product.category}` : null,
-        `retailer: ${product.retailerName}`,
-        product.description ? `description: ${product.description}` : null,
-        product.color ? `color: ${product.color}` : null,
-        product.material ? `material: ${product.material}` : null,
-        product.styleTags?.length ? `style: ${product.styleTags.join(", ")}` : null,
-        product.colorTags?.length ? `color tags: ${product.colorTags.join(", ")}` : null,
-        product.materialTags?.length ? `material tags: ${product.materialTags.join(", ")}` : null,
-        product.dimensions ? `dimensions: ${product.dimensions}` : null,
-        `why selected: ${product.selectionReason}`
-      ]
-        .filter(Boolean)
-        .join("; ")
-    )
-    .join("\n");
-}
 
 // The image model has tight prompt-token limits; keep the anchor summary to the visual
 // facts the renderer can act on (mirrors the final render's slimming). Full descriptions
 // and selection rationales still reach the DIRECTION model via
 // catalogueProductDirectionContent — the text endpoint has generous limits.
-export function catalogueProductImageSummary(
-  products: NonNullable<GenerateInitialConceptInput["catalogueProducts"]>
-) {
-  return products
-    .map((product, index) =>
-      [
-        `${index + 1}. ${product.roleLabel}: ${product.name}`,
-        product.category ? `category: ${product.category}` : null,
-        product.description ? `description: ${truncateForPrompt(product.description, 140)}` : null,
-        product.color ? `color: ${product.color}` : null,
-        product.material ? `material: ${product.material}` : null,
-        product.styleTags?.length ? `style: ${product.styleTags.slice(0, 3).join(", ")}` : null,
-        product.dimensions ? `dimensions: ${product.dimensions}` : null
-      ]
-        .filter(Boolean)
-        .join("; ")
-    )
-    .join("\n");
-}
 
-function catalogueProductDirectionContent(
-  products: NonNullable<GenerateInitialConceptInput["catalogueProducts"]>
-) {
-  const summary = catalogueProductSummary(products);
-
-  if (!summary) {
-    return [];
-  }
-
-  return [
-    {
-      type: "input_text" as const,
-      text: [
-        "Selected catalogue products for this concept. Use these as the source of truth for movable anchor pieces before writing the image-generation direction.",
-        summary
-      ].join("\n")
-    },
-    ...products
-      .filter((product) => product.visionImageUrl || product.imageBytes || product.primaryImageUrl)
-      .flatMap((product, index) => [
-        {
-          type: "input_text" as const,
-          text: `Catalogue product reference ${index + 1} for role ${product.roleLabel}: ${product.name}`
-        },
-        {
-          type: "input_image" as const,
-          // Prefer inlined images: vision providers cannot fetch non-public
-          // storage hosts, and remote CDNs rate-limit provider-side downloads.
-          image_url:
-            product.visionImageUrl ??
-            (product.imageBytes && product.imageMimeType
-              ? `data:${product.imageMimeType};base64,${product.imageBytes.toString("base64")}`
-              : (product.primaryImageUrl as string)),
-          detail: "low" as const
-        }
-      ])
-  ];
-}
 
 export async function generateInitialConcept(
   input: GenerateInitialConceptInput
@@ -1982,11 +1802,10 @@ export async function generateInitialConcept(
   const env = parseServerEnv(process.env);
   const client = createTextClient(env);
   const { model: stageModel, requestParams: stageRequestParams } = stageTextConfig("concept_direction", env.OPENAI_TEXT_MODEL);
-  const useInteriorPromptV2 = env.RITZY_INTERIOR_PROMPT_V2_ENABLED;
 
   const brief = {
     roomType: input.roomType,
-    ...(useInteriorPromptV2 && input.styleSlugs?.length ? { styleSlugs: input.styleSlugs } : {}),
+    ...(input.styleSlugs?.length ? { styleSlugs: input.styleSlugs } : {}),
     styleNotes: input.styleNotes,
     colorNotes: input.colorNotes,
     budgetNotes: input.budgetNotes,
@@ -2005,8 +1824,7 @@ export async function generateInitialConcept(
         role: "system",
         content: buildInitialConceptSystemPrompt({
           roomType: input.roomType,
-          styleSlugs: input.styleSlugs,
-          useInteriorPromptV2
+          styleSlugs: input.styleSlugs
         })
       },
       {
@@ -2045,7 +1863,6 @@ export async function generateInitialConcept(
                 }
               ]
             : []),
-          ...catalogueProductDirectionContent(input.catalogueProducts ?? []),
           ...(input.inspirationImageUrls ?? []).flatMap((imageUrl, index) => [
             {
               type: "input_text" as const,
@@ -2075,25 +1892,12 @@ export async function generateInitialConcept(
     generationPrompt: direction.concept.generationPrompt,
     roomType: input.roomType,
     hasInspirationImages: Boolean(input.inspirationImageUrls?.length),
-    catalogueProductSummary: input.catalogueProducts?.length
-      ? catalogueProductImageSummary(input.catalogueProducts)
-      : null,
     styleSlugs: input.styleSlugs,
-    useInteriorPromptV2,
     strictSourceRoomPreservation: localStrictSourceRoomPreservationEnabled(),
     spatialIntent: input.spatialIntent ?? null,
     measurements: input.measurements ?? null,
     additionalRoomPhotoCount: input.additionalRoomPhotos?.length ?? 0
   });
-  const catalogueReferences = (input.catalogueProducts ?? [])
-    .filter((product) => product.imageBytes && product.imageMimeType)
-    .slice(0, 8)
-    .map((product, index) => ({
-      bytes: product.imageBytes as Buffer,
-      mimeType: product.imageMimeType as string,
-      name: `catalogue-product-${index}`,
-      url: product.primaryImageUrl ?? null
-    }));
 
   const imageResult = await generateImageWithConfiguredProvider({
     prompt: imagePrompt,
@@ -2110,17 +1914,14 @@ export async function generateInitialConcept(
         mimeType: photo.mimeType,
         name: `room-angle-${index + 2}`,
         url: publicReferenceUrl(photo.referenceUrl ?? photo.url)
-      })),
-      ...catalogueReferences
+      }))
     ],
     noImageErrorMessage: "OpenAI image generation returned no image data."
   });
 
   return {
     promptKey: initialConceptPrompt.key,
-    promptVersion: useInteriorPromptV2
-      ? INITIAL_CONCEPT_PROMPT_V2_VERSION
-      : `${initialConceptPrompt.version}+${ENHANCED_RITZY_IMAGE_STYLING_VERSION}`,
+    promptVersion: INITIAL_CONCEPT_PROMPT_VERSION,
     textModel: stageModel,
     textCostUsd: estimateTextCostUsd(stageModel, directionResponse.usage),
     imageProvider: imageResult.provider,
@@ -2747,7 +2548,6 @@ export async function generateFinalGroundedRender(
 ): Promise<GenerateFinalGroundedRenderResult> {
   const env = parseServerEnv(process.env);
   const client = createTextClient(env);
-  const useFinalRenderPromptV2 = env.RITZY_FINAL_RENDER_PROMPT_V2_ENABLED;
   const hasConceptImage = Boolean(input.conceptImageBytes && input.conceptImageMimeType);
   const maxProductReferences =
     process.env.RITZY_AESTHETIC_TASTE_GATE === "1" && process.env.NODE_ENV !== "production" ? 12 : 8;
@@ -2783,7 +2583,6 @@ export async function generateFinalGroundedRender(
       : input.conceptDescription,
     hasConceptImage,
     productSummary,
-    useFinalRenderPromptV2,
     strictSourceRoomPreservation: localStrictSourceRoomPreservationEnabled(),
     spatialIntent: input.spatialIntent ?? null
   });
@@ -2817,9 +2616,7 @@ export async function generateFinalGroundedRender(
 
   return {
     promptKey: finalGroundedRenderPrompt.key,
-    promptVersion: useFinalRenderPromptV2
-      ? FINAL_GROUNDED_RENDER_PROMPT_V2_VERSION
-      : `${finalGroundedRenderPrompt.version}+${ENHANCED_RITZY_IMAGE_STYLING_VERSION}`,
+    promptVersion: FINAL_GROUNDED_RENDER_PROMPT_VERSION,
     imageProvider: imageResult.provider,
     imageModel: imageResult.model,
     imageLatencySeconds: imageResult.latencySeconds,

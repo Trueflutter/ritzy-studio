@@ -6,6 +6,7 @@ export {
   finalRenderProductFidelityLanguage,
   finalRenderViewConsistencyLanguage,
   globalPhotorealismLanguage,
+  paletteRegisterLanguage,
   productRoleLanguage,
   roomBlueprintDefaultsLanguage,
   roomDesignLanguage,

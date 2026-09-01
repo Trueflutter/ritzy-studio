@@ -13,19 +13,17 @@ import { CONCEPT_VIEW_KEYS } from "@/lib/render-flags";
 import { configuredImageModel, configuredImageProvider, visionImageDataUrl } from "@/lib/render-images";
 import { normalizeCatalogFirstRoomType } from "@/lib/room-type-normalize";
 
-import {
-  buildCatalogueGroundedConceptPlan,
-  likedStyleSlugsFromStructuredBrief
-} from "./sourcing-support";
+import { likedStyleSlugsFromStructuredBrief } from "./sourcing-support";
 import { storageImageDataUrl } from "./storage-images";
 import type { ServiceSupabaseClient, UserSupabaseClient } from "./supabase-clients";
 
-// The concept-generation service (S1 extraction): typed inputs and results, all
-// persisted state transitions owned here. The action wrappers keep auth,
-// entitlement gating (injected as ensureEntitled so the check runs at exactly the
-// pre-extraction point), redirects, and user-facing copy. Deferred work (the
-// concept views) goes through the injected defer so the service stays free of
-// next/server.
+// The concept-generation service: typed inputs and results, all persisted state
+// transitions owned here. Concept-first (S2): the concept is generated from the
+// room, brief, and inspiration only — no catalogue SKU anchors before approval;
+// sourcing happens against the confirmed spec after approval. The action wrappers
+// keep auth, entitlement gating (injected as ensureEntitled), redirects, and copy.
+// Deferred work (the concept views) goes through the injected defer so the service
+// stays free of next/server.
 
 // Generates the additional camera angles for a stored concept and records them as
 // concept-linked room assets. Runs deferred (after()): view failures must never
@@ -175,8 +173,6 @@ export type GenerateInitialConceptResult =
   | { status: "missing_photo" }
   | { status: "already_running" }
   | { status: "photo_unprepared" }
-  | { status: "grounding_blocked" }
-  | { status: "reference_images_missing" }
   | { status: "generation_failed" }
   | { status: "generated"; conceptId: string };
 
@@ -376,69 +372,6 @@ export async function generateInitialConceptForRoom(
     .order("created_at", { ascending: true })
     .order("id", { ascending: true });
 
-  const catalogueGroundingPlan = await buildCatalogueGroundedConceptPlan({
-    serviceSupabase,
-    roomType: room.room_type,
-    budgetMaxAed: project.budget_max_aed,
-    roomMeasurements: measurements
-      ? {
-          wallLengthCm: measurements.wall_length_cm,
-          roomDepthCm: measurements.room_depth_cm
-        }
-      : null,
-    designBrief,
-    answeredQuestions: answeredQuestions ?? []
-  });
-
-  if (catalogueGroundingPlan.blockers.length > 0) {
-    // Record WHY grounding blocked; the user-facing message is deliberately
-    // generic, and without this record the blockers are undiagnosable.
-    await serviceSupabase.from("ai_jobs").insert({
-      user_id: userId,
-      room_id: roomId,
-      job_type: "initial_concept_generation",
-      status: "failed",
-      provider: configuredImageProvider(),
-      model: configuredImageModel(),
-      error_message: "Catalogue grounding blocked before generation.",
-      input_summary: {
-        roomId,
-        designBriefId: designBrief.id,
-        blockers: catalogueGroundingPlan.blockers,
-        catalogueGrounding: catalogueGroundingPlan.summary
-      }
-    });
-    return { status: "grounding_blocked" };
-  }
-
-  const catalogueProducts = await Promise.all(
-    catalogueGroundingPlan.products.map(async ({ match, role, referenceImage }) => ({
-      name: match.name,
-      retailerName: match.retailerName,
-      category: match.categoryNormalized,
-      roleLabel: role.label,
-      selectionReason: match.selectionReason,
-      description: match.description,
-      color: match.color,
-      material: match.material,
-      styleTags: match.styleTags,
-      colorTags: match.colorTags,
-      materialTags: match.materialTags,
-      dimensions: match.dimensions?.sourceText ?? null,
-      primaryImageUrl: match.primaryImageUrl,
-      imageBytes: referenceImage.bytes,
-      imageMimeType: referenceImage.mimeType,
-      visionImageUrl: await visionImageDataUrl(referenceImage.bytes, referenceImage.mimeType)
-    }))
-  );
-  const missingCatalogueReferenceImages = catalogueProducts
-    .filter((product) => !product.imageBytes || !product.imageMimeType)
-    .map((product) => product.roleLabel);
-
-  if (missingCatalogueReferenceImages.length > 0) {
-    return { status: "reference_images_missing" };
-  }
-
   const { data: job, error: jobError } = await serviceSupabase
     .from("ai_jobs")
     .insert({
@@ -453,7 +386,6 @@ export async function generateInitialConceptForRoom(
         roomId,
         designBriefId: designBrief.id,
         roomPhotoAssetId: roomPhoto.id,
-        catalogueGrounding: catalogueGroundingPlan.summary,
         inspirationAssetCount: signedInspirationUrls.length,
         answeredQuestionCount: answeredQuestions?.length ?? 0
       }
@@ -474,7 +406,6 @@ export async function generateInitialConceptForRoom(
       roomPhotoBytes: photoBytes,
       roomPhotoMimeType: roomPhoto.mime_type,
       additionalRoomPhotos,
-      catalogueProducts,
       inspirationImageUrls: signedInspirationUrls,
       floorPlanImageUrl,
       spatialIntent: {
@@ -518,7 +449,6 @@ export async function generateInitialConceptForRoom(
         output_summary: {
           promptKey: result.promptKey,
           title: result.concept.title,
-          catalogueGrounding: catalogueGroundingPlan.summary,
           uncertaintyNotes: result.analysis.uncertaintyNotes,
           revisedPrompt: result.revisedPrompt ?? null,
           imageProvider: result.imageProvider,
