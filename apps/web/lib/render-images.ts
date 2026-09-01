@@ -1,5 +1,11 @@
 import sharp from "sharp";
 
+import {
+  buildReferenceHostAllowlist,
+  checkReferenceImageUrl,
+  sanitizeReferenceImageUrl
+} from "@ritzy-studio/ai";
+
 // Shared image helpers for the AI generation paths. Extracted from app/actions.ts so the
 // durable render runner (lib/render-runner.ts) can reuse them outside the "use server" module,
 // which may only export async server actions.
@@ -52,28 +58,70 @@ export async function visionImageDataUrl(bytes: Buffer, mimeType: string) {
   }
 }
 
+function remoteImageAllowlist() {
+  return buildReferenceHostAllowlist({
+    configured: process.env.RITZY_REFERENCE_IMAGE_HOSTS,
+    supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL
+  });
+}
+
 export async function fetchRemoteImage(url: string): Promise<CatalogueReferenceImage | null> {
+  // Every remote image fetch goes through the reference guard: known-breaking resize
+  // params stripped, hosts restricted to the retailer/storage allowlist, redirects
+  // re-validated hop by hop. Refusals return null, which callers already treat as
+  // "no fetchable reference image".
+  const allowlist = remoteImageAllowlist();
+  const sanitized = sanitizeReferenceImageUrl(url);
+  if (!checkReferenceImageUrl(sanitized, allowlist).ok) {
+    return null;
+  }
+
   // Retailer CDNs rate-limit and flake; one quick retry rescues most transient
   // failures without meaningfully slowing the happy path.
-  const first = await fetchRemoteImageOnce(url);
+  const first = await fetchRemoteImageOnce(sanitized, allowlist);
   if (first) {
     return first;
   }
   await new Promise((resolve) => setTimeout(resolve, 750));
-  return fetchRemoteImageOnce(url);
+  return fetchRemoteImageOnce(sanitized, allowlist);
 }
 
-async function fetchRemoteImageOnce(url: string): Promise<CatalogueReferenceImage | null> {
+const REMOTE_IMAGE_MAX_REDIRECTS = 3;
+
+async function fetchRemoteImageOnce(
+  url: string,
+  allowlist: Set<string>,
+  redirectDepth = 0
+): Promise<CatalogueReferenceImage | null> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), CATALOGUE_GROUNDED_CONCEPT_IMAGE_FETCH_TIMEOUT_MS);
 
   try {
     const response = await fetch(url, {
       signal: controller.signal,
+      redirect: "manual",
       headers: {
         "user-agent": "RitzyStudioBot/0.1 (+https://ritzy-studio.local; final render references)"
       }
     });
+
+    if ([301, 302, 303, 307, 308].includes(response.status)) {
+      const location = response.headers.get("location");
+      if (!location || redirectDepth >= REMOTE_IMAGE_MAX_REDIRECTS) {
+        return null;
+      }
+      let next: string;
+      try {
+        next = new URL(location, url).toString();
+      } catch {
+        return null;
+      }
+      if (!checkReferenceImageUrl(next, allowlist).ok) {
+        return null;
+      }
+      clearTimeout(timeout);
+      return fetchRemoteImageOnce(next, allowlist, redirectDepth + 1);
+    }
 
     if (!response.ok) {
       return null;

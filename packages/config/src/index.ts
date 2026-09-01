@@ -48,6 +48,11 @@ const serverEnvSchema = z.object({
   RITZY_PRODUCT_MATCHING_ENGINE_V1_PREVIEW_USER_IDS: z.string().optional(),
   RITZY_PRODUCT_MATCHING_ENGINE_V1_PREVIEW_USER_EMAILS: z.string().optional(),
   RITZY_RENDER_EXECUTION: z.enum(["queue", "inline"]).optional(),
+  // Comma-separated extra hosts allowed as remote reference-image sources, and hosts
+  // whose query strings are stripped before use (defaults live in the ai package's
+  // reference guard; these only extend or override them).
+  RITZY_REFERENCE_IMAGE_HOSTS: z.string().optional(),
+  RITZY_REFERENCE_STRIP_QUERY_HOSTS: z.string().optional(),
   RITZY_SIGNUP_ALLOWLIST: z.string().optional(),
   STRIPE_SECRET_KEY: z.string().optional(),
   STRIPE_WEBHOOK_SECRET: z.string().optional()

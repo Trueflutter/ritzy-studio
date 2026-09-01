@@ -51,6 +51,20 @@ import { createHash, createSign } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import OpenAI, { toFile } from "openai";
 import sharp from "sharp";
+
+import {
+  buildReferenceHostAllowlist,
+  checkReferenceImageUrl,
+  preflightReferenceImage,
+  sanitizeReferenceImageUrl
+} from "./reference-guard";
+
+export {
+  buildReferenceHostAllowlist,
+  checkReferenceImageUrl,
+  preflightReferenceImage,
+  sanitizeReferenceImageUrl
+} from "./reference-guard";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 type ImageProvider = "gemini" | "openai" | "evolink";
@@ -696,7 +710,7 @@ async function generateImageWithConfiguredProvider({
     try {
       return await generateEvolinkImage({
         prompt,
-        references,
+        references: await hardenReferenceUrls(references, env),
         model: env.EVOLINK_IMAGE_MODEL,
         apiKey: env.EVOLINK_API_KEY,
         quality: env.EVOLINK_IMAGE_QUALITY
@@ -928,6 +942,48 @@ function publicReferenceUrl(url: string | null | undefined) {
   }
 
   return url;
+}
+
+// Hardens every remote reference URL before a URL-based provider sees it: strip
+// known-breaking resize params (the 2XL "Invalid parameters" outage), refuse hosts
+// outside the reference-image allowlist, and preflight deliverability. A reference
+// that fails hardening keeps its bytes and loses its URL, so the provider inlines it
+// as a data URL instead of dying on an unfetchable or hostile link.
+async function hardenReferenceUrls(
+  references: ImageGenerationReference[],
+  env: { RITZY_REFERENCE_IMAGE_HOSTS?: string; RITZY_REFERENCE_STRIP_QUERY_HOSTS?: string; NEXT_PUBLIC_SUPABASE_URL: string }
+): Promise<ImageGenerationReference[]> {
+  const allowlist = buildReferenceHostAllowlist({
+    configured: env.RITZY_REFERENCE_IMAGE_HOSTS,
+    supabaseUrl: env.NEXT_PUBLIC_SUPABASE_URL
+  });
+  const stripHosts = env.RITZY_REFERENCE_STRIP_QUERY_HOSTS
+    ? env.RITZY_REFERENCE_STRIP_QUERY_HOSTS.split(",").map((entry) => entry.trim()).filter(Boolean)
+    : undefined;
+
+  return Promise.all(
+    references.map(async (reference) => {
+      const remoteUrl = publicReferenceUrl(reference.url);
+      if (!remoteUrl) {
+        return reference;
+      }
+
+      const sanitized = sanitizeReferenceImageUrl(remoteUrl, stripHosts);
+      const verdict = checkReferenceImageUrl(sanitized, allowlist);
+      if (!verdict.ok) {
+        console.warn(`[reference-guard] dropping URL for "${reference.name}": ${verdict.reason}`);
+        return { ...reference, url: null };
+      }
+
+      const preflight = await preflightReferenceImage(sanitized, { allowlist });
+      if (!preflight.ok) {
+        console.warn(`[reference-guard] inlining "${reference.name}" after failed preflight: ${preflight.reason}`);
+        return { ...reference, url: null };
+      }
+
+      return { ...reference, url: preflight.finalUrl ?? sanitized };
+    })
+  );
 }
 
 const EVOLINK_API_BASE = "https://api.evolink.ai";
