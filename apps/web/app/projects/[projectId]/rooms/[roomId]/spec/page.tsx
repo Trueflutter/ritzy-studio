@@ -111,6 +111,25 @@ async function SpecLedgerSection({
     );
   }
 
+  if (result.status === "extraction_running") {
+    return (
+      <div className="mt-10 border border-line bg-surface px-8 py-14 text-center">
+        <p aria-live="polite" className="font-display text-display-xs font-light italic text-ink">
+          reading the approved concept…
+        </p>
+        <p className="mt-3 font-body text-body-s text-ink-muted">
+          An extraction is already running for this room. Refresh in a moment.
+        </p>
+        <a
+          className="mt-6 inline-block border border-ink px-6 py-3 font-body text-caption font-medium uppercase tracking-[0.32em] text-ink"
+          href={`/projects/${projectId}/rooms/${roomId}/spec`}
+        >
+          Refresh
+        </a>
+      </div>
+    );
+  }
+
   if (result.status === "concept_image_unprepared" || result.status === "extraction_failed") {
     return (
       <div className="mt-10 border border-error bg-surface px-8 py-12 text-center">
@@ -146,19 +165,7 @@ async function SpecLedgerSection({
     );
   }
 
-  const { data: concept } = await supabase
-    .from("concepts")
-    .select("id, title, primary_image_asset:room_assets!concepts_primary_image_asset_id_fkey(storage_path)")
-    .eq("id", result.spec.conceptId)
-    .maybeSingle();
-
-  let renderUrl: string | null = null;
-  if (concept?.primary_image_asset?.storage_path) {
-    const { data: signed } = await serviceSupabase.storage
-      .from("generated-renders")
-      .createSignedUrl(concept.primary_image_asset.storage_path, 60 * 60);
-    renderUrl = signed?.signedUrl ?? null;
-  }
+  const renderUrl = result.renderSignedUrl;
 
   return (
     <div className="mt-10">

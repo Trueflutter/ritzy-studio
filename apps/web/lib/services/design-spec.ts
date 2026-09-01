@@ -6,7 +6,34 @@ import {
   type RoomDesignSpec
 } from "@ritzy-studio/domain";
 
+import { conceptPrimaryRender } from "./room-images";
 import type { ServiceSupabaseClient, UserSupabaseClient } from "./supabase-clients";
+
+// Signs the concept's primary render for display without downloading bytes (the
+// stored-spec fast path needs a URL, not the image).
+async function signedRenderUrl(
+  {
+    supabase,
+    serviceSupabase
+  }: { supabase: UserSupabaseClient; serviceSupabase: ServiceSupabaseClient },
+  primaryImageAssetId: string | null
+): Promise<string | null> {
+  if (!primaryImageAssetId) {
+    return null;
+  }
+  const { data: renderAsset } = await supabase
+    .from("room_assets")
+    .select("storage_path")
+    .eq("id", primaryImageAssetId)
+    .maybeSingle();
+  if (!renderAsset) {
+    return null;
+  }
+  const { data: signed } = await serviceSupabase.storage
+    .from("generated-renders")
+    .createSignedUrl(renderAsset.storage_path, 60 * 60);
+  return signed?.signedUrl ?? null;
+}
 
 // The design-spec service (S2 step 8): spec-at-approval with on-demand backfill.
 // ensureRoomDesignSpec returns the stored spec for a room's selected concept,
@@ -22,8 +49,15 @@ export type EnsureRoomDesignSpecInput = {
 export type EnsureRoomDesignSpecResult =
   | { status: "no_selected_concept" }
   | { status: "concept_image_unprepared" }
+  | { status: "extraction_running" }
   | { status: "extraction_failed" }
-  | { status: "ready"; spec: RoomDesignSpec; conceptTitle: string; extractedNow: boolean };
+  | {
+      status: "ready";
+      spec: RoomDesignSpec;
+      conceptTitle: string;
+      extractedNow: boolean;
+      renderSignedUrl: string | null;
+    };
 
 export async function ensureRoomDesignSpec(
   { supabase, serviceSupabase }: { supabase: UserSupabaseClient; serviceSupabase: ServiceSupabaseClient },
@@ -58,7 +92,13 @@ export async function ensureRoomDesignSpec(
   if (existing) {
     const parsed = parseRoomDesignSpecRow(existing);
     if (parsed) {
-      return { status: "ready", spec: parsed, conceptTitle: concept.title, extractedNow: false };
+      return {
+        status: "ready",
+        spec: parsed,
+        conceptTitle: concept.title,
+        extractedNow: false,
+        renderSignedUrl: await signedRenderUrl({ supabase, serviceSupabase }, concept.primary_image_asset_id)
+      };
     }
     // A stored spec that no longer validates is treated as absent: re-extract
     // rather than dead-ending the room on a malformed row.
@@ -68,21 +108,27 @@ export async function ensureRoomDesignSpec(
     return { status: "concept_image_unprepared" };
   }
 
-  const { data: renderAsset } = await supabase
-    .from("room_assets")
-    .select("storage_path, mime_type")
-    .eq("id", concept.primary_image_asset_id)
+  // In-flight guard (mirrors concept generation's running-job dedupe): a GET
+  // triggers a paid vision call, so parallel opens or Retry storms must not fan
+  // out extra provider spend. One recent running extraction blocks new ones.
+  const runningSince = new Date(Date.now() - 15 * 60 * 1000).toISOString();
+  const { data: runningExtraction } = await serviceSupabase
+    .from("ai_jobs")
+    .select("id")
+    .eq("room_id", roomId)
+    .eq("job_type", "spec_extraction")
+    .eq("status", "running")
+    .gte("created_at", runningSince)
+    .limit(1)
     .maybeSingle();
 
-  if (!renderAsset) {
-    return { status: "concept_image_unprepared" };
+  if (runningExtraction) {
+    return { status: "extraction_running" };
   }
 
-  const { data: renderBlob, error: renderError } = await serviceSupabase.storage
-    .from("generated-renders")
-    .download(renderAsset.storage_path);
+  const render = await conceptPrimaryRender({ supabase, serviceSupabase }, concept.primary_image_asset_id);
 
-  if (renderError || !renderBlob) {
+  if (!render) {
     return { status: "concept_image_unprepared" };
   }
 
@@ -120,8 +166,8 @@ export async function ensureRoomDesignSpec(
     const extraction = await extractRoomDesignSpec({
       roomType: room.room_type,
       conceptImage: {
-        bytes: Buffer.from(await renderBlob.arrayBuffer()),
-        mimeType: renderAsset.mime_type ?? "image/png"
+        bytes: render.bytes,
+        mimeType: render.mimeType
       },
       brief: {
         styleNotes: designBrief?.style_notes,
@@ -184,7 +230,13 @@ export async function ensureRoomDesignSpec(
         .maybeSingle();
       const parsedRaced = raced ? parseRoomDesignSpecRow(raced) : null;
       if (parsedRaced) {
-        return { status: "ready", spec: parsedRaced, conceptTitle: concept.title, extractedNow: false };
+        return {
+          status: "ready",
+          spec: parsedRaced,
+          conceptTitle: concept.title,
+          extractedNow: false,
+          renderSignedUrl: render.signedUrl
+        };
       }
       throw new Error(insertError.message);
     }
@@ -193,7 +245,13 @@ export async function ensureRoomDesignSpec(
     if (!parsed) {
       throw new Error("Extracted spec did not validate after insert.");
     }
-    return { status: "ready", spec: parsed, conceptTitle: concept.title, extractedNow: true };
+    return {
+      status: "ready",
+      spec: parsed,
+      conceptTitle: concept.title,
+      extractedNow: true,
+      renderSignedUrl: render.signedUrl
+    };
   } catch (error) {
     if (job) {
       await serviceSupabase

@@ -13,6 +13,7 @@ import { CONCEPT_VIEW_KEYS } from "@/lib/render-flags";
 import { configuredImageModel, configuredImageProvider, visionImageDataUrl } from "@/lib/render-images";
 import { normalizeCatalogFirstRoomType } from "@/lib/room-type-normalize";
 
+import { roomImageInputs } from "./room-images";
 import { likedStyleSlugsFromStructuredBrief } from "./sourcing-support";
 import { storageImageDataUrl } from "./storage-images";
 import type { ServiceSupabaseClient, UserSupabaseClient } from "./supabase-clients";
@@ -237,20 +238,7 @@ export async function generateInitialConceptForRoom(
     return { status: "already_generated" };
   }
 
-  const { data: roomPhotos = [] } = await supabase
-    .from("room_assets")
-    .select("*")
-    .eq("room_id", roomId)
-    .eq("asset_type", "room_photo")
-    .order("created_at", { ascending: true })
-    .limit(3);
-  const roomPhoto = roomPhotos?.[0] ?? null;
-  const additionalRoomPhotoAssets = (roomPhotos ?? []).slice(1);
-
-  if (!roomPhoto) {
-    return { status: "missing_photo" };
-  }
-
+  // Dedupe before any storage work: a running generation for this brief blocks.
   const runningSince = new Date(Date.now() - 15 * 60 * 1000).toISOString();
   const { data: runningConceptJob } = await serviceSupabase
     .from("ai_jobs")
@@ -267,9 +255,12 @@ export async function generateInitialConceptForRoom(
     return { status: "already_running" };
   }
 
-  const { data: signedPhoto } = await supabase.storage
-    .from("room-assets")
-    .createSignedUrl(roomPhoto.storage_path, 60 * 30);
+  const images = await roomImageInputs(supabase, roomId);
+  const roomPhoto = images.roomPhoto;
+
+  if (!roomPhoto) {
+    return { status: "missing_photo" };
+  }
 
   const { data: inspirationAssets = [] } = await supabase
     .from("room_assets")
@@ -287,48 +278,12 @@ export async function generateInitialConceptForRoom(
     )
   ).filter((url): url is string => Boolean(url));
 
-  const { data: photoBlob, error: downloadError } = await supabase.storage
-    .from("room-assets")
-    .download(roomPhoto.storage_path);
-
-  if (!signedPhoto?.signedUrl || downloadError || !photoBlob) {
+  if (!images.signedPhotoUrl || !images.photoBytes) {
     return { status: "photo_unprepared" };
   }
 
-  const additionalRoomPhotos = (
-    await Promise.all(
-      additionalRoomPhotoAssets.map(async (asset) => {
-        const { data: blob, error: blobError } = await supabase.storage
-          .from("room-assets")
-          .download(asset.storage_path);
-        if (blobError || !blob) {
-          return null;
-        }
-        const bytes = Buffer.from(await blob.arrayBuffer());
-        const { data: signed } = await supabase.storage
-          .from("room-assets")
-          .createSignedUrl(asset.storage_path, 60 * 30);
-        return {
-          url: await visionImageDataUrl(bytes, asset.mime_type),
-          referenceUrl: signed?.signedUrl ?? null,
-          bytes,
-          mimeType: asset.mime_type
-        };
-      })
-    )
-  ).filter((photo): photo is NonNullable<typeof photo> => Boolean(photo));
-
-  const { data: floorPlanAsset } = await supabase
-    .from("room_assets")
-    .select("storage_path, mime_type")
-    .eq("room_id", roomId)
-    .eq("asset_type", "floor_plan")
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  const floorPlanImageUrl = floorPlanAsset?.mime_type?.startsWith("image/")
-    ? await storageImageDataUrl(supabase, "room-assets", floorPlanAsset.storage_path, floorPlanAsset.mime_type)
-    : null;
+  const additionalRoomPhotos = images.additionalRoomPhotos;
+  const floorPlanImageUrl = images.floorPlanImageUrl;
 
   const { data: measurements } = await supabase
     .from("room_measurements")
@@ -338,9 +293,6 @@ export async function generateInitialConceptForRoom(
     .limit(1)
     .maybeSingle();
 
-  // Measurements no longer hard-gate generation: a user who just wants to snap a
-  // photo still gets a concept, with the missing-scale assumption recorded and
-  // surfaced instead of a dead end.
   const measurementsMissing = !measurements || !hasRequiredRoomSize(measurements);
 
   const spatialIntent = parseSpatialIntent(designBrief.structured_json, room.room_type);
@@ -398,12 +350,11 @@ export async function generateInitialConceptForRoom(
   }
 
   try {
-    const photoBytes = Buffer.from(await photoBlob.arrayBuffer());
     const result = await generateInitialConcept({
       roomType: room.room_type,
-      roomPhotoUrl: await visionImageDataUrl(photoBytes, roomPhoto.mime_type),
-      roomPhotoReferenceUrl: signedPhoto.signedUrl,
-      roomPhotoBytes: photoBytes,
+      roomPhotoUrl: await visionImageDataUrl(images.photoBytes, roomPhoto.mime_type),
+      roomPhotoReferenceUrl: images.signedPhotoUrl,
+      roomPhotoBytes: images.photoBytes,
       roomPhotoMimeType: roomPhoto.mime_type,
       additionalRoomPhotos,
       inspirationImageUrls: signedInspirationUrls,
