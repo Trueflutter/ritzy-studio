@@ -101,7 +101,7 @@ function isPrivateOrLocalHost(host: string): boolean {
     // IPv6 literal (URL.hostname strips the brackets): loopback, unspecified,
     // link-local, and unique-local ranges are refused; IPv4-mapped addresses
     // (::ffff:a.b.c.d) are judged by their embedded IPv4 value.
-    if (lowered === "::1" || lowered === "::" || lowered.startsWith("fe80:") || lowered.startsWith("fc") || lowered.startsWith("fd")) {
+    if (lowered === "::1" || lowered === "::" || /^fe[89ab][0-9a-f]:/.test(lowered) || lowered.startsWith("fc") || lowered.startsWith("fd")) {
       return true;
     }
     const mapped = lowered.match(/^::ffff:(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})$/);
