@@ -7,6 +7,13 @@ const serverEnvSchema = z.object({
   RITZY_IMAGE_PROVIDER: z.enum(["gemini", "openai", "evolink"]).default("openai"),
   GEMINI_IMAGE_MODEL: z.string().min(1, "GEMINI_IMAGE_MODEL is required").default("gemini-3.1-flash-image-preview"),
   EVOLINK_API_KEY: z.string().optional(),
+  // Evolink gateway origin; overridable so tests and the zero-cost E2E suite can stub
+  // the image provider the same way OPENAI_BASE_URL allows for text. Empty or blank
+  // values resolve to the default.
+  EVOLINK_BASE_URL: z.preprocess(
+    (value) => (typeof value === "string" && value.trim() ? value.trim() : undefined),
+    z.string().default("https://api.evolink.ai")
+  ),
   EVOLINK_IMAGE_MODEL: z
     .string()
     .min(1, "EVOLINK_IMAGE_MODEL is required")
@@ -48,6 +55,20 @@ const serverEnvSchema = z.object({
   RITZY_PRODUCT_MATCHING_ENGINE_V1_PREVIEW_USER_IDS: z.string().optional(),
   RITZY_PRODUCT_MATCHING_ENGINE_V1_PREVIEW_USER_EMAILS: z.string().optional(),
   RITZY_RENDER_EXECUTION: z.enum(["queue", "inline"]).optional(),
+  // Comma-separated extra hosts allowed as remote reference-image sources, and hosts
+  // whose query strings are stripped before use (defaults live in the ai package's
+  // reference guard; these only extend or override them).
+  RITZY_REFERENCE_IMAGE_HOSTS: z.string().optional(),
+  RITZY_REFERENCE_STRIP_QUERY_HOSTS: z.string().optional(),
+  // Client-side deadline (ms) for text/vision provider calls; unset uses the ai
+  // package default of 90000.
+  RITZY_TEXT_TIMEOUT_MS: z.string().optional(),
+  // The OpenAI SDK reads OPENAI_BASE_URL implicitly; declaring it here makes the
+  // gateway override visible to validation and to the fallback-credential guard.
+  OPENAI_BASE_URL: z.string().optional(),
+  // Distinct credential for the api.openai.com image fallback when the primary key
+  // belongs to a gateway (OPENAI_BASE_URL set).
+  OPENAI_FALLBACK_API_KEY: z.string().optional(),
   RITZY_SIGNUP_ALLOWLIST: z.string().optional(),
   STRIPE_SECRET_KEY: z.string().optional(),
   STRIPE_WEBHOOK_SECRET: z.string().optional()
@@ -68,6 +89,38 @@ export function parseServerEnv(env: NodeJS.ProcessEnv): ServerEnv {
 
 export function parseClientEnv(env: NodeJS.ProcessEnv): ClientEnv {
   return clientEnvSchema.parse(env);
+}
+
+// Single-source accessors for values that used to be re-read raw (with hand-copied
+// defaults) across the app. Each parses exactly one schema field, so the default
+// lives in one place: the schema above.
+export function configuredTextModel(env: NodeJS.ProcessEnv = process.env): string {
+  return serverEnvSchema.shape.OPENAI_TEXT_MODEL.parse(env.OPENAI_TEXT_MODEL);
+}
+
+export function configuredImageProvider(env: NodeJS.ProcessEnv = process.env): "gemini" | "openai" | "evolink" {
+  return serverEnvSchema.shape.RITZY_IMAGE_PROVIDER.parse(env.RITZY_IMAGE_PROVIDER);
+}
+
+export function configuredImageModelName(env: NodeJS.ProcessEnv = process.env): string {
+  const provider = configuredImageProvider(env);
+  if (provider === "evolink") {
+    return serverEnvSchema.shape.EVOLINK_IMAGE_MODEL.parse(env.EVOLINK_IMAGE_MODEL);
+  }
+  if (provider === "gemini") {
+    return serverEnvSchema.shape.GEMINI_IMAGE_MODEL.parse(env.GEMINI_IMAGE_MODEL);
+  }
+  return serverEnvSchema.shape.OPENAI_IMAGE_MODEL.parse(env.OPENAI_IMAGE_MODEL);
+}
+
+export function configuredAppUrl(env: NodeJS.ProcessEnv = process.env): string {
+  return serverEnvSchema.shape.NEXT_PUBLIC_APP_URL.parse(env.NEXT_PUBLIC_APP_URL);
+}
+
+export function productReferenceOrderingV2Enabled(env: NodeJS.ProcessEnv = process.env): boolean {
+  return serverEnvSchema.shape.RITZY_PRODUCT_REFERENCE_ORDERING_V2_ENABLED.parse(
+    env.RITZY_PRODUCT_REFERENCE_ORDERING_V2_ENABLED
+  );
 }
 
 export function formatEnvError(error: unknown): string {

@@ -88,6 +88,7 @@ export function buildProductSourcingTextFallbackResult({
   }
 
   return {
+    textCostUsd: 0,
     promptKey: TEXT_FALLBACK_PROMPT_KEY,
     promptVersion: TEXT_FALLBACK_PROMPT_VERSION,
     model,

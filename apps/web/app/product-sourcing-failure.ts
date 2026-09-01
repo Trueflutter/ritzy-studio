@@ -23,7 +23,13 @@ export function productSourcingGenericFailureMessage() {
 export function isProductSourcingTimeoutError(error: unknown) {
   const message = error instanceof Error ? error.message : String(error ?? "");
   const normalized = message.toLowerCase();
-  return normalized.includes("product visual sourcing") && normalized.includes("timed out");
+  if (normalized.includes("product visual sourcing") && normalized.includes("timed out")) {
+    return true;
+  }
+  // The OpenAI SDK's own client deadline ("Request timed out.") can fire before the
+  // outer sourcing wrapper when RITZY_TEXT_TIMEOUT_MS is set below it; both mean the
+  // same thing here, and both must route to the text fallback instead of failing the room.
+  return normalized.includes("request timed out");
 }
 
 export function isProviderImageDownloadError(error: unknown) {

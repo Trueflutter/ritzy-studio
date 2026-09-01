@@ -5,7 +5,9 @@ import {
   evolinkCreditsToUsd,
   generateFinalGroundedRender,
   generateFinalRenderView,
-  spatialQaCorrectionLanguage
+  spatialQaCorrectionLanguage,
+  sumImagePlusTextUsd,
+  sumUsdCosts
 } from "@ritzy-studio/ai";
 import { parseSpatialIntent, sortProductsForRenderReferences } from "@ritzy-studio/domain";
 import { revalidatePath } from "next/cache";
@@ -308,12 +310,14 @@ export async function runFinalRender({
     let renderQaVerdict: string | null = null;
     let renderQaIssues: string[] = [];
     let renderQaRegenerated = false;
+    let renderQaTextCostUsd: number | null = null;
     try {
       let qa = await assessRenderSpatialQuality({
         imageUrl: await visionImageDataUrl(Buffer.from(result.imageBase64, "base64"), "image/png"),
         roomType: room.room_type,
         spatialIntent: renderSpatialIntentPrompt
       });
+      renderQaTextCostUsd = sumUsdCosts(renderQaTextCostUsd, qa.textCostUsd);
       if (qa.qa.verdict === "regenerate" && qa.qa.issues.length > 0) {
         const retryResult = await generateFinalGroundedRender({
           ...renderInput,
@@ -327,6 +331,7 @@ export async function runFinalRender({
           roomType: room.room_type,
           spatialIntent: renderSpatialIntentPrompt
         });
+        renderQaTextCostUsd = sumUsdCosts(renderQaTextCostUsd, retryQa.textCostUsd);
         if (retryQa.qa.verdict !== "regenerate") {
           result = retryResult;
           qa = retryQa;
@@ -399,7 +404,8 @@ export async function runFinalRender({
           // render_jobs has no cost column; the hero's spend (including any discarded QA
           // regen) is recorded here and the views' spend on the final_render_views ai_job.
           imageCreditsUsed: renderImageCreditsUsed,
-          costEstimateUsd: evolinkCreditsToUsd(renderImageCreditsUsed)
+          spatialQaTextCostUsd: renderQaTextCostUsd,
+          costEstimateUsd: sumImagePlusTextUsd(evolinkCreditsToUsd(renderImageCreditsUsed), renderQaTextCostUsd)
         }
       })
       .eq("id", job.id)

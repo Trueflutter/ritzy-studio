@@ -8,7 +8,10 @@ import {
   generateConceptRevision,
   generateConceptView,
   generateInitialConcept,
-  sourceProductsFromConcept
+  sourceProductsFromConcept,
+  stageTextConfig,
+  sumImagePlusTextUsd,
+  sumUsdCosts
 } from "@ritzy-studio/ai";
 import type { Database } from "@ritzy-studio/db";
 import {
@@ -54,7 +57,9 @@ import {
   type RoleScopedCandidatePool,
   type RoomProductRoleSpec
 } from "@ritzy-studio/domain";
-import { productMatchingControlledPreviewGate, renderExecutionMode, signupAllowed } from "@ritzy-studio/config";
+import { productMatchingControlledPreviewGate, renderExecutionMode, signupAllowed,
+  configuredTextModel
+} from "@ritzy-studio/config";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { after } from "next/server";
@@ -565,7 +570,10 @@ export async function signInAction(formData: FormData) {
   }
 
   revalidatePath("/", "layout");
-  redirect("/onboarding");
+  // The dashboard routes unknown-mode users to onboarding itself; sending every
+  // returning sign-in to /onboarding re-asked the already-answered mode question
+  // on every login (I-4: observed on production, reproduced on any environment).
+  redirect("/");
 }
 
 export async function signUpAction(formData: FormData) {
@@ -1523,7 +1531,7 @@ export async function saveDesignBriefAction(formData: FormData) {
       job_type: "clarifying_questions",
       status: "running",
       provider: "openai",
-      model: process.env.OPENAI_TEXT_MODEL ?? "gpt-5-mini",
+      model: stageTextConfig("clarifying_questions", configuredTextModel()).model,
       prompt_version: null,
       input_summary: inputSummary
     })
@@ -1564,6 +1572,7 @@ export async function saveDesignBriefAction(formData: FormData) {
         completed_at: new Date().toISOString(),
         model: result.model,
         prompt_version: result.promptVersion,
+        cost_estimate_usd: result.textCostUsd ?? null,
         output_summary: {
           promptKey: result.promptKey,
           questionCount: result.questions.length
@@ -1828,7 +1837,7 @@ async function analyzeAndWriteInspirationForRoom({
       job_type: "inspiration_analysis",
       status: "running",
       provider: "openai",
-      model: process.env.OPENAI_TEXT_MODEL ?? "gpt-5-mini",
+      model: stageTextConfig("inspiration_analysis", configuredTextModel()).model,
       prompt_version: null,
       input_summary: { inspirationAssetCount: signedUrls.length }
     })
@@ -1872,6 +1881,7 @@ async function analyzeAndWriteInspirationForRoom({
         completed_at: new Date().toISOString(),
         model: result.model,
         prompt_version: result.promptVersion,
+        cost_estimate_usd: result.textCostUsd ?? null,
         output_summary: {
           promptKey: result.promptKey,
           palette: result.analysis.palette,
@@ -2187,7 +2197,7 @@ export async function generateInitialConceptAction(formData: FormData) {
       job_type: "initial_concept_generation",
       status: "running",
       provider: configuredImageProvider(),
-      model: `${process.env.OPENAI_TEXT_MODEL ?? "gpt-5-mini"} + ${configuredImageModel()}`,
+      model: `${stageTextConfig("concept_direction", configuredTextModel()).model} + ${configuredImageModel()}`,
       prompt_version: null,
       input_summary: {
         roomId,
@@ -2254,7 +2264,7 @@ export async function generateInitialConceptAction(formData: FormData) {
         provider: result.imageProvider,
         model: `${result.textModel} + ${result.imageModel}`,
         prompt_version: result.promptVersion,
-        cost_estimate_usd: evolinkCreditsToUsd(result.imageCreditsUsed),
+        cost_estimate_usd: sumImagePlusTextUsd(evolinkCreditsToUsd(result.imageCreditsUsed), result.textCostUsd),
         output_summary: {
           promptKey: result.promptKey,
           title: result.concept.title,
@@ -2545,11 +2555,14 @@ export async function groundProductsAction(formData: FormData) {
   // rendered (extracted once, cached on the concept row), not only against the
   // concept's text tokens. Extraction failure degrades to text-only matching.
   let conceptPalette = parseConceptImagePalette(concept.palette_json);
+  let paletteTextCostUsd: number | null = null;
+  let initialSourcingTextCostUsd: number | null = null;
   if (!conceptPalette) {
     try {
       const paletteResult = await extractConceptImagePalette({
         imageUrl: conceptSignedImage.signedUrl
       });
+      paletteTextCostUsd = paletteResult.textCostUsd ?? null;
       conceptPalette = paletteResult.palette;
       await serviceSupabase
         .from("concepts")
@@ -2659,7 +2672,7 @@ ${conceptPaletteText}`
       job_type: "product_visual_sourcing",
       status: "running",
       provider: "openai",
-      model: process.env.OPENAI_TEXT_MODEL ?? "gpt-5-mini",
+      model: stageTextConfig("product_sourcing", configuredTextModel()).model,
       prompt_version: null,
       input_summary: {
         roomId,
@@ -2740,7 +2753,7 @@ ${conceptPaletteText}`
         conceptDescription: concept.description,
         roles: staticRoles,
         rankedCandidates: sourcingCandidates,
-        model: process.env.OPENAI_TEXT_MODEL ?? "gpt-5-mini"
+        model: configuredTextModel()
       });
     } else {
       sourcingResult = await withTimeout(
@@ -2772,6 +2785,7 @@ ${conceptPaletteText}`
         completed_at: new Date().toISOString(),
         model: sourcingResult.model,
         prompt_version: sourcingResult.promptVersion,
+        cost_estimate_usd: sumUsdCosts(sourcingResult.textCostUsd, paletteTextCostUsd),
         output_summary: {
           promptKey: sourcingResult.promptKey,
           needCount: sourcingResult.needs.length,
@@ -2828,7 +2842,7 @@ ${conceptPaletteText}`
         conceptDescription: concept.description,
         roles: staticRoles,
         rankedCandidates: sourcingCandidates,
-        model: process.env.OPENAI_TEXT_MODEL ?? "gpt-5-mini"
+        model: configuredTextModel()
       });
 
       if (sourcingResult.needs.length > 0 && sourcingResult.selectedProducts.length > 0) {
@@ -2839,6 +2853,7 @@ ${conceptPaletteText}`
             completed_at: new Date().toISOString(),
             model: sourcingResult.model,
             prompt_version: sourcingResult.promptVersion,
+            cost_estimate_usd: sumUsdCosts(sourcingResult.textCostUsd, paletteTextCostUsd),
             output_summary: {
               promptKey: sourcingResult.promptKey,
               needCount: sourcingResult.needs.length,
@@ -3088,7 +3103,7 @@ ${conceptPaletteText}`
         conceptDescription: concept.description,
         roles: retryRoles,
         rankedCandidates: retryCandidates,
-        model: process.env.OPENAI_TEXT_MODEL ?? "gpt-5-mini"
+        model: configuredTextModel()
       });
     } else if (!PRODUCT_SOURCING_AI_PRODUCT_IMAGES_ENABLED || retryImageGate.usable) {
       retryResult = await withTimeout(
@@ -3123,6 +3138,8 @@ ${conceptPaletteText}`
     }
 
     if (retryResult?.needs.length && retryResult.selectedProducts.length) {
+      // The first attempt's spend is real even though its result is being replaced.
+      initialSourcingTextCostUsd = sourcingResult?.textCostUsd ?? initialSourcingTextCostUsd;
       sourcingResult = retryResult;
       latestConfidencePools = retryPools;
       visualMissingRoleCategories = new Set(
@@ -3139,6 +3156,7 @@ ${conceptPaletteText}`
           completed_at: new Date().toISOString(),
           model: sourcingResult.model,
           prompt_version: sourcingResult.promptVersion,
+          cost_estimate_usd: sumUsdCosts(initialSourcingTextCostUsd, sourcingResult.textCostUsd, paletteTextCostUsd),
           output_summary: {
             promptKey: sourcingResult.promptKey,
             needCount: sourcingResult.needs.length,
@@ -4723,7 +4741,7 @@ export async function reviseConceptAction(formData: FormData) {
       job_type: "concept_revision",
       status: "running",
       provider: configuredImageProvider(),
-      model: `${process.env.OPENAI_TEXT_MODEL ?? "gpt-5-mini"} + ${configuredImageModel()}`,
+      model: `${stageTextConfig("revision_direction", configuredTextModel()).model} + ${configuredImageModel()}`,
       prompt_version: null,
       input_summary: {
         roomId,
@@ -4781,7 +4799,7 @@ export async function reviseConceptAction(formData: FormData) {
         provider: result.imageProvider,
         model: `${result.textModel} + ${result.imageModel}`,
         prompt_version: result.promptVersion,
-        cost_estimate_usd: evolinkCreditsToUsd(result.imageCreditsUsed),
+        cost_estimate_usd: sumImagePlusTextUsd(evolinkCreditsToUsd(result.imageCreditsUsed), result.textCostUsd),
         output_summary: {
           promptKey: result.promptKey,
           title: result.concept.title,

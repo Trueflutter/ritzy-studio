@@ -1,5 +1,13 @@
 import sharp from "sharp";
 
+import {
+  buildReferenceHostAllowlist,
+  followGuardedRedirects,
+  guardReferenceUrl,
+  readResponseBytesCapped
+} from "@ritzy-studio/ai";
+import { configuredImageModelName, configuredImageProvider as configImageProvider } from "@ritzy-studio/config";
+
 // Shared image helpers for the AI generation paths. Extracted from app/actions.ts so the
 // durable render runner (lib/render-runner.ts) can reuse them outside the "use server" module,
 // which may only export async server actions.
@@ -18,19 +26,14 @@ export const PRODUCT_SOURCING_MAX_IMAGE_BYTES = 20 * 1024 * 1024;
 // fetchable candidate, so a longer ceiling keeps the happy path fast while rescuing large images.
 const CATALOGUE_GROUNDED_CONCEPT_IMAGE_FETCH_TIMEOUT_MS = 12_000;
 
+// Thin delegations kept for existing import sites; the defaults live in the config
+// schema, not here.
 export function configuredImageProvider() {
-  return process.env.RITZY_IMAGE_PROVIDER ?? "openai";
+  return configImageProvider();
 }
 
 export function configuredImageModel() {
-  const provider = configuredImageProvider();
-  if (provider === "evolink") {
-    return process.env.EVOLINK_IMAGE_MODEL ?? "gemini-3.1-flash-image-preview";
-  }
-  if (provider === "gemini") {
-    return process.env.GEMINI_IMAGE_MODEL ?? "gemini-3.1-flash-image-preview";
-  }
-  return process.env.OPENAI_IMAGE_MODEL ?? "gpt-image-2";
+  return configuredImageModelName();
 }
 
 function bytesToDataUrl(bytes: Buffer, mimeType: string) {
@@ -52,44 +55,87 @@ export async function visionImageDataUrl(bytes: Buffer, mimeType: string) {
   }
 }
 
-export async function fetchRemoteImage(url: string): Promise<CatalogueReferenceImage | null> {
+function remoteImageAllowlist() {
+  return buildReferenceHostAllowlist({
+    configured: process.env.RITZY_REFERENCE_IMAGE_HOSTS,
+    supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL
+  });
+}
+
+type FetchImpl = (input: string | URL, init?: RequestInit) => Promise<Response>;
+
+export async function fetchRemoteImage(
+  url: string,
+  fetchImpl: FetchImpl = fetch
+): Promise<CatalogueReferenceImage | null> {
+  // Every remote image fetch goes through the shared reference guard: known-breaking
+  // resize params stripped, hosts restricted to the retailer/storage allowlist,
+  // redirects re-validated hop by hop by the ONE follower in @ritzy-studio/ai.
+  // Refusals return null, which callers already treat as "no fetchable reference
+  // image".
+  const allowlist = remoteImageAllowlist();
+  const stripHosts = process.env.RITZY_REFERENCE_STRIP_QUERY_HOSTS
+    ?.split(",")
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+  const guarded = guardReferenceUrl(url, { allowlist, stripQueryHosts: stripHosts });
+  if (!guarded.ok) {
+    // Distinct from a CDN flake: this URL was refused by policy, not unreachable.
+    console.warn(`[reference-guard] refusing remote image fetch: ${guarded.reason}`);
+    return null;
+  }
+
   // Retailer CDNs rate-limit and flake; one quick retry rescues most transient
   // failures without meaningfully slowing the happy path.
-  const first = await fetchRemoteImageOnce(url);
+  const first = await fetchRemoteImageOnce(guarded.url, allowlist, stripHosts, fetchImpl);
   if (first) {
     return first;
   }
   await new Promise((resolve) => setTimeout(resolve, 750));
-  return fetchRemoteImageOnce(url);
+  return fetchRemoteImageOnce(guarded.url, allowlist, stripHosts, fetchImpl);
 }
 
-async function fetchRemoteImageOnce(url: string): Promise<CatalogueReferenceImage | null> {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), CATALOGUE_GROUNDED_CONCEPT_IMAGE_FETCH_TIMEOUT_MS);
-
+async function fetchRemoteImageOnce(
+  url: string,
+  allowlist: Set<string>,
+  stripHosts: string[] | undefined,
+  fetchImpl: FetchImpl
+): Promise<CatalogueReferenceImage | null> {
+  // Never throws: any failure (refusal, redirect escape, HTTP error, mid-body reset,
+  // body-read deadline) returns null so one bad reference degrades to "no image"
+  // instead of failing a whole render or sourcing operation.
   try {
-    const response = await fetch(url, {
-      signal: controller.signal,
-      headers: {
-        "user-agent": "RitzyStudioBot/0.1 (+https://ritzy-studio.local; final render references)"
-      }
+    const followed = await followGuardedRedirects(url, {
+      allowlist,
+      fetchImpl,
+      timeoutMs: CATALOGUE_GROUNDED_CONCEPT_IMAGE_FETCH_TIMEOUT_MS,
+      // Redirect chains must not multiply the per-fetch deadline.
+      overallTimeoutMs: CATALOGUE_GROUNDED_CONCEPT_IMAGE_FETCH_TIMEOUT_MS,
+      stripQueryHosts: stripHosts,
+      method: "GET"
     });
-
-    if (!response.ok) {
+    if (!followed.ok || !followed.response.ok) {
       return null;
     }
+    const response = followed.response;
 
     const mimeType = response.headers.get("content-type")?.split(";")[0] ?? "image/jpeg";
     if (!["image/jpeg", "image/png", "image/webp"].includes(mimeType)) {
+      void response.body?.cancel().catch(() => {});
       return null;
     }
 
     const contentLength = Number(response.headers.get("content-length"));
     if (Number.isFinite(contentLength) && contentLength > PRODUCT_SOURCING_MAX_IMAGE_BYTES) {
+      void response.body?.cancel().catch(() => {});
       return null;
     }
 
-    const bytes = await readResponseBytesWithLimit(response, PRODUCT_SOURCING_MAX_IMAGE_BYTES);
+    const bytes = await readResponseBytesCapped(
+      response,
+      PRODUCT_SOURCING_MAX_IMAGE_BYTES,
+      CATALOGUE_GROUNDED_CONCEPT_IMAGE_FETCH_TIMEOUT_MS
+    );
     if (!bytes) {
       return null;
     }
@@ -100,38 +146,5 @@ async function fetchRemoteImageOnce(url: string): Promise<CatalogueReferenceImag
     };
   } catch {
     return null;
-  } finally {
-    clearTimeout(timeout);
   }
-}
-
-async function readResponseBytesWithLimit(response: Response, maxBytes: number) {
-  const reader = response.body?.getReader();
-  if (!reader) {
-    return null;
-  }
-
-  const chunks: Uint8Array[] = [];
-  let totalBytes = 0;
-
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) {
-      break;
-    }
-
-    if (!value) {
-      continue;
-    }
-
-    totalBytes += value.byteLength;
-    if (totalBytes > maxBytes) {
-      await reader.cancel();
-      return null;
-    }
-
-    chunks.push(value);
-  }
-
-  return Buffer.concat(chunks, totalBytes);
 }

@@ -51,6 +51,50 @@ import { createHash, createSign } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import OpenAI, { toFile } from "openai";
 import sharp from "sharp";
+
+import {
+  buildReferenceHostAllowlist,
+  checkReferenceImageUrl,
+  followGuardedRedirects,
+  guardReferenceUrl,
+  preflightReferenceImage,
+  readResponseBytesCapped
+} from "./reference-guard";
+
+export {
+  buildReferenceHostAllowlist,
+  checkReferenceImageUrl,
+  followGuardedRedirects,
+  guardReferenceUrl,
+  preflightReferenceImage,
+  readResponseBytesCapped,
+  sanitizeReferenceImageUrl
+} from "./reference-guard";
+
+import { estimateTextCostUsd } from "./text-cost";
+import { resolveStageTextEffort, resolveStageTextModel, type TextStage } from "./model-routing";
+
+// One composed lookup per stage: the model for calls AND job labels, plus the request
+// params to spread into responses.create. A single stage string per call site keeps
+// job-row attribution and the actual call in lockstep.
+export function stageTextConfig(
+  stage: TextStage,
+  baseModel?: string,
+  env: Record<string, string | undefined> = process.env
+): { model: string; requestParams: { model: string; reasoning?: { effort: "minimal" | "low" | "medium" | "high" } } } {
+  const resolvedBase = baseModel ?? serverEnvTextModel();
+  const model = resolveStageTextModel(stage, env, resolvedBase);
+  const effort = resolveStageTextEffort(stage, env);
+  return { model, requestParams: { model, ...(effort ? { reasoning: { effort } } : {}) } };
+}
+
+function serverEnvTextModel(): string {
+  return parseServerEnv(process.env).OPENAI_TEXT_MODEL;
+}
+
+export { estimateTextCostUsd, sumImagePlusTextUsd, sumUsdCosts, sumUsdCostsStrict } from "./text-cost";
+export { resolveStageTextEffort, resolveStageTextModel, TEXT_STAGES } from "./model-routing";
+export type { TextStage, TextEffort } from "./model-routing";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 type ImageProvider = "gemini" | "openai" | "evolink";
@@ -100,6 +144,7 @@ export type GenerateClarifyingQuestionsInput = {
 
 export type GenerateClarifyingQuestionsResult = {
   promptKey: string;
+  textCostUsd?: number | null;
   promptVersion: string;
   model: string;
   questions: Array<{
@@ -114,6 +159,7 @@ export type AnalyzeInspirationImagesInput = {
 
 export type AnalyzeInspirationImagesResult = {
   promptKey: string;
+  textCostUsd?: number | null;
   promptVersion: string;
   model: string;
   analysis: {
@@ -185,6 +231,7 @@ export type GenerateInitialConceptInput = {
 
 export type GenerateInitialConceptResult = {
   promptKey: string;
+  textCostUsd?: number | null;
   promptVersion: string;
   textModel: string;
   imageModel: string;
@@ -223,6 +270,7 @@ export type GenerateConceptRevisionInput = GenerateInitialConceptInput & {
 
 export type GenerateProductEnrichmentResult = {
   promptKey: string;
+  textCostUsd?: number | null;
   promptVersion: string;
   model: string;
   sourceHash: string;
@@ -275,6 +323,7 @@ export type GenerateFinalGroundedRenderInput = {
 
 export type GenerateFinalGroundedRenderResult = {
   promptKey: string;
+  textCostUsd?: number | null;
   promptVersion: string;
   imageProvider: ImageProvider;
   imageModel: string;
@@ -335,6 +384,7 @@ export type ProductVisualMatchStatus =
 
 export type SourceProductsFromConceptResult = {
   promptKey: string;
+  textCostUsd?: number | null;
   promptVersion: string;
   model: string;
   needs: Array<{
@@ -677,13 +727,64 @@ export function buildFinalGroundedRenderPrompt({
     .join("\n");
 }
 
+// Text/vision calls get a hard client-side deadline so a hung provider can never hold
+// a user request open indefinitely (observed 12+ minutes in Phase 0). Image calls get a
+// longer one sized to the slowest observed legitimate provider (gpt-image-2 at ~140s).
+const DEFAULT_TEXT_TIMEOUT_MS = 90_000;
+const IMAGE_CALL_TIMEOUT_MS = 240_000;
+
+export function textTimeoutMs(env: { RITZY_TEXT_TIMEOUT_MS?: string }): number {
+  const configured = Number(env.RITZY_TEXT_TIMEOUT_MS);
+  return Number.isFinite(configured) && configured > 0 ? configured : DEFAULT_TEXT_TIMEOUT_MS;
+}
+
+function createTextClient(env: { OPENAI_API_KEY: string; RITZY_TEXT_TIMEOUT_MS?: string }): OpenAI {
+  return new OpenAI({ apiKey: env.OPENAI_API_KEY, timeout: textTimeoutMs(env), maxRetries: 0 });
+}
+
+// The image fallback must be a genuinely distinct provider: pin api.openai.com so an
+// OPENAI_BASE_URL gateway override (the config that made the old fallback 404 on
+// /v1/images/edits) can never route the fallback through the failing primary.
+function isOpenAiOwnOrigin(baseUrl: string | undefined): boolean {
+  if (!baseUrl || !baseUrl.trim()) {
+    return true;
+  }
+  try {
+    return new URL(baseUrl).origin === "https://api.openai.com";
+  } catch {
+    return false;
+  }
+}
+
+export function createOpenAiImageFallbackClient(env: {
+  OPENAI_API_KEY: string;
+  OPENAI_FALLBACK_API_KEY?: string;
+  OPENAI_BASE_URL?: string;
+}): OpenAI {
+  // A gateway credential (the config that sets OPENAI_BASE_URL) cannot authenticate
+  // against api.openai.com; pairing it with the pin would just turn the dead
+  // fallback's 404 into a dead fallback's 401. Require a real credential: a
+  // dedicated fallback key, or the primary key only when no gateway override is set.
+  const apiKey =
+    env.OPENAI_FALLBACK_API_KEY ?? (isOpenAiOwnOrigin(env.OPENAI_BASE_URL) ? env.OPENAI_API_KEY : null);
+  if (!apiKey) {
+    throw new Error(
+      "No distinct OpenAI fallback credential: OPENAI_BASE_URL routes the primary key through a gateway and OPENAI_FALLBACK_API_KEY is unset."
+    );
+  }
+  return new OpenAI({
+    apiKey,
+    baseURL: "https://api.openai.com/v1",
+    timeout: IMAGE_CALL_TIMEOUT_MS,
+    maxRetries: 0
+  });
+}
+
 async function generateImageWithConfiguredProvider({
-  client,
   prompt,
   references,
   noImageErrorMessage
 }: {
-  client: OpenAI;
   prompt: string;
   references: ImageGenerationReference[];
   noImageErrorMessage: string;
@@ -696,16 +797,17 @@ async function generateImageWithConfiguredProvider({
     try {
       return await generateEvolinkImage({
         prompt,
-        references,
+        references: await hardenReferenceUrls(references, env),
         model: env.EVOLINK_IMAGE_MODEL,
         apiKey: env.EVOLINK_API_KEY,
-        quality: env.EVOLINK_IMAGE_QUALITY
+        quality: env.EVOLINK_IMAGE_QUALITY,
+        baseUrl: env.EVOLINK_BASE_URL
       });
     } catch (error) {
       const fallbackError = formatImageGenerationError(error);
       try {
         const fallbackAttempt = await generateOpenAiImage({
-          client,
+          client: createOpenAiImageFallbackClient(env),
           prompt,
           references,
           model: env.OPENAI_IMAGE_MODEL,
@@ -739,25 +841,31 @@ async function generateImageWithConfiguredProvider({
       });
     } catch (error) {
       const fallbackError = formatImageGenerationError(error);
-      const fallbackAttempt = await generateOpenAiImage({
-        client,
-        prompt,
-        references,
-        model: env.OPENAI_IMAGE_MODEL,
-        noImageErrorMessage
-      });
+      try {
+        const fallbackAttempt = await generateOpenAiImage({
+          client: createOpenAiImageFallbackClient(env),
+          prompt,
+          references,
+          model: env.OPENAI_IMAGE_MODEL,
+          noImageErrorMessage
+        });
 
-      return {
-        ...fallbackAttempt,
-        latencySeconds: secondsSince(startedAt),
-        fallbackUsed: true,
-        error: fallbackError
-      };
+        return {
+          ...fallbackAttempt,
+          latencySeconds: secondsSince(startedAt),
+          fallbackUsed: true,
+          error: fallbackError
+        };
+      } catch (fallbackFailure) {
+        throw new Error(
+          `Gemini image generation failed (${fallbackError}); OpenAI fallback also failed (${formatImageGenerationError(fallbackFailure)}).`
+        );
+      }
     }
   }
 
   return generateOpenAiImage({
-    client,
+    client: new OpenAI({ apiKey: env.OPENAI_API_KEY, timeout: IMAGE_CALL_TIMEOUT_MS, maxRetries: 0 }),
     prompt,
     references,
     model: env.OPENAI_IMAGE_MODEL,
@@ -815,7 +923,9 @@ async function generateOpenAiImage({
   };
 }
 
-async function generateGeminiImage({
+// Exported for the timeout regression test: the Vertex token exchange must be inside
+// the image deadline, and that is only provable against this function directly.
+export async function generateGeminiImage({
   prompt,
   references,
   model,
@@ -829,20 +939,24 @@ async function generateGeminiImage({
   location: string;
 }): Promise<ImageGenerationAttempt> {
   const startedAt = Date.now();
-  const auth = await getVertexAuthContext();
-  const resolvedProjectId = projectId || auth.projectId;
-
-  if (!resolvedProjectId) {
-    throw new Error("GOOGLE_CLOUD_PROJECT is required for Gemini image generation.");
-  }
-
+  // The deadline covers EVERYTHING, including the service-account token exchange: a
+  // hanging OAuth request must not run outside the Gemini timeout.
+  const deadlineMs = Number(process.env.RITZY_GEMINI_TIMEOUT_MS) || 60_000;
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 60_000);
-  const endpoint = `https://aiplatform.googleapis.com/v1/projects/${encodeURIComponent(
-    resolvedProjectId
-  )}/locations/${encodeURIComponent(location)}/publishers/google/models/${encodeURIComponent(model)}:generateContent`;
+  const timeout = setTimeout(() => controller.abort(), deadlineMs);
 
   try {
+    const auth = await getVertexAuthContext(controller.signal);
+    const resolvedProjectId = projectId || auth.projectId;
+
+    if (!resolvedProjectId) {
+      throw new Error("GOOGLE_CLOUD_PROJECT is required for Gemini image generation.");
+    }
+
+    const endpoint = `https://aiplatform.googleapis.com/v1/projects/${encodeURIComponent(
+      resolvedProjectId
+    )}/locations/${encodeURIComponent(location)}/publishers/google/models/${encodeURIComponent(model)}:generateContent`;
+
     const response = await fetch(endpoint, {
       method: "POST",
       headers: {
@@ -897,7 +1011,7 @@ async function generateGeminiImage({
     };
   } catch (error) {
     if (error instanceof Error && error.name === "AbortError") {
-      throw new Error("Gemini image generation timed out after 60 seconds.");
+      throw new Error(`Gemini image generation timed out after ${Math.round(deadlineMs / 1000)} seconds.`);
     }
 
     throw error;
@@ -930,7 +1044,50 @@ function publicReferenceUrl(url: string | null | undefined) {
   return url;
 }
 
-const EVOLINK_API_BASE = "https://api.evolink.ai";
+// Hardens every remote reference URL before a URL-based provider sees it: strip
+// known-breaking resize params (the 2XL "Invalid parameters" outage), refuse hosts
+// outside the reference-image allowlist, and preflight deliverability. A reference
+// that fails hardening keeps its bytes and loses its URL, so the provider inlines it
+// as a data URL instead of dying on an unfetchable or hostile link.
+export async function hardenReferenceUrls(
+  references: ImageGenerationReference[],
+  env: { RITZY_REFERENCE_IMAGE_HOSTS?: string; RITZY_REFERENCE_STRIP_QUERY_HOSTS?: string; NEXT_PUBLIC_SUPABASE_URL: string },
+  fetchImpl?: (input: string | URL, init?: RequestInit) => Promise<Response>
+): Promise<ImageGenerationReference[]> {
+  const allowlist = buildReferenceHostAllowlist({
+    configured: env.RITZY_REFERENCE_IMAGE_HOSTS,
+    supabaseUrl: env.NEXT_PUBLIC_SUPABASE_URL
+  });
+  const stripHosts = env.RITZY_REFERENCE_STRIP_QUERY_HOSTS
+    ? env.RITZY_REFERENCE_STRIP_QUERY_HOSTS.split(",").map((entry) => entry.trim()).filter(Boolean)
+    : undefined;
+
+  return Promise.all(
+    references.map(async (reference) => {
+      const remoteUrl = publicReferenceUrl(reference.url);
+      if (!remoteUrl) {
+        return reference;
+      }
+
+      const guarded = guardReferenceUrl(remoteUrl, { allowlist, stripQueryHosts: stripHosts });
+      if (!guarded.ok) {
+        console.warn(`[reference-guard] inlining "${reference.name}": ${guarded.reason}`);
+        return { ...reference, url: null };
+      }
+
+      // Preflight repeats the policy check on its first hop and then proves
+      // deliverability; a failed reference keeps its bytes and inlines.
+      const preflight = await preflightReferenceImage(guarded.url, { allowlist, fetchImpl, stripQueryHosts: stripHosts });
+      if (!preflight.ok) {
+        console.warn(`[reference-guard] inlining "${reference.name}" after failed preflight: ${preflight.reason}`);
+        return { ...reference, url: null };
+      }
+
+      return { ...reference, url: preflight.finalUrl ?? guarded.url };
+    })
+  );
+}
+
 const EVOLINK_POLL_INTERVAL_MS = 3_000;
 const EVOLINK_POLL_TIMEOUT_MS = 300_000;
 const EVOLINK_MAX_REFERENCE_URLS = 14;
@@ -970,14 +1127,17 @@ async function generateEvolinkImage({
   references,
   model,
   apiKey,
-  quality
+  quality,
+  baseUrl
 }: {
   prompt: string;
   references: ImageGenerationReference[];
   model: string;
   apiKey?: string;
   quality: "1K" | "2K" | "4K";
+  baseUrl: string;
 }): Promise<ImageGenerationAttempt> {
+  const apiBase = baseUrl;
   if (!apiKey) {
     throw new Error("EVOLINK_API_KEY is required for Evolink image generation.");
   }
@@ -1002,9 +1162,10 @@ async function generateEvolinkImage({
     "Content-Type": "application/json"
   };
 
-  const submitResponse = await fetch(`${EVOLINK_API_BASE}/v1/images/generations`, {
+  const submitResponse = await fetch(`${apiBase}/v1/images/generations`, {
     method: "POST",
     headers,
+    signal: AbortSignal.timeout(Number(process.env.RITZY_EVOLINK_SUBMIT_TIMEOUT_MS) || 30_000),
     body: JSON.stringify({
       model,
       prompt,
@@ -1028,10 +1189,18 @@ async function generateEvolinkImage({
   while (Date.now() < deadline) {
     await new Promise((resolve) => setTimeout(resolve, EVOLINK_POLL_INTERVAL_MS));
 
-    const pollResponse = await fetch(`${EVOLINK_API_BASE}/v1/tasks/${encodeURIComponent(submitPayload.id)}`, {
-      method: "GET",
-      headers
-    });
+    let pollResponse: Response;
+    try {
+      pollResponse = await fetch(`${apiBase}/v1/tasks/${encodeURIComponent(submitPayload.id)}`, {
+        method: "GET",
+        headers,
+        signal: AbortSignal.timeout(15_000)
+      });
+    } catch {
+      // One slow or dropped status poll must not abandon a live task; the outer
+      // EVOLINK_POLL_TIMEOUT_MS deadline still bounds the loop.
+      continue;
+    }
     const task = (await pollResponse.json().catch(() => null)) as EvolinkTaskResponse | null;
 
     if (!pollResponse.ok) {
@@ -1051,13 +1220,56 @@ async function generateEvolinkImage({
         throw new Error("Evolink image generation completed without a result image URL.");
       }
 
-      const imageResponse = await fetch(resultUrl);
+      // The result URL is data from the gateway response. Two trusted cases only:
+      // the configured gateway's own origin (operator-trusted, covers stubs), fetched
+      // with redirects REFUSED outright; or an allowlisted public host, fetched
+      // through the guarded redirect follower so no hop can escape policy. Either
+      // way the download is capped and deadline-bound.
+      let imageResponse: Response;
+      const sameOriginAsGateway = (() => {
+        try {
+          return new URL(resultUrl).origin === new URL(apiBase).origin;
+        } catch {
+          return false;
+        }
+      })();
+      if (sameOriginAsGateway) {
+        imageResponse = await fetch(resultUrl, {
+          redirect: "manual",
+          signal: AbortSignal.timeout(60_000)
+        });
+        if (imageResponse.status >= 300 && imageResponse.status < 400) {
+          throw new Error("Evolink result URL attempted a redirect; refusing.");
+        }
+      } else {
+        const allowlist = buildReferenceHostAllowlist({
+          configured: process.env.RITZY_REFERENCE_IMAGE_HOSTS,
+          supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL
+        });
+        const followed = await followGuardedRedirects(resultUrl, { allowlist, timeoutMs: 60_000, method: "GET" });
+        if (!followed.ok) {
+          throw new Error(`Evolink result URL refused: ${followed.reason}`);
+        }
+        imageResponse = followed.response;
+      }
 
       if (!imageResponse.ok) {
         throw new Error(`Evolink result image download failed with HTTP ${imageResponse.status}.`);
       }
+      const resultContentType = imageResponse.headers.get("content-type")?.split(";")[0]?.trim().toLowerCase() ?? "";
+      if (!resultContentType.startsWith("image/")) {
+        throw new Error(
+          resultContentType
+            ? `Evolink result was not an image (content type ${resultContentType}).`
+            : "Evolink result had no content type; refusing to store it as an image."
+        );
+      }
 
-      const imageBase64 = Buffer.from(await imageResponse.arrayBuffer()).toString("base64");
+      const resultBytes = await readResponseBytesCapped(imageResponse, 30 * 1024 * 1024, 60_000);
+      if (!resultBytes) {
+        throw new Error("Evolink result image exceeded the 30MB download cap or had no body.");
+      }
+      const imageBase64 = resultBytes.toString("base64");
 
       // Prefer the final consumption figure; fall back to the reservation (the submit
       // response only carries credits_reserved) so spend is never silently unrecorded.
@@ -1120,7 +1332,8 @@ export async function generateClarifyingQuestions(
   input: GenerateClarifyingQuestionsInput
 ): Promise<GenerateClarifyingQuestionsResult> {
   const env = parseServerEnv(process.env);
-  const client = new OpenAI({ apiKey: env.OPENAI_API_KEY });
+  const client = createTextClient(env);
+  const { model: stageModel, requestParams: stageRequestParams } = stageTextConfig("clarifying_questions", env.OPENAI_TEXT_MODEL);
   const { inspirationImageUrls, ...briefInput } = input;
   const modePrompt =
     input.intendedMode === "homeowner"
@@ -1136,7 +1349,7 @@ export async function generateClarifyingQuestions(
 
   const response = await client.responses.create({
     max_output_tokens: 4000,
-    model: env.OPENAI_TEXT_MODEL,
+    ...stageRequestParams,
     input: [
       {
         role: "system",
@@ -1179,7 +1392,8 @@ export async function generateClarifyingQuestions(
   return {
     promptKey: clarifyingQuestionsPrompt.key,
     promptVersion: clarifyingQuestionsPrompt.version,
-    model: env.OPENAI_TEXT_MODEL,
+    model: stageModel,
+    textCostUsd: estimateTextCostUsd(stageModel, response.usage),
     questions
   };
 }
@@ -1188,11 +1402,12 @@ export async function analyzeInspirationImages(
   input: AnalyzeInspirationImagesInput
 ): Promise<AnalyzeInspirationImagesResult> {
   const env = parseServerEnv(process.env);
-  const client = new OpenAI({ apiKey: env.OPENAI_API_KEY });
+  const client = createTextClient(env);
+  const { model: stageModel, requestParams: stageRequestParams } = stageTextConfig("inspiration_analysis", env.OPENAI_TEXT_MODEL);
 
   const response = await client.responses.create({
     max_output_tokens: 4000,
-    model: env.OPENAI_TEXT_MODEL,
+    ...stageRequestParams,
     input: [
       {
         role: "system",
@@ -1233,8 +1448,9 @@ export async function analyzeInspirationImages(
 
   return {
     promptKey: inspirationAnalysisPrompt.key,
+    textCostUsd: estimateTextCostUsd(stageModel, response.usage),
     promptVersion: inspirationAnalysisPrompt.version,
-    model: env.OPENAI_TEXT_MODEL,
+    model: stageModel,
     analysis
   };
 }
@@ -1243,7 +1459,8 @@ export async function sourceProductsFromConcept(
   input: SourceProductsFromConceptInput
 ): Promise<SourceProductsFromConceptResult> {
   const env = parseServerEnv(process.env);
-  const client = new OpenAI({ apiKey: env.OPENAI_API_KEY });
+  const client = createTextClient(env);
+  const { model: stageModel, requestParams: stageRequestParams } = stageTextConfig("product_sourcing", env.OPENAI_TEXT_MODEL);
   const candidateLimit = 36;
   const allowedProductIds = new Set(input.candidates.map((candidate) => candidate.id));
   const roleCandidatePools = input.roleCandidatePools ?? [];
@@ -1296,7 +1513,7 @@ export async function sourceProductsFromConcept(
 
   const response = await client.responses.create({
     max_output_tokens: 32000,
-    model: env.OPENAI_TEXT_MODEL,
+    ...stageRequestParams,
     input: [
       {
         role: "system",
@@ -1348,7 +1565,8 @@ export async function sourceProductsFromConcept(
   return {
     promptKey: conceptProductSourcingPrompt.key,
     promptVersion: conceptProductSourcingPrompt.version,
-    model: env.OPENAI_TEXT_MODEL,
+    model: stageModel,
+    textCostUsd: estimateTextCostUsd(stageModel, response.usage),
     needs: parsed.needs,
     ...validated
   };
@@ -1762,7 +1980,8 @@ export async function generateInitialConcept(
   input: GenerateInitialConceptInput
 ): Promise<GenerateInitialConceptResult> {
   const env = parseServerEnv(process.env);
-  const client = new OpenAI({ apiKey: env.OPENAI_API_KEY });
+  const client = createTextClient(env);
+  const { model: stageModel, requestParams: stageRequestParams } = stageTextConfig("concept_direction", env.OPENAI_TEXT_MODEL);
   const useInteriorPromptV2 = env.RITZY_INTERIOR_PROMPT_V2_ENABLED;
 
   const brief = {
@@ -1780,7 +1999,7 @@ export async function generateInitialConcept(
 
   const directionResponse = await client.responses.create({
     max_output_tokens: 24000,
-    model: env.OPENAI_TEXT_MODEL,
+    ...stageRequestParams,
     input: [
       {
         role: "system",
@@ -1877,7 +2096,6 @@ export async function generateInitialConcept(
     }));
 
   const imageResult = await generateImageWithConfiguredProvider({
-    client,
     prompt: imagePrompt,
     references: [
       {
@@ -1903,7 +2121,8 @@ export async function generateInitialConcept(
     promptVersion: useInteriorPromptV2
       ? INITIAL_CONCEPT_PROMPT_V2_VERSION
       : `${initialConceptPrompt.version}+${ENHANCED_RITZY_IMAGE_STYLING_VERSION}`,
-    textModel: env.OPENAI_TEXT_MODEL,
+    textModel: stageModel,
+    textCostUsd: estimateTextCostUsd(stageModel, directionResponse.usage),
     imageProvider: imageResult.provider,
     imageModel: imageResult.model,
     imageLatencySeconds: imageResult.latencySeconds,
@@ -1973,11 +2192,10 @@ export async function generateConceptView(
   input: GenerateConceptViewInput
 ): Promise<GenerateConceptViewResult> {
   const env = parseServerEnv(process.env);
-  const client = new OpenAI({ apiKey: env.OPENAI_API_KEY });
+  const client = createTextClient(env);
   const prompt = buildConceptViewPrompt(input);
 
   const imageResult = await generateImageWithConfiguredProvider({
-    client,
     prompt,
     references: [
       {
@@ -2047,11 +2265,10 @@ export async function generateFinalRenderView(
   input: GenerateFinalRenderViewInput
 ): Promise<GenerateFinalRenderViewResult> {
   const env = parseServerEnv(process.env);
-  const client = new OpenAI({ apiKey: env.OPENAI_API_KEY });
+  const client = createTextClient(env);
   const prompt = buildFinalRenderViewPrompt(input);
 
   const imageResult = await generateImageWithConfiguredProvider({
-    client,
     prompt,
     references: [
       {
@@ -2085,6 +2302,7 @@ export type ExtractConceptImagePaletteInput = {
 
 export type ExtractConceptImagePaletteResult = {
   promptKey: string;
+  textCostUsd?: number | null;
   promptVersion: string;
   model: string;
   palette: {
@@ -2099,11 +2317,12 @@ export async function extractConceptImagePalette(
   input: ExtractConceptImagePaletteInput
 ): Promise<ExtractConceptImagePaletteResult> {
   const env = parseServerEnv(process.env);
-  const client = new OpenAI({ apiKey: env.OPENAI_API_KEY });
+  const client = createTextClient(env);
+  const { model: stageModel, requestParams: stageRequestParams } = stageTextConfig("concept_palette", env.OPENAI_TEXT_MODEL);
 
   const response = await client.responses.create({
     max_output_tokens: 4000,
-    model: env.OPENAI_TEXT_MODEL,
+    ...stageRequestParams,
     input: [
       {
         role: "system",
@@ -2138,8 +2357,9 @@ export async function extractConceptImagePalette(
 
   return {
     promptKey: conceptPalettePrompt.key,
+    textCostUsd: estimateTextCostUsd(stageModel, response.usage),
     promptVersion: conceptPalettePrompt.version,
-    model: env.OPENAI_TEXT_MODEL,
+    model: stageModel,
     palette
   };
 }
@@ -2153,6 +2373,7 @@ export type AssessRenderSpatialQualityInput = {
 
 export type AssessRenderSpatialQualityResult = {
   promptKey: string;
+  textCostUsd?: number | null;
   promptVersion: string;
   model: string;
   qa: RenderSpatialQaResponse;
@@ -2162,7 +2383,8 @@ export async function assessRenderSpatialQuality(
   input: AssessRenderSpatialQualityInput
 ): Promise<AssessRenderSpatialQualityResult> {
   const env = parseServerEnv(process.env);
-  const client = new OpenAI({ apiKey: env.OPENAI_API_KEY });
+  const client = createTextClient(env);
+  const { model: stageModel, requestParams: stageRequestParams } = stageTextConfig("spatial_qa", env.OPENAI_TEXT_MODEL);
 
   const context = [
     `Room type: ${input.roomType}.`,
@@ -2178,7 +2400,7 @@ export async function assessRenderSpatialQuality(
 
   const response = await client.responses.create({
     max_output_tokens: 4000,
-    model: env.OPENAI_TEXT_MODEL,
+    ...stageRequestParams,
     input: [
       {
         role: "system",
@@ -2211,7 +2433,8 @@ export async function assessRenderSpatialQuality(
   return {
     promptKey: renderSpatialQaPrompt.key,
     promptVersion: renderSpatialQaPrompt.version,
-    model: env.OPENAI_TEXT_MODEL,
+    model: stageModel,
+    textCostUsd: estimateTextCostUsd(stageModel, response.usage),
     qa
   };
 }
@@ -2230,7 +2453,8 @@ export async function generateConceptRevision(
   input: GenerateConceptRevisionInput
 ): Promise<GenerateInitialConceptResult> {
   const env = parseServerEnv(process.env);
-  const client = new OpenAI({ apiKey: env.OPENAI_API_KEY });
+  const client = createTextClient(env);
+  const { model: stageModel, requestParams: stageRequestParams } = stageTextConfig("revision_direction", env.OPENAI_TEXT_MODEL);
   const revisionInput = {
     roomType: input.roomType,
     previousConcept: input.previousConcept,
@@ -2249,7 +2473,7 @@ export async function generateConceptRevision(
 
   const directionResponse = await client.responses.create({
     max_output_tokens: 24000,
-    model: env.OPENAI_TEXT_MODEL,
+    ...stageRequestParams,
     input: [
       {
         role: "system",
@@ -2293,7 +2517,6 @@ export async function generateConceptRevision(
   ].join("\n");
 
   const imageResult = await generateImageWithConfiguredProvider({
-    client,
     prompt: imagePrompt,
     references: [
       {
@@ -2310,7 +2533,8 @@ export async function generateConceptRevision(
   return {
     promptKey: conceptRevisionPrompt.key,
     promptVersion: conceptRevisionPrompt.version,
-    textModel: env.OPENAI_TEXT_MODEL,
+    textModel: stageModel,
+    textCostUsd: estimateTextCostUsd(stageModel, directionResponse.usage),
     imageProvider: imageResult.provider,
     imageModel: imageResult.model,
     imageLatencySeconds: imageResult.latencySeconds,
@@ -2345,13 +2569,14 @@ export async function generateProductEnrichment(
   input: ProductEnrichmentInput
 ): Promise<GenerateProductEnrichmentResult> {
   const env = parseServerEnv(process.env);
-  const client = new OpenAI({ apiKey: env.OPENAI_API_KEY });
+  const client = createTextClient(env);
+  const { model: stageModel, requestParams: stageRequestParams } = stageTextConfig("product_enrichment", env.OPENAI_TEXT_MODEL);
   const parsedInput = productEnrichmentInputSchema.parse(input);
   const sourceHash = createProductEnrichmentSourceHash(parsedInput);
 
   const response = await client.responses.create({
     max_output_tokens: 8000,
-    model: env.OPENAI_TEXT_MODEL,
+    ...stageRequestParams,
     input: [
       {
         role: "system",
@@ -2374,8 +2599,9 @@ export async function generateProductEnrichment(
 
   return {
     promptKey: productMetadataEnrichmentPrompt.key,
+    textCostUsd: estimateTextCostUsd(stageModel, response.usage),
     promptVersion: productMetadataEnrichmentPrompt.version,
-    model: env.OPENAI_TEXT_MODEL,
+    model: stageModel,
     sourceHash,
     enrichment: productEnrichmentResponseSchema.parse(JSON.parse(response.output_text))
   };
@@ -2386,7 +2612,7 @@ export async function generateProductTextEmbedding(
   enrichment: ProductEnrichmentResponse
 ): Promise<ProductEmbeddingResult> {
   const env = parseServerEnv(process.env);
-  const client = new OpenAI({ apiKey: env.OPENAI_API_KEY });
+  const client = createTextClient(env);
   const parsedInput = productEnrichmentInputSchema.parse(input);
   const parsedEnrichment = productEnrichmentResponseSchema.parse(enrichment);
   const sourceHash = createProductEnrichmentSourceHash(parsedInput);
@@ -2520,7 +2746,7 @@ export async function generateFinalGroundedRender(
   input: GenerateFinalGroundedRenderInput
 ): Promise<GenerateFinalGroundedRenderResult> {
   const env = parseServerEnv(process.env);
-  const client = new OpenAI({ apiKey: env.OPENAI_API_KEY });
+  const client = createTextClient(env);
   const useFinalRenderPromptV2 = env.RITZY_FINAL_RENDER_PROMPT_V2_ENABLED;
   const hasConceptImage = Boolean(input.conceptImageBytes && input.conceptImageMimeType);
   const maxProductReferences =
@@ -2564,7 +2790,6 @@ export async function generateFinalGroundedRender(
   const prompt = input.promptSuffix ? `${basePrompt}\n\n${input.promptSuffix}` : basePrompt;
 
   const imageResult = await generateImageWithConfiguredProvider({
-    client,
     prompt,
     references: [
       {
@@ -2719,7 +2944,7 @@ let cachedVertexToken:
     }
   | null = null;
 
-async function getVertexAuthContext() {
+async function getVertexAuthContext(signal?: AbortSignal) {
   const directToken = process.env.GOOGLE_OAUTH_ACCESS_TOKEN ?? process.env.VERTEX_ACCESS_TOKEN;
 
   if (directToken) {
@@ -2774,6 +2999,7 @@ async function getVertexAuthContext() {
   });
   const tokenResponse = await fetch(credentials.token_uri ?? "https://oauth2.googleapis.com/token", {
     method: "POST",
+    signal,
     headers: {
       "Content-Type": "application/x-www-form-urlencoded"
     },

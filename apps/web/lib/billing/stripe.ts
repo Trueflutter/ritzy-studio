@@ -1,5 +1,7 @@
 import Stripe from "stripe";
 
+import { configuredAppUrl } from "@ritzy-studio/config";
+
 // Beta pricing (2026-07-13, Ayo): AED 99 per room unlock. Stripe amounts are in fils.
 export const HOMEOWNER_ROOM_UNLOCK_AMOUNT_AED = 9900;
 export const HOMEOWNER_ROOM_UNLOCK_PRICE_AED = HOMEOWNER_ROOM_UNLOCK_AMOUNT_AED / 100;
@@ -21,7 +23,7 @@ export function getStripe() {
 }
 
 export function appUrl() {
-  return process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+  return configuredAppUrl();
 }
 
 export function unixToIso(value: number | null | undefined) {
