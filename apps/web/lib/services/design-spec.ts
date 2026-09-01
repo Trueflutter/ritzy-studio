@@ -81,8 +81,15 @@ export async function ensureRoomDesignSpec(
         renderSignedUrl: await signedConceptRenderUrl({ supabase, serviceSupabase }, concept.primary_image_asset_id)
       };
     }
-    // A stored spec that no longer validates is treated as absent: re-extract
-    // rather than dead-ending the room on a malformed row.
+    // A stored EXTRACTED spec that no longer validates is re-extracted and
+    // repaired. A malformed CONFIRMED row (only reachable by direct PostgREST
+    // writes to one's own row) is NOT worth a paid call per visit: the guarded
+    // repair below never touches confirmed rows, so extracting would fail every
+    // time. Surface the honest failed state at zero spend instead; the RPC-only
+    // write consolidation lands with S7's money-table hardening.
+    if (existing.status === "confirmed") {
+      return { status: "extraction_failed" };
+    }
   }
 
   if (!concept.primary_image_asset_id) {

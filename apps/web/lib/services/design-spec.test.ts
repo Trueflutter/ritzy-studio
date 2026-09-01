@@ -120,6 +120,36 @@ async function main() {
     assert.equal((guardCall as RecordedCall | null)?.gte?.[0]?.[0], "created_at");
   }
 
+  // --- A malformed CONFIRMED row (direct-write vandalism of one's own row)
+  // never triggers paid re-extraction: honest failed state at zero spend
+  {
+    const { client } = fakeSupabase((call) => {
+      if (call.table === "rooms") return { data: { id: "room-1", room_type: "Living Room" } };
+      if (call.table === "concepts") {
+        return { data: { id: "concept-1", title: "Warm Gallery", status: "selected", primary_image_asset_id: "asset-1" } };
+      }
+      if (call.table === "room_design_specs") {
+        return { data: { id: "spec-1", room_id: "room-1", concept_id: "concept-1", objects: [{ bad: true }], must_preserve: [], status: "confirmed" } };
+      }
+      return { data: null };
+    });
+    const { client: service, calls: serviceCalls } = fakeSupabase(() => ({ data: null }));
+    let paidCall = false;
+    const result = await ensureRoomDesignSpec(
+      { supabase: client, serviceSupabase: service },
+      INPUT,
+      {
+        extract: async () => {
+          paidCall = true;
+          throw new Error("must not be reached");
+        }
+      }
+    );
+    assert.deepEqual(result, { status: "extraction_failed" });
+    assert.equal(paidCall, false, "a malformed confirmed row must not incur provider spend");
+    assert.equal(serviceCalls.filter((call: RecordedCall) => call.op === "insert").length, 0);
+  }
+
   // --- A malformed stored row is re-extracted and REPLACED via upsert
   {
     const { client, calls } = fakeSupabase((call) => {

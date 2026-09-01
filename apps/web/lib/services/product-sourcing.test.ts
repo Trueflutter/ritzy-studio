@@ -95,6 +95,72 @@ async function main() {
     assert.equal(serviceCalls.filter((call: RecordedCall) => call.op !== "select").length, 0);
   }
 
+  // --- A running spec extraction blocks sourcing briefly (step 8 backfill gate)
+  {
+    const { client, calls } = fakeSupabase((call) => {
+      if (call.table === "projects") return { data: { id: "proj-1", budget_max_aed: null } };
+      if (call.table === "rooms") return { data: { id: "room-1", room_type: "Living Room" } };
+      if (call.table === "concepts") {
+        return { data: { id: "concept-1", title: "T", description: null, status: "selected", generation_job_id: null, palette_json: null, primary_image_asset: null } };
+      }
+      return { data: null };
+    });
+    const { client: service } = fakeSupabase(() => ({ data: null }));
+    const result = await groundProductsForRoom(
+      { supabase: client, serviceSupabase: service },
+      GROUND_INPUT,
+      { ensureSpec: async () => ({ status: "extraction_running" as const }) }
+    );
+    assert.deepEqual(result, {
+      status: "blocked",
+      message: "The design spec is still being read from your approved concept. Try again in a moment."
+    });
+    assert.equal(
+      calls.filter((call: RecordedCall) => call.table === "room_measurements").length,
+      0,
+      "a running extraction must block before further sourcing reads"
+    );
+  }
+
+  // --- With the spec ensured, sourcing proceeds past the gate
+  {
+    const { client, calls } = fakeSupabase((call) => {
+      if (call.table === "projects") return { data: { id: "proj-1", budget_max_aed: null } };
+      if (call.table === "rooms") return { data: { id: "room-1", room_type: "Living Room" } };
+      if (call.table === "concepts") {
+        return { data: { id: "concept-1", title: "T", description: null, status: "selected", generation_job_id: null, palette_json: null, primary_image_asset: null } };
+      }
+      return { data: null };
+    });
+    const { client: service } = fakeSupabase(() => ({ data: [] }));
+    await groundProductsForRoom(
+      { supabase: client, serviceSupabase: service },
+      GROUND_INPUT,
+      {
+        ensureSpec: async () => ({
+          status: "ready" as const,
+          spec: {
+            id: "spec-1",
+            roomId: "room-1",
+            conceptId: "concept-1",
+            objects: [
+              { role: "sofa", label: "Sofa", quantity: 1, sizeDescriptor: null, capacity: null, paletteMaterials: [] }
+            ],
+            mustPreserve: [],
+            status: "extracted" as const
+          },
+          conceptTitle: "T",
+          extractedNow: false,
+          renderSignedUrl: null
+        })
+      }
+    );
+    assert.ok(
+      calls.some((call: RecordedCall) => call.table === "room_measurements"),
+      "an ensured spec must let sourcing proceed past the gate"
+    );
+  }
+
   // --- refreshShoppingOptions: no selected pick means no_change and zero writes
   // (refresh is scoped to exploration; it must never run without a protected pick)
   {

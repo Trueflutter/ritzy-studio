@@ -27,6 +27,7 @@ import {
 } from "@ritzy-studio/domain";
 
 import { localSkuFidelityModeEnabled } from "@/lib/render-flags";
+import { ensureRoomDesignSpec } from "./design-spec";
 import { PRODUCT_SOURCING_MAX_IMAGE_BYTES } from "@/lib/render-images";
 import {
   isProviderImageDownloadError,
@@ -164,7 +165,12 @@ export type GroundProductsResult =
 
 export async function groundProductsForRoom(
   { supabase, serviceSupabase }: { supabase: UserSupabaseClient; serviceSupabase: ServiceSupabaseClient },
-  { userId, userEmail, projectId, roomId, conceptId }: GroundProductsInput
+  { userId, userEmail, projectId, roomId, conceptId }: GroundProductsInput,
+  {
+    // Injectable like the sibling services' seams, so the spec gate is testable
+    // without a live provider.
+    ensureSpec = ensureRoomDesignSpec
+  }: { ensureSpec?: typeof ensureRoomDesignSpec } = {}
 ): Promise<GroundProductsResult> {
   const { data: project } = await supabase
     .from("projects")
@@ -192,6 +198,23 @@ export async function groundProductsForRoom(
 
   if (concept.status !== "selected") {
     return { status: "blocked", message: "Select a concept before product grounding." };
+  }
+
+  // Step 8 backfill (codex finding): sourcing is the OTHER first-touch surface,
+  // so a pre-spec room extracts here too and no route can source around the
+  // canonical spec. A running extraction blocks briefly; a failed or
+  // image-less extraction does NOT block (that would create a dead end that
+  // never existed) — the attempt is recorded and S3 makes the spec load-bearing
+  // when sourcing starts consuming it.
+  const specResult = await ensureSpec(
+    { supabase, serviceSupabase },
+    { userId, roomId }
+  );
+  if (specResult.status === "extraction_running") {
+    return {
+      status: "blocked",
+      message: "The design spec is still being read from your approved concept. Try again in a moment."
+    };
   }
 
   const { data: measurements } = await supabase
