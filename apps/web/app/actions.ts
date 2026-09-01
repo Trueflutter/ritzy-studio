@@ -30,6 +30,7 @@ import {
 } from "@/lib/services/concept-generation";
 import { storageImageDataUrl } from "@/lib/services/storage-images";
 import { reviseConceptForRoom } from "@/lib/services/concept-revision";
+import { confirmRoomDesignSpec } from "@/lib/services/design-spec";
 import {
   findMoreShoppingOptions,
   groundProductsForRoom,
@@ -1515,9 +1516,68 @@ export async function selectConceptAction(formData: FormData) {
 
   await selectConcept(supabase, { roomId, conceptId });
 
-  const redirectPath = `/projects/${projectId}/rooms/${roomId}/product-matching`;
+  // Spec-at-approval (S2): approval flows through the spec confirmation ledger
+  // before sourcing.
+  const redirectPath = `/projects/${projectId}/rooms/${roomId}/spec`;
   revalidatePath(redirectPath);
   redirect(redirectPath);
+}
+
+export async function confirmDesignSpecAction(formData: FormData) {
+  const projectId = String(formData.get("projectId") ?? "");
+  const roomId = String(formData.get("roomId") ?? "");
+  const specId = String(formData.get("specId") ?? "");
+  const specPath = `/projects/${projectId}/rooms/${roomId}/spec`;
+  const supabase = await createClient();
+  const {
+    data: { user },
+    error: userError
+  } = await supabase.auth.getUser();
+
+  if (userError || !user) {
+    redirect("/login");
+  }
+
+  const objectCount = Number(formData.get("objectCount") ?? 0);
+  const objects = [];
+  for (let index = 0; index < objectCount; index += 1) {
+    if (formData.get(`object-${index}-remove`) === "on") {
+      continue;
+    }
+    const paletteMaterials = String(formData.get(`object-${index}-paletteMaterials`) ?? "")
+      .split(",")
+      .map((entry) => entry.trim())
+      .filter(Boolean);
+    const sizeDescriptor = String(formData.get(`object-${index}-sizeDescriptor`) ?? "").trim();
+    const capacity = String(formData.get(`object-${index}-capacity`) ?? "").trim();
+    objects.push({
+      role: String(formData.get(`object-${index}-role`) ?? "").trim(),
+      label: String(formData.get(`object-${index}-label`) ?? "").trim(),
+      quantity: Number(formData.get(`object-${index}-quantity`) ?? 0),
+      sizeDescriptor: sizeDescriptor.length > 0 ? sizeDescriptor : null,
+      capacity: capacity.length > 0 ? capacity : null,
+      paletteMaterials
+    });
+  }
+  const mustPreserve = String(formData.get("mustPreserve") ?? "")
+    .split("\n")
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+
+  const result = await confirmRoomDesignSpec(supabase, { roomId, specId, objects, mustPreserve });
+
+  if (result.status === "invalid") {
+    redirect(`${specPath}?message=${encodeURIComponent(result.message)}`);
+  }
+
+  if (result.status === "not_found") {
+    redirect(`${specPath}?message=${encodeURIComponent("The spec could not be found. Reload and try again.")}`);
+  }
+
+  const sourcingPath = `/projects/${projectId}/rooms/${roomId}/product-matching`;
+  revalidatePath(specPath);
+  revalidatePath(sourcingPath);
+  redirect(`${sourcingPath}?message=${encodeURIComponent("Spec confirmed. Source the pieces when ready.")}`);
 }
 
 export async function groundProductsAction(formData: FormData) {
@@ -1995,7 +2055,7 @@ export async function reviseConceptAction(formData: FormData) {
     case "photo_unprepared":
       redirect(`${redirectPath}?message=${encodeURIComponent("The original room photo could not be prepared for revision.")}`);
     case "concept_image_unprepared":
-      redirect(`${redirectPath}?message=${encodeURIComponent("The previous concept image could not be prepared for revision. Try again in a moment.")}`);
+      redirect(`${redirectPath}?message=${encodeURIComponent("This concept has no stored image to revise. Restore an earlier version or generate a new direction instead.")}`);
     case "revision_failed":
       redirect(`${redirectPath}?message=${encodeURIComponent("Concept revision failed. The critique was saved.")}`);
   }

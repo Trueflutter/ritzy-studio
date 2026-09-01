@@ -4,7 +4,7 @@ import {
   generateConceptRevision,
   stageTextConfig,
   sumImagePlusTextUsd,
-  sumUsdCosts
+  sumUsdCostsStrict
 } from "@ritzy-studio/ai";
 import { configuredTextModel } from "@ritzy-studio/config";
 
@@ -329,10 +329,14 @@ export async function reviseConceptForRoom(
       throw new Error(renderAssetError.message);
     }
 
-    await supabase
+    const { error: primaryImageError } = await supabase
       .from("concepts")
       .update({ primary_image_asset_id: renderAsset.id })
       .eq("id", revisedConcept.id);
+
+    if (primaryImageError) {
+      throw new Error(primaryImageError.message);
+    }
 
     // A revision is the room's new current direction. Clear the prior
     // selection so the concepts page surfaces this revision as the hero
@@ -346,12 +350,18 @@ export async function reviseConceptForRoom(
     const revisionImageBytes = Buffer.from(result.imageBase64, "base64");
     revisedConceptId = revisedConcept.id;
 
-    // Tie the critique to the version it produced.
+    // Tie the critique to the version it produced. Post-success bookkeeping: a
+    // failure here must not fail the revision, but it must be visible.
     if (critiqueRow) {
-      await supabase
+      const { error: linkError } = await supabase
         .from("concept_critiques")
         .update({ concept_version_link: revisedConcept.id })
         .eq("id", critiqueRow.id);
+      if (linkError) {
+        console.error(
+          `Failed to link critique ${critiqueRow.id} to revision ${revisedConcept.id}: ${linkError.message}`
+        );
+      }
     }
 
     defer(async () => {
@@ -371,26 +381,30 @@ export async function reviseConceptForRoom(
           .from("concepts")
           .update({ diff_summary: diff.summary })
           .eq("id", revisedConcept.id);
-        const { data: jobRow } = await serviceSupabase
+        const { data: jobRow, error: jobRowError } = await serviceSupabase
           .from("ai_jobs")
           .select("cost_estimate_usd, output_summary")
           .eq("id", job.id)
           .maybeSingle();
-        await serviceSupabase
-          .from("ai_jobs")
-          .update({
-            cost_estimate_usd: sumUsdCosts(jobRow?.cost_estimate_usd ?? null, diff.textCostUsd),
-            output_summary: {
-              ...(jobRow?.output_summary as Record<string, unknown> | null),
-              visualDiff: {
-                changeApplied: diff.changeApplied,
-                unintendedChanges: diff.unintendedChanges,
-                summary: diff.summary,
-                model: diff.model
+        if (!jobRowError && jobRow) {
+          await serviceSupabase
+            .from("ai_jobs")
+            .update({
+              // Strict merge preserves the honest-null invariant: an unknown image
+              // cost stays null instead of being overwritten by the QA text cost.
+              cost_estimate_usd: sumUsdCostsStrict(jobRow.cost_estimate_usd, diff.textCostUsd),
+              output_summary: {
+                ...(jobRow.output_summary as Record<string, unknown> | null),
+                visualDiff: {
+                  changeApplied: diff.changeApplied,
+                  unintendedChanges: diff.unintendedChanges,
+                  summary: diff.summary,
+                  model: diff.model
+                }
               }
-            }
-          })
-          .eq("id", job.id);
+            })
+            .eq("id", job.id);
+        }
       } catch (error) {
         console.error(`Revision visual-diff QA failed (concept ${revisedConcept.id}):`, error);
       }
