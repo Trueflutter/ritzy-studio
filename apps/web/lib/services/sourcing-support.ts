@@ -103,6 +103,9 @@ export async function sourcingCandidateImageDataUrls(
   return Object.fromEntries(entries.filter((entry): entry is [string, string] => Boolean(entry)));
 }
 
+// Product ids the user has already kept in OTHER rooms. Matching demotes (not
+// excludes) them so the same anchor pieces stop reappearing across projects
+// while thin pools can still fall back to them.
 export async function recentlyUsedProductIdsForUser({
   serviceSupabase,
   userId,

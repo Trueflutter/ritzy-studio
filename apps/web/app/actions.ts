@@ -2,13 +2,10 @@
 
 import {
   analyzeInspirationImages,
-  evolinkCreditsToUsd,
   generateClarifyingQuestions,
   extractConceptImagePalette,
-  generateConceptRevision,
   sourceProductsFromConcept,
   stageTextConfig,
-  sumImagePlusTextUsd,
   sumUsdCosts
 } from "@ritzy-studio/ai";
 import type { Database } from "@ritzy-studio/db";
@@ -48,11 +45,11 @@ import { after } from "next/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import { selectShoppingItem, substituteProduct } from "@/lib/services/selection-swap";
 import {
-  generateAndStoreConceptViews,
   generateInitialConceptForRoom,
   selectConcept
 } from "@/lib/services/concept-generation";
 import { storageImageDataUrl } from "@/lib/services/storage-images";
+import { reviseConceptForRoom } from "@/lib/services/concept-revision";
 import {
   CATALOGUE_GROUNDED_CONCEPT_REFERENCE_IMAGE_BLOCK_MESSAGE,
   CATALOGUE_GROUNDED_CONCEPT_USER_SAFE_BLOCK_MESSAGE,
@@ -103,12 +100,7 @@ import {
 import { createClient } from "@/lib/supabase/server";
 import { FINAL_RENDER_STALE_MS } from "@/lib/render";
 import { localSkuFidelityModeEnabled } from "@/lib/render-flags";
-import {
-  configuredImageModel,
-  configuredImageProvider,
-  PRODUCT_SOURCING_MAX_IMAGE_BYTES,
-  visionImageDataUrl
-} from "@/lib/render-images";
+import { PRODUCT_SOURCING_MAX_IMAGE_BYTES } from "@/lib/render-images";
 import { enqueueFinalRender, runFinalRender } from "@/lib/render-runner";
 import {
   appUrl,
@@ -142,13 +134,6 @@ const INTERNAL_PILOT_SIGNUP_MESSAGE =
   "Internal pilot. Only ritzyinteriors.com email domains currently permitted";
 
 
-// Product ids the user has already kept in OTHER rooms. Matching demotes (not
-// excludes) them so the same anchor pieces stop reappearing across projects
-// while thin pools can still fall back to them.
-
-// Generates the additional camera angles for a stored concept and records them as
-// concept-linked room assets. Runs inside after(): view failures must never fail
-// the concept itself, so each view is best-effort.
 function productMatchingEngineV1Enabled() {
   return process.env.RITZY_PRODUCT_MATCHING_ENGINE_V1_ENABLED === "true";
 }
@@ -3694,275 +3679,37 @@ export async function reviseConceptAction(formData: FormData) {
     redirect("/login");
   }
 
-  const { data: room } = await supabase
-    .from("rooms")
-    .select("id, room_type")
-    .eq("id", roomId)
-    .eq("project_id", projectId)
-    .single();
+  const serviceSupabase = createServiceClient();
 
-  const { data: concept } = await supabase
-    .from("concepts")
-    .select("*")
-    .eq("id", conceptId)
-    .eq("room_id", roomId)
-    .single();
+  const result = await reviseConceptForRoom(
+    { supabase, serviceSupabase },
+    { userId: user.id, projectId, roomId, conceptId, critique },
+    {
+      defer: (task) =>
+        after(async () => {
+          await task();
+          revalidatePath(redirectPath);
+        })
+    }
+  );
 
-  if (!room || !concept) {
-    redirect("/");
-  }
-
-  if (concept.generation_job_id) {
-    const serviceSupabase = createServiceClient();
-    const anchors = await catalogueGroundingAnchorsForConcept({
-      serviceSupabase,
-      generationJobId: concept.generation_job_id
-    });
-
-    if (anchors.length > 0) {
+  switch (result.status) {
+    case "not_found":
+      redirect("/");
+    case "anchored":
       redirect(
         `${redirectPath}?message=${encodeURIComponent(
           "This room direction is ready for sourcing. To make changes, adjust selected pieces after the shopping list is built."
         )}`
       );
-    }
-  }
-
-  const { data: designBrief } = await supabase
-    .from("design_briefs")
-    .select("*")
-    .eq("id", concept.design_brief_id)
-    .single();
-
-  if (!designBrief) {
-    redirect(`/projects/${projectId}/rooms/${roomId}/brief`);
-  }
-
-  const { error: critiqueError } = await supabase.from("concept_critiques").insert({
-    concept_id: concept.id,
-    critique_text: critique,
-    created_by_user_id: user.id
-  });
-
-  if (critiqueError) {
-    throw new Error(critiqueError.message);
-  }
-
-  const { data: roomPhoto } = await supabase
-    .from("room_assets")
-    .select("*")
-    .eq("room_id", roomId)
-    .eq("asset_type", "room_photo")
-    .order("created_at", { ascending: true })
-    .limit(1)
-    .maybeSingle();
-
-  if (!roomPhoto) {
-    redirect(`/projects/${projectId}/rooms/${roomId}/photos`);
-  }
-
-  const { data: signedPhoto } = await supabase.storage
-    .from("room-assets")
-    .createSignedUrl(roomPhoto.storage_path, 60 * 30);
-
-  const { data: photoBlob, error: downloadError } = await supabase.storage
-    .from("room-assets")
-    .download(roomPhoto.storage_path);
-
-  if (!signedPhoto?.signedUrl || downloadError || !photoBlob) {
-    redirect(`${redirectPath}?message=${encodeURIComponent("The original room photo could not be prepared for revision.")}`);
-  }
-
-  const { data: measurements } = await supabase
-    .from("room_measurements")
-    .select("*")
-    .eq("room_id", roomId)
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  const { data: answeredQuestions = [] } = await supabase
-    .from("clarifying_questions")
-    .select("question, answer")
-    .eq("design_brief_id", designBrief.id)
-    .eq("status", "answered")
-    .order("created_at", { ascending: true })
-    .order("id", { ascending: true });
-
-  const serviceSupabase = createServiceClient();
-  const { data: job, error: jobError } = await serviceSupabase
-    .from("ai_jobs")
-    .insert({
-      user_id: user.id,
-      room_id: roomId,
-      job_type: "concept_revision",
-      status: "running",
-      provider: configuredImageProvider(),
-      model: `${stageTextConfig("revision_direction", configuredTextModel()).model} + ${configuredImageModel()}`,
-      prompt_version: null,
-      input_summary: {
-        roomId,
-        parentConceptId: concept.id,
-        critiqueLength: critique.length
-      }
-    })
-    .select("id")
-    .single();
-
-  if (jobError) {
-    throw new Error(jobError.message);
-  }
-
-  try {
-    const revisionPhotoBytes = Buffer.from(await photoBlob.arrayBuffer());
-    const result = await generateConceptRevision({
-      roomType: room.room_type,
-      roomPhotoUrl: await visionImageDataUrl(revisionPhotoBytes, roomPhoto.mime_type),
-      roomPhotoReferenceUrl: signedPhoto.signedUrl,
-      roomPhotoBytes: revisionPhotoBytes,
-      roomPhotoMimeType: roomPhoto.mime_type,
-      styleNotes: designBrief.style_notes,
-      colorNotes: designBrief.color_notes,
-      budgetNotes: designBrief.budget_notes,
-      functionalRequirements: designBrief.functional_requirements,
-      avoidNotes: designBrief.avoid_notes,
-      inspirationNotes: designBrief.inspiration_notes,
-      clarifyingAnswers: (answeredQuestions ?? [])
-        .filter((question) => question.answer)
-        .map((question) => ({
-          question: question.question,
-          answer: question.answer ?? ""
-        })),
-      measurements: measurements
-        ? {
-            wallLengthCm: measurements.wall_length_cm,
-            roomDepthCm: measurements.room_depth_cm,
-            ceilingHeightCm: measurements.ceiling_height_cm,
-            notes: measurements.notes
-          }
-        : null,
-      previousConcept: {
-        title: concept.title,
-        description: concept.description
-      },
-      critique
-    });
-
-    await serviceSupabase
-      .from("ai_jobs")
-      .update({
-        status: "succeeded",
-        completed_at: new Date().toISOString(),
-        provider: result.imageProvider,
-        model: `${result.textModel} + ${result.imageModel}`,
-        prompt_version: result.promptVersion,
-        cost_estimate_usd: sumImagePlusTextUsd(evolinkCreditsToUsd(result.imageCreditsUsed), result.textCostUsd),
-        output_summary: {
-          promptKey: result.promptKey,
-          title: result.concept.title,
-          parentConceptId: concept.id,
-          revisedPrompt: result.revisedPrompt ?? null,
-          imageProvider: result.imageProvider,
-          imageModel: result.imageModel,
-          imageLatencySeconds: result.imageLatencySeconds,
-          imageFallbackUsed: result.imageFallbackUsed,
-          imageFallbackError: result.imageFallbackError ?? null,
-          imageCreditsUsed: result.imageCreditsUsed
-        }
-      })
-      .eq("id", job.id);
-
-    const { data: revisedConcept, error: conceptError } = await supabase
-      .from("concepts")
-      .insert({
-        room_id: roomId,
-        design_brief_id: designBrief.id,
-        parent_concept_id: concept.id,
-        generation_job_id: job.id,
-        title: result.concept.title,
-        description: [
-          result.concept.rationale,
-          "",
-          `Uncertainty: ${result.concept.uncertaintyNote}`
-        ].join("\n"),
-        status: "generated"
-      })
-      .select("id")
-      .single();
-
-    if (conceptError) {
-      throw new Error(conceptError.message);
-    }
-
-    const renderPath = `${user.id}/${roomId}/${revisedConcept.id}.png`;
-    const { error: uploadError } = await serviceSupabase.storage
-      .from("generated-renders")
-      .upload(renderPath, Buffer.from(result.imageBase64, "base64"), {
-        contentType: "image/png",
-        upsert: true
-      });
-
-    if (uploadError) {
-      throw new Error(uploadError.message);
-    }
-
-    const { data: renderAsset, error: renderAssetError } = await supabase
-      .from("room_assets")
-      .insert({
-        room_id: roomId,
-        asset_type: "concept_render",
-        storage_path: renderPath,
-        mime_type: "image/png",
-        is_primary: true
-      })
-      .select("id")
-      .single();
-
-    if (renderAssetError) {
-      throw new Error(renderAssetError.message);
-    }
-
-    await supabase
-      .from("concepts")
-      .update({ primary_image_asset_id: renderAsset.id })
-      .eq("id", revisedConcept.id);
-
-    // A revision is the room's new current direction. Clear the prior
-    // selection so the concepts page surfaces this revision as the hero
-    // instead of the now-superseded concept it was revised from.
-    await supabase
-      .from("concepts")
-      .update({ status: "generated" })
-      .eq("room_id", roomId)
-      .eq("status", "selected");
-
-    const revisionImageBytes = Buffer.from(result.imageBase64, "base64");
-    after(async () => {
-      await generateAndStoreConceptViews({
-        serviceSupabase,
-        userId: user.id,
-        roomId,
-        conceptId: revisedConcept.id,
-        roomType: room.room_type,
-        conceptTitle: result.concept.title,
-        conceptDescription: result.concept.rationale,
-        conceptGenerationPrompt: result.concept.generationPrompt,
-        heroImageBytes: revisionImageBytes,
-        heroImageStoragePath: renderPath
-      });
-      revalidatePath(redirectPath);
-    });
-  } catch (error) {
-    await serviceSupabase
-      .from("ai_jobs")
-      .update({
-        status: "failed",
-        completed_at: new Date().toISOString(),
-        error_message: error instanceof Error ? error.message : "Concept revision failed."
-      })
-      .eq("id", job.id);
-
-    redirect(`${redirectPath}?message=${encodeURIComponent("Concept revision failed. The critique was saved.")}`);
+    case "missing_brief":
+      redirect(`/projects/${projectId}/rooms/${roomId}/brief`);
+    case "missing_photo":
+      redirect(`/projects/${projectId}/rooms/${roomId}/photos`);
+    case "photo_unprepared":
+      redirect(`${redirectPath}?message=${encodeURIComponent("The original room photo could not be prepared for revision.")}`);
+    case "revision_failed":
+      redirect(`${redirectPath}?message=${encodeURIComponent("Concept revision failed. The critique was saved.")}`);
   }
 
   revalidatePath(redirectPath);

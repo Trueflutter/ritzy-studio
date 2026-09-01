@@ -27,6 +27,9 @@ import type { ServiceSupabaseClient, UserSupabaseClient } from "./supabase-clien
 // concept views) goes through the injected defer so the service stays free of
 // next/server.
 
+// Generates the additional camera angles for a stored concept and records them as
+// concept-linked room assets. Runs deferred (after()): view failures must never
+// fail the concept itself, so each view is best-effort.
 export async function generateAndStoreConceptViews({
   serviceSupabase,
   userId,
