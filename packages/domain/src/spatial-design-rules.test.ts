@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
 
-import { catalogFirstRolesForRoom, type RoomBundleRole } from "./catalog-first-room-generation";
 import {
   deriveSpatialDesignerWarnings,
   evaluateHardCheckableSpatialRules,
@@ -9,6 +8,7 @@ import {
   parseSpatialIntent,
   spatialDesignRules,
   spatialLayoutModeForRoomType,
+  type SpatialRoleFact,
   type SpatialRoomFacts
 } from "./spatial-design-rules";
 
@@ -126,10 +126,19 @@ assert.equal(
   "needs_measurement"
 );
 
-const combinedRoles = [
-  ...catalogFirstRolesForRoom("living_room"),
-  ...catalogFirstRolesForRoom("dining_room")
-] as readonly RoomBundleRole[];
+// The retired planner's living + dining blueprint roles reduced to the two fields
+// the rules read (id, quantity); C6 needs realistic combined-zone role coverage.
+const combinedRoles: readonly SpatialRoleFact[] = [
+  { id: "sofa", quantity: 1 },
+  { id: "rug", quantity: 1 },
+  { id: "coffee_table", quantity: 1 },
+  { id: "tv_media_console", quantity: 1 },
+  { id: "lighting", quantity: 2 },
+  { id: "cushions", quantity: 4 },
+  { id: "dining_table", quantity: 1 },
+  { id: "dining_chairs", quantity: 6 },
+  { id: "sideboard_console", quantity: 1 }
+];
 
 assert.equal(
   evaluateSpatialRule("C6", {
@@ -180,17 +189,7 @@ assert.equal(
     intent: { diningSeatCount: 4 },
     measurements: verifiedMeasurements(420, 420),
     roles: [
-      {
-        id: "dining_chairs",
-        roomType: "dining_room",
-        label: "dining chairs",
-        category: "chairs",
-        acceptedCategories: ["chairs"],
-        quantity: 6,
-        required: true,
-        importance: "anchor",
-        includeWhen: "always"
-      }
+      { id: "dining_chairs", quantity: 6 }
     ]
   }).status,
   "fail"

@@ -2,9 +2,18 @@ import {
   fitConfidenceUsePolicy,
   type MeasurementConfidence,
   type MeasurementSourceKind
-} from "./measurement-intelligence";
+} from "./measurement-confidence";
 
-import type { CatalogFirstRoomType, RoomBundleRole } from "./catalog-first-room-generation";
+// Kept from the retired catalog-first planner family (Gate 1 disposition): the
+// pipeline's internal room-type key. The rules read exactly id and quantity from
+// a role, so that is the whole role contract here; the planner's wider role
+// vocabulary died with the planner.
+export type CatalogFirstRoomType = "living_room" | "living_dining" | "dining_room" | "bedroom" | "home_office";
+
+export type SpatialRoleFact = {
+  id: string;
+  quantity: number;
+};
 
 export type SpatialLayoutMode =
   | "living_only"
@@ -241,7 +250,7 @@ export type SpatialRoomFacts = {
   roomType: CatalogFirstRoomType;
   intent?: SpatialIntent | null;
   measurements?: SpatialRoomMeasurements | null;
-  roles?: readonly RoomBundleRole[];
+  roles?: readonly SpatialRoleFact[];
   footprintsByRoleId?: Readonly<Record<string, SpatialFootprint | null | undefined>>;
 };
 
@@ -749,7 +758,7 @@ function hasFootprint(footprint: SpatialFootprint | null | undefined): footprint
   return Boolean(footprint?.widthCm && footprint.depthCm);
 }
 
-function roleQuantity(roles: readonly RoomBundleRole[], roleId: string) {
+function roleQuantity(roles: readonly SpatialRoleFact[], roleId: string) {
   return roles.find((roleItem) => roleItem.id === roleId)?.quantity ?? 0;
 }
 
