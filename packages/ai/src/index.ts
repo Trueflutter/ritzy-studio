@@ -20,6 +20,9 @@ import {
   revisionVisualDiffJsonSchema,
   revisionVisualDiffPrompt,
   revisionVisualDiffResponseSchema,
+  specExtractionJsonSchema,
+  specExtractionPrompt,
+  specExtractionResponseSchema,
   conceptPaletteJsonSchema,
   conceptPalettePrompt,
   conceptPaletteResponseSchema,
@@ -607,7 +610,49 @@ function truncateForPrompt(value: string, maxChars: number) {
   return collapsed.length <= maxChars ? collapsed : `${collapsed.slice(0, maxChars - 1)}…`;
 }
 
-export function buildFinalGroundedRenderPrompt({
+// Same Evolink ~4000-token submit cap as the initial concept prompt, but the
+// render path appends a spatial-QA retry suffix (up to ~1.5k chars) AFTER this
+// builder runs, so the build budget leaves that headroom: 15k chars ≈ 3.4k tokens
+// at the audited 5.27 chars/token, ≈ 3.9k with a max suffix at the pessimistic
+// 4.4 ratio — under the cap either way.
+export const FINAL_GROUNDED_RENDER_PROMPT_CHAR_BUDGET = 15_000;
+const FINAL_RENDER_PRODUCT_SUMMARY_FLOOR_CHARS = 1_500;
+
+export function buildFinalGroundedRenderPrompt(input: {
+  roomType: string;
+  conceptTitle: string;
+  conceptDescription?: string | null;
+  hasConceptImage?: boolean;
+  productSummary: string;
+  spatialIntent?: SpatialPromptIntent | null;
+  strictSourceRoomPreservation?: boolean;
+}) {
+  let current = { ...input };
+  let prompt = assembleFinalGroundedRenderPrompt(current);
+
+  // Give back the overflow from the product summary first (entries are already
+  // priority-ordered, so truncation drops the tail, never the anchors), then from
+  // the concept description. Iterative because each trim changes the assembled
+  // length non-linearly.
+  for (let pass = 0; pass < 4 && prompt.length > FINAL_GROUNDED_RENDER_PROMPT_CHAR_BUDGET; pass++) {
+    const overflow = prompt.length - FINAL_GROUNDED_RENDER_PROMPT_CHAR_BUDGET;
+    if (current.productSummary.length - overflow > FINAL_RENDER_PRODUCT_SUMMARY_FLOOR_CHARS) {
+      current = {
+        ...current,
+        productSummary: truncateForPrompt(current.productSummary, current.productSummary.length - overflow)
+      };
+    } else if (current.conceptDescription) {
+      current = { ...current, conceptDescription: null };
+    } else {
+      break;
+    }
+    prompt = assembleFinalGroundedRenderPrompt(current);
+  }
+
+  return prompt;
+}
+
+function assembleFinalGroundedRenderPrompt({
   roomType,
   conceptTitle,
   conceptDescription,
@@ -2435,6 +2480,101 @@ export async function generateConceptRevision(
     imageBase64: imageResult.imageBase64,
     revisedPrompt: imageResult.revisedPrompt ?? null,
     changePlan: direction.changePlan
+  };
+}
+
+export type ExtractRoomDesignSpecInput = {
+  roomType: string;
+  conceptImage: { bytes: Buffer; mimeType: string };
+  brief: {
+    styleNotes?: string | null;
+    colorNotes?: string | null;
+    functionalRequirements?: string | null;
+    avoidNotes?: string | null;
+  };
+  measurements?: {
+    wallLengthCm?: number | null;
+    roomDepthCm?: number | null;
+    ceilingHeightCm?: number | null;
+  } | null;
+};
+
+export type ExtractRoomDesignSpecResult = {
+  promptKey: string;
+  promptVersion: string;
+  model: string;
+  textCostUsd?: number | null;
+  objects: Array<{
+    role: string;
+    label: string;
+    quantity: number;
+    sizeDescriptor: string | null;
+    capacity: string | null;
+    paletteMaterials: string[];
+  }>;
+  mustPreserve: string[];
+};
+
+// The spec-at-approval vision pass (S2): reads the approved concept image and
+// produces the canonical object list plus the must-preserve architecture. The
+// caller persists it to room_design_specs and the /spec screen makes it editable
+// truth.
+export async function extractRoomDesignSpec(
+  input: ExtractRoomDesignSpecInput
+): Promise<ExtractRoomDesignSpecResult> {
+  const env = parseServerEnv(process.env);
+  const client = createTextClient(env);
+  const { model: stageModel, requestParams: stageRequestParams } = stageTextConfig("spec_extraction", env.OPENAI_TEXT_MODEL);
+
+  const response = await client.responses.create({
+    max_output_tokens: 8000,
+    ...stageRequestParams,
+    input: [
+      {
+        role: "system",
+        content: specExtractionPrompt.system
+      },
+      {
+        role: "user",
+        content: [
+          {
+            type: "input_text",
+            text: JSON.stringify({
+              roomType: input.roomType,
+              brief: input.brief,
+              measurements: input.measurements ?? null
+            })
+          },
+          {
+            type: "input_text",
+            text: "The next image is the APPROVED concept. Extract the design spec from it."
+          },
+          {
+            type: "input_image",
+            image_url: await visionDataUrl(input.conceptImage.bytes, input.conceptImage.mimeType),
+            detail: "high"
+          }
+        ]
+      }
+    ],
+    text: {
+      format: {
+        type: "json_schema",
+        name: "ritzy_room_design_spec",
+        schema: specExtractionJsonSchema,
+        strict: true
+      }
+    }
+  });
+
+  const spec = specExtractionResponseSchema.parse(JSON.parse(response.output_text));
+  return {
+    promptKey: specExtractionPrompt.key,
+    promptVersion: specExtractionPrompt.version,
+    model: stageModel,
+    textCostUsd: estimateTextCostUsd(stageModel, response.usage),
+    objects: spec.objects,
+    mustPreserve: spec.mustPreserve
   };
 }
 
