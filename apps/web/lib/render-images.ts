@@ -71,8 +71,15 @@ export async function fetchRemoteImage(url: string): Promise<CatalogueReferenceI
   // re-validated hop by hop. Refusals return null, which callers already treat as
   // "no fetchable reference image".
   const allowlist = remoteImageAllowlist();
-  const sanitized = sanitizeReferenceImageUrl(url);
-  if (!checkReferenceImageUrl(sanitized, allowlist).ok) {
+  const stripHosts = process.env.RITZY_REFERENCE_STRIP_QUERY_HOSTS
+    ?.split(",")
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+  const sanitized = sanitizeReferenceImageUrl(url, stripHosts);
+  const verdict = checkReferenceImageUrl(sanitized, allowlist);
+  if (!verdict.ok) {
+    // Distinct from a CDN flake: this URL was refused by policy, not unreachable.
+    console.warn(`[reference-guard] refusing remote image fetch: ${verdict.reason}`);
     return null;
   }
 

@@ -27,7 +27,14 @@ const DEFAULT_REFERENCE_IMAGE_HOSTS = [
   "media.chattelsandmore.com",
   "www.chattelsandmore.com",
   "2xlhome.com",
-  "files.evolink.ai"
+  "files.evolink.ai",
+  // Image hosts of the five adapters that are dry-run today but registered in the
+  // ingestion CLI; the guard must not orphan their products the day one is enabled.
+  "www.homesrus.ae",
+  "www.ikea.com",
+  "prodmarinamedia.gumlet.io",
+  "cdn.panhomestores.com",
+  "www.theone.com"
 ];
 
 // Hosts whose resize/query parameters are known to break downstream image providers.
@@ -90,8 +97,13 @@ function isPrivateOrLocalHost(host: string): boolean {
   if (lowered === "localhost" || lowered.endsWith(".localhost") || lowered.endsWith(".local")) {
     return true;
   }
-  if (lowered === "::1" || lowered === "::" || lowered.startsWith("fe80:") || lowered.startsWith("fc") || lowered.startsWith("fd")) {
-    return true;
+  if (lowered.includes(":")) {
+    // IPv6 literal (URL.hostname strips the brackets): loopback, unspecified,
+    // link-local, and unique-local ranges are refused.
+    if (lowered === "::1" || lowered === "::" || lowered.startsWith("fe80:") || lowered.startsWith("fc") || lowered.startsWith("fd")) {
+      return true;
+    }
+    return false;
   }
   const ipv4 = lowered.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
   if (!ipv4) {
@@ -114,7 +126,9 @@ function isPrivateOrLocalHost(host: string): boolean {
 }
 
 export function sanitizeReferenceImageUrl(url: string, stripQueryHosts?: string[] | null): string {
-  const hosts = stripQueryHosts && stripQueryHosts.length > 0 ? stripQueryHosts : DEFAULT_STRIP_QUERY_HOSTS;
+  // Configured hosts EXTEND the defaults; replacing them would silently reopen the
+  // 2XL "Invalid parameters" outage the defaults exist to prevent.
+  const hosts = [...DEFAULT_STRIP_QUERY_HOSTS, ...(stripQueryHosts ?? [])];
   try {
     const parsed = new URL(url);
     const host = parsed.hostname.toLowerCase();
@@ -210,6 +224,8 @@ export async function preflightReferenceImage(
       response = await fetchWithTimeout(fetchImpl, currentUrl, "HEAD", timeoutMs);
       if (response.status === 405 || response.status === 501 || response.status === 403) {
         response = await fetchWithTimeout(fetchImpl, currentUrl, "GET", timeoutMs);
+        // Headers are all we need; an unconsumed body pins its pooled socket under undici.
+        void response.body?.cancel().catch(() => {});
       }
     } catch (error) {
       return { ok: false, reason: `preflight fetch failed: ${(error as Error).message}` };

@@ -82,6 +82,37 @@ const extended = buildReferenceHostAllowlist({
 });
 assert.equal(checkReferenceImageUrl("https://images.example-retailer.ae/p.jpg", extended).ok, true);
 
+// The five dry-run retailers' image hosts are allowlisted by default, so enabling one
+// later can never orphan its products' images.
+for (const url of [
+  "https://www.homesrus.ae/media/catalog/product/a.jpg",
+  "https://www.ikea.com/ae/en/images/products/b.jpg",
+  "https://prodmarinamedia.gumlet.io/products/c.jpg",
+  "https://cdn.panhomestores.com/media/d.webp",
+  "https://www.theone.com/media/e.jpg"
+]) {
+  assert.equal(checkReferenceImageUrl(url, allowlist).ok, true, `expected default allow for ${url}`);
+}
+
+// Configured strip-query hosts EXTEND the defaults; the 2XL default must survive
+// any env override (regression: replacing defaults would reopen the Phase 0 outage).
+assert.equal(
+  sanitizeReferenceImageUrl(
+    "https://2xlhome.com/media/catalog/product/x.jpg?width=600&height=492&canvas=",
+    ["prodmarinamedia.gumlet.io"]
+  ),
+  "https://2xlhome.com/media/catalog/product/x.jpg"
+);
+assert.equal(
+  sanitizeReferenceImageUrl("https://prodmarinamedia.gumlet.io/p.jpg?w=600", ["prodmarinamedia.gumlet.io"]),
+  "https://prodmarinamedia.gumlet.io/p.jpg"
+);
+
+// DNS hostnames that merely start with fc/fd are not IPv6 literals and stay allowed
+// when configured.
+const fdHost = buildReferenceHostAllowlist({ configured: "fdcdn.retailer.com" });
+assert.equal(checkReferenceImageUrl("https://fdcdn.retailer.com/a.jpg", fdHost).ok, true);
+
 // --- preflightReferenceImage ---------------------------------------------------
 
 type MockResponse = {
