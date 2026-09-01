@@ -42,7 +42,15 @@ export type ReviseConceptResult =
 export async function reviseConceptForRoom(
   { supabase, serviceSupabase }: { supabase: UserSupabaseClient; serviceSupabase: ServiceSupabaseClient },
   { userId, projectId, roomId, conceptId, critique }: ReviseConceptInput,
-  { defer }: { defer: (task: () => Promise<void>) => void }
+  {
+    defer,
+    // Injectable like defer, so the success path's persisted transitions are
+    // testable without a live provider.
+    generateRevision = generateConceptRevision
+  }: {
+    defer: (task: () => Promise<void>) => void;
+    generateRevision?: typeof generateConceptRevision;
+  }
 ): Promise<ReviseConceptResult> {
   let revisedConceptId = "";
   const { data: room } = await supabase
@@ -147,7 +155,7 @@ export async function reviseConceptForRoom(
     if (!images.signedPhotoUrl || !images.photoBytes) {
       return { status: "photo_unprepared" };
     }
-    const result = await generateConceptRevision({
+    const result = await generateRevision({
       roomType: room.room_type,
       roomPhotoUrl: await visionImageDataUrl(images.photoBytes, roomPhoto.mime_type),
       roomPhotoReferenceUrl: images.signedPhotoUrl,

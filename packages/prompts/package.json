@@ -11,6 +11,7 @@
     "test": "tsx src/product-enrichment.test.ts && tsx src/interior-design-language.test.ts"
   },
   "dependencies": {
+    "@ritzy-studio/domain": "workspace:*",
     "zod": "^4.2.1"
   },
   "devDependencies": {

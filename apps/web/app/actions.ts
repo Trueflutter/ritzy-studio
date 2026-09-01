@@ -31,6 +31,7 @@ import {
 import { storageImageDataUrl } from "@/lib/services/storage-images";
 import { reviseConceptForRoom } from "@/lib/services/concept-revision";
 import { confirmRoomDesignSpec } from "@/lib/services/design-spec";
+import { parseSpecLedgerForm } from "@/lib/spec-ledger-form-data";
 import {
   findMoreShoppingOptions,
   groundProductsForRoom,
@@ -1538,32 +1539,13 @@ export async function confirmDesignSpecAction(formData: FormData) {
     redirect("/login");
   }
 
-  // Clamped to the schema maximum so a crafted count cannot spin the loop.
-  const objectCount = Math.min(Number(formData.get("objectCount")) || 0, 30);
-  const objects = [];
-  for (let index = 0; index < objectCount; index += 1) {
-    if (formData.get(`object-${index}-remove`) === "on") {
-      continue;
-    }
-    const paletteMaterials = String(formData.get(`object-${index}-paletteMaterials`) ?? "")
-      .split(",")
-      .map((entry) => entry.trim())
-      .filter(Boolean);
-    const sizeDescriptor = String(formData.get(`object-${index}-sizeDescriptor`) ?? "").trim();
-    const capacity = String(formData.get(`object-${index}-capacity`) ?? "").trim();
-    objects.push({
-      role: String(formData.get(`object-${index}-role`) ?? "").trim(),
-      label: String(formData.get(`object-${index}-label`) ?? "").trim(),
-      quantity: Number(formData.get(`object-${index}-quantity`) ?? 0),
-      sizeDescriptor: sizeDescriptor.length > 0 ? sizeDescriptor : null,
-      capacity: capacity.length > 0 ? capacity : null,
-      paletteMaterials
-    });
+  const parsedForm = parseSpecLedgerForm(formData);
+
+  if (!parsedForm.ok) {
+    redirect(`${specPath}?message=${encodeURIComponent(parsedForm.message)}`);
   }
-  const mustPreserve = String(formData.get("mustPreserve") ?? "")
-    .split("\n")
-    .map((entry) => entry.trim())
-    .filter(Boolean);
+
+  const { objects, mustPreserve } = parsedForm;
 
   const result = await confirmRoomDesignSpec(supabase, { roomId, specId, objects, mustPreserve });
 

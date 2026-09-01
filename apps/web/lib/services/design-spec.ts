@@ -61,7 +61,12 @@ export type EnsureRoomDesignSpecResult =
 
 export async function ensureRoomDesignSpec(
   { supabase, serviceSupabase }: { supabase: UserSupabaseClient; serviceSupabase: ServiceSupabaseClient },
-  { userId, roomId }: EnsureRoomDesignSpecInput
+  { userId, roomId }: EnsureRoomDesignSpecInput,
+  {
+    // Injectable so the extraction-path state transitions are testable without a
+    // live provider.
+    extract = extractRoomDesignSpec
+  }: { extract?: typeof extractRoomDesignSpec } = {}
 ): Promise<EnsureRoomDesignSpecResult> {
   const { data: room } = await supabase
     .from("rooms")
@@ -163,7 +168,7 @@ export async function ensureRoomDesignSpec(
     .single();
 
   try {
-    const extraction = await extractRoomDesignSpec({
+    const extraction = await extract({
       roomType: room.room_type,
       conceptImage: {
         bytes: render.bytes,

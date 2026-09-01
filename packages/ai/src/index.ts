@@ -1867,13 +1867,6 @@ function sourcingRoleKey(category: string, roleLabel: string) {
   return `${category}::${roleLabel}`.toLowerCase().replace(/[^a-z0-9:]+/g, "_");
 }
 
-
-// The image model has tight prompt-token limits; keep the anchor summary to the visual
-// facts the renderer can act on (mirrors the final render's slimming). Full descriptions
-// and selection rationales still reach the DIRECTION model via
-// catalogueProductDirectionContent — the text endpoint has generous limits.
-
-
 export async function generateInitialConcept(
   input: GenerateInitialConceptInput
 ): Promise<GenerateInitialConceptResult> {

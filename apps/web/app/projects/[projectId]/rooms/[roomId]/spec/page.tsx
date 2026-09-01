@@ -5,6 +5,7 @@ import { Suspense } from "react";
 
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
+import { confirmDesignSpecAction } from "@/app/actions";
 import { ensureRoomDesignSpec } from "@/lib/services/design-spec";
 import { SpecLedgerForm } from "./spec-ledger-form";
 
@@ -182,6 +183,7 @@ async function SpecLedgerSection({
         </div>
       ) : null}
       <SpecLedgerForm
+        action={confirmDesignSpecAction}
         conceptTitle={result.conceptTitle}
         extracted={result.spec.status === "extracted"}
         mustPreserve={result.spec.mustPreserve}

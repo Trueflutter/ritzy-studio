@@ -1,3 +1,4 @@
+import { designSpecMustPreserveSchema, designSpecObjectsSchema } from "@ritzy-studio/domain";
 import { z } from "zod";
 
 export {
@@ -439,18 +440,12 @@ export const specExtractionPrompt = {
   ].join("\n")
 } as const;
 
-export const specObjectSchema = z.object({
-  role: z.string().min(2).max(60),
-  label: z.string().min(2).max(120),
-  quantity: z.number().int().min(1).max(24),
-  sizeDescriptor: z.string().min(2).max(200).nullable(),
-  capacity: z.string().min(2).max(120).nullable(),
-  paletteMaterials: z.array(z.string().min(2).max(120)).max(8)
-});
-
+// Single source of truth for the spec shape: the domain schemas that validate
+// the room_design_specs jsonb columns also validate the extraction response, so
+// the two can never drift (a drift would make every extraction re-run on read).
 export const specExtractionResponseSchema = z.object({
-  objects: z.array(specObjectSchema).min(1).max(30),
-  mustPreserve: z.array(z.string().min(2).max(200)).max(16)
+  objects: designSpecObjectsSchema,
+  mustPreserve: designSpecMustPreserveSchema
 });
 
 export const specExtractionJsonSchema = {

@@ -89,6 +89,138 @@ async function main() {
     assert.deepEqual(result, { status: "concept_image_unprepared" });
   }
 
+  // --- A recent running extraction blocks a new paid call (in-flight guard)
+  {
+    const { client } = fakeSupabase((call) => {
+      if (call.table === "rooms") return { data: { id: "room-1", room_type: "Living Room" } };
+      if (call.table === "concepts") {
+        return { data: { id: "concept-1", title: "Warm Gallery", status: "selected", primary_image_asset_id: "asset-1" } };
+      }
+      if (call.table === "room_design_specs") return { data: null };
+      return { data: null };
+    });
+    let guardCall: RecordedCall | null = null;
+    const { client: service, calls: serviceCalls } = fakeSupabase((call) => {
+      if (call.table === "ai_jobs" && call.op === "select") {
+        guardCall = call;
+        return { data: { id: "job-running" } };
+      }
+      return { data: null };
+    });
+    const result = await ensureRoomDesignSpec(
+      { supabase: client, serviceSupabase: service },
+      INPUT
+    );
+    assert.deepEqual(result, { status: "extraction_running" });
+    assert.equal(serviceCalls.filter((call: RecordedCall) => call.op === "insert").length, 0);
+    const filters = Object.fromEntries((guardCall as RecordedCall | null)?.filters ?? []);
+    assert.equal(filters.job_type, "spec_extraction");
+    assert.equal(filters.status, "running");
+    assert.equal((guardCall as RecordedCall | null)?.gte?.[0]?.[0], "created_at");
+  }
+
+  // --- A malformed stored row is re-extracted and REPLACED via upsert
+  {
+    const { client, calls } = fakeSupabase((call) => {
+      if (call.table === "rooms") return { data: { id: "room-1", room_type: "Living Room" } };
+      if (call.table === "concepts") {
+        return { data: { id: "concept-1", title: "Warm Gallery", status: "selected", primary_image_asset_id: "asset-1" } };
+      }
+      if (call.table === "room_design_specs" && call.op === "select") {
+        return { data: { id: "spec-1", room_id: "room-1", concept_id: "concept-1", objects: [{ bad: true }], must_preserve: [], status: "extracted" } };
+      }
+      if (call.table === "room_design_specs" && call.op === "upsert") {
+        return { data: { id: "spec-1", room_id: "room-1", concept_id: "concept-1", objects: OBJECTS, must_preserve: ["sliding doors"], status: "extracted" } };
+      }
+      if (call.table === "room_assets") {
+        return { data: { storage_path: "u/room-1/concept-1.png", mime_type: "image/png" } };
+      }
+      return { data: null };
+    }, (storageCall) => {
+      if (storageCall.op === "download") return { data: new Blob([Buffer.from([1])]) };
+      if (storageCall.op === "createSignedUrl") return { data: { signedUrl: "https://signed.example/r" } };
+      return { data: null };
+    });
+    const { client: service } = fakeSupabase((call) => {
+      if (call.table === "ai_jobs" && call.op === "insert") return { data: { id: "job-1" } };
+      return { data: null };
+    }, (storageCall) => {
+      if (storageCall.op === "download") return { data: new Blob([Buffer.from([1])]) };
+      if (storageCall.op === "createSignedUrl") return { data: { signedUrl: "https://signed.example/r" } };
+      return { data: null };
+    });
+    let extracted = false;
+    const result = await ensureRoomDesignSpec(
+      { supabase: client, serviceSupabase: service },
+      INPUT,
+      {
+        extract: async () => {
+          extracted = true;
+          return {
+            promptKey: "concept.spec_extraction",
+            promptVersion: "test",
+            model: "stub",
+            textCostUsd: 0.001,
+            objects: OBJECTS,
+            mustPreserve: ["sliding doors"]
+          };
+        }
+      }
+    );
+    assert.ok(extracted, "a malformed stored row must trigger re-extraction");
+    assert.equal(result.status, "ready");
+    assert.equal(result.status === "ready" && result.extractedNow, true);
+    const upsert = calls.find((call: RecordedCall) => call.op === "upsert");
+    assert.ok(upsert, "the write must be an upsert so the malformed row is replaced");
+    assert.equal(upsert?.upsertOptions?.onConflict, "room_id,concept_id");
+  }
+
+  // --- A failing extraction marks the ai_job failed and resolves extraction_failed
+  {
+    const { client } = fakeSupabase((call) => {
+      if (call.table === "rooms") return { data: { id: "room-1", room_type: "Living Room" } };
+      if (call.table === "concepts") {
+        return { data: { id: "concept-1", title: "Warm Gallery", status: "selected", primary_image_asset_id: "asset-1" } };
+      }
+      if (call.table === "room_design_specs") return { data: null };
+      if (call.table === "room_assets") {
+        return { data: { storage_path: "u/room-1/concept-1.png", mime_type: "image/png" } };
+      }
+      return { data: null };
+    }, (storageCall) => {
+      if (storageCall.op === "download") return { data: new Blob([Buffer.from([1])]) };
+      if (storageCall.op === "createSignedUrl") return { data: { signedUrl: "https://s.example/r" } };
+      return { data: null };
+    });
+    const serviceWrites: RecordedCall[] = [];
+    const { client: service } = fakeSupabase((call) => {
+      if (call.op !== "select") {
+        serviceWrites.push(call);
+        if (call.table === "ai_jobs" && call.op === "insert") return { data: { id: "job-1" } };
+      }
+      return { data: null };
+    }, (storageCall) => {
+      if (storageCall.op === "download") return { data: new Blob([Buffer.from([1])]) };
+      if (storageCall.op === "createSignedUrl") return { data: { signedUrl: "https://s.example/r" } };
+      return { data: null };
+    });
+    const result = await ensureRoomDesignSpec(
+      { supabase: client, serviceSupabase: service },
+      INPUT,
+      {
+        extract: async () => {
+          throw new Error("provider down");
+        }
+      }
+    );
+    assert.deepEqual(result, { status: "extraction_failed" });
+    const failedUpdate = serviceWrites.find(
+      (call) => call.table === "ai_jobs" && call.op === "update"
+    );
+    assert.equal(failedUpdate?.payload?.status, "failed");
+    assert.equal(failedUpdate?.payload?.error_message, "provider down");
+  }
+
   // --- Confirm: invalid objects are refused with no write
   {
     const { client, calls } = fakeSupabase(() => ({ data: null }));

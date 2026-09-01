@@ -332,6 +332,17 @@ export default async function ConceptsPage({
             </p>
           ) : null}
 
+          {hero.diff_summary ? (
+            <div className="mt-7 border-t border-line-strong pt-5">
+              <p className="font-body text-caption font-medium uppercase tracking-[0.32em] text-accent-deep">
+                What changed in this version
+              </p>
+              <p className="mt-3 font-display text-body-l italic leading-[1.6] text-ink-secondary">
+                {hero.diff_summary}
+              </p>
+            </div>
+          ) : null}
+
           {hero.uncertainty ? (
             <div className="mt-7 border-t border-line-strong pt-5">
               <p className="font-body text-caption font-medium uppercase tracking-[0.32em] text-accent-deep">

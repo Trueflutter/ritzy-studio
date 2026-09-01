@@ -4,7 +4,7 @@
 
 export type RecordedCall = {
   table: string;
-  op: "select" | "update" | "insert";
+  op: "select" | "update" | "insert" | "upsert";
   filters: Array<[string, unknown]>;
   not: Array<[string, unknown]>;
   neq: Array<[string, unknown]>;
@@ -15,6 +15,7 @@ export type RecordedCall = {
   order: Array<[string, unknown]>;
   limit?: number;
   payload?: Record<string, unknown>;
+  upsertOptions?: { onConflict?: string };
   single: boolean;
 };
 
@@ -58,6 +59,12 @@ export function fakeSupabase(respond: Responder, respondStorage: StorageResponde
       insert(payload: Record<string, unknown>) {
         call.op = "insert";
         call.payload = payload;
+        return builder;
+      },
+      upsert(payload: Record<string, unknown>, options?: { onConflict?: string }) {
+        call.op = "upsert";
+        call.payload = payload;
+        call.upsertOptions = options;
         return builder;
       },
       eq(column: string, value: unknown) {

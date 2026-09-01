@@ -29,6 +29,30 @@ assert.equal(
   "zero-quantity objects are not a commitment"
 );
 
+// Upper caps bound user-controlled confirm input; widening them must fail here.
+assert.equal(
+  designSpecObjectsSchema.safeParse(Array.from({ length: 31 }, () => OBJECTS[0])).success,
+  false,
+  "31 objects must be rejected"
+);
+assert.equal(
+  designSpecObjectsSchema.safeParse([{ ...OBJECTS[0], quantity: 25 }]).success,
+  false,
+  "quantity 25 must be rejected"
+);
+assert.equal(
+  designSpecObjectsSchema.safeParse([{ ...OBJECTS[0], label: "x".repeat(121) }]).success,
+  false,
+  "over-long labels must be rejected"
+);
+assert.equal(
+  designSpecObjectsSchema.safeParse([
+    { ...OBJECTS[0], paletteMaterials: Array.from({ length: 9 }, (_, i) => `material ${i}`) }
+  ]).success,
+  false,
+  "9 palette entries must be rejected"
+);
+
 const row = {
   id: "spec-1",
   room_id: "room-1",

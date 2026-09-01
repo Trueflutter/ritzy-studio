@@ -1,16 +1,16 @@
 import { SubmitButton } from "@ritzy-studio/ui";
 import type { DesignSpecObject } from "@ritzy-studio/domain";
 
-import { confirmDesignSpecAction } from "@/app/actions";
-
 // The spec ledger (1c pattern): one hairline-divided row per committed object,
-// every answer field a white chip on the beige page. Server component; the form
-// posts to confirmDesignSpecAction.
+// every answer field a white chip on the beige page. Presentational: the page
+// passes the server action, so the component (and its test) stays free of
+// server-only imports.
 
 const chipClass =
   "w-full border border-line bg-surface px-3 py-2 font-body text-body-s text-ink focus:border-ink focus:outline-none";
 
 export function SpecLedgerForm({
+  action,
   conceptTitle,
   extracted,
   mustPreserve,
@@ -19,6 +19,7 @@ export function SpecLedgerForm({
   roomId,
   specId
 }: {
+  action: (formData: FormData) => void | Promise<void>;
   conceptTitle: string;
   extracted: boolean;
   mustPreserve: string[];
@@ -28,7 +29,7 @@ export function SpecLedgerForm({
   specId: string;
 }) {
   return (
-    <form action={confirmDesignSpecAction} className="mt-8">
+    <form action={action} className="mt-8">
       <input name="projectId" type="hidden" value={projectId} />
       <input name="roomId" type="hidden" value={roomId} />
       <input name="specId" type="hidden" value={specId} />
@@ -94,6 +95,7 @@ export function SpecLedgerForm({
                 className={chipClass}
                 defaultValue={object.sizeDescriptor ?? ""}
                 maxLength={200}
+                minLength={2}
                 name={`object-${index}-sizeDescriptor`}
                 placeholder="size, in plain words"
                 type="text"
@@ -108,6 +110,7 @@ export function SpecLedgerForm({
                 className={chipClass}
                 defaultValue={object.capacity ?? ""}
                 maxLength={120}
+                minLength={2}
                 name={`object-${index}-capacity`}
                 placeholder="e.g. seats 6"
                 type="text"
@@ -145,6 +148,7 @@ export function SpecLedgerForm({
           className={`${chipClass} min-h-[120px] leading-relaxed`}
           defaultValue={mustPreserve.join("\n")}
           id="mustPreserve"
+          maxLength={3400}
           name="mustPreserve"
         />
       </div>
