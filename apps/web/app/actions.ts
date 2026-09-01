@@ -55,7 +55,9 @@ import {
   type RoleScopedCandidatePool,
   type RoomProductRoleSpec
 } from "@ritzy-studio/domain";
-import { productMatchingControlledPreviewGate, renderExecutionMode, signupAllowed } from "@ritzy-studio/config";
+import { productMatchingControlledPreviewGate, renderExecutionMode, signupAllowed,
+  configuredTextModel
+} from "@ritzy-studio/config";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { after } from "next/server";
@@ -1524,7 +1526,7 @@ export async function saveDesignBriefAction(formData: FormData) {
       job_type: "clarifying_questions",
       status: "running",
       provider: "openai",
-      model: process.env.OPENAI_TEXT_MODEL ?? "gpt-5-mini",
+      model: configuredTextModel(),
       prompt_version: null,
       input_summary: inputSummary
     })
@@ -1830,7 +1832,7 @@ async function analyzeAndWriteInspirationForRoom({
       job_type: "inspiration_analysis",
       status: "running",
       provider: "openai",
-      model: process.env.OPENAI_TEXT_MODEL ?? "gpt-5-mini",
+      model: configuredTextModel(),
       prompt_version: null,
       input_summary: { inspirationAssetCount: signedUrls.length }
     })
@@ -2190,7 +2192,7 @@ export async function generateInitialConceptAction(formData: FormData) {
       job_type: "initial_concept_generation",
       status: "running",
       provider: configuredImageProvider(),
-      model: `${process.env.OPENAI_TEXT_MODEL ?? "gpt-5-mini"} + ${configuredImageModel()}`,
+      model: `${configuredTextModel()} + ${configuredImageModel()}`,
       prompt_version: null,
       input_summary: {
         roomId,
@@ -2662,7 +2664,7 @@ ${conceptPaletteText}`
       job_type: "product_visual_sourcing",
       status: "running",
       provider: "openai",
-      model: process.env.OPENAI_TEXT_MODEL ?? "gpt-5-mini",
+      model: configuredTextModel(),
       prompt_version: null,
       input_summary: {
         roomId,
@@ -2743,7 +2745,7 @@ ${conceptPaletteText}`
         conceptDescription: concept.description,
         roles: staticRoles,
         rankedCandidates: sourcingCandidates,
-        model: process.env.OPENAI_TEXT_MODEL ?? "gpt-5-mini"
+        model: configuredTextModel()
       });
     } else {
       sourcingResult = await withTimeout(
@@ -2832,7 +2834,7 @@ ${conceptPaletteText}`
         conceptDescription: concept.description,
         roles: staticRoles,
         rankedCandidates: sourcingCandidates,
-        model: process.env.OPENAI_TEXT_MODEL ?? "gpt-5-mini"
+        model: configuredTextModel()
       });
 
       if (sourcingResult.needs.length > 0 && sourcingResult.selectedProducts.length > 0) {
@@ -3092,7 +3094,7 @@ ${conceptPaletteText}`
         conceptDescription: concept.description,
         roles: retryRoles,
         rankedCandidates: retryCandidates,
-        model: process.env.OPENAI_TEXT_MODEL ?? "gpt-5-mini"
+        model: configuredTextModel()
       });
     } else if (!PRODUCT_SOURCING_AI_PRODUCT_IMAGES_ENABLED || retryImageGate.usable) {
       retryResult = await withTimeout(
@@ -4728,7 +4730,7 @@ export async function reviseConceptAction(formData: FormData) {
       job_type: "concept_revision",
       status: "running",
       provider: configuredImageProvider(),
-      model: `${process.env.OPENAI_TEXT_MODEL ?? "gpt-5-mini"} + ${configuredImageModel()}`,
+      model: `${configuredTextModel()} + ${configuredImageModel()}`,
       prompt_version: null,
       input_summary: {
         roomId,

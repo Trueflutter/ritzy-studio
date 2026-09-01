@@ -67,8 +67,11 @@ export {
 } from "./reference-guard";
 
 import { estimateTextCostUsd, sumUsdCostsStrict } from "./text-cost";
+import { resolveStageTextEffort, resolveStageTextModel } from "./model-routing";
 
 export { estimateTextCostUsd, sumUsdCosts, sumUsdCostsStrict } from "./text-cost";
+export { resolveStageTextEffort, resolveStageTextModel, TEXT_STAGES } from "./model-routing";
+export type { TextStage, TextEffort } from "./model-routing";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 type ImageProvider = "gemini" | "openai" | "evolink";
@@ -762,7 +765,8 @@ async function generateImageWithConfiguredProvider({
         references: await hardenReferenceUrls(references, env),
         model: env.EVOLINK_IMAGE_MODEL,
         apiKey: env.EVOLINK_API_KEY,
-        quality: env.EVOLINK_IMAGE_QUALITY
+        quality: env.EVOLINK_IMAGE_QUALITY,
+        baseUrl: env.EVOLINK_BASE_URL
       });
     } catch (error) {
       const fallbackError = formatImageGenerationError(error);
@@ -1075,14 +1079,17 @@ async function generateEvolinkImage({
   references,
   model,
   apiKey,
-  quality
+  quality,
+  baseUrl
 }: {
   prompt: string;
   references: ImageGenerationReference[];
   model: string;
   apiKey?: string;
   quality: "1K" | "2K" | "4K";
+  baseUrl?: string;
 }): Promise<ImageGenerationAttempt> {
+  const apiBase = baseUrl ?? EVOLINK_API_BASE;
   if (!apiKey) {
     throw new Error("EVOLINK_API_KEY is required for Evolink image generation.");
   }
@@ -1107,7 +1114,7 @@ async function generateEvolinkImage({
     "Content-Type": "application/json"
   };
 
-  const submitResponse = await fetch(`${EVOLINK_API_BASE}/v1/images/generations`, {
+  const submitResponse = await fetch(`${apiBase}/v1/images/generations`, {
     method: "POST",
     headers,
     signal: AbortSignal.timeout(30_000),
@@ -1136,7 +1143,7 @@ async function generateEvolinkImage({
 
     let pollResponse: Response;
     try {
-      pollResponse = await fetch(`${EVOLINK_API_BASE}/v1/tasks/${encodeURIComponent(submitPayload.id)}`, {
+      pollResponse = await fetch(`${apiBase}/v1/tasks/${encodeURIComponent(submitPayload.id)}`, {
         method: "GET",
         headers,
         signal: AbortSignal.timeout(15_000)
@@ -1235,6 +1242,8 @@ export async function generateClarifyingQuestions(
 ): Promise<GenerateClarifyingQuestionsResult> {
   const env = parseServerEnv(process.env);
   const client = createTextClient(env);
+  const stageModel = resolveStageTextModel("clarifying_questions", process.env, env.OPENAI_TEXT_MODEL);
+  const stageEffort = resolveStageTextEffort("clarifying_questions", process.env);
   const { inspirationImageUrls, ...briefInput } = input;
   const modePrompt =
     input.intendedMode === "homeowner"
@@ -1250,7 +1259,8 @@ export async function generateClarifyingQuestions(
 
   const response = await client.responses.create({
     max_output_tokens: 4000,
-    model: env.OPENAI_TEXT_MODEL,
+    model: stageModel,
+    ...(stageEffort ? { reasoning: { effort: stageEffort } } : {}),
     input: [
       {
         role: "system",
@@ -1293,8 +1303,8 @@ export async function generateClarifyingQuestions(
   return {
     promptKey: clarifyingQuestionsPrompt.key,
     promptVersion: clarifyingQuestionsPrompt.version,
-    model: env.OPENAI_TEXT_MODEL,
-    textCostUsd: estimateTextCostUsd(env.OPENAI_TEXT_MODEL, response.usage),
+    model: stageModel,
+    textCostUsd: estimateTextCostUsd(stageModel, response.usage),
     questions
   };
 }
@@ -1304,10 +1314,13 @@ export async function analyzeInspirationImages(
 ): Promise<AnalyzeInspirationImagesResult> {
   const env = parseServerEnv(process.env);
   const client = createTextClient(env);
+  const stageModel = resolveStageTextModel("inspiration_analysis", process.env, env.OPENAI_TEXT_MODEL);
+  const stageEffort = resolveStageTextEffort("inspiration_analysis", process.env);
 
   const response = await client.responses.create({
     max_output_tokens: 4000,
-    model: env.OPENAI_TEXT_MODEL,
+    model: stageModel,
+    ...(stageEffort ? { reasoning: { effort: stageEffort } } : {}),
     input: [
       {
         role: "system",
@@ -1348,9 +1361,9 @@ export async function analyzeInspirationImages(
 
   return {
     promptKey: inspirationAnalysisPrompt.key,
-    textCostUsd: estimateTextCostUsd(env.OPENAI_TEXT_MODEL, response.usage),
+    textCostUsd: estimateTextCostUsd(stageModel, response.usage),
     promptVersion: inspirationAnalysisPrompt.version,
-    model: env.OPENAI_TEXT_MODEL,
+    model: stageModel,
     analysis
   };
 }
@@ -1360,6 +1373,8 @@ export async function sourceProductsFromConcept(
 ): Promise<SourceProductsFromConceptResult> {
   const env = parseServerEnv(process.env);
   const client = createTextClient(env);
+  const stageModel = resolveStageTextModel("product_sourcing", process.env, env.OPENAI_TEXT_MODEL);
+  const stageEffort = resolveStageTextEffort("product_sourcing", process.env);
   const candidateLimit = 36;
   const allowedProductIds = new Set(input.candidates.map((candidate) => candidate.id));
   const roleCandidatePools = input.roleCandidatePools ?? [];
@@ -1412,7 +1427,8 @@ export async function sourceProductsFromConcept(
 
   const response = await client.responses.create({
     max_output_tokens: 32000,
-    model: env.OPENAI_TEXT_MODEL,
+    model: stageModel,
+    ...(stageEffort ? { reasoning: { effort: stageEffort } } : {}),
     input: [
       {
         role: "system",
@@ -1464,8 +1480,8 @@ export async function sourceProductsFromConcept(
   return {
     promptKey: conceptProductSourcingPrompt.key,
     promptVersion: conceptProductSourcingPrompt.version,
-    model: env.OPENAI_TEXT_MODEL,
-    textCostUsd: estimateTextCostUsd(env.OPENAI_TEXT_MODEL, response.usage),
+    model: stageModel,
+    textCostUsd: estimateTextCostUsd(stageModel, response.usage),
     needs: parsed.needs,
     ...validated
   };
@@ -1880,6 +1896,8 @@ export async function generateInitialConcept(
 ): Promise<GenerateInitialConceptResult> {
   const env = parseServerEnv(process.env);
   const client = createTextClient(env);
+  const stageModel = resolveStageTextModel("concept_direction", process.env, env.OPENAI_TEXT_MODEL);
+  const stageEffort = resolveStageTextEffort("concept_direction", process.env);
   const useInteriorPromptV2 = env.RITZY_INTERIOR_PROMPT_V2_ENABLED;
 
   const brief = {
@@ -1897,7 +1915,8 @@ export async function generateInitialConcept(
 
   const directionResponse = await client.responses.create({
     max_output_tokens: 24000,
-    model: env.OPENAI_TEXT_MODEL,
+    model: stageModel,
+    ...(stageEffort ? { reasoning: { effort: stageEffort } } : {}),
     input: [
       {
         role: "system",
@@ -2019,8 +2038,8 @@ export async function generateInitialConcept(
     promptVersion: useInteriorPromptV2
       ? INITIAL_CONCEPT_PROMPT_V2_VERSION
       : `${initialConceptPrompt.version}+${ENHANCED_RITZY_IMAGE_STYLING_VERSION}`,
-    textModel: env.OPENAI_TEXT_MODEL,
-    textCostUsd: estimateTextCostUsd(env.OPENAI_TEXT_MODEL, directionResponse.usage),
+    textModel: stageModel,
+    textCostUsd: estimateTextCostUsd(stageModel, directionResponse.usage),
     imageProvider: imageResult.provider,
     imageModel: imageResult.model,
     imageLatencySeconds: imageResult.latencySeconds,
@@ -2216,10 +2235,13 @@ export async function extractConceptImagePalette(
 ): Promise<ExtractConceptImagePaletteResult> {
   const env = parseServerEnv(process.env);
   const client = createTextClient(env);
+  const stageModel = resolveStageTextModel("concept_palette", process.env, env.OPENAI_TEXT_MODEL);
+  const stageEffort = resolveStageTextEffort("concept_palette", process.env);
 
   const response = await client.responses.create({
     max_output_tokens: 4000,
-    model: env.OPENAI_TEXT_MODEL,
+    model: stageModel,
+    ...(stageEffort ? { reasoning: { effort: stageEffort } } : {}),
     input: [
       {
         role: "system",
@@ -2254,9 +2276,9 @@ export async function extractConceptImagePalette(
 
   return {
     promptKey: conceptPalettePrompt.key,
-    textCostUsd: estimateTextCostUsd(env.OPENAI_TEXT_MODEL, response.usage),
+    textCostUsd: estimateTextCostUsd(stageModel, response.usage),
     promptVersion: conceptPalettePrompt.version,
-    model: env.OPENAI_TEXT_MODEL,
+    model: stageModel,
     palette
   };
 }
@@ -2281,6 +2303,8 @@ export async function assessRenderSpatialQuality(
 ): Promise<AssessRenderSpatialQualityResult> {
   const env = parseServerEnv(process.env);
   const client = createTextClient(env);
+  const stageModel = resolveStageTextModel("spatial_qa", process.env, env.OPENAI_TEXT_MODEL);
+  const stageEffort = resolveStageTextEffort("spatial_qa", process.env);
 
   const context = [
     `Room type: ${input.roomType}.`,
@@ -2296,7 +2320,8 @@ export async function assessRenderSpatialQuality(
 
   const response = await client.responses.create({
     max_output_tokens: 4000,
-    model: env.OPENAI_TEXT_MODEL,
+    model: stageModel,
+    ...(stageEffort ? { reasoning: { effort: stageEffort } } : {}),
     input: [
       {
         role: "system",
@@ -2329,8 +2354,8 @@ export async function assessRenderSpatialQuality(
   return {
     promptKey: renderSpatialQaPrompt.key,
     promptVersion: renderSpatialQaPrompt.version,
-    model: env.OPENAI_TEXT_MODEL,
-    textCostUsd: estimateTextCostUsd(env.OPENAI_TEXT_MODEL, response.usage),
+    model: stageModel,
+    textCostUsd: estimateTextCostUsd(stageModel, response.usage),
     qa
   };
 }
@@ -2350,6 +2375,8 @@ export async function generateConceptRevision(
 ): Promise<GenerateInitialConceptResult> {
   const env = parseServerEnv(process.env);
   const client = createTextClient(env);
+  const stageModel = resolveStageTextModel("revision_direction", process.env, env.OPENAI_TEXT_MODEL);
+  const stageEffort = resolveStageTextEffort("revision_direction", process.env);
   const revisionInput = {
     roomType: input.roomType,
     previousConcept: input.previousConcept,
@@ -2368,7 +2395,8 @@ export async function generateConceptRevision(
 
   const directionResponse = await client.responses.create({
     max_output_tokens: 24000,
-    model: env.OPENAI_TEXT_MODEL,
+    model: stageModel,
+    ...(stageEffort ? { reasoning: { effort: stageEffort } } : {}),
     input: [
       {
         role: "system",
@@ -2428,8 +2456,8 @@ export async function generateConceptRevision(
   return {
     promptKey: conceptRevisionPrompt.key,
     promptVersion: conceptRevisionPrompt.version,
-    textModel: env.OPENAI_TEXT_MODEL,
-    textCostUsd: estimateTextCostUsd(env.OPENAI_TEXT_MODEL, directionResponse.usage),
+    textModel: stageModel,
+    textCostUsd: estimateTextCostUsd(stageModel, directionResponse.usage),
     imageProvider: imageResult.provider,
     imageModel: imageResult.model,
     imageLatencySeconds: imageResult.latencySeconds,
@@ -2465,12 +2493,15 @@ export async function generateProductEnrichment(
 ): Promise<GenerateProductEnrichmentResult> {
   const env = parseServerEnv(process.env);
   const client = createTextClient(env);
+  const stageModel = resolveStageTextModel("product_enrichment", process.env, env.OPENAI_TEXT_MODEL);
+  const stageEffort = resolveStageTextEffort("product_enrichment", process.env);
   const parsedInput = productEnrichmentInputSchema.parse(input);
   const sourceHash = createProductEnrichmentSourceHash(parsedInput);
 
   const response = await client.responses.create({
     max_output_tokens: 8000,
-    model: env.OPENAI_TEXT_MODEL,
+    model: stageModel,
+    ...(stageEffort ? { reasoning: { effort: stageEffort } } : {}),
     input: [
       {
         role: "system",
@@ -2493,9 +2524,9 @@ export async function generateProductEnrichment(
 
   return {
     promptKey: productMetadataEnrichmentPrompt.key,
-    textCostUsd: estimateTextCostUsd(env.OPENAI_TEXT_MODEL, response.usage),
+    textCostUsd: estimateTextCostUsd(stageModel, response.usage),
     promptVersion: productMetadataEnrichmentPrompt.version,
-    model: env.OPENAI_TEXT_MODEL,
+    model: stageModel,
     sourceHash,
     enrichment: productEnrichmentResponseSchema.parse(JSON.parse(response.output_text))
   };

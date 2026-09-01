@@ -5,6 +5,7 @@ import {
   checkReferenceImageUrl,
   sanitizeReferenceImageUrl
 } from "@ritzy-studio/ai";
+import { configuredImageModelName, configuredImageProvider as configImageProvider } from "@ritzy-studio/config";
 
 // Shared image helpers for the AI generation paths. Extracted from app/actions.ts so the
 // durable render runner (lib/render-runner.ts) can reuse them outside the "use server" module,
@@ -24,19 +25,14 @@ export const PRODUCT_SOURCING_MAX_IMAGE_BYTES = 20 * 1024 * 1024;
 // fetchable candidate, so a longer ceiling keeps the happy path fast while rescuing large images.
 const CATALOGUE_GROUNDED_CONCEPT_IMAGE_FETCH_TIMEOUT_MS = 12_000;
 
+// Thin delegations kept for existing import sites; the defaults live in the config
+// schema, not here.
 export function configuredImageProvider() {
-  return process.env.RITZY_IMAGE_PROVIDER ?? "openai";
+  return configImageProvider();
 }
 
 export function configuredImageModel() {
-  const provider = configuredImageProvider();
-  if (provider === "evolink") {
-    return process.env.EVOLINK_IMAGE_MODEL ?? "gemini-3.1-flash-image-preview";
-  }
-  if (provider === "gemini") {
-    return process.env.GEMINI_IMAGE_MODEL ?? "gemini-3.1-flash-image-preview";
-  }
-  return process.env.OPENAI_IMAGE_MODEL ?? "gpt-image-2";
+  return configuredImageModelName();
 }
 
 function bytesToDataUrl(bytes: Buffer, mimeType: string) {

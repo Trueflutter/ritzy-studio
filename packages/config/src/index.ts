@@ -7,6 +7,9 @@ const serverEnvSchema = z.object({
   RITZY_IMAGE_PROVIDER: z.enum(["gemini", "openai", "evolink"]).default("openai"),
   GEMINI_IMAGE_MODEL: z.string().min(1, "GEMINI_IMAGE_MODEL is required").default("gemini-3.1-flash-image-preview"),
   EVOLINK_API_KEY: z.string().optional(),
+  // Evolink gateway origin; overridable so tests and the zero-cost E2E suite can stub
+  // the image provider the same way OPENAI_BASE_URL allows for text.
+  EVOLINK_BASE_URL: z.string().optional(),
   EVOLINK_IMAGE_MODEL: z
     .string()
     .min(1, "EVOLINK_IMAGE_MODEL is required")
@@ -82,6 +85,38 @@ export function parseServerEnv(env: NodeJS.ProcessEnv): ServerEnv {
 
 export function parseClientEnv(env: NodeJS.ProcessEnv): ClientEnv {
   return clientEnvSchema.parse(env);
+}
+
+// Single-source accessors for values that used to be re-read raw (with hand-copied
+// defaults) across the app. Each parses exactly one schema field, so the default
+// lives in one place: the schema above.
+export function configuredTextModel(env: NodeJS.ProcessEnv = process.env): string {
+  return serverEnvSchema.shape.OPENAI_TEXT_MODEL.parse(env.OPENAI_TEXT_MODEL);
+}
+
+export function configuredImageProvider(env: NodeJS.ProcessEnv = process.env): "gemini" | "openai" | "evolink" {
+  return serverEnvSchema.shape.RITZY_IMAGE_PROVIDER.parse(env.RITZY_IMAGE_PROVIDER);
+}
+
+export function configuredImageModelName(env: NodeJS.ProcessEnv = process.env): string {
+  const provider = configuredImageProvider(env);
+  if (provider === "evolink") {
+    return serverEnvSchema.shape.EVOLINK_IMAGE_MODEL.parse(env.EVOLINK_IMAGE_MODEL);
+  }
+  if (provider === "gemini") {
+    return serverEnvSchema.shape.GEMINI_IMAGE_MODEL.parse(env.GEMINI_IMAGE_MODEL);
+  }
+  return serverEnvSchema.shape.OPENAI_IMAGE_MODEL.parse(env.OPENAI_IMAGE_MODEL);
+}
+
+export function configuredAppUrl(env: NodeJS.ProcessEnv = process.env): string {
+  return serverEnvSchema.shape.NEXT_PUBLIC_APP_URL.parse(env.NEXT_PUBLIC_APP_URL);
+}
+
+export function productReferenceOrderingV2Enabled(env: NodeJS.ProcessEnv = process.env): boolean {
+  return serverEnvSchema.shape.RITZY_PRODUCT_REFERENCE_ORDERING_V2_ENABLED.parse(
+    env.RITZY_PRODUCT_REFERENCE_ORDERING_V2_ENABLED
+  );
 }
 
 export function formatEnvError(error: unknown): string {
