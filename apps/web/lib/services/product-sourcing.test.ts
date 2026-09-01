@@ -4,8 +4,10 @@ import { findMoreShoppingOptions, groundProductsForRoom, refreshShoppingOptions 
 import { fakeSupabase, type RecordedCall } from "./supabase-test-double";
 
 // State-gate tests for the product-sourcing service. The full grounding pipeline
-// runs against live providers in acceptance runs; these pin the read gates, the
-// refresh/find-more refill contracts, and that blocked terminals write nothing.
+// runs against live providers in acceptance runs; these pin the EARLY read gates
+// (not_found, unselected-concept blocked) and the refresh/find-more refill
+// contracts. The sourced path's persisted transitions and the deep blocked
+// terminals get automated coverage with the S3 sourcing rework.
 
 process.env.NEXT_PUBLIC_SUPABASE_URL ??= "https://example-project.supabase.co";
 
@@ -69,9 +71,10 @@ async function main() {
     assert.equal(serviceCalls.filter((call: RecordedCall) => call.op !== "select").length, 0);
   }
 
-  // --- groundProductsForRoom: unselected concept blocks with the exact message
+  // --- groundProductsForRoom: unselected concept blocks with the exact message,
+  // and neither client has written anything at that point
   {
-    const { client } = fakeSupabase((call) => {
+    const { client, calls } = fakeSupabase((call) => {
       if (call.table === "projects") return { data: { id: "proj-1", budget_max_aed: null } };
       if (call.table === "rooms") return { data: { id: "room-1", room_type: "Living Room" } };
       if (call.table === "concepts") {
@@ -79,7 +82,7 @@ async function main() {
       }
       return { data: null };
     });
-    const { client: service } = fakeSupabase(() => ({ data: null }));
+    const { client: service, calls: serviceCalls } = fakeSupabase(() => ({ data: null }));
     const result = await groundProductsForRoom(
       { supabase: client, serviceSupabase: service },
       GROUND_INPUT
@@ -88,6 +91,8 @@ async function main() {
       status: "blocked",
       message: "Select a concept before product grounding."
     });
+    assert.equal(calls.filter((call: RecordedCall) => call.op !== "select").length, 0);
+    assert.equal(serviceCalls.filter((call: RecordedCall) => call.op !== "select").length, 0);
   }
 
   // --- refreshShoppingOptions: no selected pick means no_change and zero writes
@@ -117,11 +122,13 @@ async function main() {
   {
     const freshProduct = productRow({ id: "00000000-0000-4000-8000-000000000009", name: "Fresh sofa", price_aed: 1500 });
     const writes: RecordedCall[] = [];
+    const reads: RecordedCall[] = [];
     const { client } = fakeSupabase((call) => {
       if (call.op !== "select") {
         writes.push(call);
         return { data: null };
       }
+      reads.push(call);
       if (call.table === "shopping_lists") return { data: { id: "list-1", concept_id: "concept-1" } };
       if (call.table === "rooms") return { data: { id: "room-1", room_type: "Living Room" } };
       if (call.table === "projects") return { data: { id: "proj-1", budget_max_aed: 20000 } };
@@ -149,6 +156,19 @@ async function main() {
       REFILL_INPUT
     );
     assert.deepEqual(result, { status: "refreshed" });
+
+    // The template arithmetic (option_rank + 1) and inherited role fields depend on
+    // these columns actually being selected; a trimmed column list must fail here,
+    // not in production against real PostgREST rows.
+    const itemsRead = reads.find(
+      (call) => call.table === "shopping_list_items" && call.op === "select"
+    );
+    for (const column of ["option_rank", "role_label", "role_visual_brief", "role_priority", "role_quantity", "status", "product_id"]) {
+      assert.ok(
+        itemsRead?.columns?.includes(column),
+        `refresh item read must select ${column}; got: ${itemsRead?.columns}`
+      );
+    }
 
     const reject = writes.find((call) => call.op === "update");
     assert.ok(reject, "must reject stale options");

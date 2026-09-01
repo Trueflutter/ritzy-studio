@@ -148,6 +148,9 @@ async function main() {
       "input_summary",
       { designBriefId: "brief-1" }
     ]);
+    // The dedupe window is time-bounded on created_at; without it any historical
+    // running row would block generation forever.
+    assert.equal((runningJobCall as RecordedCall | null)?.gte?.[0]?.[0], "created_at");
   }
 
   // --- selectConcept: rejects the room's concepts, then selects the target

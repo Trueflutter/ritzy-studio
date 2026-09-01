@@ -11,6 +11,9 @@ export type RecordedCall = {
   contains: Array<[string, unknown]>;
   gte: Array<[string, unknown]>;
   in: Array<[string, unknown]>;
+  columns?: string;
+  order: Array<[string, unknown]>;
+  limit?: number;
   payload?: Record<string, unknown>;
   single: boolean;
 };
@@ -39,10 +42,12 @@ export function fakeSupabase(respond: Responder, respondStorage: StorageResponde
       contains: [],
       gte: [],
       in: [],
+      order: [],
       single: false
     };
     const builder: Record<string, unknown> = {
-      select() {
+      select(columns?: string) {
+        call.columns = columns;
         return builder;
       },
       update(payload: Record<string, unknown>) {
@@ -79,10 +84,12 @@ export function fakeSupabase(respond: Responder, respondStorage: StorageResponde
         call.in.push([column, value]);
         return builder;
       },
-      order() {
+      order(column: string, options?: unknown) {
+        call.order.push([column, options]);
         return builder;
       },
-      limit() {
+      limit(count: number) {
+        call.limit = count;
         return builder;
       },
       single() {
