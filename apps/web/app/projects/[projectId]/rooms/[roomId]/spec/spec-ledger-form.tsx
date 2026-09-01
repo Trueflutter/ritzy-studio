@@ -1,5 +1,6 @@
-import { SubmitButton } from "@ritzy-studio/ui";
 import type { DesignSpecObject } from "@ritzy-studio/domain";
+
+import { ConfirmSpecSubmit } from "./confirm-spec-submit";
 
 // The spec ledger (1c pattern): one hairline-divided row per committed object,
 // every answer field a white chip on the beige page. Presentational: the page
@@ -161,9 +162,7 @@ export function SpecLedgerForm({
           Sourcing matches real catalog pieces to each row. You can swap pieces later; the list here
           stays the record of what the design asks for.
         </p>
-        <SubmitButton className="mt-6 min-w-[260px]" pendingLabel="Confirming...">
-          Confirm and source
-        </SubmitButton>
+        <ConfirmSpecSubmit />
       </div>
     </form>
   );

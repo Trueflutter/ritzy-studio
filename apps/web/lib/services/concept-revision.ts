@@ -44,12 +44,16 @@ export async function reviseConceptForRoom(
   { userId, projectId, roomId, conceptId, critique }: ReviseConceptInput,
   {
     defer,
-    // Injectable like defer, so the success path's persisted transitions are
-    // testable without a live provider.
-    generateRevision = generateConceptRevision
+    // Injectable like defer, so the success path's persisted transitions AND the
+    // deferred QA closure are testable without a live provider.
+    generateRevision = generateConceptRevision,
+    assessDiff = assessRevisionVisualDiff,
+    generateViews = generateAndStoreConceptViews
   }: {
     defer: (task: () => Promise<void>) => void;
     generateRevision?: typeof generateConceptRevision;
+    assessDiff?: typeof assessRevisionVisualDiff;
+    generateViews?: typeof generateAndStoreConceptViews;
   }
 ): Promise<ReviseConceptResult> {
   let revisedConceptId = "";
@@ -310,7 +314,7 @@ export async function reviseConceptForRoom(
       // Visual-diff QA first (cheap text call): did the asked change happen, did
       // anything drift. Best-effort: a QA failure never fails the revision.
       try {
-        const diff = await assessRevisionVisualDiff({
+        const diff = await assessDiff({
           previousImage: {
             bytes: previousRender.bytes,
             mimeType: previousRender.mimeType
@@ -351,7 +355,7 @@ export async function reviseConceptForRoom(
         console.error(`Revision visual-diff QA failed (concept ${revisedConcept.id}):`, error);
       }
 
-      await generateAndStoreConceptViews({
+      await generateViews({
         serviceSupabase,
         userId: userId,
         roomId,

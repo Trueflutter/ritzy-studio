@@ -114,6 +114,7 @@ async function main() {
     assert.deepEqual(result, { status: "extraction_running" });
     assert.equal(serviceCalls.filter((call: RecordedCall) => call.op === "insert").length, 0);
     const filters = Object.fromEntries((guardCall as RecordedCall | null)?.filters ?? []);
+    assert.equal(filters.room_id, "room-1", "the guard must scope to THIS room");
     assert.equal(filters.job_type, "spec_extraction");
     assert.equal(filters.status, "running");
     assert.equal((guardCall as RecordedCall | null)?.gte?.[0]?.[0], "created_at");
@@ -141,7 +142,11 @@ async function main() {
       if (storageCall.op === "createSignedUrl") return { data: { signedUrl: "https://signed.example/r" } };
       return { data: null };
     });
+    const serviceJobWrites: RecordedCall[] = [];
     const { client: service } = fakeSupabase((call) => {
+      if (call.op !== "select") {
+        serviceJobWrites.push(call);
+      }
       if (call.table === "ai_jobs" && call.op === "insert") return { data: { id: "job-1" } };
       return { data: null };
     }, (storageCall) => {
@@ -173,6 +178,84 @@ async function main() {
     const upsert = calls.find((call: RecordedCall) => call.op === "upsert");
     assert.ok(upsert, "the write must be an upsert so the malformed row is replaced");
     assert.equal(upsert?.upsertOptions?.onConflict, "room_id,concept_id");
+    // AC 4: every succeeded ai_jobs row carries its cost and model.
+    const succeededUpdate = serviceJobWrites.find(
+      (call) => call.table === "ai_jobs" && call.op === "update"
+    );
+    assert.equal(succeededUpdate?.payload?.status, "succeeded");
+    assert.equal(succeededUpdate?.payload?.cost_estimate_usd, 0.001);
+    assert.equal(succeededUpdate?.payload?.model, "stub");
+  }
+
+  // --- A transient upsert failure after a valid extraction recovers via the
+  // raced re-read instead of wasting the paid call (round-2 finding).
+  {
+    let specSelects = 0;
+    const { client } = fakeSupabase((call) => {
+      if (call.table === "rooms") return { data: { id: "room-1", room_type: "Living Room" } };
+      if (call.table === "concepts") {
+        return { data: { id: "concept-1", title: "Warm Gallery", status: "selected", primary_image_asset_id: "asset-1" } };
+      }
+      if (call.table === "room_design_specs" && call.op === "upsert") {
+        return { data: null, error: { message: "transient" } };
+      }
+      if (call.table === "room_design_specs" && call.op === "select") {
+        specSelects += 1;
+        // First select is the existing-spec check (none stored); the SECOND is
+        // the post-upsert-failure raced re-read, which finds a valid row.
+        if (specSelects === 1) {
+          return { data: null };
+        }
+        return {
+          data: {
+            id: "spec-1",
+            room_id: "room-1",
+            concept_id: "concept-1",
+            objects: OBJECTS,
+            must_preserve: [],
+            status: "extracted"
+          }
+        };
+      }
+      if (call.table === "room_assets") {
+        return { data: { storage_path: "u/room-1/concept-1.png", mime_type: "image/png" } };
+      }
+      return { data: null };
+    }, (storageCall) => {
+      if (storageCall.op === "download") return { data: new Blob([Buffer.from([1])]) };
+      if (storageCall.op === "createSignedUrl") return { data: { signedUrl: "https://s.example/r" } };
+      return { data: null };
+    });
+    const { client: service } = fakeSupabase((call) => {
+      if (call.table === "ai_jobs" && call.op === "insert") return { data: { id: "job-1" } };
+      return { data: null };
+    }, (storageCall) => {
+      if (storageCall.op === "download") return { data: new Blob([Buffer.from([1])]) };
+      if (storageCall.op === "createSignedUrl") return { data: { signedUrl: "https://s.example/r" } };
+      return { data: null };
+    });
+    let recoveryExtracted = false;
+    const result = await ensureRoomDesignSpec(
+      { supabase: client, serviceSupabase: service },
+      INPUT,
+      {
+        extract: async () => {
+          recoveryExtracted = true;
+          return {
+            promptKey: "concept.spec_extraction",
+            promptVersion: "test",
+            model: "stub",
+            textCostUsd: 0.001,
+            objects: OBJECTS,
+            mustPreserve: []
+          };
+        }
+      }
+    );
+    assert.ok(recoveryExtracted, "the paid call must have run before the upsert failed");
+    assert.equal(specSelects >= 2, true, "the raced re-read must fire after the upsert failure");
+    assert.equal(result.status, "ready");
+    assert.equal(result.status === "ready" && result.extractedNow, false, "recovery reads the stored row back");
   }
 
   // --- A failing extraction marks the ai_job failed and resolves extraction_failed

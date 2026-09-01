@@ -137,6 +137,42 @@ async function main() {
     );
   }
 
+  // --- A transient photo failure refuses BEFORE the job insert: gate refusals
+  // must never strand a running ai_jobs row (round-2 finding, three dimensions).
+  {
+    const { client } = fakeSupabase((call) => {
+      if (call.table === "rooms") return { data: { id: "room-1", room_type: "Living Room" } };
+      if (call.table === "concepts") {
+        return { data: { id: "concept-1", generation_job_id: null, design_brief_id: "brief-1", primary_image_asset_id: "asset-1" } };
+      }
+      if (call.table === "design_briefs") return { data: { id: "brief-1" } };
+      if (call.table === "concept_critiques" && call.op === "insert") return { data: { id: "critique-1" } };
+      if (call.table === "room_assets" && call.single) {
+        return { data: { storage_path: "u/room-1/concept-1.png", mime_type: "image/png" } };
+      }
+      if (call.table === "room_assets") {
+        return { data: [{ id: "photo-1", storage_path: "u/room-1/p1.jpg", mime_type: "image/jpeg" }] };
+      }
+      return { data: null };
+    }, () => ({ data: null }));
+    const { client: service, calls: serviceCalls } = fakeSupabase(() => ({ data: null }), (storageCall) => {
+      if (storageCall.op === "download") return { data: new Blob([Buffer.from([9])]) };
+      if (storageCall.op === "createSignedUrl") return { data: { signedUrl: "https://s.example/prev" } };
+      return { data: null };
+    });
+    const result = await reviseConceptForRoom(
+      { supabase: client, serviceSupabase: service },
+      INPUT,
+      { defer: noDefer }
+    );
+    assert.deepEqual(result, { status: "photo_unprepared" });
+    assert.equal(
+      serviceCalls.filter((call: RecordedCall) => call.table === "ai_jobs" && call.op === "insert").length,
+      0,
+      "a photo gate refusal must not open a running job"
+    );
+  }
+
   // --- Success path (AC 5 unit half): the revised concept insert carries the
   // lineage and job id, the critique links to the produced version, the prior
   // selection clears, and the deferred QA task is registered but not run.
@@ -173,6 +209,9 @@ async function main() {
         serviceWrites.push(call);
         if (call.table === "ai_jobs" && call.op === "insert") return { data: { id: "job-1" } };
         return { data: null };
+      }
+      if (call.table === "ai_jobs") {
+        return { data: { cost_estimate_usd: null, output_summary: {} } };
       }
       return { data: null };
     }, (storageCall) => {
@@ -215,12 +254,24 @@ async function main() {
       changePlan: { mustChange: ["swap the chair"], mustPreserve: ["sofa"] }
     };
 
+    const serviceReads = { jobRow: { cost_estimate_usd: null, output_summary: {} } };
+    let viewsCalled = false;
     const result = await reviseConceptForRoom(
       { supabase: client, serviceSupabase: service },
       INPUT,
       {
         defer: (task) => deferred.push(task),
-        generateRevision: async () => stubResult
+        generateRevision: async () => stubResult,
+        assessDiff: async () => ({
+          changeApplied: "yes" as const,
+          unintendedChanges: [],
+          summary: "The chair was swapped; everything else is unchanged.",
+          model: "stub-qa",
+          textCostUsd: 0.002
+        }),
+        generateViews: async () => {
+          viewsCalled = true;
+        }
       }
     );
 
@@ -252,6 +303,35 @@ async function main() {
     assert.ok(clearSelection, "the prior selection must be cleared");
 
     assert.equal(deferred.length, 1, "diff QA + views must be deferred, not run inline");
+
+    // Execute the deferred closure with the stubs: the QA write must target the
+    // REVISED concept, and the strict cost merge must keep an honest-null image
+    // cost null instead of overwriting it with the QA text cost.
+    void serviceReads;
+    await deferred[0]();
+    assert.ok(viewsCalled, "views must run in the deferred task");
+    const diffWrite = serviceWrites.find(
+      (call) =>
+        call.table === "concepts" &&
+        call.op === "update" &&
+        (call.payload as { diff_summary?: string })?.diff_summary !== undefined
+    );
+    assert.ok(diffWrite, "diff_summary must be written");
+    assert.deepEqual(diffWrite?.filters, [["id", "concept-2"]]);
+    const costMerge = serviceWrites.find(
+      (call) =>
+        call.table === "ai_jobs" &&
+        call.op === "update" &&
+        "cost_estimate_usd" in (call.payload ?? {}) &&
+        (call.payload as { output_summary?: unknown })?.output_summary !== undefined &&
+        JSON.stringify(call.payload?.output_summary ?? {}).includes("visualDiff")
+    );
+    assert.ok(costMerge, "the QA verdict must be recorded on the job");
+    assert.equal(
+      costMerge?.payload?.cost_estimate_usd,
+      null,
+      "an honest-null image cost must stay null after the QA merge"
+    );
   }
 
   console.log("concept-revision service tests passed");
