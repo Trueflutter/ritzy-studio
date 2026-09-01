@@ -53,6 +53,9 @@ const serverEnvSchema = z.object({
   // reference guard; these only extend or override them).
   RITZY_REFERENCE_IMAGE_HOSTS: z.string().optional(),
   RITZY_REFERENCE_STRIP_QUERY_HOSTS: z.string().optional(),
+  // Client-side deadline (ms) for text/vision provider calls; unset uses the ai
+  // package default of 90000.
+  RITZY_TEXT_TIMEOUT_MS: z.string().optional(),
   RITZY_SIGNUP_ALLOWLIST: z.string().optional(),
   STRIPE_SECRET_KEY: z.string().optional(),
   STRIPE_WEBHOOK_SECRET: z.string().optional()

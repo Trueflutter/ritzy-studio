@@ -8,7 +8,8 @@ import {
   generateConceptRevision,
   generateConceptView,
   generateInitialConcept,
-  sourceProductsFromConcept
+  sourceProductsFromConcept,
+  sumUsdCosts
 } from "@ritzy-studio/ai";
 import type { Database } from "@ritzy-studio/db";
 import {
@@ -1564,6 +1565,7 @@ export async function saveDesignBriefAction(formData: FormData) {
         completed_at: new Date().toISOString(),
         model: result.model,
         prompt_version: result.promptVersion,
+        cost_estimate_usd: result.textCostUsd ?? null,
         output_summary: {
           promptKey: result.promptKey,
           questionCount: result.questions.length
@@ -1872,6 +1874,7 @@ async function analyzeAndWriteInspirationForRoom({
         completed_at: new Date().toISOString(),
         model: result.model,
         prompt_version: result.promptVersion,
+        cost_estimate_usd: result.textCostUsd ?? null,
         output_summary: {
           promptKey: result.promptKey,
           palette: result.analysis.palette,
@@ -2254,7 +2257,7 @@ export async function generateInitialConceptAction(formData: FormData) {
         provider: result.imageProvider,
         model: `${result.textModel} + ${result.imageModel}`,
         prompt_version: result.promptVersion,
-        cost_estimate_usd: evolinkCreditsToUsd(result.imageCreditsUsed),
+        cost_estimate_usd: sumUsdCosts(evolinkCreditsToUsd(result.imageCreditsUsed), result.textCostUsd),
         output_summary: {
           promptKey: result.promptKey,
           title: result.concept.title,
@@ -2772,6 +2775,7 @@ ${conceptPaletteText}`
         completed_at: new Date().toISOString(),
         model: sourcingResult.model,
         prompt_version: sourcingResult.promptVersion,
+        cost_estimate_usd: "textCostUsd" in sourcingResult ? (sourcingResult.textCostUsd ?? null) : null,
         output_summary: {
           promptKey: sourcingResult.promptKey,
           needCount: sourcingResult.needs.length,
@@ -3139,6 +3143,7 @@ ${conceptPaletteText}`
           completed_at: new Date().toISOString(),
           model: sourcingResult.model,
           prompt_version: sourcingResult.promptVersion,
+          cost_estimate_usd: "textCostUsd" in sourcingResult ? (sourcingResult.textCostUsd ?? null) : null,
           output_summary: {
             promptKey: sourcingResult.promptKey,
             needCount: sourcingResult.needs.length,
@@ -4781,7 +4786,7 @@ export async function reviseConceptAction(formData: FormData) {
         provider: result.imageProvider,
         model: `${result.textModel} + ${result.imageModel}`,
         prompt_version: result.promptVersion,
-        cost_estimate_usd: evolinkCreditsToUsd(result.imageCreditsUsed),
+        cost_estimate_usd: sumUsdCosts(evolinkCreditsToUsd(result.imageCreditsUsed), result.textCostUsd),
         output_summary: {
           promptKey: result.promptKey,
           title: result.concept.title,

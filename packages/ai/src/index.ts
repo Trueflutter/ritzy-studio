@@ -65,6 +65,10 @@ export {
   preflightReferenceImage,
   sanitizeReferenceImageUrl
 } from "./reference-guard";
+
+import { estimateTextCostUsd } from "./text-cost";
+
+export { estimateTextCostUsd, sumUsdCosts } from "./text-cost";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 type ImageProvider = "gemini" | "openai" | "evolink";
@@ -114,6 +118,7 @@ export type GenerateClarifyingQuestionsInput = {
 
 export type GenerateClarifyingQuestionsResult = {
   promptKey: string;
+  textCostUsd?: number | null;
   promptVersion: string;
   model: string;
   questions: Array<{
@@ -128,6 +133,7 @@ export type AnalyzeInspirationImagesInput = {
 
 export type AnalyzeInspirationImagesResult = {
   promptKey: string;
+  textCostUsd?: number | null;
   promptVersion: string;
   model: string;
   analysis: {
@@ -199,6 +205,7 @@ export type GenerateInitialConceptInput = {
 
 export type GenerateInitialConceptResult = {
   promptKey: string;
+  textCostUsd?: number | null;
   promptVersion: string;
   textModel: string;
   imageModel: string;
@@ -237,6 +244,7 @@ export type GenerateConceptRevisionInput = GenerateInitialConceptInput & {
 
 export type GenerateProductEnrichmentResult = {
   promptKey: string;
+  textCostUsd?: number | null;
   promptVersion: string;
   model: string;
   sourceHash: string;
@@ -289,6 +297,7 @@ export type GenerateFinalGroundedRenderInput = {
 
 export type GenerateFinalGroundedRenderResult = {
   promptKey: string;
+  textCostUsd?: number | null;
   promptVersion: string;
   imageProvider: ImageProvider;
   imageModel: string;
@@ -349,6 +358,7 @@ export type ProductVisualMatchStatus =
 
 export type SourceProductsFromConceptResult = {
   promptKey: string;
+  textCostUsd?: number | null;
   promptVersion: string;
   model: string;
   needs: Array<{
@@ -691,13 +701,38 @@ export function buildFinalGroundedRenderPrompt({
     .join("\n");
 }
 
+// Text/vision calls get a hard client-side deadline so a hung provider can never hold
+// a user request open indefinitely (observed 12+ minutes in Phase 0). Image calls get a
+// longer one sized to the slowest observed legitimate provider (gpt-image-2 at ~140s).
+const DEFAULT_TEXT_TIMEOUT_MS = 90_000;
+const IMAGE_CALL_TIMEOUT_MS = 240_000;
+
+function textTimeoutMs(env: { RITZY_TEXT_TIMEOUT_MS?: string }): number {
+  const configured = Number(env.RITZY_TEXT_TIMEOUT_MS);
+  return Number.isFinite(configured) && configured > 0 ? configured : DEFAULT_TEXT_TIMEOUT_MS;
+}
+
+function createTextClient(env: { OPENAI_API_KEY: string; RITZY_TEXT_TIMEOUT_MS?: string }): OpenAI {
+  return new OpenAI({ apiKey: env.OPENAI_API_KEY, timeout: textTimeoutMs(env), maxRetries: 1 });
+}
+
+// The image fallback must be a genuinely distinct provider: pin api.openai.com so an
+// OPENAI_BASE_URL gateway override (the config that made the old fallback 404 on
+// /v1/images/edits) can never route the fallback through the failing primary.
+function createOpenAiImageFallbackClient(env: { OPENAI_API_KEY: string }): OpenAI {
+  return new OpenAI({
+    apiKey: env.OPENAI_API_KEY,
+    baseURL: "https://api.openai.com/v1",
+    timeout: IMAGE_CALL_TIMEOUT_MS,
+    maxRetries: 1
+  });
+}
+
 async function generateImageWithConfiguredProvider({
-  client,
   prompt,
   references,
   noImageErrorMessage
 }: {
-  client: OpenAI;
   prompt: string;
   references: ImageGenerationReference[];
   noImageErrorMessage: string;
@@ -719,7 +754,7 @@ async function generateImageWithConfiguredProvider({
       const fallbackError = formatImageGenerationError(error);
       try {
         const fallbackAttempt = await generateOpenAiImage({
-          client,
+          client: createOpenAiImageFallbackClient(env),
           prompt,
           references,
           model: env.OPENAI_IMAGE_MODEL,
@@ -754,7 +789,7 @@ async function generateImageWithConfiguredProvider({
     } catch (error) {
       const fallbackError = formatImageGenerationError(error);
       const fallbackAttempt = await generateOpenAiImage({
-        client,
+        client: createOpenAiImageFallbackClient(env),
         prompt,
         references,
         model: env.OPENAI_IMAGE_MODEL,
@@ -771,7 +806,7 @@ async function generateImageWithConfiguredProvider({
   }
 
   return generateOpenAiImage({
-    client,
+    client: new OpenAI({ apiKey: env.OPENAI_API_KEY, timeout: IMAGE_CALL_TIMEOUT_MS, maxRetries: 1 }),
     prompt,
     references,
     model: env.OPENAI_IMAGE_MODEL,
@@ -1061,6 +1096,7 @@ async function generateEvolinkImage({
   const submitResponse = await fetch(`${EVOLINK_API_BASE}/v1/images/generations`, {
     method: "POST",
     headers,
+    signal: AbortSignal.timeout(30_000),
     body: JSON.stringify({
       model,
       prompt,
@@ -1086,7 +1122,8 @@ async function generateEvolinkImage({
 
     const pollResponse = await fetch(`${EVOLINK_API_BASE}/v1/tasks/${encodeURIComponent(submitPayload.id)}`, {
       method: "GET",
-      headers
+      headers,
+      signal: AbortSignal.timeout(15_000)
     });
     const task = (await pollResponse.json().catch(() => null)) as EvolinkTaskResponse | null;
 
@@ -1176,7 +1213,7 @@ export async function generateClarifyingQuestions(
   input: GenerateClarifyingQuestionsInput
 ): Promise<GenerateClarifyingQuestionsResult> {
   const env = parseServerEnv(process.env);
-  const client = new OpenAI({ apiKey: env.OPENAI_API_KEY });
+  const client = createTextClient(env);
   const { inspirationImageUrls, ...briefInput } = input;
   const modePrompt =
     input.intendedMode === "homeowner"
@@ -1236,6 +1273,7 @@ export async function generateClarifyingQuestions(
     promptKey: clarifyingQuestionsPrompt.key,
     promptVersion: clarifyingQuestionsPrompt.version,
     model: env.OPENAI_TEXT_MODEL,
+    textCostUsd: estimateTextCostUsd(env.OPENAI_TEXT_MODEL, response.usage),
     questions
   };
 }
@@ -1244,7 +1282,7 @@ export async function analyzeInspirationImages(
   input: AnalyzeInspirationImagesInput
 ): Promise<AnalyzeInspirationImagesResult> {
   const env = parseServerEnv(process.env);
-  const client = new OpenAI({ apiKey: env.OPENAI_API_KEY });
+  const client = createTextClient(env);
 
   const response = await client.responses.create({
     max_output_tokens: 4000,
@@ -1289,6 +1327,7 @@ export async function analyzeInspirationImages(
 
   return {
     promptKey: inspirationAnalysisPrompt.key,
+    textCostUsd: estimateTextCostUsd(env.OPENAI_TEXT_MODEL, response.usage),
     promptVersion: inspirationAnalysisPrompt.version,
     model: env.OPENAI_TEXT_MODEL,
     analysis
@@ -1299,7 +1338,7 @@ export async function sourceProductsFromConcept(
   input: SourceProductsFromConceptInput
 ): Promise<SourceProductsFromConceptResult> {
   const env = parseServerEnv(process.env);
-  const client = new OpenAI({ apiKey: env.OPENAI_API_KEY });
+  const client = createTextClient(env);
   const candidateLimit = 36;
   const allowedProductIds = new Set(input.candidates.map((candidate) => candidate.id));
   const roleCandidatePools = input.roleCandidatePools ?? [];
@@ -1405,6 +1444,7 @@ export async function sourceProductsFromConcept(
     promptKey: conceptProductSourcingPrompt.key,
     promptVersion: conceptProductSourcingPrompt.version,
     model: env.OPENAI_TEXT_MODEL,
+    textCostUsd: estimateTextCostUsd(env.OPENAI_TEXT_MODEL, response.usage),
     needs: parsed.needs,
     ...validated
   };
@@ -1818,7 +1858,7 @@ export async function generateInitialConcept(
   input: GenerateInitialConceptInput
 ): Promise<GenerateInitialConceptResult> {
   const env = parseServerEnv(process.env);
-  const client = new OpenAI({ apiKey: env.OPENAI_API_KEY });
+  const client = createTextClient(env);
   const useInteriorPromptV2 = env.RITZY_INTERIOR_PROMPT_V2_ENABLED;
 
   const brief = {
@@ -1933,7 +1973,6 @@ export async function generateInitialConcept(
     }));
 
   const imageResult = await generateImageWithConfiguredProvider({
-    client,
     prompt: imagePrompt,
     references: [
       {
@@ -1960,6 +1999,7 @@ export async function generateInitialConcept(
       ? INITIAL_CONCEPT_PROMPT_V2_VERSION
       : `${initialConceptPrompt.version}+${ENHANCED_RITZY_IMAGE_STYLING_VERSION}`,
     textModel: env.OPENAI_TEXT_MODEL,
+    textCostUsd: estimateTextCostUsd(env.OPENAI_TEXT_MODEL, directionResponse.usage),
     imageProvider: imageResult.provider,
     imageModel: imageResult.model,
     imageLatencySeconds: imageResult.latencySeconds,
@@ -2029,11 +2069,10 @@ export async function generateConceptView(
   input: GenerateConceptViewInput
 ): Promise<GenerateConceptViewResult> {
   const env = parseServerEnv(process.env);
-  const client = new OpenAI({ apiKey: env.OPENAI_API_KEY });
+  const client = createTextClient(env);
   const prompt = buildConceptViewPrompt(input);
 
   const imageResult = await generateImageWithConfiguredProvider({
-    client,
     prompt,
     references: [
       {
@@ -2103,11 +2142,10 @@ export async function generateFinalRenderView(
   input: GenerateFinalRenderViewInput
 ): Promise<GenerateFinalRenderViewResult> {
   const env = parseServerEnv(process.env);
-  const client = new OpenAI({ apiKey: env.OPENAI_API_KEY });
+  const client = createTextClient(env);
   const prompt = buildFinalRenderViewPrompt(input);
 
   const imageResult = await generateImageWithConfiguredProvider({
-    client,
     prompt,
     references: [
       {
@@ -2141,6 +2179,7 @@ export type ExtractConceptImagePaletteInput = {
 
 export type ExtractConceptImagePaletteResult = {
   promptKey: string;
+  textCostUsd?: number | null;
   promptVersion: string;
   model: string;
   palette: {
@@ -2155,7 +2194,7 @@ export async function extractConceptImagePalette(
   input: ExtractConceptImagePaletteInput
 ): Promise<ExtractConceptImagePaletteResult> {
   const env = parseServerEnv(process.env);
-  const client = new OpenAI({ apiKey: env.OPENAI_API_KEY });
+  const client = createTextClient(env);
 
   const response = await client.responses.create({
     max_output_tokens: 4000,
@@ -2194,6 +2233,7 @@ export async function extractConceptImagePalette(
 
   return {
     promptKey: conceptPalettePrompt.key,
+    textCostUsd: estimateTextCostUsd(env.OPENAI_TEXT_MODEL, response.usage),
     promptVersion: conceptPalettePrompt.version,
     model: env.OPENAI_TEXT_MODEL,
     palette
@@ -2209,6 +2249,7 @@ export type AssessRenderSpatialQualityInput = {
 
 export type AssessRenderSpatialQualityResult = {
   promptKey: string;
+  textCostUsd?: number | null;
   promptVersion: string;
   model: string;
   qa: RenderSpatialQaResponse;
@@ -2218,7 +2259,7 @@ export async function assessRenderSpatialQuality(
   input: AssessRenderSpatialQualityInput
 ): Promise<AssessRenderSpatialQualityResult> {
   const env = parseServerEnv(process.env);
-  const client = new OpenAI({ apiKey: env.OPENAI_API_KEY });
+  const client = createTextClient(env);
 
   const context = [
     `Room type: ${input.roomType}.`,
@@ -2268,6 +2309,7 @@ export async function assessRenderSpatialQuality(
     promptKey: renderSpatialQaPrompt.key,
     promptVersion: renderSpatialQaPrompt.version,
     model: env.OPENAI_TEXT_MODEL,
+    textCostUsd: estimateTextCostUsd(env.OPENAI_TEXT_MODEL, response.usage),
     qa
   };
 }
@@ -2286,7 +2328,7 @@ export async function generateConceptRevision(
   input: GenerateConceptRevisionInput
 ): Promise<GenerateInitialConceptResult> {
   const env = parseServerEnv(process.env);
-  const client = new OpenAI({ apiKey: env.OPENAI_API_KEY });
+  const client = createTextClient(env);
   const revisionInput = {
     roomType: input.roomType,
     previousConcept: input.previousConcept,
@@ -2349,7 +2391,6 @@ export async function generateConceptRevision(
   ].join("\n");
 
   const imageResult = await generateImageWithConfiguredProvider({
-    client,
     prompt: imagePrompt,
     references: [
       {
@@ -2367,6 +2408,7 @@ export async function generateConceptRevision(
     promptKey: conceptRevisionPrompt.key,
     promptVersion: conceptRevisionPrompt.version,
     textModel: env.OPENAI_TEXT_MODEL,
+    textCostUsd: estimateTextCostUsd(env.OPENAI_TEXT_MODEL, directionResponse.usage),
     imageProvider: imageResult.provider,
     imageModel: imageResult.model,
     imageLatencySeconds: imageResult.latencySeconds,
@@ -2401,7 +2443,7 @@ export async function generateProductEnrichment(
   input: ProductEnrichmentInput
 ): Promise<GenerateProductEnrichmentResult> {
   const env = parseServerEnv(process.env);
-  const client = new OpenAI({ apiKey: env.OPENAI_API_KEY });
+  const client = createTextClient(env);
   const parsedInput = productEnrichmentInputSchema.parse(input);
   const sourceHash = createProductEnrichmentSourceHash(parsedInput);
 
@@ -2442,7 +2484,7 @@ export async function generateProductTextEmbedding(
   enrichment: ProductEnrichmentResponse
 ): Promise<ProductEmbeddingResult> {
   const env = parseServerEnv(process.env);
-  const client = new OpenAI({ apiKey: env.OPENAI_API_KEY });
+  const client = createTextClient(env);
   const parsedInput = productEnrichmentInputSchema.parse(input);
   const parsedEnrichment = productEnrichmentResponseSchema.parse(enrichment);
   const sourceHash = createProductEnrichmentSourceHash(parsedInput);
@@ -2576,7 +2618,7 @@ export async function generateFinalGroundedRender(
   input: GenerateFinalGroundedRenderInput
 ): Promise<GenerateFinalGroundedRenderResult> {
   const env = parseServerEnv(process.env);
-  const client = new OpenAI({ apiKey: env.OPENAI_API_KEY });
+  const client = createTextClient(env);
   const useFinalRenderPromptV2 = env.RITZY_FINAL_RENDER_PROMPT_V2_ENABLED;
   const hasConceptImage = Boolean(input.conceptImageBytes && input.conceptImageMimeType);
   const maxProductReferences =
@@ -2620,7 +2662,6 @@ export async function generateFinalGroundedRender(
   const prompt = input.promptSuffix ? `${basePrompt}\n\n${input.promptSuffix}` : basePrompt;
 
   const imageResult = await generateImageWithConfiguredProvider({
-    client,
     prompt,
     references: [
       {
