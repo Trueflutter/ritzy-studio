@@ -15,7 +15,7 @@ export type RecordedCall = {
   order: Array<[string, unknown]>;
   limit?: number;
   payload?: Record<string, unknown>;
-  upsertOptions?: { onConflict?: string };
+  upsertOptions?: { onConflict?: string; ignoreDuplicates?: boolean };
   single: boolean;
 };
 
@@ -61,7 +61,7 @@ export function fakeSupabase(respond: Responder, respondStorage: StorageResponde
         call.payload = payload;
         return builder;
       },
-      upsert(payload: Record<string, unknown>, options?: { onConflict?: string }) {
+      upsert(payload: Record<string, unknown>, options?: { onConflict?: string; ignoreDuplicates?: boolean }) {
         call.op = "upsert";
         call.payload = payload;
         call.upsertOptions = options;

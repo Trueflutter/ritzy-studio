@@ -131,6 +131,10 @@ async function main() {
         return { data: { id: "spec-1", room_id: "room-1", concept_id: "concept-1", objects: [{ bad: true }], must_preserve: [], status: "extracted" } };
       }
       if (call.table === "room_design_specs" && call.op === "upsert") {
+        // ignoreDuplicates: the existing (malformed) row wins the insert race
+        return { data: null };
+      }
+      if (call.table === "room_design_specs" && call.op === "update") {
         return { data: { id: "spec-1", room_id: "room-1", concept_id: "concept-1", objects: OBJECTS, must_preserve: ["sliding doors"], status: "extracted" } };
       }
       if (call.table === "room_assets") {
@@ -176,8 +180,17 @@ async function main() {
     assert.equal(result.status, "ready");
     assert.equal(result.status === "ready" && result.extractedNow, true);
     const upsert = calls.find((call: RecordedCall) => call.op === "upsert");
-    assert.ok(upsert, "the write must be an upsert so the malformed row is replaced");
+    assert.ok(upsert, "the write must go through the duplicate-safe upsert");
     assert.equal(upsert?.upsertOptions?.onConflict, "room_id,concept_id");
+    assert.equal(upsert?.upsertOptions?.ignoreDuplicates, true, "a duplicate must never overwrite");
+    // The malformed row is replaced only through the guarded repair transition,
+    // which can never touch a confirmed row.
+    const repair = calls.find((call: RecordedCall) => call.table === "room_design_specs" && call.op === "update");
+    assert.ok(repair, "the malformed row must be repaired explicitly");
+    assert.ok(
+      repair?.filters.some(([column, value]) => column === "status" && value === "extracted"),
+      "repair must be scoped to still-extracted rows"
+    );
     // AC 4: every succeeded ai_jobs row carries its cost and model.
     const succeededUpdate = serviceJobWrites.find(
       (call) => call.table === "ai_jobs" && call.op === "update"
@@ -187,17 +200,19 @@ async function main() {
     assert.equal(succeededUpdate?.payload?.model, "stub");
   }
 
-  // --- A transient upsert failure after a valid extraction recovers via the
-  // raced re-read instead of wasting the paid call (round-2 finding).
+  // --- A lost insert race (another request stored first) recovers by reading
+  // the winner's row back instead of wasting the paid call; the winner's row is
+  // never overwritten (codex finding: first write wins).
   {
     let specSelects = 0;
-    const { client } = fakeSupabase((call) => {
+    const { client, calls } = fakeSupabase((call) => {
       if (call.table === "rooms") return { data: { id: "room-1", room_type: "Living Room" } };
       if (call.table === "concepts") {
         return { data: { id: "concept-1", title: "Warm Gallery", status: "selected", primary_image_asset_id: "asset-1" } };
       }
       if (call.table === "room_design_specs" && call.op === "upsert") {
-        return { data: null, error: { message: "transient" } };
+        // duplicate: the concurrent winner's row already holds the slot
+        return { data: null };
       }
       if (call.table === "room_design_specs" && call.op === "select") {
         specSelects += 1;
@@ -213,7 +228,7 @@ async function main() {
             concept_id: "concept-1",
             objects: OBJECTS,
             must_preserve: [],
-            status: "extracted"
+            status: "confirmed"
           }
         };
       }
@@ -252,10 +267,20 @@ async function main() {
         }
       }
     );
-    assert.ok(recoveryExtracted, "the paid call must have run before the upsert failed");
-    assert.equal(specSelects >= 2, true, "the raced re-read must fire after the upsert failure");
+    assert.ok(recoveryExtracted, "the paid call ran before the race was lost");
+    assert.equal(specSelects >= 2, true, "the re-read must fire after the duplicate");
     assert.equal(result.status, "ready");
-    assert.equal(result.status === "ready" && result.extractedNow, false, "recovery reads the stored row back");
+    assert.equal(result.status === "ready" && result.extractedNow, false, "recovery reads the winner's row back");
+    assert.equal(
+      result.status === "ready" && result.spec.status,
+      "confirmed",
+      "a CONFIRMED winner row must come back untouched"
+    );
+    assert.equal(
+      calls.filter((call: RecordedCall) => call.table === "room_design_specs" && call.op === "update").length,
+      0,
+      "a valid winner row must never be overwritten"
+    );
   }
 
   // --- A failing extraction marks the ai_job failed and resolves extraction_failed

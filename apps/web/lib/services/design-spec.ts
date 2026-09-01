@@ -182,9 +182,10 @@ export async function ensureRoomDesignSpec(
         : null
     });
 
-    // Upsert on (room, concept): a concurrent first visit converges on one row,
-    // and a previously stored MALFORMED row is replaced instead of colliding on
-    // the unique constraint forever.
+    // First write wins (codex finding): ignoreDuplicates means a slower duplicate
+    // extraction can never overwrite a row another request stored, and above all
+    // can never reset a spec the user has already CONFIRMED. A stored malformed
+    // row is repaired through the explicit guarded transition below instead.
     const { data: inserted, error: insertError } = await supabase
       .from("room_design_specs")
       .upsert(
@@ -196,10 +197,10 @@ export async function ensureRoomDesignSpec(
           status: "extracted",
           extraction_job_id: job?.id ?? null
         },
-        { onConflict: "room_id,concept_id" }
+        { onConflict: "room_id,concept_id", ignoreDuplicates: true }
       )
       .select("*")
-      .single();
+      .maybeSingle();
 
     if (job) {
       await serviceSupabase
@@ -220,26 +221,57 @@ export async function ensureRoomDesignSpec(
     }
 
     if (insertError) {
-      const { data: raced } = await supabase
+      throw new Error(insertError.message);
+    }
+
+    if (!inserted) {
+      // Duplicate: another request (or a previously stored row) holds the slot.
+      const { data: existingRow } = await supabase
         .from("room_design_specs")
         .select("*")
         .eq("room_id", roomId)
         .eq("concept_id", concept.id)
         .maybeSingle();
-      const parsedRaced = raced ? parseRoomDesignSpecRow(raced) : null;
-      if (parsedRaced) {
+      const parsedExisting = existingRow ? parseRoomDesignSpecRow(existingRow) : null;
+      if (parsedExisting) {
         return {
           status: "ready",
-          spec: parsedRaced,
+          spec: parsedExisting,
           conceptTitle: concept.title,
           extractedNow: false,
           renderSignedUrl: render.signedUrl
         };
       }
-      throw new Error(insertError.message);
+      // Explicit guarded repair: only a still-EXTRACTED malformed row may be
+      // replaced; a confirmed row is never touched by this path.
+      const { data: repaired } = existingRow
+        ? await supabase
+            .from("room_design_specs")
+            .update({
+              objects: extraction.objects,
+              must_preserve: extraction.mustPreserve,
+              status: "extracted",
+              extraction_job_id: job?.id ?? null
+            })
+            .eq("id", existingRow.id)
+            .eq("status", "extracted")
+            .select("*")
+            .maybeSingle()
+        : { data: null };
+      const parsedRepaired = repaired ? parseRoomDesignSpecRow(repaired) : null;
+      if (parsedRepaired) {
+        return {
+          status: "ready",
+          spec: parsedRepaired,
+          conceptTitle: concept.title,
+          extractedNow: true,
+          renderSignedUrl: render.signedUrl
+        };
+      }
+      throw new Error("Stored spec could not be read or repaired after extraction.");
     }
 
-    const parsed = inserted ? parseRoomDesignSpecRow(inserted) : null;
+    const parsed = parseRoomDesignSpecRow(inserted);
     if (!parsed) {
       throw new Error("Extracted spec did not validate after insert.");
     }
