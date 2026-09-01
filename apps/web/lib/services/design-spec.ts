@@ -1,4 +1,5 @@
-import { extractRoomDesignSpec } from "@ritzy-studio/ai";
+import { extractRoomDesignSpec, stageTextConfig } from "@ritzy-studio/ai";
+import { configuredTextModel } from "@ritzy-studio/config";
 import {
   designSpecMustPreserveSchema,
   designSpecObjectsSchema,
@@ -6,34 +7,9 @@ import {
   type RoomDesignSpec
 } from "@ritzy-studio/domain";
 
-import { conceptPrimaryRender } from "./room-images";
+import { conceptPrimaryRender, signedConceptRenderUrl } from "./room-images";
 import type { ServiceSupabaseClient, UserSupabaseClient } from "./supabase-clients";
 
-// Signs the concept's primary render for display without downloading bytes (the
-// stored-spec fast path needs a URL, not the image).
-async function signedRenderUrl(
-  {
-    supabase,
-    serviceSupabase
-  }: { supabase: UserSupabaseClient; serviceSupabase: ServiceSupabaseClient },
-  primaryImageAssetId: string | null
-): Promise<string | null> {
-  if (!primaryImageAssetId) {
-    return null;
-  }
-  const { data: renderAsset } = await supabase
-    .from("room_assets")
-    .select("storage_path")
-    .eq("id", primaryImageAssetId)
-    .maybeSingle();
-  if (!renderAsset) {
-    return null;
-  }
-  const { data: signed } = await serviceSupabase.storage
-    .from("generated-renders")
-    .createSignedUrl(renderAsset.storage_path, 60 * 60);
-  return signed?.signedUrl ?? null;
-}
 
 // The design-spec service (S2 step 8): spec-at-approval with on-demand backfill.
 // ensureRoomDesignSpec returns the stored spec for a room's selected concept,
@@ -102,7 +78,7 @@ export async function ensureRoomDesignSpec(
         spec: parsed,
         conceptTitle: concept.title,
         extractedNow: false,
-        renderSignedUrl: await signedRenderUrl({ supabase, serviceSupabase }, concept.primary_image_asset_id)
+        renderSignedUrl: await signedConceptRenderUrl({ supabase, serviceSupabase }, concept.primary_image_asset_id)
       };
     }
     // A stored spec that no longer validates is treated as absent: re-extract
@@ -115,7 +91,10 @@ export async function ensureRoomDesignSpec(
 
   // In-flight guard (mirrors concept generation's running-job dedupe): a GET
   // triggers a paid vision call, so parallel opens or Retry storms must not fan
-  // out extra provider spend. One recent running extraction blocks new ones.
+  // out extra provider spend. The audit row is inserted IMMEDIATELY after this
+  // check, before any storage or provider work, so the check-then-act window is
+  // milliseconds; the residual race costs at most one duplicate $0.007 vision
+  // call, and DB-level single-flight arrives with S7's credit reservations.
   const runningSince = new Date(Date.now() - 15 * 60 * 1000).toISOString();
   const { data: runningExtraction } = await serviceSupabase
     .from("ai_jobs")
@@ -131,9 +110,37 @@ export async function ensureRoomDesignSpec(
     return { status: "extraction_running" };
   }
 
+  // Spend never precedes its audit row: a failed insert aborts before any
+  // provider call (the sibling services keep the same invariant).
+  const { data: job, error: jobError } = await serviceSupabase
+    .from("ai_jobs")
+    .insert({
+      user_id: userId,
+      room_id: roomId,
+      job_type: "spec_extraction",
+      status: "running",
+      provider: "openai",
+      model: stageTextConfig("spec_extraction", configuredTextModel()).model,
+      input_summary: { roomId, conceptId: concept.id }
+    })
+    .select("id")
+    .single();
+
+  if (jobError || !job) {
+    return { status: "extraction_failed" };
+  }
+
   const render = await conceptPrimaryRender({ supabase, serviceSupabase }, concept.primary_image_asset_id);
 
   if (!render) {
+    await serviceSupabase
+      .from("ai_jobs")
+      .update({
+        status: "failed",
+        completed_at: new Date().toISOString(),
+        error_message: "Concept render unavailable for extraction."
+      })
+      .eq("id", job.id);
     return { status: "concept_image_unprepared" };
   }
 
@@ -152,20 +159,6 @@ export async function ensureRoomDesignSpec(
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();
-
-  const { data: job } = await serviceSupabase
-    .from("ai_jobs")
-    .insert({
-      user_id: userId,
-      room_id: roomId,
-      job_type: "spec_extraction",
-      status: "running",
-      provider: "openai",
-      model: "pending",
-      input_summary: { roomId, conceptId: concept.id }
-    })
-    .select("id")
-    .single();
 
   try {
     const extraction = await extract({

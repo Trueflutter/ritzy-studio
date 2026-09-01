@@ -112,6 +112,10 @@ export async function reviseConceptForRoom(
     return { status: "concept_image_unprepared" };
   }
 
+  if (!images.signedPhotoUrl || !images.photoBytes) {
+    return { status: "photo_unprepared" };
+  }
+
   const { data: measurements } = await supabase
     .from("room_measurements")
     .select("*")
@@ -152,9 +156,6 @@ export async function reviseConceptForRoom(
   }
 
   try {
-    if (!images.signedPhotoUrl || !images.photoBytes) {
-      return { status: "photo_unprepared" };
-    }
     const result = await generateRevision({
       roomType: room.room_type,
       roomPhotoUrl: await visionImageDataUrl(images.photoBytes, roomPhoto.mime_type),

@@ -23,6 +23,7 @@ import {
   specExtractionJsonSchema,
   specExtractionPrompt,
   specExtractionResponseSchema,
+  type SpecExtractionResponse,
   conceptPaletteJsonSchema,
   conceptPalettePrompt,
   conceptPaletteResponseSchema,
@@ -2497,15 +2498,8 @@ export type ExtractRoomDesignSpecResult = {
   promptVersion: string;
   model: string;
   textCostUsd?: number | null;
-  objects: Array<{
-    role: string;
-    label: string;
-    quantity: number;
-    sizeDescriptor: string | null;
-    capacity: string | null;
-    paletteMaterials: string[];
-  }>;
-  mustPreserve: string[];
+  objects: SpecExtractionResponse["objects"];
+  mustPreserve: SpecExtractionResponse["mustPreserve"];
 };
 
 // The spec-at-approval vision pass (S2): reads the approved concept image and

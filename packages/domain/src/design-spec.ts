@@ -6,18 +6,34 @@ import { z } from "zod";
 // room_design_specs so a malformed extraction can never reach the database or a
 // consumer unnoticed.
 
+// The one set of numbers every spec surface reads: zod schema, extraction
+// response, and the /spec form clamps.
+export const DESIGN_SPEC_LIMITS = {
+  maxObjects: 30,
+  labelMax: 120,
+  sizeDescriptorMax: 200,
+  capacityMax: 120,
+  quantityMax: 24,
+  paletteEntriesMax: 8,
+  paletteEntryMax: 120,
+  preserveEntriesMax: 16,
+  preserveEntryMax: 200
+} as const;
+
 export const designSpecObjectSchema = z.object({
   role: z.string().min(2).max(60),
-  label: z.string().min(2).max(120),
-  quantity: z.number().int().min(1).max(24),
-  sizeDescriptor: z.string().min(2).max(200).nullable(),
-  capacity: z.string().min(2).max(120).nullable(),
-  paletteMaterials: z.array(z.string().min(2).max(120)).max(8)
+  label: z.string().min(2).max(DESIGN_SPEC_LIMITS.labelMax),
+  quantity: z.number().int().min(1).max(DESIGN_SPEC_LIMITS.quantityMax),
+  sizeDescriptor: z.string().min(2).max(DESIGN_SPEC_LIMITS.sizeDescriptorMax).nullable(),
+  capacity: z.string().min(2).max(DESIGN_SPEC_LIMITS.capacityMax).nullable(),
+  paletteMaterials: z.array(z.string().min(2).max(DESIGN_SPEC_LIMITS.paletteEntryMax)).max(DESIGN_SPEC_LIMITS.paletteEntriesMax)
 });
 
-export const designSpecObjectsSchema = z.array(designSpecObjectSchema).min(1).max(30);
+export const designSpecObjectsSchema = z.array(designSpecObjectSchema).min(1).max(DESIGN_SPEC_LIMITS.maxObjects);
 
-export const designSpecMustPreserveSchema = z.array(z.string().min(2).max(200)).max(16);
+export const designSpecMustPreserveSchema = z
+  .array(z.string().min(2).max(DESIGN_SPEC_LIMITS.preserveEntryMax))
+  .max(DESIGN_SPEC_LIMITS.preserveEntriesMax);
 
 export type DesignSpecObject = z.infer<typeof designSpecObjectSchema>;
 

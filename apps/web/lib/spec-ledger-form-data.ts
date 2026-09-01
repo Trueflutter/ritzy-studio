@@ -8,20 +8,9 @@
 // whole submit. Row-level fields (label, quantity) fail with a message naming
 // the row, because silently repairing them would change what the user said.
 
-const MAX_OBJECTS = 30;
-const MAX_PALETTE_ENTRIES = 8;
-const MAX_PALETTE_LENGTH = 120;
-const MAX_PRESERVE_ENTRIES = 16;
-const MAX_PRESERVE_LENGTH = 200;
+import { DESIGN_SPEC_LIMITS, type DesignSpecObject } from "@ritzy-studio/domain";
 
-export type SpecLedgerObject = {
-  role: string;
-  label: string;
-  quantity: number;
-  sizeDescriptor: string | null;
-  capacity: string | null;
-  paletteMaterials: string[];
-};
+export type SpecLedgerObject = DesignSpecObject;
 
 export type SpecLedgerParseResult =
   | { ok: true; objects: SpecLedgerObject[]; mustPreserve: string[] }
@@ -41,7 +30,7 @@ function optionalField(value: string) {
 }
 
 export function parseSpecLedgerForm(formData: FormData): SpecLedgerParseResult {
-  const objectCount = Math.min(Number(formData.get("objectCount")) || 0, MAX_OBJECTS);
+  const objectCount = Math.min(Number(formData.get("objectCount")) || 0, DESIGN_SPEC_LIMITS.maxObjects);
   const objects: SpecLedgerObject[] = [];
 
   for (let index = 0; index < objectCount; index += 1) {
@@ -58,22 +47,27 @@ export function parseSpecLedgerForm(formData: FormData): SpecLedgerParseResult {
       return { ok: false, message: `Piece ${index + 1} needs a name (at least two characters).` };
     }
     const quantity = Number(formData.get(`object-${index}-quantity`) ?? 0);
-    if (!Number.isInteger(quantity) || quantity < 1 || quantity > 24) {
-      return { ok: false, message: `"${label}" needs a quantity between 1 and 24.` };
+    if (!Number.isInteger(quantity) || quantity < 1 || quantity > DESIGN_SPEC_LIMITS.quantityMax) {
+      return {
+        ok: false,
+        message: `"${label}" needs a quantity between 1 and ${DESIGN_SPEC_LIMITS.quantityMax}.`
+      };
     }
     objects.push({
       role: String(formData.get(`object-${index}-role`) ?? "").trim(),
-      label: label.slice(0, 120),
+      label: label.slice(0, DESIGN_SPEC_LIMITS.labelMax),
       quantity,
       sizeDescriptor: optionalField(
-        String(formData.get(`object-${index}-sizeDescriptor`) ?? "").slice(0, 200)
+        String(formData.get(`object-${index}-sizeDescriptor`) ?? "").slice(0, DESIGN_SPEC_LIMITS.sizeDescriptorMax)
       ),
-      capacity: optionalField(String(formData.get(`object-${index}-capacity`) ?? "").slice(0, 120)),
+      capacity: optionalField(
+        String(formData.get(`object-${index}-capacity`) ?? "").slice(0, DESIGN_SPEC_LIMITS.capacityMax)
+      ),
       paletteMaterials: cleanedList(
         String(formData.get(`object-${index}-paletteMaterials`) ?? ""),
         /,/,
-        MAX_PALETTE_ENTRIES,
-        MAX_PALETTE_LENGTH
+        DESIGN_SPEC_LIMITS.paletteEntriesMax,
+        DESIGN_SPEC_LIMITS.paletteEntryMax
       )
     });
   }
@@ -85,8 +79,8 @@ export function parseSpecLedgerForm(formData: FormData): SpecLedgerParseResult {
   const mustPreserve = cleanedList(
     String(formData.get("mustPreserve") ?? ""),
     /\n/,
-    MAX_PRESERVE_ENTRIES,
-    MAX_PRESERVE_LENGTH
+    DESIGN_SPEC_LIMITS.preserveEntriesMax,
+    DESIGN_SPEC_LIMITS.preserveEntryMax
   );
 
   return { ok: true, objects, mustPreserve };

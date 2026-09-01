@@ -98,6 +98,34 @@ export async function roomImageInputs(
   };
 }
 
+// Signed display URL for a concept's primary render, no bytes downloaded (the
+// stored-spec fast path needs a URL, not the image). One TTL for every consumer.
+const RENDER_SIGNED_URL_TTL_SECONDS = 60 * 60;
+
+export async function signedConceptRenderUrl(
+  {
+    supabase,
+    serviceSupabase
+  }: { supabase: UserSupabaseClient; serviceSupabase: ServiceSupabaseClient },
+  primaryImageAssetId: string | null
+): Promise<string | null> {
+  if (!primaryImageAssetId) {
+    return null;
+  }
+  const { data: renderAsset } = await supabase
+    .from("room_assets")
+    .select("storage_path")
+    .eq("id", primaryImageAssetId)
+    .maybeSingle();
+  if (!renderAsset) {
+    return null;
+  }
+  const { data: signed } = await serviceSupabase.storage
+    .from("generated-renders")
+    .createSignedUrl(renderAsset.storage_path, RENDER_SIGNED_URL_TTL_SECONDS);
+  return signed?.signedUrl ?? null;
+}
+
 // The concept's primary render, resolved ONE way for every consumer (spec
 // extraction, revision base image, and the /spec page's display).
 export async function conceptPrimaryRender(
@@ -131,7 +159,7 @@ export async function conceptPrimaryRender(
 
   const { data: signed } = await serviceSupabase.storage
     .from("generated-renders")
-    .createSignedUrl(renderAsset.storage_path, 60 * 30);
+    .createSignedUrl(renderAsset.storage_path, RENDER_SIGNED_URL_TTL_SECONDS);
 
   return {
     bytes: Buffer.from(await renderBlob.arrayBuffer()),
