@@ -2518,5 +2518,3 @@ export function missingLocalSkuFidelityRenderRoles({
     .filter((role) => !selected.has(role.category))
     .map((role) => role.label);
 }
-
-
