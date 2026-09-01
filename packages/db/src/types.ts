@@ -7,30 +7,10 @@ export type Json =
   | Json[]
 
 export type Database = {
-  graphql_public: {
-    Tables: {
-      [_ in never]: never
-    }
-    Views: {
-      [_ in never]: never
-    }
-    Functions: {
-      graphql: {
-        Args: {
-          extensions?: Json
-          operationName?: string
-          query?: string
-          variables?: Json
-        }
-        Returns: Json
-      }
-    }
-    Enums: {
-      [_ in never]: never
-    }
-    CompositeTypes: {
-      [_ in never]: never
-    }
+  // Allows to automatically instantiate createClient with right options
+  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
+  __InternalSupabase: {
+    PostgrestVersion: "14.5"
   }
   public: {
     Tables: {
@@ -83,7 +63,22 @@ export type Database = {
           status?: Database["public"]["Enums"]["ai_job_status"]
           user_id?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "ai_jobs_room_id_fkey"
+            columns: ["room_id"]
+            isOneToOne: false
+            referencedRelation: "rooms"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_jobs_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       clarifying_questions: {
         Row: {
@@ -126,6 +121,7 @@ export type Database = {
       concept_critiques: {
         Row: {
           concept_id: string
+          concept_version_link: string | null
           created_at: string
           created_by_user_id: string
           critique_text: string
@@ -133,6 +129,7 @@ export type Database = {
         }
         Insert: {
           concept_id: string
+          concept_version_link?: string | null
           created_at?: string
           created_by_user_id: string
           critique_text: string
@@ -140,6 +137,7 @@ export type Database = {
         }
         Update: {
           concept_id?: string
+          concept_version_link?: string | null
           created_at?: string
           created_by_user_id?: string
           critique_text?: string
@@ -149,6 +147,13 @@ export type Database = {
           {
             foreignKeyName: "concept_critiques_concept_id_fkey"
             columns: ["concept_id"]
+            isOneToOne: false
+            referencedRelation: "concepts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "concept_critiques_concept_version_link_fkey"
+            columns: ["concept_version_link"]
             isOneToOne: false
             referencedRelation: "concepts"
             referencedColumns: ["id"]
@@ -167,6 +172,7 @@ export type Database = {
           created_at: string
           description: string | null
           design_brief_id: string
+          diff_summary: string | null
           generation_job_id: string | null
           id: string
           palette_json: Json | null
@@ -181,6 +187,7 @@ export type Database = {
           created_at?: string
           description?: string | null
           design_brief_id: string
+          diff_summary?: string | null
           generation_job_id?: string | null
           id?: string
           palette_json?: Json | null
@@ -195,6 +202,7 @@ export type Database = {
           created_at?: string
           description?: string | null
           design_brief_id?: string
+          diff_summary?: string | null
           generation_job_id?: string | null
           id?: string
           palette_json?: Json | null
@@ -236,6 +244,56 @@ export type Database = {
           },
           {
             foreignKeyName: "concepts_room_id_fkey"
+            columns: ["room_id"]
+            isOneToOne: false
+            referencedRelation: "rooms"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      design_briefs: {
+        Row: {
+          avoid_notes: string | null
+          budget_notes: string | null
+          color_notes: string | null
+          created_at: string
+          functional_requirements: string | null
+          id: string
+          inspiration_notes: string | null
+          room_id: string
+          structured_json: Json
+          style_notes: string | null
+          updated_at: string
+        }
+        Insert: {
+          avoid_notes?: string | null
+          budget_notes?: string | null
+          color_notes?: string | null
+          created_at?: string
+          functional_requirements?: string | null
+          id?: string
+          inspiration_notes?: string | null
+          room_id: string
+          structured_json?: Json
+          style_notes?: string | null
+          updated_at?: string
+        }
+        Update: {
+          avoid_notes?: string | null
+          budget_notes?: string | null
+          color_notes?: string | null
+          created_at?: string
+          functional_requirements?: string | null
+          id?: string
+          inspiration_notes?: string | null
+          room_id?: string
+          structured_json?: Json
+          style_notes?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "design_briefs_room_id_fkey"
             columns: ["room_id"]
             isOneToOne: false
             referencedRelation: "rooms"
@@ -290,58 +348,8 @@ export type Database = {
           {
             foreignKeyName: "designer_accounts_owner_user_id_fkey"
             columns: ["owner_user_id"]
-            isOneToOne: false
+            isOneToOne: true
             referencedRelation: "users"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      design_briefs: {
-        Row: {
-          avoid_notes: string | null
-          budget_notes: string | null
-          color_notes: string | null
-          created_at: string
-          functional_requirements: string | null
-          id: string
-          inspiration_notes: string | null
-          room_id: string
-          structured_json: Json
-          style_notes: string | null
-          updated_at: string
-        }
-        Insert: {
-          avoid_notes?: string | null
-          budget_notes?: string | null
-          color_notes?: string | null
-          created_at?: string
-          functional_requirements?: string | null
-          id?: string
-          inspiration_notes?: string | null
-          room_id: string
-          structured_json?: Json
-          style_notes?: string | null
-          updated_at?: string
-        }
-        Update: {
-          avoid_notes?: string | null
-          budget_notes?: string | null
-          color_notes?: string | null
-          created_at?: string
-          functional_requirements?: string | null
-          id?: string
-          inspiration_notes?: string | null
-          room_id?: string
-          structured_json?: Json
-          style_notes?: string | null
-          updated_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "design_briefs_room_id_fkey"
-            columns: ["room_id"]
-            isOneToOne: false
-            referencedRelation: "rooms"
             referencedColumns: ["id"]
           },
         ]
@@ -901,6 +909,64 @@ export type Database = {
           },
         ]
       }
+      room_design_specs: {
+        Row: {
+          concept_id: string
+          created_at: string
+          extraction_job_id: string | null
+          id: string
+          must_preserve: Json
+          objects: Json
+          room_id: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          concept_id: string
+          created_at?: string
+          extraction_job_id?: string | null
+          id?: string
+          must_preserve?: Json
+          objects?: Json
+          room_id: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          concept_id?: string
+          created_at?: string
+          extraction_job_id?: string | null
+          id?: string
+          must_preserve?: Json
+          objects?: Json
+          room_id?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "room_design_specs_concept_id_fkey"
+            columns: ["concept_id"]
+            isOneToOne: false
+            referencedRelation: "concepts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "room_design_specs_extraction_job_id_fkey"
+            columns: ["extraction_job_id"]
+            isOneToOne: false
+            referencedRelation: "ai_jobs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "room_design_specs_room_id_fkey"
+            columns: ["room_id"]
+            isOneToOne: false
+            referencedRelation: "rooms"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       room_measurements: {
         Row: {
           ceiling_height_cm: number | null
@@ -1272,33 +1338,6 @@ export type Database = {
           },
         ]
       }
-      users: {
-        Row: {
-          created_at: string
-          email: string
-          id: string
-          name: string | null
-          role: Database["public"]["Enums"]["user_role"]
-          updated_at: string
-        }
-        Insert: {
-          created_at?: string
-          email: string
-          id: string
-          name?: string | null
-          role?: Database["public"]["Enums"]["user_role"]
-          updated_at?: string
-        }
-        Update: {
-          created_at?: string
-          email?: string
-          id?: string
-          name?: string | null
-          role?: Database["public"]["Enums"]["user_role"]
-          updated_at?: string
-        }
-        Relationships: []
-      }
       user_profiles: {
         Row: {
           country: string | null
@@ -1340,6 +1379,33 @@ export type Database = {
           },
         ]
       }
+      users: {
+        Row: {
+          created_at: string
+          email: string
+          id: string
+          name: string | null
+          role: Database["public"]["Enums"]["user_role"]
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          email: string
+          id: string
+          name?: string | null
+          role?: Database["public"]["Enums"]["user_role"]
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          email?: string
+          id?: string
+          name?: string | null
+          role?: Database["public"]["Enums"]["user_role"]
+          updated_at?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
@@ -1365,6 +1431,7 @@ export type Database = {
         Args: { shopping_list_id: string }
         Returns: boolean
       }
+      storage_object_room_id: { Args: { object_name: string }; Returns: string }
     }
     Enums: {
       ai_job_status: "queued" | "running" | "succeeded" | "failed" | "cancelled"
@@ -1372,9 +1439,9 @@ export type Database = {
         | "room_photo"
         | "floor_plan"
         | "thumbnail"
-        | "inspiration_image"
         | "concept_render"
         | "final_render"
+        | "inspiration_image"
       concept_status: "draft" | "generated" | "selected" | "rejected"
       confidence_level: "verified" | "assumed" | "estimated" | "unknown"
       entitlement_event_type:
@@ -1392,7 +1459,6 @@ export type Database = {
       project_status: "draft" | "active" | "archived"
       question_status: "open" | "answered" | "skipped"
       retailer_status: "active" | "paused" | "blocked" | "candidate"
-      room_unlock_status: "pending" | "active" | "refunded" | "expired" | "revoked"
       room_status:
         | "draft"
         | "briefing"
@@ -1400,6 +1466,12 @@ export type Database = {
         | "sourcing"
         | "rendering"
         | "complete"
+      room_unlock_status:
+        | "pending"
+        | "active"
+        | "refunded"
+        | "expired"
+        | "revoked"
       shopping_list_status: "draft" | "approved" | "archived"
       subscription_status:
         | "trialing"
@@ -1535,9 +1607,6 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
-  graphql_public: {
-    Enums: {},
-  },
   public: {
     Enums: {
       ai_job_status: ["queued", "running", "succeeded", "failed", "cancelled"],
@@ -1545,9 +1614,9 @@ export const Constants = {
         "room_photo",
         "floor_plan",
         "thumbnail",
-        "inspiration_image",
         "concept_render",
         "final_render",
+        "inspiration_image",
       ],
       concept_status: ["draft", "generated", "selected", "rejected"],
       confidence_level: ["verified", "assumed", "estimated", "unknown"],
@@ -1567,7 +1636,6 @@ export const Constants = {
       project_status: ["draft", "active", "archived"],
       question_status: ["open", "answered", "skipped"],
       retailer_status: ["active", "paused", "blocked", "candidate"],
-      room_unlock_status: ["pending", "active", "refunded", "expired", "revoked"],
       room_status: [
         "draft",
         "briefing",
@@ -1575,6 +1643,13 @@ export const Constants = {
         "sourcing",
         "rendering",
         "complete",
+      ],
+      room_unlock_status: [
+        "pending",
+        "active",
+        "refunded",
+        "expired",
+        "revoked",
       ],
       shopping_list_status: ["draft", "approved", "archived"],
       subscription_status: [
