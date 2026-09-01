@@ -24,3 +24,9 @@ assert.equal(
   "Product sourcing took longer than expected. Please try matching products again in a minute."
 );
 assert.equal(productSourcingGenericFailureMessage(), "Product sourcing could not complete. Please try sourcing again.");
+
+// The OpenAI SDK's own client deadline classifies as a sourcing timeout, so a
+// RITZY_TEXT_TIMEOUT_MS below the outer 45s wrapper still routes to the fallback.
+assert.equal(isProductSourcingTimeoutError(new Error("Request timed out.")), true);
+assert.equal(isProductSourcingTimeoutError(new Error("some other failure")), false);
+console.log("product-sourcing-failure tests passed");

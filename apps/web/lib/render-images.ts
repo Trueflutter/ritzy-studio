@@ -100,36 +100,47 @@ async function fetchRemoteImageOnce(
   allowlist: Set<string>,
   fetchImpl: FetchImpl
 ): Promise<CatalogueReferenceImage | null> {
-  const followed = await followGuardedRedirects(url, {
-    allowlist,
-    fetchImpl,
-    timeoutMs: CATALOGUE_GROUNDED_CONCEPT_IMAGE_FETCH_TIMEOUT_MS,
-    method: "GET"
-  });
-  if (!followed.ok || !followed.response.ok) {
+  // Never throws: any failure (refusal, redirect escape, HTTP error, mid-body reset,
+  // body-read deadline) returns null so one bad reference degrades to "no image"
+  // instead of failing a whole render or sourcing operation.
+  try {
+    const followed = await followGuardedRedirects(url, {
+      allowlist,
+      fetchImpl,
+      timeoutMs: CATALOGUE_GROUNDED_CONCEPT_IMAGE_FETCH_TIMEOUT_MS,
+      method: "GET"
+    });
+    if (!followed.ok || !followed.response.ok) {
+      return null;
+    }
+    const response = followed.response;
+
+    const mimeType = response.headers.get("content-type")?.split(";")[0] ?? "image/jpeg";
+    if (!["image/jpeg", "image/png", "image/webp"].includes(mimeType)) {
+      void response.body?.cancel().catch(() => {});
+      return null;
+    }
+
+    const contentLength = Number(response.headers.get("content-length"));
+    if (Number.isFinite(contentLength) && contentLength > PRODUCT_SOURCING_MAX_IMAGE_BYTES) {
+      void response.body?.cancel().catch(() => {});
+      return null;
+    }
+
+    const bytes = await readResponseBytesCapped(
+      response,
+      PRODUCT_SOURCING_MAX_IMAGE_BYTES,
+      CATALOGUE_GROUNDED_CONCEPT_IMAGE_FETCH_TIMEOUT_MS
+    );
+    if (!bytes) {
+      return null;
+    }
+
+    return {
+      bytes: Buffer.from(bytes),
+      mimeType
+    };
+  } catch {
     return null;
   }
-  const response = followed.response;
-
-  const mimeType = response.headers.get("content-type")?.split(";")[0] ?? "image/jpeg";
-  if (!["image/jpeg", "image/png", "image/webp"].includes(mimeType)) {
-    void response.body?.cancel().catch(() => {});
-    return null;
-  }
-
-  const contentLength = Number(response.headers.get("content-length"));
-  if (Number.isFinite(contentLength) && contentLength > PRODUCT_SOURCING_MAX_IMAGE_BYTES) {
-    void response.body?.cancel().catch(() => {});
-    return null;
-  }
-
-  const bytes = await readResponseBytesCapped(response, PRODUCT_SOURCING_MAX_IMAGE_BYTES);
-  if (!bytes) {
-    return null;
-  }
-
-  return {
-    bytes: Buffer.from(bytes),
-    mimeType
-  };
 }

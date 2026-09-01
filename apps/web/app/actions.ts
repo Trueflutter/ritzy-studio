@@ -2556,6 +2556,7 @@ export async function groundProductsAction(formData: FormData) {
   // concept's text tokens. Extraction failure degrades to text-only matching.
   let conceptPalette = parseConceptImagePalette(concept.palette_json);
   let paletteTextCostUsd: number | null = null;
+  let initialSourcingTextCostUsd: number | null = null;
   if (!conceptPalette) {
     try {
       const paletteResult = await extractConceptImagePalette({
@@ -2852,6 +2853,7 @@ ${conceptPaletteText}`
             completed_at: new Date().toISOString(),
             model: sourcingResult.model,
             prompt_version: sourcingResult.promptVersion,
+            cost_estimate_usd: sumUsdCosts(sourcingResult.textCostUsd, paletteTextCostUsd),
             output_summary: {
               promptKey: sourcingResult.promptKey,
               needCount: sourcingResult.needs.length,
@@ -3136,6 +3138,8 @@ ${conceptPaletteText}`
     }
 
     if (retryResult?.needs.length && retryResult.selectedProducts.length) {
+      // The first attempt's spend is real even though its result is being replaced.
+      initialSourcingTextCostUsd = sourcingResult?.textCostUsd ?? initialSourcingTextCostUsd;
       sourcingResult = retryResult;
       latestConfidencePools = retryPools;
       visualMissingRoleCategories = new Set(
@@ -3152,7 +3156,7 @@ ${conceptPaletteText}`
           completed_at: new Date().toISOString(),
           model: sourcingResult.model,
           prompt_version: sourcingResult.promptVersion,
-          cost_estimate_usd: sumUsdCosts(sourcingResult.textCostUsd, paletteTextCostUsd),
+          cost_estimate_usd: sumUsdCosts(initialSourcingTextCostUsd, sourcingResult.textCostUsd, paletteTextCostUsd),
           output_summary: {
             promptKey: sourcingResult.promptKey,
             needCount: sourcingResult.needs.length,

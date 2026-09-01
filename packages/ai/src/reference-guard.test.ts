@@ -4,6 +4,7 @@ import {
   buildReferenceHostAllowlist,
   checkReferenceImageUrl,
   preflightReferenceImage,
+  readResponseBytesCapped,
   sanitizeReferenceImageUrl
 } from "./reference-guard";
 
@@ -256,6 +257,61 @@ function mockFetch(routes: Record<string, MockResponse | MockResponse[]>) {
     fetchImpl: impl
   });
   assert.equal(result.ok, false);
+}
+
+// Endless MUTUAL redirects (A to B to A) exhaust the hop cap, not just self-loops.
+{
+  const { impl } = mockFetch({
+    "https://media.homecentre.com/a.jpg": {
+      status: 302,
+      headers: { location: "https://cdn.media.amplience.net/b.jpg" }
+    },
+    "https://cdn.media.amplience.net/b.jpg": {
+      status: 302,
+      headers: { location: "https://media.homecentre.com/a.jpg" }
+    }
+  });
+  const result = await preflightReferenceImage("https://media.homecentre.com/a.jpg", {
+    allowlist,
+    fetchImpl: impl
+  });
+  assert.equal(result.ok, false);
+  assert.ok(!result.ok && /redirect/.test(result.reason ?? ""), `reason: ${!result.ok ? result.reason : ""}`);
+}
+
+// The streaming byte cap: a body that exceeds the cap returns null and cancels the reader.
+{
+  let cancelled = false;
+  const chunk = new Uint8Array(1024);
+  let sent = 0;
+  const stream = new ReadableStream<Uint8Array>({
+    pull(controller) {
+      sent += chunk.byteLength;
+      controller.enqueue(chunk);
+    },
+    cancel() {
+      cancelled = true;
+    }
+  });
+  const response = { body: stream } as unknown as Response;
+  const bytes = await readResponseBytesCapped(response, 8 * 1024);
+  assert.equal(bytes, null);
+  assert.equal(cancelled, true);
+  assert.ok(sent < 64 * 1024, `reader kept pulling after cap: ${sent}`);
+}
+
+// The read deadline: a drip-feeding body that never finishes returns null within bound.
+{
+  const stream = new ReadableStream<Uint8Array>({
+    pull() {
+      return new Promise(() => {}); // never delivers
+    }
+  });
+  const response = { body: stream } as unknown as Response;
+  const startedAt = Date.now();
+  const bytes = await readResponseBytesCapped(response, 1024, 300);
+  assert.equal(bytes, null);
+  assert.ok(Date.now() - startedAt < 2_000, "deadline did not bound the read");
 }
 
 console.log("reference-guard tests passed");

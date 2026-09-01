@@ -269,28 +269,48 @@ export async function followGuardedRedirects(
   return { ok: false, reason: `exceeded ${PREFLIGHT_MAX_REDIRECTS} redirects` };
 }
 
-// Reads a response body with a hard byte ceiling; null when the stream exceeds it.
-export async function readResponseBytesCapped(response: Response, maxBytes: number): Promise<Buffer | null> {
+// Reads a response body with a hard byte ceiling and an optional read deadline; null
+// when the stream exceeds either. The deadline matters because fetch timeouts cover
+// headers only; a drip-feeding body would otherwise hold the caller open unbounded.
+export async function readResponseBytesCapped(
+  response: Response,
+  maxBytes: number,
+  timeoutMs?: number
+): Promise<Buffer | null> {
   const reader = response.body?.getReader();
   if (!reader) {
     return null;
   }
+  const deadline = timeoutMs ? Date.now() + timeoutMs : null;
   const chunks: Uint8Array[] = [];
   let totalBytes = 0;
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) {
-      break;
+  try {
+    while (true) {
+      const chunk = deadline
+        ? await Promise.race([
+            reader.read(),
+            new Promise<never>((_, rejectFn) =>
+              setTimeout(() => rejectFn(new Error("body read deadline exceeded")), Math.max(1, deadline - Date.now()))
+            )
+          ])
+        : await reader.read();
+      const { done, value } = chunk;
+      if (done) {
+        break;
+      }
+      if (!value) {
+        continue;
+      }
+      totalBytes += value.byteLength;
+      if (totalBytes > maxBytes) {
+        await reader.cancel();
+        return null;
+      }
+      chunks.push(value);
     }
-    if (!value) {
-      continue;
-    }
-    totalBytes += value.byteLength;
-    if (totalBytes > maxBytes) {
-      await reader.cancel();
-      return null;
-    }
-    chunks.push(value);
+  } catch {
+    await reader.cancel().catch(() => {});
+    return null;
   }
   return Buffer.concat(chunks, totalBytes);
 }

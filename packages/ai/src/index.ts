@@ -1158,7 +1158,7 @@ async function generateEvolinkImage({
   const submitResponse = await fetch(`${apiBase}/v1/images/generations`, {
     method: "POST",
     headers,
-    signal: AbortSignal.timeout(30_000),
+    signal: AbortSignal.timeout(Number(process.env.RITZY_EVOLINK_SUBMIT_TIMEOUT_MS) || 30_000),
     body: JSON.stringify({
       model,
       prompt,

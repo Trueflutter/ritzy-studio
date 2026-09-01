@@ -141,6 +141,33 @@ assert.throws(
   restore();
 }
 
+// An allowlisted but undeliverable URL (preflight 404) also inlines: the dead link can
+// never reach a gateway whose whole task dies on one bad reference.
+{
+  const restore = applyEnv({});
+  const mock404 = async () =>
+    ({
+      status: 404,
+      ok: false,
+      headers: { get: () => null },
+      body: null
+    }) as unknown as Response;
+  const hardened = await hardenReferenceUrls(
+    [
+      {
+        bytes: TINY_PNG,
+        mimeType: "image/png",
+        name: "dead-allowlisted-url",
+        url: "https://media.homecentre.com/gone.jpg"
+      }
+    ],
+    { NEXT_PUBLIC_SUPABASE_URL: BASE_ENV.NEXT_PUBLIC_SUPABASE_URL },
+    mock404
+  );
+  assert.equal(hardened[0].url, null);
+  restore();
+}
+
 // --- Evolink wiring: a poisoned/refused reference can never reach the gateway ----
 
 {
@@ -237,6 +264,49 @@ assert.throws(
     const elapsed = Date.now() - startedAt;
     assert.ok(elapsed < 6_000, `expected bounded failure, took ${elapsed}ms`);
     assert.equal(attempts, 1, `expected exactly one attempt, saw ${attempts}`);
+  } finally {
+    restore();
+    server.closeAllConnections?.();
+    server.close();
+  }
+}
+
+// A hung gateway SUBMIT is bounded by the submit timeout, then the fallback path
+// engages (here the fallback also fails fast on a dummy key, composing both errors).
+{
+  const server = http.createServer((req, res) => {
+    if (req.method === "POST" && req.url === "/v1/images/generations") {
+      void res; // never respond
+      return;
+    }
+    res.statusCode = 404;
+    res.end();
+  });
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  const origin = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
+
+  const restore = applyEnv({
+    EVOLINK_BASE_URL: origin,
+    RITZY_EVOLINK_SUBMIT_TIMEOUT_MS: "800",
+    OPENAI_FALLBACK_API_KEY: "sk-fallback-dummy"
+  });
+  const startedAt = Date.now();
+  try {
+    await assert.rejects(
+      generateConceptView({
+        viewKey: "reverse_wide",
+        roomType: "Living Room",
+        conceptTitle: "Hung submit",
+        conceptDescription: undefined,
+        heroImageBytes: TINY_PNG,
+        heroImageMimeType: "image/png",
+        heroImageUrl: undefined
+      }),
+      /Evolink image generation failed/
+    );
+    const elapsed = Date.now() - startedAt;
+    assert.ok(elapsed < 15_000, `expected bounded submit failure, took ${elapsed}ms`);
   } finally {
     restore();
     server.closeAllConnections?.();
