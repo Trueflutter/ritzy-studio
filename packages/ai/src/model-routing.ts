@@ -14,6 +14,7 @@ export const TEXT_STAGES = [
   "product_sourcing",
   "spatial_qa",
   "revision_direction",
+  "spec_extraction",
   "product_enrichment"
 ] as const;
 

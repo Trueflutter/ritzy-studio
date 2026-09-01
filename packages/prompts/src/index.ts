@@ -420,6 +420,76 @@ export const revisionVisualDiffJsonSchema = {
 
 export type RevisionVisualDiffResponse = z.infer<typeof revisionVisualDiffResponseSchema>;
 
+// Spec extraction at approval (S2): a vision pass over the approved concept
+// image plus the brief and geometry produces the canonical room_design_spec —
+// the objects the design commits to, and the architecture that must never
+// change. Sourcing and rendering consume the CONFIRMED spec as truth.
+export const specExtractionPrompt = {
+  key: "concept.spec_extraction",
+  version: "2026-09-01.1",
+  system: [
+    "You are Ritzy Studio's design spec extractor.",
+    "Input: the approved concept image, the room type, the brief, and any measurements.",
+    "List every distinct furnishing and decor object the concept commits to: seating, tables, storage, lighting, rugs, textiles, art, decor.",
+    "Each object gets: role (a short machine key like sofa, coffee_table, dining_chairs, floor_lamp), label (what a homeowner would call it), quantity (count visible or clearly implied), sizeDescriptor (approximate size or proportion in plain words, e.g. 'three-seat, around 240 cm' or 'large, floor-anchoring'), capacity when the role seats or stores (e.g. 'seats 6'), and paletteMaterials (the colours and materials this object carries in the concept).",
+    "Quantities are honest counts from the image; do not invent objects that are not visible or clearly implied by the concept.",
+    "mustPreserve lists the fixed architecture and features renders may never change: walls, windows, doors, openings, ceiling details, built-ins, flooring, and any feature the brief asked to keep.",
+    "Use only provided measurements as verified; sizes read from the image are approximate descriptors, never precise dimensions.",
+    "Plain language a homeowner understands. No SKUs, no product names, no prices."
+  ].join("\n")
+} as const;
+
+export const specObjectSchema = z.object({
+  role: z.string().min(2).max(60),
+  label: z.string().min(2).max(120),
+  quantity: z.number().int().min(1).max(24),
+  sizeDescriptor: z.string().min(2).max(200).nullable(),
+  capacity: z.string().min(2).max(120).nullable(),
+  paletteMaterials: z.array(z.string().min(2).max(120)).max(8)
+});
+
+export const specExtractionResponseSchema = z.object({
+  objects: z.array(specObjectSchema).min(1).max(30),
+  mustPreserve: z.array(z.string().min(2).max(200)).max(16)
+});
+
+export const specExtractionJsonSchema = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    objects: {
+      type: "array",
+      minItems: 1,
+      maxItems: 30,
+      items: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          role: { type: "string", minLength: 2, maxLength: 60 },
+          label: { type: "string", minLength: 2, maxLength: 120 },
+          quantity: { type: "integer", minimum: 1, maximum: 24 },
+          sizeDescriptor: { type: ["string", "null"], minLength: 2, maxLength: 200 },
+          capacity: { type: ["string", "null"], minLength: 2, maxLength: 120 },
+          paletteMaterials: {
+            type: "array",
+            maxItems: 8,
+            items: { type: "string", minLength: 2, maxLength: 120 }
+          }
+        },
+        required: ["role", "label", "quantity", "sizeDescriptor", "capacity", "paletteMaterials"]
+      }
+    },
+    mustPreserve: {
+      type: "array",
+      maxItems: 16,
+      items: { type: "string", minLength: 2, maxLength: 200 }
+    }
+  },
+  required: ["objects", "mustPreserve"]
+} as const;
+
+export type SpecExtractionResponse = z.infer<typeof specExtractionResponseSchema>;
+
 export const conceptProductSourcingPrompt = {
   key: "sourcing.concept_visual_product_match",
   version: "2026-05-22.1",
