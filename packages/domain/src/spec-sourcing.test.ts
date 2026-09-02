@@ -602,7 +602,9 @@ console.log("spec-sourcing tests passed");
     PRODUCT_CONSISTENCY_THRESHOLD,
     NO_VERDICT_OPEN_REASON,
     OUTSIDE_POOL_OPEN_REASON,
-    BELOW_BAR_OPEN_REASON,
+    VERIFICATION_FAILED_OPEN_REASON,
+    VERIFICATION_UNAVAILABLE_OPEN_REASON,
+    applyProductVerification,
     CONTESTED_OPEN_REASON
   } = await import("./spec-sourcing");
   const { groupShoppingItemsByRole, buildShoppingListItemRows, fitSelectionToBudget, roleOptionKey } = await import(
@@ -718,38 +720,72 @@ console.log("spec-sourcing tests passed");
   assert.equal(synthesized[0].kind === "open" && synthesized[0].reason, NO_VERDICT_OPEN_REASON);
   assert.ok(!JSON.stringify(synthesized).includes("No roleResults entry"), "validator text must not leak");
 
-  // --- the bar: only a product the pass scored at or above it is chosen FOR
-  // the shopper. Below it the role is open with the same options, so a piece
-  // the design gate would fail is never presented as the app's choice.
+  // --- the pass PROPOSES; the design check decides. A proposal inside the
+  // role's pool is a proposal whatever the pass scored it, because the pass's
+  // own score proved uncalibrated against an independent judge.
   const seed = plan.pools[0].candidates[0];
   const [X, Y, Z] = ["a1", "a2", "a3"].map((suffix) => ({ ...seed, id: `00000000-0000-4000-8000-0000000000${suffix}` }));
   const roleA = plan.pools[0].role;
   const roleB = plan.pools[1].role;
   const pool = (role: typeof roleA, candidates: Array<typeof seed>) => ({ role, candidates, rejectionReasons: {} });
-  const scored = (similarity: number) =>
+  const proposal = (similarity?: number) =>
     resolveSpecRoleOutcomes({
       pools: [pool(roleA, [X, Y])],
-      roleResults: [{ category: roleA.category, roleLabel: roleA.echoKey, status: "strong_match", productId: X.id, similarity, reason: "confident prose" }],
+      roleResults: [
+        {
+          category: roleA.category,
+          roleLabel: roleA.echoKey,
+          status: "strong_match",
+          productId: X.id,
+          ...(similarity === undefined ? {} : { similarity }),
+          reason: "confident prose"
+        }
+      ],
       selections: []
+    });
+  assert.equal(proposal(0.9)[0].kind, "selected");
+  assert.equal(proposal(0.1)[0].kind, "selected", "the pass's own score is telemetry, not the bar");
+  assert.equal(proposal()[0].kind, "selected", "an unscored proposal is still a proposal");
+
+  // --- the design check is the bar. Only a proposal an independent judge
+  // passes, on the rubric the design gate uses, reaches the shopper as the
+  // app's choice; everything else is opened with its options.
+  const verdict = (categoryMatches: boolean, similarity: number) =>
+    applyProductVerification({
+      outcomes: proposal(0.9),
+      verdicts: new Map([[X.id, { categoryMatches, similarity }]])
     })[0];
-  assert.equal(scored(PRODUCT_CONSISTENCY_THRESHOLD).kind, "selected", "at the bar the piece is chosen");
-  assert.equal(scored(PRODUCT_CONSISTENCY_THRESHOLD - 0.01).kind, "open", "a hair under the bar it is not");
-  const belowBar = scored(0.3);
-  assert.equal(belowBar.kind === "open" && belowBar.reason, BELOW_BAR_OPEN_REASON);
-  assert.equal(belowBar.kind === "open" && belowBar.pool.candidates.length, 2, "the options stay on the list");
+  const verified = verdict(true, PRODUCT_CONSISTENCY_THRESHOLD);
+  assert.equal(verified.kind, "selected", "at the bar the piece is chosen");
+  assert.equal(verified.kind === "selected" && verified.verifiedSimilarity, PRODUCT_CONSISTENCY_THRESHOLD);
+  const failed = verdict(true, PRODUCT_CONSISTENCY_THRESHOLD - 0.01);
+  assert.equal(failed.kind, "open", "a hair under the bar it is not");
+  assert.equal(failed.kind === "open" && failed.reason, VERIFICATION_FAILED_OPEN_REASON);
+  assert.equal(failed.kind === "open" && failed.similarity, PRODUCT_CONSISTENCY_THRESHOLD - 0.01, "the judge's score is kept");
+  assert.equal(verdict(false, 0.95).kind, "open", "a wrong kind of object fails however similar it looks");
   assert.equal(
-    scored(0.3).kind === "open" &&
-      !JSON.stringify(scored(0.3)).includes("confident prose"),
-    true,
-    "the pass's prose for a piece it did not sell never becomes the app's claim"
+    failed.kind === "open" && failed.pool.candidates.length,
+    2,
+    "the options stay on the list for the shopper"
   );
-  // Confident prose with no score at all cannot clear a bar it never met.
-  const unscored = resolveSpecRoleOutcomes({
-    pools: [pool(roleA, [X, Y])],
-    roleResults: [{ category: roleA.category, roleLabel: roleA.echoKey, status: "strong_match", productId: X.id, reason: "no score" }],
-    selections: []
+  assert.ok(
+    !JSON.stringify(failed).includes("confident prose"),
+    "the pass's prose for a piece the check rejected never becomes the app's claim"
+  );
+
+  // A proposal the check could not see, and every proposal when the check
+  // could not run, are opened and say so.
+  const unjudged = applyProductVerification({ outcomes: proposal(0.9), verdicts: new Map() })[0];
+  assert.equal(unjudged.kind, "open");
+  assert.equal(unjudged.kind === "open" && unjudged.reason, VERIFICATION_UNAVAILABLE_OPEN_REASON);
+  assert.equal(unjudged.kind === "open" && unjudged.similarity, null);
+  // Open and missing outcomes pass through the check untouched.
+  const untouched = applyProductVerification({
+    outcomes: openSpecRoleOutcomes([pool(roleB, [Y])], "note"),
+    verdicts: new Map()
   });
-  assert.equal(unscored[0].kind, "open");
+  assert.deepEqual(untouched.map((outcome) => outcome.kind), ["open"]);
+  assert.equal(untouched[0].kind === "open" && untouched[0].reason, "note");
 
   // A role the pass looked at and rejected outright stays an honest gap.
   const rejected = resolveSpecRoleOutcomes({
@@ -761,15 +797,21 @@ console.log("spec-sourcing tests passed");
 
   // --- roleOptionsFromOutcomes: an open role contributes options and no pick
   const mixed = roleOptionsFromOutcomes([
-    resolveSpecRoleOutcomes({
-      pools: [pool(roleA, [X, Y])],
-      roleResults: [{ category: roleA.category, roleLabel: roleA.echoKey, status: "strong_match", productId: X.id, similarity: 0.9, reason: "yes" }],
-      selections: []
+    applyProductVerification({
+      outcomes: resolveSpecRoleOutcomes({
+        pools: [pool(roleA, [X, Y])],
+        roleResults: [{ category: roleA.category, roleLabel: roleA.echoKey, status: "strong_match", productId: X.id, similarity: 0.9, reason: "yes" }],
+        selections: []
+      }),
+      verdicts: new Map([[X.id, { categoryMatches: true, similarity: 0.9 }]])
     })[0],
-    resolveSpecRoleOutcomes({
-      pools: [pool(roleB, [Y, Z])],
-      roleResults: [{ category: roleB.category, roleLabel: roleB.echoKey, status: "acceptable_match", productId: Y.id, similarity: 0.2, reason: "not really" }],
-      selections: []
+    applyProductVerification({
+      outcomes: resolveSpecRoleOutcomes({
+        pools: [pool(roleB, [Y, Z])],
+        roleResults: [{ category: roleB.category, roleLabel: roleB.echoKey, status: "acceptable_match", productId: Y.id, similarity: 0.9, reason: "looks right to me" }],
+        selections: []
+      }),
+      verdicts: new Map([[Y.id, { categoryMatches: true, similarity: 0.2 }]])
     })[0]
   ]);
   assert.equal(mixed.roleOptions.length, 2, "an open role is still on the list");

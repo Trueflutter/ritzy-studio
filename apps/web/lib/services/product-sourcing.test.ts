@@ -156,6 +156,26 @@ function serviceClient(respond: Responder = () => ({ data: null })) {
   }, (storageCall) => (storageCall.op === "download" ? { data: new Blob([Buffer.from([1, 2, 3])]) } : { data: null }));
 }
 
+// The design check, stubbed: by default it passes every product it is shown.
+// The real one runs on the production vision model against the render.
+type VerifyProducts = NonNullable<Parameters<typeof groundProductsForRoom>[2]>["verifyProducts"];
+const verifyAll = (similarity = 0.9, categoryMatches = true): VerifyProducts =>
+  async ({ products }) => ({
+    promptKey: "sourcing.product_design_verification",
+    promptVersion: "test",
+    model: "gpt-5.1-stub",
+    textCostUsd: 0.005,
+    verdicts: products.map((product) => ({
+      productId: product.productId,
+      categoryMatches,
+      similarity,
+      matchedObject: "the piece in the render",
+      notes: "stub verdict"
+    }))
+  });
+const imagesForAll = async (candidates: Array<{ id: string }>) =>
+  Object.fromEntries(candidates.map((candidate) => [candidate.id, `data:image/jpeg;base64,${candidate.id.slice(-3)}`]));
+
 type PaletteResult = Awaited<ReturnType<typeof extractConceptImagePalette>>;
 const noPalette = async () =>
   ({ promptKey: "k", promptVersion: "v", model: "stub", textCostUsd: 0, palette: CONCEPT.palette_json }) as unknown as PaletteResult;
@@ -218,9 +238,10 @@ async function main() {
         readSpec: async () => CONFIRMED_SPEC,
         extractPalette: noPalette,
         fetchCandidateImages: async (candidates) => {
-          imageRequest = candidates;
+          imageRequest = imageRequest ?? candidates;
           return Object.fromEntries(candidates.map((candidate) => [candidate.id, `data:image/jpeg;base64,${candidate.id.slice(-3)}`]));
         },
+        verifyProducts: verifyAll(),
         sourceProducts: async (input) => {
           passInput = input;
           return {
@@ -308,7 +329,8 @@ async function main() {
     assert.equal((jobInsert?.payload?.input_summary as { specSource?: string })?.specSource, "confirmed_spec");
     const jobUpdate = serviceCalls.find((call: RecordedCall) => call.table === "ai_jobs" && call.op === "update");
     assert.equal(jobUpdate?.payload?.status, "succeeded");
-    assert.equal(jobUpdate?.payload?.cost_estimate_usd, 0.02);
+    // The pass's spend and the design check's spend land on one job row.
+    assert.equal(jobUpdate?.payload?.cost_estimate_usd, 0.025);
     const summary = jobUpdate?.payload?.output_summary as Record<string, unknown>;
     assert.deepEqual(summary.missingRoles, ["tall tripod floor lamp"]);
     assert.deepEqual(summary.unsourceable, ["recessed downlights"]);
@@ -328,7 +350,8 @@ async function main() {
       {
         readSpec: async () => CONFIRMED_SPEC,
         extractPalette: noPalette,
-        fetchCandidateImages: async () => ({}),
+        fetchCandidateImages: imagesForAll,
+        verifyProducts: verifyAll(),
         sourceProducts: async () => ({
           promptKey: "k",
           promptVersion: "v",
@@ -351,8 +374,8 @@ async function main() {
     assert.match(String(sofa?.reason), /visual pass found no catalogue piece.*straight three-seater/);
   }
 
-  // --- a role the pass scored UNDER the bar is left open: its options are on
-  // the list, nothing is chosen for the shopper, and the job records the score
+  // --- a proposal the DESIGN CHECK fails is left open: its options are on the
+  // list, nothing is chosen for the shopper, and the job records both scores
   {
     const { client, calls } = userClient();
     const { client: service, calls: serviceCalls } = serviceClient();
@@ -362,7 +385,21 @@ async function main() {
       {
         readSpec: async () => CONFIRMED_SPEC,
         extractPalette: noPalette,
-        fetchCandidateImages: async () => ({}),
+        fetchCandidateImages: imagesForAll,
+        // The pass sells both; the check passes the sofa and fails the chair.
+        verifyProducts: async ({ products }) => ({
+          promptKey: "sourcing.product_design_verification",
+          promptVersion: "test",
+          model: "gpt-5.1-stub",
+          textCostUsd: 0.005,
+          verdicts: products.map((product) => ({
+            productId: product.productId,
+            categoryMatches: true,
+            similarity: product.productId === SOFA_ID ? 0.9 : 0.35,
+            matchedObject: "the piece in the render",
+            notes: "stub verdict"
+          }))
+        }),
         sourceProducts: async () => ({
           promptKey: "k",
           promptVersion: "v",
@@ -372,7 +409,7 @@ async function main() {
           selectedProducts: [],
           roleResults: [
             { category: "sofas", roleLabel: "role-1", status: "strong_match", productId: SOFA_ID, similarity: 0.9, reason: "Curved ivory boucle." },
-            { category: "armchairs", roleLabel: "role-2", status: "acceptable_match", productId: CHAIR_ID, similarity: 0.35, reason: "Cognac, but a different silhouette." }
+            { category: "armchairs", roleLabel: "role-2", status: "strong_match", productId: CHAIR_ID, similarity: 0.9, reason: "Cognac leather, closely matches." }
           ],
           missingRoles: []
         })
@@ -388,19 +425,29 @@ async function main() {
     );
     assert.ok(rows.some((row) => row.product_id === CHAIR_ID && row.status === "option"));
     assert.ok(
-      !rows.some((row) => String(row.selection_reason).includes("different silhouette")),
-      "the pass's prose for a piece it did not sell is never presented as the reason it was chosen"
+      !rows.some((row) => String(row.selection_reason).includes("closely matches")),
+      "the pass's prose for a piece the check rejected is never presented as the reason it was chosen"
     );
     const jobUpdate = serviceCalls.find((call: RecordedCall) => call.table === "ai_jobs" && call.op === "update");
     const summary = jobUpdate?.payload?.output_summary as {
       openRoleCount: number;
       openRoles: Array<{ label: string; similarity: number | null; reason: string }>;
+      verification: { used: boolean; judgedCount: number; model: string; verdicts: Array<{ role: string | null; similarity: number; passSimilarity: number | null }> };
     };
     assert.equal(summary.openRoleCount, 1);
     assert.equal(summary.openRoles.length, 1);
     assert.equal(summary.openRoles[0].label, "cognac leather lounge chair");
-    assert.equal(summary.openRoles[0].similarity, 0.35, "the score that kept it open is on the record");
-    assert.match(summary.openRoles[0].reason, /close enough visual match/);
+    assert.equal(summary.openRoles[0].similarity, 0.35, "the judge's score is on the record");
+    assert.match(summary.openRoles[0].reason, /checked against the render/);
+    // Both measurements are recorded side by side: the pass sold the chair at
+    // 0.9 and the check scored it 0.35, which is the drift that made the
+    // check necessary.
+    assert.equal(summary.verification.used, true);
+    assert.equal(summary.verification.judgedCount, 2);
+    const chairVerdict = summary.verification.verdicts.find((entry) => entry.role === "cognac leather lounge chair");
+    assert.deepEqual([chairVerdict?.similarity, chairVerdict?.passSimilarity], [0.35, 0.9]);
+    // The check's spend is on the same job row as the pass's.
+    assert.equal(jobUpdate?.payload?.cost_estimate_usd, 0.015);
   }
 
   // --- a room whose budget cannot afford the piece that matched the design:
@@ -445,7 +492,8 @@ async function main() {
       {
         readSpec: async () => CONFIRMED_SPEC,
         extractPalette: noPalette,
-        fetchCandidateImages: async () => ({}),
+        fetchCandidateImages: imagesForAll,
+        verifyProducts: verifyAll(),
         sourceProducts: async () => ({
           promptKey: "k",
           promptVersion: "v",
@@ -622,7 +670,8 @@ async function main() {
         {
           readSpec: async () => CONFIRMED_SPEC,
           extractPalette: noPalette,
-          fetchCandidateImages: async () => ({}),
+          fetchCandidateImages: imagesForAll,
+          verifyProducts: verifyAll(),
           sourceProducts: async () => ({
             promptKey: "k",
             promptVersion: "v",
@@ -639,7 +688,7 @@ async function main() {
     );
     const jobUpdate = serviceCalls.find((call: RecordedCall) => call.table === "ai_jobs" && call.op === "update");
     assert.equal(jobUpdate?.payload?.status, "failed", "a paid pass never leaves the job running");
-    assert.equal(jobUpdate?.payload?.cost_estimate_usd, 0.03, "the spend is real even though the list was not written");
+    assert.equal(jobUpdate?.payload?.cost_estimate_usd, 0.035, "the pass's and the check's spend are real even though the list was not written");
     assert.match(String(jobUpdate?.payload?.error_message), /shopping_list_items is unavailable/);
     assert.equal((jobUpdate?.payload?.output_summary as { failedAfterVisualPass: boolean }).failedAfterVisualPass, true);
   }

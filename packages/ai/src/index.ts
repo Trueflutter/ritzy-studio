@@ -56,7 +56,10 @@ import {
   productMetadataEnrichmentJsonSchema,
   productMetadataEnrichmentPrompt,
   type ConceptProductSourcingResponse,
-  paletteRegisterLanguage
+  paletteRegisterLanguage,
+  productDesignVerificationPrompt,
+  productDesignVerificationJsonSchema,
+  productDesignVerificationResponseSchema
 } from "@ritzy-studio/prompts";
 import { createHash, createSign } from "node:crypto";
 import { readFile } from "node:fs/promises";
@@ -1584,6 +1587,103 @@ export async function sourceProductsFromConcept(
     textCostUsd: estimateTextCostUsd(stageModel, response.usage),
     needs: parsed.needs,
     ...validated
+  };
+}
+
+// S3 design check: the product the app is about to present as its own choice,
+// judged against the approved render by a pass with no roles to fill. Runs on
+// the production vision model by default (model-routing), because the gate
+// that asks the same question does.
+export const PRODUCT_VERIFICATION_TIMEOUT_MS = 90_000;
+
+export type ProductDesignVerificationCandidate = {
+  productId: string;
+  productName: string;
+  roleLabel: string;
+  category: string;
+  imageDataUrl: string;
+};
+
+export type ProductDesignVerificationResult = {
+  promptKey: string;
+  promptVersion: string;
+  model: string;
+  textCostUsd: number | null;
+  verdicts: Array<{
+    productId: string;
+    categoryMatches: boolean;
+    similarity: number;
+    matchedObject: string;
+    notes: string;
+  }>;
+};
+
+export async function verifyProductsAgainstConcept(input: {
+  conceptImageUrl: string;
+  products: ProductDesignVerificationCandidate[];
+  timeoutMs?: number;
+}): Promise<ProductDesignVerificationResult> {
+  if (input.products.length === 0) {
+    throw new Error("The design check needs at least one product to judge.");
+  }
+  const env = parseServerEnv(process.env);
+  const client = createTextClient(env);
+  const { model: stageModel, requestParams: stageRequestParams } = stageTextConfig("product_verification", env.OPENAI_TEXT_MODEL);
+
+  const content: Array<Record<string, unknown>> = [
+    {
+      type: "input_text",
+      text: JSON.stringify({
+        products: input.products.map((product) => ({
+          productId: product.productId,
+          productName: product.productName,
+          roleLabel: product.roleLabel,
+          category: product.category
+        }))
+      })
+    },
+    { type: "input_text", text: "Image 1: the approved concept render every product must belong to." },
+    { type: "input_image", image_url: input.conceptImageUrl, detail: "high" }
+  ];
+  input.products.forEach((product, index) => {
+    content.push(
+      {
+        type: "input_text",
+        text: `Product ${index + 1} (id ${product.productId}): ${product.productName}, chosen for the role "${product.roleLabel}" (${product.category}).`
+      },
+      { type: "input_image", image_url: product.imageDataUrl, detail: "low" }
+    );
+  });
+
+  const response = await client.responses.create(
+    {
+      max_output_tokens: 6000,
+      ...stageRequestParams,
+      input: [
+        { role: "system", content: productDesignVerificationPrompt.system },
+        { role: "user", content: content as never }
+      ],
+      text: {
+        format: {
+          type: "json_schema",
+          name: "ritzy_product_design_verification",
+          schema: productDesignVerificationJsonSchema,
+          strict: true
+        }
+      }
+    },
+    { timeout: input.timeoutMs ?? PRODUCT_VERIFICATION_TIMEOUT_MS }
+  );
+
+  const parsed = productDesignVerificationResponseSchema.parse(JSON.parse(response.output_text));
+  const known = new Set(input.products.map((product) => product.productId));
+  return {
+    promptKey: productDesignVerificationPrompt.key,
+    promptVersion: productDesignVerificationPrompt.version,
+    model: stageModel,
+    textCostUsd: estimateTextCostUsd(stageModel, response.usage),
+    // A verdict for a product that was never sent is not a verdict.
+    verdicts: parsed.products.filter((product) => known.has(product.productId))
   };
 }
 

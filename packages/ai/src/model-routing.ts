@@ -12,6 +12,7 @@ export const TEXT_STAGES = [
   "concept_direction",
   "concept_palette",
   "product_sourcing",
+  "product_verification",
   "spatial_qa",
   "revision_direction",
   "spec_extraction",
@@ -31,8 +32,17 @@ function stageEnvValue(env: EnvRecord, prefix: string, stage: TextStage): string
   return value ? value : null;
 }
 
+// A stage whose default is NOT the room's base text model. The design check
+// decides whether a product is presented to a shopper as a match, and the
+// gate that judges the same question runs on the production vision model; the
+// app has to make that judgement with the same eyes or it will choose pieces
+// the gate then fails. An env override still wins.
+const STAGE_MODEL_DEFAULTS: Partial<Record<TextStage, string>> = {
+  product_verification: "gpt-5.1"
+};
+
 export function resolveStageTextModel(stage: TextStage, env: EnvRecord, baseModel: string): string {
-  return stageEnvValue(env, "RITZY_TEXT_MODEL_", stage) ?? baseModel;
+  return stageEnvValue(env, "RITZY_TEXT_MODEL_", stage) ?? STAGE_MODEL_DEFAULTS[stage] ?? baseModel;
 }
 
 export function resolveStageTextEffort(stage: TextStage, env: EnvRecord): TextEffort | null {

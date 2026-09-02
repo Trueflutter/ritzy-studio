@@ -1164,8 +1164,13 @@ export type SpecRoleOutcome =
       matchStatus: SpecVisualSelection["matchStatus"];
       reason: string;
       mismatchNote: string | null;
-      // The pass's own score for the chosen piece, recorded on the job.
+      // The sourcing pass's own score for the piece it proposed: telemetry and
+      // the tiebreak when two roles want the same product, never the bar.
       similarity: number | null;
+      // The design check's independent score, set once the piece has been
+      // judged against the render. A selected outcome only survives
+      // verification with one.
+      verifiedSimilarity?: number;
     }
   // Sourced, but nothing was chosen FOR the shopper: the role's ranked,
   // contract-clean options are on the list and the shopper picks.
@@ -1191,8 +1196,10 @@ export const PRODUCT_CONSISTENCY_THRESHOLD = 0.6;
 
 export const NO_VERDICT_OPEN_REASON =
   "The visual pass returned no verdict for this piece, so nothing was chosen for you; these are the closest catalogue options.";
-export const BELOW_BAR_OPEN_REASON =
-  "No catalogue piece was a close enough visual match to the design to choose for you; these are the closest options.";
+export const VERIFICATION_FAILED_OPEN_REASON =
+  "The closest catalogue piece did not match the design closely enough when it was checked against the render, so nothing was chosen for you; these are the closest options.";
+export const VERIFICATION_UNAVAILABLE_OPEN_REASON =
+  "The design check could not run for this piece, so nothing was chosen for you; these are the closest options.";
 export const OUTSIDE_POOL_OPEN_REASON =
   "The visual pass named a piece that is not in this role's contract-clean pool, so its verdict could not be used; these are the closest options.";
 export const BUDGET_OPEN_REASON =
@@ -1200,22 +1207,21 @@ export const BUDGET_OPEN_REASON =
 export const CONTESTED_OPEN_REASON =
   "The visual pass proposed the same piece it chose for another role, so nothing was chosen for this one; these are the closest options.";
 
-// The visual pass's verdict per role, held to the contract AND to the bar.
-// A product is chosen FOR the shopper only when the pass named it inside the
-// role's contract-clean pool and scored it at or above the bar. Everything
-// else leaves the role OPEN: its ranked, contract-clean options are on the
-// list and the shopper picks. A role the pass looked at and rejected outright
-// stays an honest missing entry.
+// The visual pass's verdict per role, held to the contract. The pass PROPOSES
+// one product per role from that role's contract-clean pool; whether the
+// proposal is good enough to present to a shopper is decided afterwards by the
+// design check (applyProductVerification), because the pass's own score is not
+// a calibrated measure of its own work. A role with no usable proposal is left
+// OPEN with its ranked options; a role the pass looked at and rejected
+// outright stays an honest missing entry.
 export function resolveSpecRoleOutcomes({
   pools,
   roleResults,
-  selections,
-  threshold = PRODUCT_CONSISTENCY_THRESHOLD
+  selections
 }: {
   pools: SpecRolePool[];
   roleResults: SpecVisualRoleResult[];
   selections: SpecVisualSelection[];
-  threshold?: number;
 }): SpecRoleOutcome[] {
   const verdicts = pools.map((pool) => {
     const found = roleResults.find((entry) => poolMatches(pool, entry.category, entry.roleLabel)) ?? null;
@@ -1241,13 +1247,14 @@ export function resolveSpecRoleOutcomes({
       // contract violation, not a low score, and its score belongs to a piece
       // this role could never have.
       outsidePool: Boolean(result?.productId ?? selection?.productId) && !declaredMissing && !picked,
-      confident: Boolean(picked) && similarity !== null && similarity >= threshold
+      // A usable proposal: a product this role's pool actually contains.
+      confident: Boolean(picked)
     };
   });
 
-  // One product fills one role. Two roles scored above the bar on the same
-  // product: the closer match keeps it (pool order breaks a tie) and the other
-  // role is left open rather than handed a piece nobody judged for it.
+  // One product fills one role. Two roles proposed the same product: the one
+  // the pass scored closer keeps it (pool order breaks a tie) and the other is
+  // left open rather than handed a piece nobody proposed for it.
   const winnerByProduct = new Map<string, number>();
   verdicts.forEach((verdict, index) => {
     if (!verdict.confident || !verdict.picked) {
@@ -1294,8 +1301,42 @@ export function resolveSpecRoleOutcomes({
       kind: "open",
       role: pool.role,
       pool,
-      reason: verdict.confident ? CONTESTED_OPEN_REASON : verdict.noVerdict ? NO_VERDICT_OPEN_REASON : BELOW_BAR_OPEN_REASON,
+      reason: verdict.confident ? CONTESTED_OPEN_REASON : NO_VERDICT_OPEN_REASON,
       similarity: verdict.similarity
+    };
+  });
+}
+
+// The design check's verdicts applied to the pass's proposals: a proposal is
+// presented to the shopper as the app's choice ONLY when an independent judge,
+// on the same rubric the design gate uses, says it is the same kind of object
+// and matches the render at or above the committed bar. Everything else is
+// opened, including a piece the check could not see (no usable image) and
+// every piece when the check could not run at all.
+export function applyProductVerification({
+  outcomes,
+  verdicts,
+  threshold = PRODUCT_CONSISTENCY_THRESHOLD
+}: {
+  outcomes: SpecRoleOutcome[];
+  // By product id. A product absent from the map was not judged.
+  verdicts: Map<string, { categoryMatches: boolean; similarity: number }>;
+  threshold?: number;
+}): SpecRoleOutcome[] {
+  return outcomes.map((outcome) => {
+    if (outcome.kind !== "selected") {
+      return outcome;
+    }
+    const verdict = verdicts.get(outcome.selectedProductId);
+    if (verdict && verdict.categoryMatches && verdict.similarity >= threshold) {
+      return { ...outcome, verifiedSimilarity: verdict.similarity };
+    }
+    return {
+      kind: "open",
+      role: outcome.role,
+      pool: outcome.pool,
+      reason: verdict ? VERIFICATION_FAILED_OPEN_REASON : VERIFICATION_UNAVAILABLE_OPEN_REASON,
+      similarity: verdict?.similarity ?? null
     };
   });
 }

@@ -421,6 +421,66 @@ export const revisionVisualDiffJsonSchema = {
 
 export type RevisionVisualDiffResponse = z.infer<typeof revisionVisualDiffResponseSchema>;
 
+// S3: the design check. The sourcing pass proposes a product per role and
+// scores its own proposal, and that self-report proved uncalibrated against
+// an independent judge (the walk room: seven proposals the pass sold at or
+// above the bar, of which the judge passed two). So the piece the app is
+// about to present as its own choice is judged again, by a pass with no
+// roles to fill and nothing to sell, on the SAME rubric the critique
+// harness's product_consistency check uses.
+export const productDesignVerificationPrompt = {
+  key: "sourcing.product_design_verification",
+  version: "2026-09-02.1",
+  system: [
+    "You are Ritzy Studio's design check: you decide whether a product the app is about to present as its own choice actually belongs to the approved design.",
+    "You are shown the approved concept render, then each catalogue product image with the design role it was chosen for.",
+    "Judge category first: the product must be the same kind of object as the role (a floor lamp for a floor-lamp role, never a chandelier; an armchair for a lounge-chair role, never a swing or rocking chair; a tray for a tray role, never a vase).",
+    "Then judge visual similarity to the corresponding object in the render: silhouette, colour family, material, scale and distinctive features. Return similarity from 0 (unrelated) to 1 (the same piece), and name in matchedObject which object in the render you compared against, by where it sits and what it is.",
+    "You are not choosing anything and you are not filling any gaps. A product that does not belong is reported as it is: the app will show that role's options and let the shopper choose, which is the right outcome. Nothing is lost by failing a piece, and a wrong piece presented as a match is the failure this check exists to prevent.",
+    "notes name concrete visible evidence in one sentence a homeowner would understand."
+  ].join("\n")
+} as const;
+
+export const productDesignVerificationResponseSchema = z.object({
+  products: z
+    .array(
+      z.object({
+        productId: z.string().min(1).max(80),
+        categoryMatches: z.boolean(),
+        similarity: z.number().min(0).max(1),
+        matchedObject: z.string().min(2).max(200),
+        notes: z.string().min(4).max(400)
+      })
+    )
+    .max(40)
+});
+
+export const productDesignVerificationJsonSchema = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    products: {
+      type: "array",
+      maxItems: 40,
+      items: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          productId: { type: "string", minLength: 1, maxLength: 80 },
+          categoryMatches: { type: "boolean" },
+          similarity: { type: "number", minimum: 0, maximum: 1 },
+          matchedObject: { type: "string", minLength: 2, maxLength: 200 },
+          notes: { type: "string", minLength: 4, maxLength: 400 }
+        },
+        required: ["productId", "categoryMatches", "similarity", "matchedObject", "notes"]
+      }
+    }
+  },
+  required: ["products"]
+} as const;
+
+export type ProductDesignVerificationResponse = z.infer<typeof productDesignVerificationResponseSchema>;
+
 // Spec extraction at approval (S2): a vision pass over the approved concept
 // image plus the brief and geometry produces the canonical room_design_spec —
 // the objects the design commits to, and the architecture that must never

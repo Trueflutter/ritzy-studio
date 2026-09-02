@@ -2,7 +2,8 @@ import {
   extractConceptImagePalette,
   sourceProductsFromConcept,
   stageTextConfig,
-  sumUsdCosts
+  sumUsdCosts,
+  verifyProductsAgainstConcept
 } from "@ritzy-studio/ai";
 import { configuredTextModel, productSourcingImageBudget } from "@ritzy-studio/config";
 import type { Database } from "@ritzy-studio/db";
@@ -32,7 +33,9 @@ import {
   type SpecRoleOutcome,
   type SpecSourcingRole,
   type UnsourceableSpecObject,
-  BUDGET_OPEN_REASON
+  BUDGET_OPEN_REASON,
+  applyProductVerification,
+  type SpecRolePool
 } from "@ritzy-studio/domain";
 
 import { providerTimeoutMs, visualPassTimeoutMs } from "@/lib/sourcing-run-budget";
@@ -89,6 +92,17 @@ async function closeSourcingJob(
       console.error(`Could not close product sourcing job ${jobId} (${payload.status}): ${error.message}`);
     }
   }
+}
+
+// The pooled candidate row behind a chosen product id (its name and image).
+function poolCandidateById(pools: SpecRolePool[], productId: string): RoleScopedRankedProductMatch | null {
+  for (const pool of pools) {
+    const candidate = pool.candidates.find((entry) => entry.id === productId);
+    if (candidate) {
+      return candidate;
+    }
+  }
+  return null;
 }
 
 async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
@@ -163,12 +177,14 @@ export async function groundProductsForRoom(
     sourceProducts = sourceProductsFromConcept,
     fetchCandidateImages = sourcingCandidateImageDataUrls,
     extractPalette = extractConceptImagePalette,
+    verifyProducts = verifyProductsAgainstConcept,
     now = Date.now
   }: {
     readSpec?: typeof readRoomDesignSpec;
     sourceProducts?: typeof sourceProductsFromConcept;
     fetchCandidateImages?: typeof sourcingCandidateImageDataUrls;
     extractPalette?: typeof extractConceptImagePalette;
+    verifyProducts?: typeof verifyProductsAgainstConcept;
     // The clock, injectable so the run-budget path is testable.
     now?: () => number;
   } = {}
@@ -391,6 +407,25 @@ export async function groundProductsForRoom(
     textCostUsd: number | null;
     imageCount: number;
   } = { used: false, error: null, promptKey: null, promptVersion: null, model: null, textCostUsd: null, imageCount: 0 };
+  // The design check's own record: what it judged, what it said, and how its
+  // score compared with the sourcing pass's self-report.
+  let verification: {
+    used: boolean;
+    error: string | null;
+    promptKey: string | null;
+    promptVersion: string | null;
+    model: string | null;
+    textCostUsd: number | null;
+    judgedCount: number;
+    verdicts: Array<{
+      role: string | null;
+      productId: string;
+      categoryMatches: boolean;
+      similarity: number;
+      matchedObject: string;
+      passSimilarity: number | null;
+    }>;
+  } = { used: false, error: null, promptKey: null, promptVersion: null, model: null, textCostUsd: null, judgedCount: 0, verdicts: [] };
   const sourcingModel = stageTextConfig("product_sourcing", configuredTextModel()).model;
 
   try {
@@ -484,6 +519,81 @@ export async function groundProductsForRoom(
           "The visual pass was unavailable, so nothing was checked against the design and nothing was chosen for you; these are the closest catalogue options."
         );
         visualPass = { ...visualPass, used: false, error: message };
+      }
+    }
+
+    // The design check (AC 8). The pass proposed a product per role and scored
+    // its own work; that self-report is not calibrated, so every proposal is
+    // judged again by an independent pass on the production vision model,
+    // against the render, on the rubric the design gate uses. Only a piece it
+    // passes is presented to the shopper as the app's choice. A proposal it
+    // cannot see, and every proposal when the check cannot run, is opened.
+    const proposals = outcomes.filter(
+      (outcome): outcome is Extract<SpecRoleOutcome, { kind: "selected" }> => outcome.kind === "selected"
+    );
+    if (proposals.length > 0) {
+      const verifyTimeoutMs = visualPassTimeoutMs({ startedAt, now: now() });
+      try {
+        if (verifyTimeoutMs === null) {
+          throw new Error("The request had no time left for the design check.");
+        }
+        const byId = new Map(proposals.map((outcome) => [outcome.selectedProductId, outcome]));
+        const images = await fetchCandidateImages(
+          proposals.map((outcome) => poolCandidateById(plan.pools, outcome.selectedProductId)).filter(Boolean) as RoleScopedRankedProductMatch[],
+          proposals.length
+        );
+        const judged = proposals
+          .filter((outcome) => Boolean(images[outcome.selectedProductId]))
+          .map((outcome) => {
+            const candidate = poolCandidateById(plan.pools, outcome.selectedProductId);
+            return {
+              productId: outcome.selectedProductId,
+              productName: candidate?.name ?? "Catalogue product",
+              roleLabel: outcome.role.label,
+              category: outcome.role.category,
+              imageDataUrl: images[outcome.selectedProductId]
+            };
+          });
+        if (judged.length === 0) {
+          throw new Error("No proposed product had a usable image for the design check.");
+        }
+        const checked = await withTimeout(
+          verifyProducts({
+            conceptImageUrl,
+            products: judged,
+            timeoutMs: providerTimeoutMs(verifyTimeoutMs)
+          }),
+          verifyTimeoutMs,
+          "The design check timed out."
+        );
+        verification = {
+          ...verification,
+          used: true,
+          promptKey: checked.promptKey,
+          promptVersion: checked.promptVersion,
+          model: checked.model,
+          textCostUsd: checked.textCostUsd ?? null,
+          judgedCount: judged.length,
+          verdicts: checked.verdicts.map((verdict) => ({
+            role: byId.get(verdict.productId)?.role.label ?? null,
+            productId: verdict.productId,
+            categoryMatches: verdict.categoryMatches,
+            similarity: verdict.similarity,
+            matchedObject: verdict.matchedObject,
+            passSimilarity: byId.get(verdict.productId)?.similarity ?? null
+          }))
+        };
+        outcomes = applyProductVerification({
+          outcomes,
+          verdicts: new Map(
+            checked.verdicts.map((verdict) => [verdict.productId, { categoryMatches: verdict.categoryMatches, similarity: verdict.similarity }])
+          )
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "The design check failed.";
+        console.error("Product design check failed; nothing is chosen for the shopper.", error);
+        verification = { ...verification, used: false, error: message };
+        outcomes = applyProductVerification({ outcomes, verdicts: new Map() });
       }
     }
 
@@ -601,7 +711,7 @@ export async function groundProductsForRoom(
         completed_at: new Date().toISOString(),
         model: visualPass.model ?? sourcingModel,
         prompt_version: visualPass.promptVersion,
-        cost_estimate_usd: sumUsdCosts(visualPass.textCostUsd, paletteTextCostUsd),
+        cost_estimate_usd: sumUsdCosts(visualPass.textCostUsd, verification.textCostUsd, paletteTextCostUsd),
         output_summary: {
           specSource,
           roleCount: roles.length,
@@ -615,6 +725,7 @@ export async function groundProductsForRoom(
           unsourceable: missingRoles.filter((entry) => entry.kind !== "missing").map((entry) => entry.label),
           contractRejections,
           visualPass,
+          verification,
           budgetFit: {
             adjusted: openedForBudget.size > 0,
             withinBudget: budgetFit.withinBudget,
@@ -636,8 +747,8 @@ export async function groundProductsForRoom(
         model: visualPass.model ?? sourcingModel,
         prompt_version: visualPass.promptVersion,
         // The pass's spend is real even when the list could not be written.
-        cost_estimate_usd: sumUsdCosts(visualPass.textCostUsd, paletteTextCostUsd),
-        output_summary: { specSource, visualPass, failedAfterVisualPass: visualPass.used }
+        cost_estimate_usd: sumUsdCosts(visualPass.textCostUsd, verification.textCostUsd, paletteTextCostUsd),
+        output_summary: { specSource, visualPass, verification, failedAfterVisualPass: visualPass.used }
       });
     throw error;
   }
