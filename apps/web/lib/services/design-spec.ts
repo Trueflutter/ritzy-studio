@@ -30,9 +30,10 @@ import type { ServiceSupabaseClient, UserSupabaseClient } from "./supabase-clien
 //     job row and finalizes ONLY while it still owns the lease: every terminal
 //     write is a status-conditional compare-and-swap, ownership is re-verified
 //     before anything is persisted, and a run whose lease was reclaimed
-//     discards its result and records only its spend, never touching the
-//     terminal status the reclaim set. Cost is recorded on every exit, even
-//     when the spec write fails after a paid call.
+//     discards its result and records only its spend, on the reclaim's
+//     `failed` row alone: a duplicate run that finalized `succeeded` keeps
+//     every byte of its metadata. Cost is recorded on every exit, even when
+//     the spec write fails after a paid call.
 // A paid extraction therefore can never sit in `running` past its lease, the
 // user is never locked out behind a dead job, and a GET starts at most ONE
 // attempt per concept: after any recorded attempt only an explicit Retry
@@ -360,16 +361,44 @@ export async function runRoomDesignSpecExtraction(
         }
       : {};
 
-  // A run that lost its lease (a reader reclaimed it as abandoned) no longer
-  // owns the terminal status. It records what happened and what it cost on
-  // the row without touching the status the reclaim set.
+  // A run that lost its lease no longer owns the row. The ONLY row it may
+  // write to is the reclaim's `failed` row, and even there it merges: a
+  // duplicate run that finalized this job `succeeded` keeps every byte of its
+  // metadata, and a spend already recorded on a failed row is kept (the late
+  // spend then lives inside lateOutcome). Terminal states are final, so the
+  // read below cannot race a status change.
   const recordLateOutcome = async (outcome: { status: "discarded" | "succeeded" | "failed"; message: string }) => {
-    console.warn(`Spec extraction job ${jobId}: lease reclaimed before this run finished; ${outcome.status}: ${outcome.message}`);
+    console.warn(`Spec extraction job ${jobId}: lease lost before this run finished; ${outcome.status}: ${outcome.message}`);
+    const { data: reclaimed, error: readError } = await serviceSupabase
+      .from("ai_jobs")
+      .select("cost_estimate_usd, output_summary")
+      .eq("id", jobId)
+      .eq("status", "failed")
+      .maybeSingle();
+    if (readError) {
+      console.error(`Spec extraction job ${jobId}: late-outcome read failed: ${readError.message}`);
+      return;
+    }
+    if (!reclaimed) {
+      console.warn(`Spec extraction job ${jobId}: another run finalized this job; its terminal metadata stands.`);
+      return;
+    }
+    const lateOutcome = {
+      ...outcome,
+      costUsd: extraction?.textCostUsd ?? null,
+      model: extraction?.model ?? null
+    };
     const { error } = await serviceSupabase
       .from("ai_jobs")
-      .update({ ...spendFields(), output_summary: { conceptId, lateOutcome: outcome } })
+      .update({
+        ...(reclaimed.cost_estimate_usd == null ? spendFields() : {}),
+        output_summary: {
+          ...((reclaimed.output_summary as Record<string, unknown> | null) ?? {}),
+          lateOutcome
+        }
+      })
       .eq("id", jobId)
-      .neq("status", "running");
+      .eq("status", "failed");
     if (error) {
       console.error(`Spec extraction job ${jobId}: late-outcome write failed: ${error.message}`);
     }

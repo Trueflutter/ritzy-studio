@@ -542,10 +542,20 @@ async function main() {
   // Everything the runner reads comes through the service client, re-derived
   // from the job row; `respond` overrides the spec-table behaviour per case.
   // Every ai_jobs select returns the job (the initial load and the pre-persist
-  // lease check); a terminal write is a CAS hit unless the case says otherwise.
+  // lease check), except the late-outcome read (filtered on status failed),
+  // which returns the reclaim's row; a terminal write is a CAS hit unless the
+  // case says otherwise.
   const CAS_HIT = { data: [{ id: "job-1" }] };
-  function runnerService(respond: Responder, job: Record<string, unknown> = JOB_ROW) {
+  const RECLAIMED_ROW = { cost_estimate_usd: null, output_summary: {} };
+  const isLateOutcomeRead = (call: RecordedCall) =>
+    call.op === "select" && call.filters.some(([column, value]) => column === "status" && value === "failed");
+  function runnerService(
+    respond: Responder,
+    job: Record<string, unknown> = JOB_ROW,
+    reclaimedRow: Record<string, unknown> = RECLAIMED_ROW
+  ) {
     return fakeSupabase((call) => {
+      if (call.table === "ai_jobs" && isLateOutcomeRead(call)) return { data: reclaimedRow };
       if (call.table === "ai_jobs" && call.op === "select") return { data: job };
       if (call.table === "rooms") return { data: ROOM };
       if (call.table === "concepts") return { data: { id: "concept-1", primary_image_asset_id: "asset-1" } };
@@ -752,6 +762,7 @@ async function main() {
   {
     let jobReads = 0;
     const { client: service, calls } = fakeSupabase((call) => {
+      if (call.table === "ai_jobs" && isLateOutcomeRead(call)) return { data: RECLAIMED_ROW };
       if (call.table === "ai_jobs" && call.op === "select") {
         jobReads += 1;
         // Live at load; reclaimed as abandoned by the time persistence starts.
@@ -780,7 +791,11 @@ async function main() {
     assert.equal(updates.length, 1);
     assert.equal("status" in (updates[0]?.payload ?? {}), false, "a late runner must not touch the terminal status");
     assert.equal(updates[0]?.payload?.cost_estimate_usd, 0.001, "its spend is still recorded");
-    assert.deepEqual(updates[0]?.neq, [["status", "running"]]);
+    assert.deepEqual(
+      updates[0]?.filters,
+      [["id", "job-1"], ["status", "failed"]],
+      "only the reclaim's failed row may be written"
+    );
     assert.equal(
       (updates[0]?.payload?.output_summary as { lateOutcome?: { status?: string } })?.lateOutcome?.status,
       "discarded"
@@ -808,12 +823,107 @@ async function main() {
     assert.equal(updates[0]?.payload?.status, "succeeded");
     assert.deepEqual(updates[0]?.in, LEASE_CAS);
     assert.equal("status" in (updates[1]?.payload ?? {}), false, "the reclaim's terminal status is never overwritten");
-    assert.deepEqual(updates[1]?.neq, [["status", "running"]]);
+    assert.deepEqual(updates[1]?.filters, [["id", "job-1"], ["status", "failed"]]);
     assert.equal(
       (updates[1]?.payload?.output_summary as { lateOutcome?: { status?: string } })?.lateOutcome?.status,
       "succeeded"
     );
     assert.equal(updates[1]?.payload?.cost_estimate_usd, 0.001);
+  }
+
+  // --- A late outcome MERGES into a failed row that already carries a
+  // recorded spend: that spend and the existing summary are kept, the late
+  // spend lives inside lateOutcome
+  {
+    let attempts = 0;
+    const { client: service, calls } = runnerService(
+      (call) => {
+        if (call.table === "room_design_specs" && call.op === "upsert") {
+          return { data: { ...VALID_SPEC_ROW, status: "extracted" } };
+        }
+        if (call.table === "ai_jobs" && call.op === "update") {
+          attempts += 1;
+          return attempts === 1 ? { data: [] } : CAS_HIT;
+        }
+        return { data: null };
+      },
+      JOB_ROW,
+      { cost_estimate_usd: 0.005, output_summary: { note: "kept" } }
+    );
+    await runRoomDesignSpecExtraction(service, { jobId: "job-1" }, { extract: async () => EXTRACTION });
+    const late = jobUpdates(calls)[1];
+    assert.ok(late, "the late outcome is recorded");
+    assert.equal("cost_estimate_usd" in (late?.payload ?? {}), false, "an existing recorded spend is never overwritten");
+    assert.equal("model" in (late?.payload ?? {}), false);
+    const summary = late?.payload?.output_summary as { note?: string; lateOutcome?: { costUsd?: number | null } };
+    assert.equal(summary?.note, "kept", "the existing summary is merged, not replaced");
+    assert.equal(summary?.lateOutcome?.costUsd, 0.001, "the late spend is still recorded, inside lateOutcome");
+  }
+
+  // --- Two runners on the SAME job (an at-least-once duplicate), driven
+  // concurrently against one stateful row: the first to finalize owns the row,
+  // and the other's late outcome can never overwrite the terminal success
+  // metadata (it never even writes)
+  {
+    const row: {
+      id: string;
+      status: string;
+      room_id: string;
+      input_summary: Record<string, unknown>;
+      cost_estimate_usd: number | null;
+      output_summary: Record<string, unknown>;
+    } = { ...JOB_ROW, cost_estimate_usd: null, output_summary: {} };
+    let specStored = false;
+    const { client: service, calls } = fakeSupabase((call) => {
+      if (call.table === "ai_jobs" && call.op === "select") {
+        const wanted = call.filters.find(([column]) => column === "status")?.[1];
+        return { data: wanted && wanted !== row.status ? null : { ...row } };
+      }
+      if (call.table === "ai_jobs" && call.op === "update") {
+        // The DB's compare-and-swap, in miniature: apply only if the filters match.
+        const liveSet = call.in.find(([column]) => column === "status")?.[1] as string[] | undefined;
+        const exact = call.filters.find(([column]) => column === "status")?.[1];
+        const matches = liveSet ? liveSet.includes(row.status) : exact ? row.status === exact : true;
+        if (!matches) return { data: [] };
+        Object.assign(row, call.payload);
+        return { data: [{ id: row.id }] };
+      }
+      if (call.table === "rooms") return { data: ROOM };
+      if (call.table === "concepts") return { data: { id: "concept-1", primary_image_asset_id: "asset-1" } };
+      if (call.table === "room_assets") return { data: { storage_path: "u/room-1/concept-1.png", mime_type: "image/png" } };
+      if (call.table === "room_design_specs" && call.op === "upsert") {
+        if (specStored) return { data: null };
+        specStored = true;
+        return { data: { ...VALID_SPEC_ROW, status: "extracted" } };
+      }
+      if (call.table === "room_design_specs" && call.op === "select") {
+        return { data: specStored ? { ...VALID_SPEC_ROW, status: "extracted" } : null };
+      }
+      return { data: null };
+    }, RUNNER_STORAGE);
+    let paidCalls = 0;
+    const extract = async () => {
+      paidCalls += 1;
+      return EXTRACTION;
+    };
+    await Promise.all([
+      runRoomDesignSpecExtraction(service, { jobId: "job-1" }, { extract }),
+      runRoomDesignSpecExtraction(service, { jobId: "job-1" }, { extract })
+    ]);
+    assert.equal(paidCalls, 2, "an at-least-once duplicate is two paid calls; the row is the audit of one");
+    assert.equal(row.status, "succeeded");
+    assert.equal(row.cost_estimate_usd, 0.001);
+    assert.equal(row.output_summary.objectCount, 1, "the finalizer's success metadata is intact");
+    assert.equal("lateOutcome" in row.output_summary, false, "the loser never wrote into the succeeded row");
+    const statusWrites = jobUpdates(calls).filter((call) => "status" in (call.payload ?? {}));
+    assert.equal(statusWrites.length, 2, "both runners attempted to finalize");
+    assert.equal(statusWrites.filter((call) => call.payload?.status === "succeeded").length, 2);
+    assert.equal(
+      jobUpdates(calls).filter((call) => !("status" in (call.payload ?? {}))).length,
+      0,
+      "with no reclaimed failed row to write to, the loser writes nothing at all"
+    );
+    assert.equal(calls.filter((call) => call.table === "room_design_specs" && call.op === "update").length, 0);
   }
 
   // ---------------------------------------------------------------- confirm
