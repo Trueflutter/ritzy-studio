@@ -191,6 +191,15 @@ export type GenerateInitialConceptInput = {
   roomPhotoReferenceUrl?: string | null;
   roomPhotoBytes: Buffer;
   roomPhotoMimeType: string;
+  // Real catalogue pieces chosen for this room BEFORE the render, passed as
+  // references so the render is built around them.
+  anchorProducts?: Array<{
+    roleLabel: string;
+    name: string;
+    bytes: Buffer;
+    mimeType: string;
+    referenceUrl?: string | null;
+  }>;
   // Additional photos of the SAME room from other corners. They give the model
   // real spatial coverage instead of hallucinating occluded walls from one frame.
   additionalRoomPhotos?: Array<{
@@ -532,6 +541,10 @@ type InitialConceptImagePromptInput = {
   generationPrompt: string;
   roomType: string;
   hasInspirationImages?: boolean;
+  // Real catalogue pieces already chosen for this room, supplied as the LAST
+  // reference images. The render is built around them, which is what makes the
+  // shopping list buyable instead of hopeful.
+  anchorProducts?: Array<{ roleLabel: string; name: string }>;
   styleSlugs?: string[];
   strictSourceRoomPreservation?: boolean;
   spatialIntent?: SpatialPromptIntent | null;
@@ -590,7 +603,8 @@ function assembleInitialConceptImagePrompt({
   strictSourceRoomPreservation = false,
   spatialIntent = null,
   measurements = null,
-  additionalRoomPhotoCount = 0
+  additionalRoomPhotoCount = 0,
+  anchorProducts = []
 }: InitialConceptImagePromptInput) {
   return [
     generationPrompt,
@@ -598,6 +612,15 @@ function assembleInitialConceptImagePrompt({
     additionalRoomPhotoCount > 0
       ? `The first ${additionalRoomPhotoCount + 1} input images are photos of the SAME room from different corners. Use the FIRST photo's camera perspective as the base image; use the other angles only to understand the room's true walls, openings, and proportions.`
       : "Use the uploaded room photo as the base image.",
+    anchorProducts.length > 0
+      ? [
+          `The LAST ${anchorProducts.length} input ${anchorProducts.length === 1 ? "image is a photograph" : "images are photographs"} of real furniture already chosen for this room: ${anchorProducts
+            .map((product, index) => `image ${index + 1} of that set is the ${product.roleLabel}`)
+            .join(", ")}.`,
+          "Put those exact pieces in the room. Keep each one's silhouette, proportions, colour and material as photographed. You may change only where it stands, its angle to the camera, and how the room's light falls on it.",
+          "Do not swap any of them for a similar-looking piece, do not restyle them to suit a palette, and do not leave one out. Design everything else in the room around them, so the finished room and these pieces read as one scheme."
+        ].join(" ")
+      : null,
     hasInspirationImages
       ? "Use the uploaded inspiration images as style references for palette, materials, atmosphere, and composition. Do not reproduce them exactly."
       : null,
@@ -2122,7 +2145,11 @@ export async function generateInitialConcept(
     strictSourceRoomPreservation: localStrictSourceRoomPreservationEnabled(),
     spatialIntent: input.spatialIntent ?? null,
     measurements: input.measurements ?? null,
-    additionalRoomPhotoCount: input.additionalRoomPhotos?.length ?? 0
+    additionalRoomPhotoCount: input.additionalRoomPhotos?.length ?? 0,
+    anchorProducts: (input.anchorProducts ?? []).map((product) => ({
+      roleLabel: product.roleLabel,
+      name: product.name
+    }))
   });
 
   const imageResult = await generateImageWithConfiguredProvider({
@@ -2140,6 +2167,16 @@ export async function generateInitialConcept(
         mimeType: photo.mimeType,
         name: `room-angle-${index + 2}`,
         url: publicReferenceUrl(photo.referenceUrl ?? photo.url)
+      })),
+      // Anchors come last so the prompt can refer to "the last N images", and
+      // each is required: a render that silently dropped one would be a render
+      // of furniture the shopper is not buying.
+      ...(input.anchorProducts ?? []).map((product, index) => ({
+        bytes: product.bytes,
+        mimeType: product.mimeType,
+        name: `anchor-${index + 1}`,
+        url: publicReferenceUrl(product.referenceUrl ?? null),
+        required: true
       }))
     ],
     noImageErrorMessage: "OpenAI image generation returned no image data."
