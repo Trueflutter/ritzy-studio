@@ -416,13 +416,6 @@ export type SourceProductsFromConceptResult = {
   textCostUsd?: number | null;
   promptVersion: string;
   model: string;
-  needs: Array<{
-    category: string;
-    roleLabel: string;
-    visualBrief: string;
-    quantity: number;
-    priority: "required" | "supporting";
-  }>;
   selectedProducts: Array<{
     productId: string;
     category: string;
@@ -446,12 +439,11 @@ export type SourceProductsFromConceptResult = {
     // never present it as one.
     synthesized?: boolean;
   }>;
-  missingRoles: string[];
 };
 
 export type ValidatedConceptProductSourcingResult = Pick<
   SourceProductsFromConceptResult,
-  "selectedProducts" | "roleResults" | "missingRoles"
+  "selectedProducts" | "roleResults"
 >;
 
 // Concept-first (S2): single prompt path, no pre-approval catalogue anchors.
@@ -1519,7 +1511,7 @@ export async function sourceProductsFromConcept(
               .join("; ")
           )
           .join("\n")
-      : "No role-scoped pools supplied. Use the expected product roles and candidate list.";
+      : /* unreachable: the guard above refuses to run without pools */ "";
   const candidateImageContent = productSourcingProvidedImageContent(
     input.candidates,
     input.candidateImageDataUrls ?? {},
@@ -1585,7 +1577,6 @@ export async function sourceProductsFromConcept(
     promptVersion: prompt.version,
     model: stageModel,
     textCostUsd: estimateTextCostUsd(stageModel, response.usage),
-    needs: parsed.needs,
     ...validated
   };
 }
@@ -1753,8 +1744,7 @@ export function validateProductSourcingRoleContract(
       selectedProducts: parsed.selectedProducts.filter((selection) => allowedProductIds.has(selection.productId)),
       roleResults: parsed.roleResults.filter(
         (result) => result.productId === null || allowedProductIds.has(result.productId)
-      ),
-      missingRoles: parsed.missingRoles
+      )
     };
   }
 
@@ -1852,31 +1842,9 @@ export function validateProductSourcingRoleContract(
     rolePoolsByKey
   });
 
-  const satisfiedRoleKeys = new Set(
-    validRoleResults
-      .filter((result) => result.status !== "missing_required" && result.status !== "missing_supporting")
-      .map((result) => sourcingRoleKey(result.category, result.roleLabel))
-  );
-
-  return {
-    selectedProducts,
-    roleResults: validRoleResults,
-    missingRoles: Array.from(
-      new Set([
-        ...parsed.missingRoles.filter(
-          (missingRole) =>
-            !roleCandidatePools.some(
-              (role) =>
-                satisfiedRoleKeys.has(sourcingRoleKey(role.category, role.roleLabel)) &&
-                missingRoleMatchesRole(missingRole, role)
-            )
-        ),
-        ...validRoleResults
-          .filter((result) => result.status === "missing_required" || result.status === "missing_supporting")
-          .map((result) => `${result.category} ${result.roleLabel}`)
-      ])
-    )
-  };
+  // The honest gap is derived from the statuses, by the caller, from
+  // roleResults; there is no second list to reconcile.
+  return { selectedProducts, roleResults: validRoleResults };
 }
 
 function repairRoleResultsForSelectedProducts({
@@ -1999,17 +1967,6 @@ function uniqueRoleForProductId(
   return roles.length === 1 ? roles[0] : null;
 }
 
-function missingRoleMatchesRole(missingRole: string, role: ConceptProductSourcingRolePool) {
-  const normalizedMissingRole = normalizeMissingRoleText(missingRole);
-  const normalizedRole = normalizeMissingRoleText(`${role.category} ${role.roleLabel}`);
-  const normalizedRoleLabel = normalizeMissingRoleText(role.roleLabel);
-
-  return normalizedMissingRole === normalizedRole || normalizedMissingRole === normalizedRoleLabel;
-}
-
-function normalizeMissingRoleText(value: string) {
-  return value.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
-}
 
 function missingRoleResult(role: ConceptProductSourcingRolePool, reason: string) {
   return {

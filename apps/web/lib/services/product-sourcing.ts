@@ -121,7 +121,6 @@ async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: s
 
 export type GroundProductsInput = {
   userId: string;
-  userEmail: string | null;
   projectId: string;
   roomId: string;
   conceptId: string;

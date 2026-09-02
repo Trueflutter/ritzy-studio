@@ -233,21 +233,75 @@ type ProductVerdict = {
 
 // A retailer image the judge can see: fetched here (public product URLs)
 // and inlined, bounded so a slow CDN cannot stall the run.
-async function remoteImageDataUrl(url: string): Promise<string | null> {
+// products.primary_image_url is third-party supplied and validated only as a
+// URL at ingest, so a poisoned listing could point this fetch at an internal
+// address. The harness runs from a shell holding the service-role key and the
+// OpenAI key, so it applies the same shape of guard the app does: an explicit
+// host allowlist, no automatic redirect following, and a byte cap. Kept inline
+// because this script is deliberately dependency-free; the app's own guard
+// lives in packages/ai/src/reference-guard.ts and is the source of the list.
+const IMAGE_HOST_ALLOWLIST = new Set([
+  "media.homecentre.com",
+  "cdn.media.amplience.net",
+  "danubehome.com",
+  "media.chattelsandmore.com",
+  "www.chattelsandmore.com",
+  "2xlhome.com",
+  "files.evolink.ai",
+  "www.homesrus.ae",
+  "www.ikea.com",
+  "prodmarinamedia.gumlet.io",
+  "cdn.panhomestores.com",
+  "www.theone.com"
+]);
+const MAX_IMAGE_BYTES = 12 * 1024 * 1024;
+
+function allowedImageUrl(raw: string): URL | null {
+  let url: URL;
   try {
-    const response = await fetch(url, { signal: AbortSignal.timeout(8_000) });
-    if (!response.ok) {
-      return null;
-    }
-    const contentType = (response.headers.get("content-type") ?? "image/jpeg").split(";")[0];
-    if (!contentType.startsWith("image/")) {
-      return null;
-    }
-    const bytes = Buffer.from(await response.arrayBuffer());
-    return `data:${contentType};base64,${bytes.toString("base64")}`;
+    url = new URL(raw);
   } catch {
     return null;
   }
+  if (url.protocol !== "https:") {
+    return null;
+  }
+  return IMAGE_HOST_ALLOWLIST.has(url.hostname.toLowerCase()) ? url : null;
+}
+
+async function remoteImageDataUrl(raw: string): Promise<string | null> {
+  // Up to three hops, each revalidated against the allowlist, so a redirect
+  // cannot walk off it.
+  let target = allowedImageUrl(raw);
+  for (let hop = 0; hop < 3 && target; hop += 1) {
+    try {
+      const response = await fetch(target, { redirect: "manual", signal: AbortSignal.timeout(8_000) });
+      if (response.status >= 300 && response.status < 400) {
+        const location = response.headers.get("location");
+        target = location ? allowedImageUrl(new URL(location, target).toString()) : null;
+        continue;
+      }
+      if (!response.ok) {
+        return null;
+      }
+      const contentType = (response.headers.get("content-type") ?? "image/jpeg").split(";")[0];
+      if (!contentType.startsWith("image/")) {
+        return null;
+      }
+      const declared = Number(response.headers.get("content-length") ?? "0");
+      if (declared > MAX_IMAGE_BYTES) {
+        return null;
+      }
+      const bytes = Buffer.from(await response.arrayBuffer());
+      if (bytes.byteLength > MAX_IMAGE_BYTES) {
+        return null;
+      }
+      return `data:${contentType};base64,${bytes.toString("base64")}`;
+    } catch {
+      return null;
+    }
+  }
+  return null;
 }
 
 // Judges every SELECTED product on the room's shopping list against the

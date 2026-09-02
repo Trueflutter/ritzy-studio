@@ -146,7 +146,7 @@ export type SetUserModeInput = z.infer<typeof setUserModeSchema>;
 
 export * from "./product-enrichment";
 export * from "./product-matching";
-export * from "./product-matching-confidence";
+export * from "./product-matching-role-keys";
 export * from "./product-matching-dimensions";
 export * from "./design-spec";
 export * from "./spec-sourcing";
@@ -154,8 +154,5 @@ export * from "./measurement-confidence";
 export * from "./spatial-design-rules";
 export * from "./product-matching-evidence";
 export * from "./product-matching-freshness";
-export * from "./product-matching-pool-diversity";
-export * from "./product-matching-pool-quality";
-export * from "./product-matching-pool-qa-rollup";
 export * from "./entitlements";
 export * from "./style-preferences";

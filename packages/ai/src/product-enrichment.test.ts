@@ -41,22 +41,6 @@ assert.equal(formatPgVector([0.1, -2, 3.25]), "[0.1,-2,3.25]");
 
 const validatedSourcing = validateProductSourcingRoleContract(
   {
-    needs: [
-      {
-        category: "sofas",
-        roleLabel: "anchor seating",
-        visualBrief: "cream linen sofa",
-        quantity: 1,
-        priority: "required"
-      },
-      {
-        category: "chairs",
-        roleLabel: "dining chairs",
-        visualBrief: "slim dining chair",
-        quantity: 6,
-        priority: "required"
-      }
-    ],
     selectedProducts: [
       {
         productId: "00000000-0000-4000-8000-000000000010",
@@ -78,7 +62,6 @@ const validatedSourcing = validateProductSourcingRoleContract(
         reason: "Incorrectly selected a globally valid sofa for dining chairs."
       }
     ],
-    missingRoles: ["side_tables bedside tables"]
   },
   [
     {
@@ -106,12 +89,10 @@ const diningChairRoleResult = validatedSourcing.roleResults.find(
 assert.ok(diningChairRoleResult);
 assert.equal(diningChairRoleResult.status, "missing_required");
 assert.equal(diningChairRoleResult.productId, null);
-assert.ok(validatedSourcing.missingRoles.includes("chairs dining chairs"));
 assert.equal(validatedSourcing.selectedProducts.length, 0);
 
 const repairedBedroomSourcing = validateProductSourcingRoleContract(
   {
-    needs: [],
     selectedProducts: [
       {
         productId: "10000000-0000-4000-8000-000000000020",
@@ -133,7 +114,6 @@ const repairedBedroomSourcing = validateProductSourcingRoleContract(
         reason: "Correct product, malformed category."
       }
     ],
-    missingRoles: []
   },
   [
     {
@@ -164,11 +144,9 @@ assert.equal(repairedBedsideRoleResult.productId, "10000000-0000-4000-8000-00000
 assert.equal(repairedBedroomSourcing.selectedProducts[0]?.category, "side_tables");
 assert.equal(repairedBedroomSourcing.selectedProducts[0]?.roleLabel, "bedside tables");
 assert.equal(repairedBedroomSourcing.selectedProducts[0]?.quantity, 2);
-assert.equal(repairedBedroomSourcing.missingRoles.includes("side_tables bedside tables"), false);
 
 const repairedMissingBedsideRoleResult = validateProductSourcingRoleContract(
   {
-    needs: [],
     selectedProducts: [
       {
         productId: "10000000-0000-4000-8000-000000000020",
@@ -190,7 +168,6 @@ const repairedMissingBedsideRoleResult = validateProductSourcingRoleContract(
         reason: "The model marked the required bedside table role missing."
       }
     ],
-    missingRoles: ["side_tables bedside tables"]
   },
   [
     {
@@ -218,11 +195,9 @@ const repairedMissingBedsideResult = repairedMissingBedsideRoleResult.roleResult
 assert.ok(repairedMissingBedsideResult);
 assert.equal(repairedMissingBedsideResult.status, "strong_match");
 assert.equal(repairedMissingBedsideResult.productId, "10000000-0000-4000-8000-000000000020");
-assert.equal(repairedMissingBedsideRoleResult.missingRoles.includes("side_tables bedside tables"), false);
 
 const trueMissingBedsideRole = validateProductSourcingRoleContract(
   {
-    needs: [],
     selectedProducts: [],
     roleResults: [
       {
@@ -234,7 +209,6 @@ const trueMissingBedsideRole = validateProductSourcingRoleContract(
         reason: "No bedside table was suitable."
       }
     ],
-    missingRoles: ["side_tables bedside tables"]
   },
   [
     {
@@ -254,11 +228,9 @@ const trueMissingBedsideResult = trueMissingBedsideRole.roleResults.find(
 assert.ok(trueMissingBedsideResult);
 assert.equal(trueMissingBedsideResult.status, "missing_required");
 assert.equal(trueMissingBedsideResult.productId, null);
-assert.ok(trueMissingBedsideRole.missingRoles.includes("side_tables bedside tables"));
 
 const ambiguousRoleProduct = validateProductSourcingRoleContract(
   {
-    needs: [],
     selectedProducts: [
       {
         productId: "20000000-0000-4000-8000-000000000030",
@@ -280,7 +252,6 @@ const ambiguousRoleProduct = validateProductSourcingRoleContract(
         reason: "Product appears in multiple role pools."
       }
     ],
-    missingRoles: []
   },
   [
     {
@@ -316,7 +287,6 @@ assert.ok(
 
 const exactRoleAmbiguousProduct = validateProductSourcingRoleContract(
   {
-    needs: [],
     selectedProducts: [
       {
         productId: "20000000-0000-4000-8000-000000000030",
@@ -338,7 +308,6 @@ const exactRoleAmbiguousProduct = validateProductSourcingRoleContract(
         reason: "Exact role label should not rescue an ambiguous product."
       }
     ],
-    missingRoles: []
   },
   [
     {
@@ -369,7 +338,6 @@ assert.ok(
 
 const homeOfficeContractFixture = validateProductSourcingRoleContract(
   {
-    needs: [],
     selectedProducts: [
       {
         productId: "30000000-0000-4000-8000-000000000010",
@@ -442,7 +410,6 @@ const homeOfficeContractFixture = validateProductSourcingRoleContract(
         reason: "Task lamp product is correct."
       }
     ],
-    missingRoles: []
   },
   [
     {
@@ -503,7 +470,6 @@ assert.deepEqual(
     "lighting:task lamp or layered lighting"
   ]
 );
-assert.equal(homeOfficeContractFixture.missingRoles.length, 0);
 
 const enrichment = productEnrichmentResponseSchema.parse({
   normalizedCategory: "sofas",

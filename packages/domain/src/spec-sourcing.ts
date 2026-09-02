@@ -637,7 +637,6 @@ export function sourcingRolesFromDesignSpec(
     // placement-stripped, hyphen-keeping copy of the label: a placement clause
     // naming an "8-seat dining table" is cut before any count is read.
     const rawLabelForSeats = placementStrippedText(normalizeTextKeepingHyphens(withoutParentheticals(object.label)));
-    const combined = `${roleText} ${labelText}`;
     const specKey = `${index}:${roleText.replace(/\s+/g, "_") || "object"}`;
 
     if (isBuiltIn(roleText) || isBuiltIn(labelText)) {

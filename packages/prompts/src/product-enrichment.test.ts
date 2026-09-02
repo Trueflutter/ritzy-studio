@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 
 import {
-  conceptProductNeedSchema,
+  conceptProductSelectionSchema,
   conceptProductSourcingJsonSchema,
   specProductSourcingPrompt,
   conceptProductSourcingResponseSchema,
@@ -17,20 +17,45 @@ assert.equal("price" in productMetadataEnrichmentJsonSchema.properties, false);
 assert.equal("availability" in productMetadataEnrichmentJsonSchema.properties, false);
 assert.equal("dimensions" in productMetadataEnrichmentJsonSchema.properties, false);
 
-assert.equal(specProductSourcingPrompt.version, "2026-09-02.2");
+assert.equal(specProductSourcingPrompt.version, "2026-09-02.3");
 // The bar the app pre-selects at is stated to the model, and the score is
 // required on every role result, so an unscored pick can never clear it.
 assert.ok(specProductSourcingPrompt.system.includes("similarity 0.6 or above"));
 assert.ok(specProductSourcingPrompt.system.includes("Never inflate a score"));
-// The pass may echo any confirmed spec role: per-item caps are the spec's own.
+// The pass may echo any confirmed spec role: per-item caps are the spec's own,
+// single-sourced from DESIGN_SPEC_LIMITS on the role result the app reads.
 {
   const longLabel = "x".repeat(120);
-  assert.equal(conceptProductNeedSchema.safeParse({ category: "sofas", roleLabel: longLabel, visualBrief: "a long low sofa", quantity: 24, priority: "required" }).success, true);
-  assert.equal(conceptProductNeedSchema.safeParse({ category: "sofas", roleLabel: `${longLabel}y`, visualBrief: "a long low sofa", quantity: 24, priority: "required" }).success, false);
-  assert.equal(conceptProductNeedSchema.safeParse({ category: "sofas", roleLabel: "sofa", visualBrief: "a long low sofa", quantity: 25, priority: "required" }).success, false);
-  const needItems = (conceptProductSourcingJsonSchema as { properties: { needs: { items: { properties: { roleLabel: { maxLength: number }; quantity: { maximum: number } } } } } }).properties.needs.items.properties;
-  assert.equal(needItems.roleLabel.maxLength, 120);
-  assert.equal(needItems.quantity.maximum, 24);
+  const roleItems = (
+    conceptProductSourcingJsonSchema as unknown as {
+      properties: { roleResults: { items: { properties: { roleLabel: { maxLength: number } } } } };
+    }
+  ).properties.roleResults.items.properties;
+  assert.equal(roleItems.roleLabel.maxLength, 120);
+  assert.equal(
+    conceptProductSelectionSchema.safeParse({
+      productId: "00000000-0000-4000-8000-000000000001",
+      category: "sofas",
+      roleLabel: longLabel,
+      quantity: 24,
+      matchStatus: "strong_match",
+      visualMatchReason: "cream linen sofa",
+      mismatchNote: null
+    }).success,
+    true
+  );
+  assert.equal(
+    conceptProductSelectionSchema.safeParse({
+      productId: "00000000-0000-4000-8000-000000000001",
+      category: "sofas",
+      roleLabel: `${longLabel}y`,
+      quantity: 24,
+      matchStatus: "strong_match",
+      visualMatchReason: "cream linen sofa",
+      mismatchNote: null
+    }).success,
+    false
+  );
 }
 assert.ok(specProductSourcingPrompt.system.includes("one result per role"));
 assert.ok(specProductSourcingPrompt.system.includes("Return exactly one roleResults entry per supplied role"));
@@ -41,23 +66,14 @@ assert.ok(specProductSourcingPrompt.system.includes("an honest gap is better tha
   assert.ok(roleItems.required.includes("similarity"), "the response schema requires a score for every role");
 }
 assert.equal("roleResults" in conceptProductSourcingJsonSchema.properties, true);
-assert.deepEqual(conceptProductSourcingJsonSchema.required, [
-  "needs",
-  "selectedProducts",
-  "roleResults",
-  "missingRoles"
-]);
+// The response carries the answer and nothing else: a `needs` list restating
+// the app's own input, and a `missingRoles` list restating statuses already in
+// roleResults, cost output tokens on every paid run and were read by nothing.
+assert.deepEqual(conceptProductSourcingJsonSchema.required, ["selectedProducts", "roleResults"]);
+assert.equal("needs" in conceptProductSourcingJsonSchema.properties, false);
+assert.equal("missingRoles" in conceptProductSourcingJsonSchema.properties, false);
 assert.equal(
   conceptProductSourcingResponseSchema.parse({
-    needs: [
-      {
-        category: "sofas",
-        roleLabel: "anchor seating",
-        visualBrief: "cream linen sofa",
-        quantity: 1,
-        priority: "required"
-      }
-    ],
     selectedProducts: [
       {
         productId: "00000000-0000-4000-8000-000000000001",
@@ -79,7 +95,6 @@ assert.equal(
         reason: "Selected cream linen sofa from the sofa role pool."
       }
     ],
-    missingRoles: []
   }).roleResults[0].status,
   "strong_match"
 );

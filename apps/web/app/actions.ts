@@ -1630,7 +1630,7 @@ export async function groundProductsAction(formData: FormData) {
 
   const result = await groundProductsForRoom(
     { supabase, serviceSupabase },
-    { userId: user.id, userEmail: user.email ?? null, projectId, roomId, conceptId }
+    { userId: user.id, projectId, roomId, conceptId }
   );
 
   if (result.status === "not_found") {

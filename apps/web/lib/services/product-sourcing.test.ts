@@ -19,7 +19,6 @@ process.env.NEXT_PUBLIC_SUPABASE_URL ??= "https://example-project.supabase.co";
 
 const GROUND_INPUT = {
   userId: "user-1",
-  userEmail: "user@example.com",
   projectId: "proj-1",
   roomId: "room-1",
   conceptId: "concept-1"
@@ -255,7 +254,6 @@ async function main() {
             promptVersion: "test",
             model: "stub",
             textCostUsd: 0.02,
-            needs: [],
             selectedProducts: [
               { productId: SOFA_ID, category: "sofas", roleLabel: "role-1", quantity: 1, matchStatus: "strong_match", visualMatchReason: "Selected for its curved ivory boucle silhouette, matching the sofa in the concept.", mismatchNote: null }
             ],
@@ -263,7 +261,6 @@ async function main() {
               { category: "sofas", roleLabel: "role-1", status: "strong_match", productId: SOFA_ID, similarity: 0.85, reason: "Curved ivory boucle." },
               { category: "armchairs", roleLabel: "role-2", status: "acceptable_match", productId: CHAIR_ID, similarity: 0.7, reason: "Cognac leather, close silhouette." }
             ],
-            missingRoles: []
           };
         }
       }
@@ -363,13 +360,11 @@ async function main() {
           promptVersion: "v",
           model: "stub",
           textCostUsd: 0.01,
-          needs: [],
           selectedProducts: [],
           roleResults: [
             { category: "sofas", roleLabel: "role-1", status: "missing_required", productId: null, similarity: 0, reason: "The only sofa is a straight three-seater; the design is curved." },
             { category: "armchairs", roleLabel: "role-2", status: "strong_match", productId: CHAIR_ID, similarity: 0.8, reason: "Matches." }
           ],
-          missingRoles: ["role-1"]
         })
       }
     );
@@ -411,13 +406,11 @@ async function main() {
           promptVersion: "v",
           model: "stub",
           textCostUsd: 0.01,
-          needs: [],
           selectedProducts: [],
           roleResults: [
             { category: "sofas", roleLabel: "role-1", status: "strong_match", productId: SOFA_ID, similarity: 0.9, reason: "Curved ivory boucle." },
             { category: "armchairs", roleLabel: "role-2", status: "strong_match", productId: CHAIR_ID, similarity: 0.9, reason: "Cognac leather, closely matches." }
           ],
-          missingRoles: []
         })
       }
     );
@@ -506,13 +499,11 @@ async function main() {
           promptVersion: "v",
           model: "stub",
           textCostUsd: 0.01,
-          needs: [],
           selectedProducts: [],
           roleResults: [
             { category: "sofas", roleLabel: "role-1", status: "strong_match", productId: SOFA_ID, similarity: 0.9, reason: "Matches." },
             { category: "armchairs", roleLabel: "role-2", status: "strong_match", productId: CHEAP_CHAIR_ID, similarity: 0.9, reason: "Matches." }
           ],
-          missingRoles: []
         })
       }
     );
@@ -584,13 +575,11 @@ async function main() {
           promptVersion: "v",
           model: "stub",
           textCostUsd: 0.01,
-          needs: [],
           selectedProducts: [],
           roleResults: [
             { category: "sofas", roleLabel: "role-1", status: "strong_match", productId: SOFA_ID, similarity: 0.95, reason: "Confident." },
             { category: "armchairs", roleLabel: "role-2", status: "strong_match", productId: CHAIR_ID, similarity: 0.95, reason: "Confident." }
           ],
-          missingRoles: []
         }),
         ...(deps as Record<string, unknown>)
       }
@@ -635,13 +624,11 @@ async function main() {
           promptVersion: "v",
           model: "stub",
           textCostUsd: 0.01,
-          needs: [],
           selectedProducts: [],
           roleResults: [
             { category: "sofas", roleLabel: "role-1", status: "strong_match", productId: SOFA_ID, similarity: 0.9, reason: "Matches." },
             { category: "armchairs", roleLabel: "role-2", status: "strong_match", productId: CHAIR_ID, similarity: 0.9, reason: "Matches." }
           ],
-          missingRoles: []
         })
       }
     );
@@ -876,10 +863,8 @@ async function main() {
             promptVersion: "v",
             model: "stub",
             textCostUsd: 0.03,
-            needs: [],
             selectedProducts: [],
             roleResults: [{ category: "sofas", roleLabel: "role-1", status: "strong_match", productId: SOFA_ID, similarity: 0.9, reason: "Matches." }],
-            missingRoles: []
           })
         }
       ),

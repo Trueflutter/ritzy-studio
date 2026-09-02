@@ -606,7 +606,7 @@ export function designSpecSourcingLanguage(input: {
 // contract-clean, and an honest gap beats a wrong piece.
 export const specProductSourcingPrompt = {
   key: "sourcing.spec_visual_product_match",
-  version: "2026-09-02.2",
+  version: "2026-09-02.3",
   system: [
     "You are Ritzy Studio's visual product sourcing assistant.",
     "The approved concept image is the visual source of truth, and the confirmed design spec supplied by the app is the list of roles you must fill: one result per role, no roles invented, none skipped.",
@@ -615,21 +615,10 @@ export const specProductSourcingPrompt = {
     "Use strong_match when the product visibly belongs in the render as it is; acceptable_match when it fits with minor styling differences; closest_available only when it does not contradict the design. If nothing in the pool visibly matches the design, return missing_required or missing_supporting for that role with a concrete reason and do not force a product: an honest gap is better than a wrong piece.",
     "Score every role you propose a product for: similarity is how closely the candidate's own image matches the corresponding object in the concept render, from 0 (unrelated) to 1 (the same piece), judged on silhouette, colour family, material, scale and distinctive features. Score the piece honestly BEFORE you decide its status, and return 0 for a role you declare missing.",
     "Only a product at similarity 0.6 or above is chosen for the shopper. Below that, still return your best candidate with its true score: the app shows that role's options and the shopper picks, which is the right outcome when nothing is a confident match. Never inflate a score to get a piece chosen.",
-    "Return exactly one roleResults entry per supplied role, echoing the role's category and roleLabel exactly as given. List every role you declared missing in missingRoles by its roleLabel.",
-    "needs restates the supplied roles (one entry each, same category and roleLabel, the visual brief from the spec line); it is not a new list.",
+    "Return exactly one roleResults entry per supplied role, echoing the role's category and roleLabel exactly as given.",
     "Do not invent products, prices, retailer facts, dimensions, or URLs."
   ].join("\n")
 } as const;
-
-// Per-item caps follow the design spec, single-sourced from DESIGN_SPEC_LIMITS:
-// a confirmed spec's label or quantity can never exceed what the pass may echo.
-export const conceptProductNeedSchema = z.object({
-  category: z.string().min(2).max(80),
-  roleLabel: z.string().min(2).max(DESIGN_SPEC_LIMITS.labelMax),
-  visualBrief: z.string().min(8).max(260),
-  quantity: z.number().int().positive().max(DESIGN_SPEC_LIMITS.quantityMax),
-  priority: z.enum(["required", "supporting"])
-});
 
 export const conceptProductSelectionSchema = z.object({
   productId: z.uuid(),
@@ -663,34 +652,21 @@ export const conceptProductRoleResultSchema = z.object({
 
 // Caps follow the design spec (up to 30 objects): a spec-driven pass may fill
 // more roles than the old room blueprint, and may honestly select nothing.
+// roleResults IS the answer: one entry per supplied role, each carrying the
+// product proposed for it (or none) and the score. A separate `needs` list
+// restating the app's own input, and a separate `missingRoles` list restating
+// the statuses already in roleResults, cost output tokens on every run and
+// were read by nothing; a response that truncates against them loses the whole
+// paid pass.
 export const conceptProductSourcingResponseSchema = z.object({
-  needs: z.array(conceptProductNeedSchema).min(1).max(30),
   selectedProducts: z.array(conceptProductSelectionSchema).max(30),
-  roleResults: z.array(conceptProductRoleResultSchema).min(1).max(30),
-  missingRoles: z.array(z.string().min(2).max(140)).max(30)
+  roleResults: z.array(conceptProductRoleResultSchema).min(1).max(30)
 });
 
 export const conceptProductSourcingJsonSchema = {
   type: "object",
   additionalProperties: false,
   properties: {
-    needs: {
-      type: "array",
-      minItems: 1,
-      maxItems: 30,
-      items: {
-        type: "object",
-        additionalProperties: false,
-        properties: {
-          category: { type: "string", minLength: 2, maxLength: 80 },
-          roleLabel: { type: "string", minLength: 2, maxLength: DESIGN_SPEC_LIMITS.labelMax },
-          visualBrief: { type: "string", minLength: 8, maxLength: 260 },
-          quantity: { type: "integer", minimum: 1, maximum: DESIGN_SPEC_LIMITS.quantityMax },
-          priority: { type: "string", enum: ["required", "supporting"] }
-        },
-        required: ["category", "roleLabel", "visualBrief", "quantity", "priority"]
-      }
-    },
     selectedProducts: {
       type: "array",
       minItems: 0,
@@ -752,16 +728,10 @@ export const conceptProductSourcingJsonSchema = {
         required: ["category", "roleLabel", "status", "productId", "similarity", "reason"]
       }
     },
-    missingRoles: {
-      type: "array",
-      maxItems: 30,
-      items: { type: "string", minLength: 2, maxLength: 140 }
-    }
   },
-  required: ["needs", "selectedProducts", "roleResults", "missingRoles"]
+  required: ["selectedProducts", "roleResults"]
 } as const;
 
-export type ConceptProductNeed = z.infer<typeof conceptProductNeedSchema>;
 export type ConceptProductSourcingResponse = z.infer<typeof conceptProductSourcingResponseSchema>;
 
 export const conceptRevisionPrompt = {
