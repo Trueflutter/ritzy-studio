@@ -3,10 +3,11 @@ import Image from "next/image";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
-import { groupShoppingItemsByRole, selectedItemsTotalAed } from "@ritzy-studio/domain";
+import { groupShoppingItemsByRole, parseMissingRoles, selectedItemsTotalAed } from "@ritzy-studio/domain";
 
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
+import { MissingRolesSection, missingRolesCaveat } from "./missing-roles";
 import { PrintButton } from "./print-button";
 import type { ProductCardItem } from "./product-card";
 import { ShoppingListGrid, type CategoryGroup } from "./shopping-list-grid";
@@ -74,6 +75,10 @@ export default async function ShoppingListPage({
   const currentEstimateAed =
     listItems.length > 0 ? selectedItemsTotalAed(listItems) : shoppingList?.estimated_total_aed;
   const selectedItemCount = listItems.filter((item) => item.status === "selected").length;
+  // S3: the honest gap. Roles the catalogue could not fill are on the list row
+  // itself; they render as their own ledger and caveat every completeness line.
+  const missingRoles = parseMissingRoles(shoppingList?.missing_roles);
+  const missingCaveat = missingRolesCaveat(missingRoles);
   const { data: canAccessCommerce = false } = await supabase.rpc("can_access_room_commerce", {
     room_id: roomId
   });
@@ -150,6 +155,7 @@ export default async function ShoppingListPage({
   // the selected pick. Legacy one-row-per-product lists group cleanly too.
   const cardItemById = new Map(cardItems.map((card) => [card.id, card]));
   const roleGroups: CategoryGroup[] = groupShoppingItemsByRole(listItems).map((group) => ({
+    roleKey: group.roleKey,
     category: group.category,
     label: group.label,
     priority: group.priority,
@@ -232,6 +238,7 @@ export default async function ShoppingListPage({
             </p>
             <p className="mt-4 font-body text-body-s text-ink-secondary">
               {selectedItemCount} piece{selectedItemCount === 1 ? "" : "s"} selected.
+              {missingCaveat ? <span className="ml-2 font-display italic text-warning">{missingCaveat}</span> : null}
             </p>
           </aside>
         </div>
@@ -252,22 +259,30 @@ export default async function ShoppingListPage({
         ) : null}
 
         <section className="mt-12 print:mt-8">
-          {shoppingList && roleGroups.length > 0 ? (
+          {shoppingList && (roleGroups.length > 0 || missingRoles.length > 0) ? (
             <>
-              <div className="print:hidden">
-                <ShoppingListGrid
-                  canAccessCommerce={commerceUnlocked}
-                  conceptId={shoppingList.concept_id ?? null}
-                  clientName={project.client_name}
-                  groups={roleGroups}
-                  projectId={projectId}
-                  roomType={room.room_type}
-                  roomId={roomId}
-                  shoppingListId={shoppingList.id}
-                  showRenderCta={!commerceUnlocked}
-                />
-              </div>
-              {commerceUnlocked ? <RetailerGroups groups={retailerGroups} /> : null}
+              {roleGroups.length > 0 ? (
+                <div className="print:hidden">
+                  <ShoppingListGrid
+                    canAccessCommerce={commerceUnlocked}
+                    conceptId={shoppingList.concept_id ?? null}
+                    clientName={project.client_name}
+                    groups={roleGroups}
+                    missingCaveat={missingCaveat}
+                    projectId={projectId}
+                    roomType={room.room_type}
+                    roomId={roomId}
+                    shoppingListId={shoppingList.id}
+                    showRenderCta={!commerceUnlocked}
+                  />
+                </div>
+              ) : null}
+              {missingRoles.length > 0 ? (
+                <div className={roleGroups.length > 0 ? "mt-12" : ""}>
+                  <MissingRolesSection entries={missingRoles} />
+                </div>
+              ) : null}
+              {commerceUnlocked && roleGroups.length > 0 ? <RetailerGroups groups={retailerGroups} /> : null}
             </>
           ) : (
             <div className="border border-line bg-surface p-10">

@@ -12,13 +12,17 @@ import {
 import Image from "next/image";
 import { notFound, redirect } from "next/navigation";
 
+import { parseMissingRoles } from "@ritzy-studio/domain";
+
 import {
   generateFinalRenderAction,
   groundProductsAction,
   substituteProductAction
 } from "@/app/actions";
+import { readRoomDesignSpec } from "@/lib/services/design-spec";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
+import { MissingRolesSection, missingRolesCaveat } from "../shopping-list/missing-roles";
 
 export const dynamic = "force-dynamic";
 
@@ -259,6 +263,13 @@ export default async function ProductMatchingPage({
   const latestRenderJob = (conceptRenderJobs ?? [])[0] ?? null;
 
   const shoppingItemsList = shoppingItems ?? [];
+  // S3: the honest gap and its provenance. Missing roles live on the list row;
+  // a list built without a confirmed spec (extraction failed, user continued)
+  // says so, because its rows came from the room type, not the design.
+  const missingRoles = parseMissingRoles(shoppingList.missing_roles);
+  const missingCaveat = missingRolesCaveat(missingRoles);
+  const specState = await readRoomDesignSpec({ supabase, serviceSupabase }, { roomId });
+  const builtFromConfirmedSpec = specState.status === "ready" && specState.spec.status === "confirmed";
   const latestRender = finalRenders[0] ?? null;
   const heroSrc = latestRender?.signedUrl ?? signedConceptImage?.signedUrl ?? null;
   const heroLabel = latestRender ? "Final render" : "Selected concept";
@@ -331,6 +342,9 @@ export default async function ProductMatchingPage({
             <span className="font-body text-caption font-medium uppercase tracking-[0.32em] text-ink-muted">
               estimated · {shoppingItemsList.length} {shoppingItemsList.length === 1 ? "piece" : "pieces"}
             </span>
+            {missingCaveat ? (
+              <span className="font-display text-body-s italic text-warning">{missingCaveat}</span>
+            ) : null}
           </div>
 
           <div className="mt-7 flex flex-col items-stretch gap-3 sm:flex-row sm:items-center">
@@ -371,15 +385,25 @@ export default async function ProductMatchingPage({
             the shopping list remains the source of truth
           </p>
         </div>
+        {!builtFromConfirmedSpec ? (
+          <p className="mt-3 px-5 font-display text-body-s italic text-warning md:px-8 lg:px-12">
+            Built from the room type, not the design.{" "}
+            <a className="underline underline-offset-4" href={`/projects/${projectId}/rooms/${roomId}/spec`}>
+              Confirm the design spec
+            </a>{" "}
+            and refresh matches for a design-matched list.
+          </p>
+        ) : null}
 
         {shoppingItemsList.length > 0 ? (
           <div className="mt-[18px] flex flex-col">
             {shoppingItemsList.map((item) => {
               const product = item.product;
               const dimensions = product?.dimensions?.[0];
-              const warningText = [item.dimension_fit_note, item.selection_reason]
-                .filter(Boolean)
-                .join(" ");
+              // Warnings stay warnings; the reason a piece was chosen is prose
+              // behind a quiet "why this piece" (design system 12.7).
+              const warningText = item.dimension_fit_note ?? "";
+              const whyThisPiece = item.selection_reason?.trim() ?? "";
               const quantity = item.quantity ?? 1;
               const priceDisplay =
                 item.unit_price_aed === null || item.unit_price_aed === undefined
@@ -429,6 +453,16 @@ export default async function ProductMatchingPage({
                       <p className="mt-2 font-display text-body-m italic leading-snug text-warning">
                         {warningText}
                       </p>
+                    ) : null}
+                    {whyThisPiece ? (
+                      <details className="mt-2">
+                        <summary className="cursor-pointer list-none font-display text-[13px] italic text-accent-deep hover:text-accent">
+                          why this piece
+                        </summary>
+                        <p className="mt-1 max-w-[520px] font-body text-body-s leading-snug text-ink-secondary">
+                          {whyThisPiece}
+                        </p>
+                      </details>
                     ) : null}
                     {canAccessCommerce && product?.canonical_url ? (
                       <ButtonLink
@@ -519,6 +553,12 @@ export default async function ProductMatchingPage({
           </div>
         )}
       </div>
+
+      {missingRoles.length > 0 ? (
+        <div className="bg-surface px-5 pb-10 md:px-8 lg:px-12">
+          <MissingRolesSection entries={missingRoles} tone="page" />
+        </div>
+      ) : null}
 
       {/* ink CTA band — ground the concept with the sourced pieces */}
       {shoppingList && shoppingItemsList.length > 0 ? (
