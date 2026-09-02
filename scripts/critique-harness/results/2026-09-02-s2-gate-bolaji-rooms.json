@@ -1,0 +1,92 @@
+{
+  "model": "gpt-5.1",
+  "generatedAt": "2026-09-02T07:45:13.245Z",
+  "results": [
+    {
+      "room": "alfurjan-living-dining",
+      "status": "JUDGED",
+      "conceptId": "bbb57f18-d773-4c2c-a7a3-0c771d391b25",
+      "verdicts": [
+        {
+          "check": "spatial_plausibility",
+          "verdict": "pass",
+          "notes": "Living and dining zones are clearly separated yet connected; sofa faces the TV wall, circulation to sliding doors and hallway remains clear, and no furniture intersects openings or each other."
+        },
+        {
+          "check": "brief_adherence",
+          "verdict": "pass",
+          "notes": "Combined living+dining layout is present, sliding doors to the garden are preserved, and the TV wall is the clear focal point of the living zone; style and palette are contemporary with warm neutrals plus charcoal/black accents, consistent with the brief."
+        },
+        {
+          "check": "revision_delta",
+          "verdict": "pass",
+          "notes": "Only visible change from the previous concept is the coffee table set (black two-piece swapped for a single round stone-look table); architecture, palette, layout, and other key furniture remain unchanged, with no drift."
+        },
+        {
+          "check": "size_correctness",
+          "verdict": "pass",
+          "notes": "Sofa, coffee table, dining set, and rugs all scale plausibly within a roughly 5.8m x 7m room; door heights and ceiling height relate correctly to furniture, with no oversized or miniaturized anchor pieces."
+        },
+        {
+          "check": "view_coverage",
+          "verdict": "pass",
+          "notes": "Across the hero and two additional views, the combined living/dining zoning, TV wall focal, and sliding doors are all visible; close-up view reinforces furniture/texture but does not omit any key element across the set."
+        },
+        {
+          "check": "palette_register",
+          "verdict": "pass",
+          "notes": "Palette is a deliberate warm-neutral register—ivory floors and walls, beige rugs, taupe/brown dining chairs, grey sofa, and black/charcoal metal accents—clearly traceable to the specified color notes rather than generic beige defaulting."
+        }
+      ]
+    },
+    {
+      "room": "cincinnati-bedroom",
+      "status": "JUDGED",
+      "conceptId": "2e43950c-8a87-47c3-873e-484c4f82213c",
+      "verdicts": [
+        {
+          "check": "spatial_plausibility",
+          "verdict": "pass",
+          "notes": "Bed, nightstands, and bench are all grounded and aligned with the window focal wall; side clearances and doorway remain unobstructed, and circulation along both sides of the bed is plausible."
+        },
+        {
+          "check": "brief_adherence",
+          "verdict": "pass",
+          "notes": "Contemporary style is evident in the clean-lined upholstered bed, simple drum tables, and minimal art; the palette follows ivory/cream, champagne, taupe, blush throw, warm gold sconces, and dark walnut/taupe tables; blackout curtains are visibly installed as full-height, heavy drapery across the window wall, and there are no visible elements contradicting the brief."
+        },
+        {
+          "check": "revision_delta",
+          "verdict": "pass",
+          "notes": "Architecture, layout, palette, and key furniture are unchanged; the only visible revision is swapping table lamps in the previous concept for wall sconces in the current one, which fits a targeted lighting update without broader drift."
+        },
+        {
+          "check": "size_correctness",
+          "verdict": "pass",
+          "notes": "Given a 4.8 m wall and 4.1 m depth, the king bed, bench, and nightstands occupy realistic widths and heights; ceiling height aligns with the fan and curtain proportions, with no dollhouse- or oversized-scale pieces."
+        },
+        {
+          "check": "view_coverage",
+          "verdict": "pass",
+          "notes": "Across the hero plus two additional views, the bed-wall focal, window and blackout drapery, nightstands, lighting, and artwork are all clearly shown; the close-up view highlights texture and materials on the key elements."
+        },
+        {
+          "check": "palette_register",
+          "verdict": "pass",
+          "notes": "The scheme is a deliberate warm, restful tonal register using creams, taupes, blush, and warm gold accents that directly reflects the brief’s color notes rather than a generic beige default; the blush throw and gold sconces provide the grounded accent within the neutral field."
+        }
+      ]
+    },
+    {
+      "room": "stress-dense-apartment",
+      "status": "SKIPPED (no roomId in manifest — pending creation)"
+    },
+    {
+      "room": "stress-columns",
+      "status": "SKIPPED (no roomId in manifest — pending creation)"
+    },
+    {
+      "room": "stress-glass-glare",
+      "status": "SKIPPED (no roomId in manifest — pending creation)"
+    }
+  ]
+}
