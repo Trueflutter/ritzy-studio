@@ -27,6 +27,7 @@ import {
 } from "@ritzy-studio/domain";
 
 import { localSkuFidelityModeEnabled } from "@/lib/render-flags";
+import { readRoomDesignSpec } from "./design-spec";
 import { PRODUCT_SOURCING_MAX_IMAGE_BYTES } from "@/lib/render-images";
 import {
   isProviderImageDownloadError,
@@ -160,11 +161,17 @@ export type GroundProductsInput = {
 export type GroundProductsResult =
   | { status: "not_found" }
   | { status: "blocked"; message: string }
+  | { status: "spec_pending" }
   | { status: "sourced" };
 
 export async function groundProductsForRoom(
   { supabase, serviceSupabase }: { supabase: UserSupabaseClient; serviceSupabase: ServiceSupabaseClient },
-  { userId, userEmail, projectId, roomId, conceptId }: GroundProductsInput
+  { userId, userEmail, projectId, roomId, conceptId }: GroundProductsInput,
+  {
+    // Injectable like the sibling services' seams, so the spec gate is testable
+    // without a live provider.
+    readSpec = readRoomDesignSpec
+  }: { readSpec?: typeof readRoomDesignSpec } = {}
 ): Promise<GroundProductsResult> {
   const { data: project } = await supabase
     .from("projects")
@@ -192,6 +199,19 @@ export async function groundProductsForRoom(
 
   if (concept.status !== "selected") {
     return { status: "blocked", message: "Select a concept before product grounding." };
+  }
+
+  // Step 8 backfill (codex finding): sourcing is the OTHER first-touch surface,
+  // so no route can source around the canonical spec. Sourcing never runs the
+  // paid extraction itself (PR #332 review fix: the lifecycle lives in the
+  // design-spec service): a room whose spec is not yet read, or still being
+  // read, is sent to /spec, which starts or shows the extraction and lands back
+  // here on confirm. A failed or image-less extraction does NOT block (that
+  // would create a dead end that never existed) — the attempt is recorded and
+  // S3 makes the spec load-bearing when sourcing starts consuming it.
+  const specState = await readSpec({ supabase, serviceSupabase }, { roomId });
+  if (specState.status === "extraction_needed" || specState.status === "extraction_running") {
+    return { status: "spec_pending" };
   }
 
   const { data: measurements } = await supabase

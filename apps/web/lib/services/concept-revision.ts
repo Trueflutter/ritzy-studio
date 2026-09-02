@@ -1,21 +1,26 @@
 import {
+  assessRevisionVisualDiff,
   evolinkCreditsToUsd,
   generateConceptRevision,
   stageTextConfig,
-  sumImagePlusTextUsd
+  sumImagePlusTextUsd,
+  sumUsdCostsStrict
 } from "@ritzy-studio/ai";
 import { configuredTextModel } from "@ritzy-studio/config";
 
 import { configuredImageModel, configuredImageProvider, visionImageDataUrl } from "@/lib/render-images";
 
 import { generateAndStoreConceptViews } from "./concept-generation";
-import { catalogueGroundingAnchorsForConcept } from "./sourcing-support";
+import { conceptPrimaryRender, roomImageInputs } from "./room-images";
 import type { ServiceSupabaseClient, UserSupabaseClient } from "./supabase-clients";
 
-// The concept-revision service (S1 extraction): typed inputs and results, all
-// persisted state transitions owned here, including the contract that the
-// critique row is saved BEFORE any later step can fail (a failed revision keeps
-// the critique). Deferred view generation goes through the injected defer.
+// The concept-revision service: a revision is a reference-preserving EDIT of the
+// previous concept image (S2): inputs are the previous concept render, all room
+// photos, the floor plan, and a critique-derived change/preserve plan; the
+// deferred visual-diff QA writes concepts.diff_summary and the critique's
+// concept_version_link ties the critique to the version it produced. The critique
+// row is saved BEFORE any later step can fail (a failed revision keeps the
+// critique). Deferred work goes through the injected defer.
 
 export type ReviseConceptInput = {
   userId: string;
@@ -27,17 +32,29 @@ export type ReviseConceptInput = {
 
 export type ReviseConceptResult =
   | { status: "not_found" }
-  | { status: "anchored" }
   | { status: "missing_brief" }
   | { status: "missing_photo" }
   | { status: "photo_unprepared" }
+  | { status: "concept_image_unprepared" }
   | { status: "revision_failed" }
   | { status: "revised"; conceptId: string };
 
 export async function reviseConceptForRoom(
   { supabase, serviceSupabase }: { supabase: UserSupabaseClient; serviceSupabase: ServiceSupabaseClient },
   { userId, projectId, roomId, conceptId, critique }: ReviseConceptInput,
-  { defer }: { defer: (task: () => Promise<void>) => void }
+  {
+    defer,
+    // Injectable like defer, so the success path's persisted transitions AND the
+    // deferred QA closure are testable without a live provider.
+    generateRevision = generateConceptRevision,
+    assessDiff = assessRevisionVisualDiff,
+    generateViews = generateAndStoreConceptViews
+  }: {
+    defer: (task: () => Promise<void>) => void;
+    generateRevision?: typeof generateConceptRevision;
+    assessDiff?: typeof assessRevisionVisualDiff;
+    generateViews?: typeof generateAndStoreConceptViews;
+  }
 ): Promise<ReviseConceptResult> {
   let revisedConceptId = "";
   const { data: room } = await supabase
@@ -58,17 +75,6 @@ export async function reviseConceptForRoom(
     return { status: "not_found" };
   }
 
-  if (concept.generation_job_id) {
-    const anchors = await catalogueGroundingAnchorsForConcept({
-      serviceSupabase,
-      generationJobId: concept.generation_job_id
-    });
-
-    if (anchors.length > 0) {
-      return { status: "anchored" };
-    }
-  }
-
   const { data: designBrief } = await supabase
     .from("design_briefs")
     .select("*")
@@ -79,38 +85,38 @@ export async function reviseConceptForRoom(
     return { status: "missing_brief" };
   }
 
-  const { error: critiqueError } = await supabase.from("concept_critiques").insert({
-    concept_id: concept.id,
-    critique_text: critique,
-    created_by_user_id: userId
-  });
+  const { data: critiqueRow, error: critiqueError } = await supabase
+    .from("concept_critiques")
+    .insert({
+      concept_id: concept.id,
+      critique_text: critique,
+      created_by_user_id: userId
+    })
+    .select("id")
+    .single();
 
   if (critiqueError) {
     throw new Error(critiqueError.message);
   }
 
-  const { data: roomPhoto } = await supabase
-    .from("room_assets")
-    .select("*")
-    .eq("room_id", roomId)
-    .eq("asset_type", "room_photo")
-    .order("created_at", { ascending: true })
-    .limit(1)
-    .maybeSingle();
+  const images = await roomImageInputs(supabase, roomId);
+  const roomPhoto = images.roomPhoto;
 
   if (!roomPhoto) {
     return { status: "missing_photo" };
   }
 
-  const { data: signedPhoto } = await supabase.storage
-    .from("room-assets")
-    .createSignedUrl(roomPhoto.storage_path, 60 * 30);
+  // The image being edited: the previous concept's primary render.
+  const previousRender = await conceptPrimaryRender(
+    { supabase, serviceSupabase },
+    concept.primary_image_asset_id
+  );
 
-  const { data: photoBlob, error: downloadError } = await supabase.storage
-    .from("room-assets")
-    .download(roomPhoto.storage_path);
+  if (!previousRender) {
+    return { status: "concept_image_unprepared" };
+  }
 
-  if (!signedPhoto?.signedUrl || downloadError || !photoBlob) {
+  if (!images.signedPhotoUrl || !images.photoBytes) {
     return { status: "photo_unprepared" };
   }
 
@@ -154,13 +160,19 @@ export async function reviseConceptForRoom(
   }
 
   try {
-    const revisionPhotoBytes = Buffer.from(await photoBlob.arrayBuffer());
-    const result = await generateConceptRevision({
+    const result = await generateRevision({
       roomType: room.room_type,
-      roomPhotoUrl: await visionImageDataUrl(revisionPhotoBytes, roomPhoto.mime_type),
-      roomPhotoReferenceUrl: signedPhoto.signedUrl,
-      roomPhotoBytes: revisionPhotoBytes,
+      roomPhotoUrl: await visionImageDataUrl(images.photoBytes, roomPhoto.mime_type),
+      roomPhotoReferenceUrl: images.signedPhotoUrl,
+      roomPhotoBytes: images.photoBytes,
       roomPhotoMimeType: roomPhoto.mime_type,
+      additionalRoomPhotos: images.additionalRoomPhotos,
+      floorPlanImageUrl: images.floorPlanImageUrl,
+      previousConceptImage: {
+        bytes: previousRender.bytes,
+        mimeType: previousRender.mimeType,
+        url: previousRender.signedUrl
+      },
       styleNotes: designBrief.style_notes,
       colorNotes: designBrief.color_notes,
       budgetNotes: designBrief.budget_notes,
@@ -201,6 +213,7 @@ export async function reviseConceptForRoom(
           promptKey: result.promptKey,
           title: result.concept.title,
           parentConceptId: concept.id,
+          changePlan: result.changePlan,
           revisedPrompt: result.revisedPrompt ?? null,
           imageProvider: result.imageProvider,
           imageModel: result.imageModel,
@@ -262,10 +275,14 @@ export async function reviseConceptForRoom(
       throw new Error(renderAssetError.message);
     }
 
-    await supabase
+    const { error: primaryImageError } = await supabase
       .from("concepts")
       .update({ primary_image_asset_id: renderAsset.id })
       .eq("id", revisedConcept.id);
+
+    if (primaryImageError) {
+      throw new Error(primaryImageError.message);
+    }
 
     // A revision is the room's new current direction. Clear the prior
     // selection so the concepts page surfaces this revision as the hero
@@ -278,8 +295,67 @@ export async function reviseConceptForRoom(
 
     const revisionImageBytes = Buffer.from(result.imageBase64, "base64");
     revisedConceptId = revisedConcept.id;
+
+    // Tie the critique to the version it produced. Post-success bookkeeping: a
+    // failure here must not fail the revision, but it must be visible.
+    if (critiqueRow) {
+      const { error: linkError } = await supabase
+        .from("concept_critiques")
+        .update({ concept_version_link: revisedConcept.id })
+        .eq("id", critiqueRow.id);
+      if (linkError) {
+        console.error(
+          `Failed to link critique ${critiqueRow.id} to revision ${revisedConcept.id}: ${linkError.message}`
+        );
+      }
+    }
+
     defer(async () => {
-      await generateAndStoreConceptViews({
+      // Visual-diff QA first (cheap text call): did the asked change happen, did
+      // anything drift. Best-effort: a QA failure never fails the revision.
+      try {
+        const diff = await assessDiff({
+          previousImage: {
+            bytes: previousRender.bytes,
+            mimeType: previousRender.mimeType
+          },
+          revisedImage: { bytes: revisionImageBytes, mimeType: "image/png" },
+          mustChange: result.changePlan.mustChange,
+          mustPreserve: result.changePlan.mustPreserve
+        });
+        await serviceSupabase
+          .from("concepts")
+          .update({ diff_summary: diff.summary })
+          .eq("id", revisedConcept.id);
+        const { data: jobRow, error: jobRowError } = await serviceSupabase
+          .from("ai_jobs")
+          .select("cost_estimate_usd, output_summary")
+          .eq("id", job.id)
+          .maybeSingle();
+        if (!jobRowError && jobRow) {
+          await serviceSupabase
+            .from("ai_jobs")
+            .update({
+              // Strict merge preserves the honest-null invariant: an unknown image
+              // cost stays null instead of being overwritten by the QA text cost.
+              cost_estimate_usd: sumUsdCostsStrict(jobRow.cost_estimate_usd, diff.textCostUsd),
+              output_summary: {
+                ...(jobRow.output_summary as Record<string, unknown> | null),
+                visualDiff: {
+                  changeApplied: diff.changeApplied,
+                  unintendedChanges: diff.unintendedChanges,
+                  summary: diff.summary,
+                  model: diff.model
+                }
+              }
+            })
+            .eq("id", job.id);
+        }
+      } catch (error) {
+        console.error(`Revision visual-diff QA failed (concept ${revisedConcept.id}):`, error);
+      }
+
+      await generateViews({
         serviceSupabase,
         userId: userId,
         roomId,

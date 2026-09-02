@@ -10,11 +10,17 @@ import Image from "next/image";
 import { notFound, redirect } from "next/navigation";
 
 import { reviseConceptAction, selectConceptAction } from "@/app/actions";
+import { RevisionProgress } from "./revision-progress";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import { ConceptGenerationPanel } from "./concept-generation-panel";
 
 export const dynamic = "force-dynamic";
+// Approving a concept schedules the paid spec extraction as an after() task on
+// this route's function; the budget must outlast the provider deadline (see
+// lib/spec-extraction, whose SPEC_EXTRACTION_ROUTE_MAX_DURATION_S mirrors this
+// literal because segment config cannot be imported).
+export const maxDuration = 300;
 
 function splitDescription(description: string | null) {
   if (!description) {
@@ -331,6 +337,17 @@ export default async function ConceptsPage({
             </p>
           ) : null}
 
+          {hero.diff_summary ? (
+            <div className="mt-7 border-t border-line-strong pt-5">
+              <p className="font-body text-caption font-medium uppercase tracking-[0.32em] text-accent-deep">
+                What changed in this version
+              </p>
+              <p className="mt-3 font-display text-body-l italic leading-[1.6] text-ink-secondary">
+                {hero.diff_summary}
+              </p>
+            </div>
+          ) : null}
+
           {hero.uncertainty ? (
             <div className="mt-7 border-t border-line-strong pt-5">
               <p className="font-body text-caption font-medium uppercase tracking-[0.32em] text-accent-deep">
@@ -391,6 +408,7 @@ export default async function ConceptsPage({
               <SubmitButton className="w-full" pendingLabel="Generating revision..." variant="secondary">
                 Generate revision
               </SubmitButton>
+              <RevisionProgress />
             </form>
           </div>
         </aside>

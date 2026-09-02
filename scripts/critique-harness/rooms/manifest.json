@@ -1,0 +1,39 @@
+{
+  "rooms": [
+    {
+      "key": "alfurjan-living-dining",
+      "roomId": null,
+      "label": "Bolaji's Al Furjan living/dining (combined zones, sliding doors)",
+      "register": "warm neutral (control)",
+      "expectations": "Combined living+dining zoning; sliding doors preserved; TV wall focal in the living zone."
+    },
+    {
+      "key": "cincinnati-bedroom",
+      "roomId": null,
+      "label": "Cincinnati master bedroom",
+      "register": "restful tonal",
+      "expectations": "Bed wall focal; restful tonal register with one grounded accent."
+    },
+    {
+      "key": "stress-dense-apartment",
+      "roomId": null,
+      "label": "Small dense apartment living room (clutter, tight circulation)",
+      "register": "cool",
+      "expectations": "Circulation kept clear; cool register fully committed (no beige drift)."
+    },
+    {
+      "key": "stress-columns",
+      "roomId": null,
+      "label": "Room with structural columns and asymmetric openings",
+      "register": "dark saturated",
+      "expectations": "Columns preserved and worked around; dark saturated register carried by walls and textiles."
+    },
+    {
+      "key": "stress-glass-glare",
+      "roomId": null,
+      "label": "Glare-heavy floor-to-ceiling glass room",
+      "register": "bold",
+      "expectations": "Exposure handled; bold register committed; glass walls preserved."
+    }
+  ]
+}

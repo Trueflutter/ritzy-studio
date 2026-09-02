@@ -3,10 +3,10 @@ import assert from "node:assert/strict";
 import { reviseConceptForRoom } from "./concept-revision";
 import { fakeSupabase, type RecordedCall } from "./supabase-test-double";
 
-// State-gate tests for the concept-revision service. The load-bearing contracts:
-// an anchored (sourcing-ready) concept refuses revision before anything is
-// written, and once past the brief gate the critique row is saved BEFORE any
-// later failure, so a dead photo can never lose the user's critique.
+// State-gate tests for the concept-revision service. The load-bearing contracts
+// (S2): the anchor-block is GONE, so every concept can be revised; once past the
+// brief gate the critique row is saved BEFORE any later failure, so a dead photo
+// or missing previous render can never lose the user's critique.
 
 process.env.NEXT_PUBLIC_SUPABASE_URL ??= "https://example-project.supabase.co";
 
@@ -22,14 +22,6 @@ function noDefer() {
   throw new Error("defer must not run in gate tests");
 }
 
-const ANCHOR = {
-  productId: "00000000-0000-4000-8000-000000000001",
-  category: "sofas",
-  roleLabel: "sofa",
-  priority: "required",
-  selectionReason: "Anchors the palette."
-};
-
 async function main() {
   // --- Missing room or concept resolves not_found with zero writes
   {
@@ -44,31 +36,28 @@ async function main() {
     assert.equal(calls.filter((call: RecordedCall) => call.op !== "select").length, 0);
   }
 
-  // --- An anchored concept refuses revision BEFORE the critique is saved
+  // --- The anchor-block is removed (S2): a concept whose generation job carried
+  // catalogue anchors proceeds like any other; the anchors are never even read.
   {
-    const { client, calls } = fakeSupabase((call) => {
+    const { client } = fakeSupabase((call) => {
       if (call.table === "rooms") return { data: { id: "room-1", room_type: "Living Room" } };
       if (call.table === "concepts") {
-        return { data: { id: "concept-1", generation_job_id: "job-9", design_brief_id: "brief-1" } };
+        return { data: { id: "concept-1", generation_job_id: "job-9", design_brief_id: "brief-1", primary_image_asset_id: "asset-9" } };
       }
+      if (call.table === "design_briefs") return { data: null };
       return { data: null };
     });
-    const { client: service } = fakeSupabase((call) => {
-      if (call.table === "ai_jobs") {
-        return { data: { output_summary: { catalogueGrounding: { selectedAnchors: [ANCHOR] } } } };
-      }
-      return { data: null };
-    });
+    const { client: service, calls: serviceCalls } = fakeSupabase(() => ({ data: null }));
     const result = await reviseConceptForRoom(
       { supabase: client, serviceSupabase: service },
       INPUT,
       { defer: noDefer }
     );
-    assert.deepEqual(result, { status: "anchored" });
+    assert.deepEqual(result, { status: "missing_brief" });
     assert.equal(
-      calls.filter((call: RecordedCall) => call.table === "concept_critiques").length,
+      serviceCalls.filter((call: RecordedCall) => call.table === "ai_jobs" && call.op === "select").length,
       0,
-      "anchored refusal must not save a critique"
+      "the anchor read must be gone"
     );
   }
 
@@ -77,7 +66,7 @@ async function main() {
     const { client, calls } = fakeSupabase((call) => {
       if (call.table === "rooms") return { data: { id: "room-1", room_type: "Living Room" } };
       if (call.table === "concepts") {
-        return { data: { id: "concept-1", generation_job_id: null, design_brief_id: "brief-1" } };
+        return { data: { id: "concept-1", generation_job_id: null, design_brief_id: "brief-1", primary_image_asset_id: "asset-9" } };
       }
       if (call.table === "design_briefs") return { data: null };
       return { data: null };
@@ -97,9 +86,10 @@ async function main() {
     const { client, calls } = fakeSupabase((call) => {
       if (call.table === "rooms") return { data: { id: "room-1", room_type: "Living Room" } };
       if (call.table === "concepts") {
-        return { data: { id: "concept-1", generation_job_id: null, design_brief_id: "brief-1" } };
+        return { data: { id: "concept-1", generation_job_id: null, design_brief_id: "brief-1", primary_image_asset_id: "asset-9" } };
       }
       if (call.table === "design_briefs") return { data: { id: "brief-1" } };
+      if (call.table === "concept_critiques" && call.op === "insert") return { data: { id: "critique-1" } };
       if (call.table === "room_assets") return { data: null };
       return { data: null };
     });
@@ -117,6 +107,231 @@ async function main() {
     assert.equal(critiqueInsert?.payload?.critique_text, INPUT.critique);
     assert.equal(critiqueInsert?.payload?.concept_id, "concept-1");
     assert.equal(critiqueInsert?.payload?.created_by_user_id, "user-1");
+  }
+
+  // --- A concept with no primary render resolves concept_image_unprepared,
+  // with the critique already saved (revision freedom never loses the critique)
+  {
+    const { client, calls } = fakeSupabase((call) => {
+      if (call.table === "rooms") return { data: { id: "room-1", room_type: "Living Room" } };
+      if (call.table === "concepts") {
+        return { data: { id: "concept-1", generation_job_id: null, design_brief_id: "brief-1", primary_image_asset_id: null } };
+      }
+      if (call.table === "design_briefs") return { data: { id: "brief-1" } };
+      if (call.table === "concept_critiques" && call.op === "insert") return { data: { id: "critique-1" } };
+      if (call.table === "room_assets") {
+        return { data: [{ id: "photo-1", storage_path: "u/room-1/p1.jpg", mime_type: "image/jpeg" }] };
+      }
+      return { data: null };
+    });
+    const { client: service } = fakeSupabase(() => ({ data: null }));
+    const result = await reviseConceptForRoom(
+      { supabase: client, serviceSupabase: service },
+      INPUT,
+      { defer: noDefer }
+    );
+    assert.deepEqual(result, { status: "concept_image_unprepared" });
+    assert.ok(
+      calls.some((call: RecordedCall) => call.table === "concept_critiques" && call.op === "insert"),
+      "critique must survive a missing previous render"
+    );
+  }
+
+  // --- A transient photo failure refuses BEFORE the job insert: gate refusals
+  // must never strand a running ai_jobs row (round-2 finding, three dimensions).
+  {
+    const { client } = fakeSupabase((call) => {
+      if (call.table === "rooms") return { data: { id: "room-1", room_type: "Living Room" } };
+      if (call.table === "concepts") {
+        return { data: { id: "concept-1", generation_job_id: null, design_brief_id: "brief-1", primary_image_asset_id: "asset-1" } };
+      }
+      if (call.table === "design_briefs") return { data: { id: "brief-1" } };
+      if (call.table === "concept_critiques" && call.op === "insert") return { data: { id: "critique-1" } };
+      if (call.table === "room_assets" && call.single) {
+        return { data: { storage_path: "u/room-1/concept-1.png", mime_type: "image/png" } };
+      }
+      if (call.table === "room_assets") {
+        return { data: [{ id: "photo-1", storage_path: "u/room-1/p1.jpg", mime_type: "image/jpeg" }] };
+      }
+      return { data: null };
+    }, () => ({ data: null }));
+    const { client: service, calls: serviceCalls } = fakeSupabase(() => ({ data: null }), (storageCall) => {
+      if (storageCall.op === "download") return { data: new Blob([Buffer.from([9])]) };
+      if (storageCall.op === "createSignedUrl") return { data: { signedUrl: "https://s.example/prev" } };
+      return { data: null };
+    });
+    const result = await reviseConceptForRoom(
+      { supabase: client, serviceSupabase: service },
+      INPUT,
+      { defer: noDefer }
+    );
+    assert.deepEqual(result, { status: "photo_unprepared" });
+    assert.equal(
+      serviceCalls.filter((call: RecordedCall) => call.table === "ai_jobs" && call.op === "insert").length,
+      0,
+      "a photo gate refusal must not open a running job"
+    );
+  }
+
+  // --- Success path (AC 5 unit half): the revised concept insert carries the
+  // lineage and job id, the critique links to the produced version, the prior
+  // selection clears, and the deferred QA task is registered but not run.
+  {
+    const writes: RecordedCall[] = [];
+    const { client } = fakeSupabase((call) => {
+      if (call.op !== "select") {
+        writes.push(call);
+        if (call.table === "concept_critiques" && call.op === "insert") return { data: { id: "critique-1" } };
+        if (call.table === "concepts" && call.op === "insert") return { data: { id: "concept-2" } };
+        if (call.table === "room_assets" && call.op === "insert") return { data: { id: "asset-2" } };
+        return { data: null };
+      }
+      if (call.table === "rooms") return { data: { id: "room-1", room_type: "Living Room" } };
+      if (call.table === "concepts") {
+        return { data: { id: "concept-1", generation_job_id: null, design_brief_id: "brief-1", primary_image_asset_id: "asset-1", title: "V1", description: "First direction" } };
+      }
+      if (call.table === "design_briefs") return { data: { id: "brief-1" } };
+      if (call.table === "room_assets" && call.single) {
+        return { data: { storage_path: "u/room-1/concept-1.png", mime_type: "image/png" } };
+      }
+      if (call.table === "room_assets") {
+        return { data: [{ id: "photo-1", storage_path: "u/room-1/p1.jpg", mime_type: "image/jpeg" }] };
+      }
+      return { data: null };
+    }, (storageCall) => {
+      if (storageCall.op === "download") return { data: new Blob([Buffer.from([1, 2, 3])]) };
+      if (storageCall.op === "createSignedUrl") return { data: { signedUrl: "https://signed.example/render" } };
+      return { data: null };
+    });
+    const serviceWrites: RecordedCall[] = [];
+    const { client: service } = fakeSupabase((call) => {
+      if (call.op !== "select") {
+        serviceWrites.push(call);
+        if (call.table === "ai_jobs" && call.op === "insert") return { data: { id: "job-1" } };
+        return { data: null };
+      }
+      if (call.table === "ai_jobs") {
+        return { data: { cost_estimate_usd: null, output_summary: {} } };
+      }
+      return { data: null };
+    }, (storageCall) => {
+      if (storageCall.op === "download") return { data: new Blob([Buffer.from([9, 9])]) };
+      if (storageCall.op === "createSignedUrl") return { data: { signedUrl: "https://signed.example/prev" } };
+      if (storageCall.op === "upload") return { data: { path: "ok" } };
+      return { data: null };
+    });
+
+    const deferred: Array<() => Promise<void>> = [];
+    const stubResult = {
+      promptKey: "concept.revision_from_critique",
+      promptVersion: "test",
+      textModel: "stub-model",
+      textCostUsd: 0.001,
+      imageProvider: "evolink" as const,
+      imageModel: "stub-image",
+      imageLatencySeconds: 1,
+      imageFallbackUsed: false,
+      imageFallbackError: null,
+      imageCreditsUsed: 1,
+      analysis: {
+        detectedRoomType: "living room",
+        fixedArchitecture: [],
+        editableZones: [],
+        fixedElementsToPreserve: [],
+        lightingNotes: [],
+        uncertaintyNotes: []
+      },
+      concept: {
+        title: "V2",
+        rationale: "Swapped the chair.",
+        generationPrompt: "p".repeat(90),
+        preserveList: [],
+        allowedChangeList: [],
+        uncertaintyNote: "Scale is directional."
+      },
+      imageBase64: Buffer.from([137, 80, 78, 71]).toString("base64"),
+      revisedPrompt: null,
+      changePlan: { mustChange: ["swap the chair"], mustPreserve: ["sofa"] }
+    };
+
+    const serviceReads = { jobRow: { cost_estimate_usd: null, output_summary: {} } };
+    let viewsCalled = false;
+    const result = await reviseConceptForRoom(
+      { supabase: client, serviceSupabase: service },
+      INPUT,
+      {
+        defer: (task) => deferred.push(task),
+        generateRevision: async () => stubResult,
+        assessDiff: async () => ({
+          changeApplied: "yes" as const,
+          unintendedChanges: [],
+          summary: "The chair was swapped; everything else is unchanged.",
+          model: "stub-qa",
+          textCostUsd: 0.002
+        }),
+        generateViews: async () => {
+          viewsCalled = true;
+        }
+      }
+    );
+
+    assert.equal(result.status, "revised");
+    assert.equal(result.status === "revised" && result.conceptId, "concept-2");
+
+    const conceptInsert = writes.find(
+      (call) => call.table === "concepts" && call.op === "insert"
+    );
+    assert.ok(conceptInsert, "revised concept must be inserted");
+    assert.equal(conceptInsert?.payload?.parent_concept_id, "concept-1", "lineage must be recorded");
+    assert.equal(conceptInsert?.payload?.generation_job_id, "job-1");
+    assert.equal(conceptInsert?.payload?.status, "generated");
+
+    const linkUpdate = writes.find(
+      (call) => call.table === "concept_critiques" && call.op === "update"
+    );
+    assert.ok(linkUpdate, "critique must link to the produced version");
+    assert.equal(linkUpdate?.payload?.concept_version_link, "concept-2");
+    assert.deepEqual(linkUpdate?.filters, [["id", "critique-1"]]);
+
+    const clearSelection = writes.find(
+      (call) =>
+        call.table === "concepts" &&
+        call.op === "update" &&
+        (call.payload as { status?: string })?.status === "generated" &&
+        call.filters.some(([column, value]) => column === "status" && value === "selected")
+    );
+    assert.ok(clearSelection, "the prior selection must be cleared");
+
+    assert.equal(deferred.length, 1, "diff QA + views must be deferred, not run inline");
+
+    // Execute the deferred closure with the stubs: the QA write must target the
+    // REVISED concept, and the strict cost merge must keep an honest-null image
+    // cost null instead of overwriting it with the QA text cost.
+    void serviceReads;
+    await deferred[0]();
+    assert.ok(viewsCalled, "views must run in the deferred task");
+    const diffWrite = serviceWrites.find(
+      (call) =>
+        call.table === "concepts" &&
+        call.op === "update" &&
+        (call.payload as { diff_summary?: string })?.diff_summary !== undefined
+    );
+    assert.ok(diffWrite, "diff_summary must be written");
+    assert.deepEqual(diffWrite?.filters, [["id", "concept-2"]]);
+    const costMerge = serviceWrites.find(
+      (call) =>
+        call.table === "ai_jobs" &&
+        call.op === "update" &&
+        "cost_estimate_usd" in (call.payload ?? {}) &&
+        (call.payload as { output_summary?: unknown })?.output_summary !== undefined &&
+        JSON.stringify(call.payload?.output_summary ?? {}).includes("visualDiff")
+    );
+    assert.ok(costMerge, "the QA verdict must be recorded on the job");
+    assert.equal(
+      costMerge?.payload?.cost_estimate_usd,
+      null,
+      "an honest-null image cost must stay null after the QA merge"
+    );
   }
 
   console.log("concept-revision service tests passed");

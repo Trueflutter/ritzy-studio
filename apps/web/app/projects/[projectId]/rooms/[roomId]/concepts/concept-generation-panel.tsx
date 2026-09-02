@@ -7,16 +7,18 @@ import { AnimatedStatus, SubmitButton } from "@ritzy-studio/ui";
 import { generateInitialConceptAction } from "@/app/actions";
 import { RenderExpectationNote } from "../render-expectation-note";
 
-const generationPhases = [
-  "Reading the room photo",
-  "Studying the brief",
-  "Extracting style cues",
-  "Reviewing proportions",
-  "Refining colour direction",
-  "Composing the first layout",
-  "Balancing light and materials",
-  "Preparing the concept render"
+// Design system 12.2: progress copy used verbatim, cycled in order, with the
+// overflow line appended after 30 seconds. Do not improvise alternative copy.
+export const GENERATION_PROGRESS_PHASES = [
+  "preparing the canvas",
+  "shaping the room",
+  "considering proportions",
+  "matching to brief",
+  "almost ready"
 ];
+
+export const GENERATION_OVERFLOW_LINE =
+  "this is taking longer than usual — feel free to wait or revise the brief.";
 
 function GenerateConceptSubmit({ autoGenerate, canGenerate }: { autoGenerate: boolean; canGenerate: boolean }) {
   const { pending } = useFormStatus();
@@ -77,7 +79,7 @@ export function ConceptGenerationPanel({
               Building the first room direction.
             </h2>
             <RenderExpectationNote className="mx-auto mt-5 max-w-[360px]" />
-            <AnimatedStatus className="mt-8" phases={generationPhases} />
+            <AnimatedStatus className="mt-8" overflowText={GENERATION_OVERFLOW_LINE} phases={GENERATION_PROGRESS_PHASES} />
             <GenerateConceptSubmit autoGenerate={autoGenerate} canGenerate={canGenerate} />
           </div>
         </div>

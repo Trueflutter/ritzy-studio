@@ -30,6 +30,8 @@ import {
 } from "@/lib/services/concept-generation";
 import { storageImageDataUrl } from "@/lib/services/storage-images";
 import { reviseConceptForRoom } from "@/lib/services/concept-revision";
+import { confirmRoomDesignSpec, startRoomDesignSpecExtraction } from "@/lib/services/design-spec";
+import { parseSpecLedgerForm } from "@/lib/spec-ledger-form-data";
 import {
   findMoreShoppingOptions,
   groundProductsForRoom,
@@ -1491,10 +1493,6 @@ export async function generateInitialConceptAction(formData: FormData) {
       redirect(`${redirectPath}?message=${encodeURIComponent("Concept generation is already running.")}`);
     case "photo_unprepared":
       redirect(`${redirectPath}?message=${encodeURIComponent("The room photo could not be prepared for generation.")}`);
-    case "grounding_blocked":
-      redirect(`${redirectPath}?message=${encodeURIComponent("We need a little more catalogue evidence before building this room direction. Try broadening the style or colour notes, then generate again.")}`);
-    case "reference_images_missing":
-      redirect(`${redirectPath}?message=${encodeURIComponent("We found catalogue pieces for this room, but their reference images are not ready yet. Try again in a moment.")}`);
     case "generation_failed":
       redirect(`${redirectPath}?message=${encodeURIComponent("Concept generation failed. The brief and room photo are still saved.")}`);
   }
@@ -1519,9 +1517,97 @@ export async function selectConceptAction(formData: FormData) {
 
   await selectConcept(supabase, { roomId, conceptId });
 
-  const redirectPath = `/projects/${projectId}/rooms/${roomId}/product-matching`;
+  // Spec-at-approval (S2): approval flows through the spec confirmation ledger
+  // before sourcing. The paid extraction is scheduled HERE as a detached task
+  // (PR #332 review fix), so it starts the moment the user approves, outlives
+  // this request, and /spec only ever reads its persisted state.
+  const redirectPath = `/projects/${projectId}/rooms/${roomId}/spec`;
+  await startRoomDesignSpecExtraction(
+    { supabase, serviceSupabase: createServiceClient() },
+    { userId: user.id, roomId },
+    { defer: deferSpecExtraction(redirectPath) }
+  );
   revalidatePath(redirectPath);
   redirect(redirectPath);
+}
+
+// The detached spec extraction runs on the action's after() so a closed tab
+// cannot abort it; the runner records its own failures on the job row, and
+// anything escaping that is logged rather than thrown into a finished response.
+function deferSpecExtraction(specPath: string) {
+  return (task: () => Promise<void>) =>
+    after(async () => {
+      try {
+        await task();
+      } catch (error) {
+        console.error(`Deferred spec extraction failed to run (${specPath}).`, error);
+      }
+      revalidatePath(specPath);
+    });
+}
+
+// Retry after a recorded failure is the only way to spend on a concept twice
+// (a page load never re-extracts), so it is a deliberate POST.
+export async function retryDesignSpecExtractionAction(formData: FormData) {
+  const projectId = String(formData.get("projectId") ?? "");
+  const roomId = String(formData.get("roomId") ?? "");
+  const specPath = `/projects/${projectId}/rooms/${roomId}/spec`;
+  const supabase = await createClient();
+  const {
+    data: { user },
+    error: userError
+  } = await supabase.auth.getUser();
+
+  if (userError || !user) {
+    redirect("/login");
+  }
+
+  await startRoomDesignSpecExtraction(
+    { supabase, serviceSupabase: createServiceClient() },
+    { userId: user.id, roomId },
+    { defer: deferSpecExtraction(specPath) }
+  );
+  revalidatePath(specPath);
+  redirect(specPath);
+}
+
+export async function confirmDesignSpecAction(formData: FormData) {
+  const projectId = String(formData.get("projectId") ?? "");
+  const roomId = String(formData.get("roomId") ?? "");
+  const specId = String(formData.get("specId") ?? "");
+  const specPath = `/projects/${projectId}/rooms/${roomId}/spec`;
+  const supabase = await createClient();
+  const {
+    data: { user },
+    error: userError
+  } = await supabase.auth.getUser();
+
+  if (userError || !user) {
+    redirect("/login");
+  }
+
+  const parsedForm = parseSpecLedgerForm(formData);
+
+  if (!parsedForm.ok) {
+    redirect(`${specPath}?message=${encodeURIComponent(parsedForm.message)}`);
+  }
+
+  const { objects, mustPreserve } = parsedForm;
+
+  const result = await confirmRoomDesignSpec(supabase, { roomId, specId, objects, mustPreserve });
+
+  if (result.status === "invalid") {
+    redirect(`${specPath}?message=${encodeURIComponent(result.message)}`);
+  }
+
+  if (result.status === "not_found") {
+    redirect(`${specPath}?message=${encodeURIComponent("The spec could not be found. Reload and try again.")}`);
+  }
+
+  const sourcingPath = `/projects/${projectId}/rooms/${roomId}/product-matching`;
+  revalidatePath(specPath);
+  revalidatePath(sourcingPath);
+  redirect(`${sourcingPath}?message=${encodeURIComponent("Spec confirmed. Source the pieces when ready.")}`);
 }
 
 export async function groundProductsAction(formData: FormData) {
@@ -1553,6 +1639,12 @@ export async function groundProductsAction(formData: FormData) {
 
   if (result.status === "blocked") {
     redirect(`${redirectPath}?message=${encodeURIComponent(result.message)}`);
+  }
+
+  // The spec is not yet read (or still being read): /spec starts or shows the
+  // extraction and lands back here on confirm.
+  if (result.status === "spec_pending") {
+    redirect(`/projects/${projectId}/rooms/${roomId}/spec`);
   }
 
   revalidatePath(redirectPath);
@@ -1992,18 +2084,14 @@ export async function reviseConceptAction(formData: FormData) {
   switch (result.status) {
     case "not_found":
       redirect("/");
-    case "anchored":
-      redirect(
-        `${redirectPath}?message=${encodeURIComponent(
-          "This room direction is ready for sourcing. To make changes, adjust selected pieces after the shopping list is built."
-        )}`
-      );
     case "missing_brief":
       redirect(`/projects/${projectId}/rooms/${roomId}/brief`);
     case "missing_photo":
       redirect(`/projects/${projectId}/rooms/${roomId}/photos`);
     case "photo_unprepared":
       redirect(`${redirectPath}?message=${encodeURIComponent("The original room photo could not be prepared for revision.")}`);
+    case "concept_image_unprepared":
+      redirect(`${redirectPath}?message=${encodeURIComponent("This concept has no stored image to revise. Restore an earlier version or generate a new direction instead.")}`);
     case "revision_failed":
       redirect(`${redirectPath}?message=${encodeURIComponent("Concept revision failed. The critique was saved.")}`);
   }

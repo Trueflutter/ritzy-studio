@@ -1,3 +1,4 @@
+import { designSpecMustPreserveSchema, designSpecObjectsSchema } from "@ritzy-studio/domain";
 import { z } from "zod";
 
 export {
@@ -6,6 +7,7 @@ export {
   finalRenderProductFidelityLanguage,
   finalRenderViewConsistencyLanguage,
   globalPhotorealismLanguage,
+  paletteRegisterLanguage,
   productRoleLanguage,
   roomBlueprintDefaultsLanguage,
   roomDesignLanguage,
@@ -341,6 +343,148 @@ export const initialConceptJsonSchema = {
 
 export type InitialConceptResponse = z.infer<typeof initialConceptResponseSchema>;
 
+// Revision extends the concept response with the critique-derived change plan:
+// what must change, and what must stay visually identical. The visual-diff QA
+// judges the revised image against exactly these two lists.
+export const conceptRevisionResponseSchema = initialConceptResponseSchema.extend({
+  changePlan: z.object({
+    mustChange: z.array(z.string().min(2).max(160)).min(1).max(10),
+    mustPreserve: z.array(z.string().min(2).max(160)).max(14)
+  })
+});
+
+export const conceptRevisionJsonSchema = {
+  ...initialConceptJsonSchema,
+  properties: {
+    ...initialConceptJsonSchema.properties,
+    changePlan: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        mustChange: {
+          type: "array",
+          minItems: 1,
+          maxItems: 10,
+          items: { type: "string", minLength: 2, maxLength: 160 }
+        },
+        mustPreserve: {
+          type: "array",
+          maxItems: 14,
+          items: { type: "string", minLength: 2, maxLength: 160 }
+        }
+      },
+      required: ["mustChange", "mustPreserve"]
+    }
+  },
+  required: ["roomAnalysis", "concept", "changePlan"]
+} as const;
+
+export type ConceptRevisionResponse = z.infer<typeof conceptRevisionResponseSchema>;
+
+// Visual-diff QA over a revision: did the asked change happen, did anything
+// outside the change plan drift. The summary is written to concepts.diff_summary
+// and shown on the concepts screen.
+export const revisionVisualDiffPrompt = {
+  key: "concept.revision_visual_diff",
+  version: "2026-09-01.1",
+  system: [
+    "You are Ritzy Studio's revision QA reviewer.",
+    "Image 1 is the PREVIOUS concept. Image 2 is the REVISED concept.",
+    "Judge the revision against the provided change plan only.",
+    "changeApplied: yes when every mustChange item is visibly applied in image 2; partial when some are; no when none are.",
+    "unintendedChanges: elements that differ between the images but appear in neither mustChange nor mustPreserve as an allowed change — palette shifts, swapped furniture, moved layout, altered architecture. Empty when the edit stayed scoped.",
+    "summary: one or two plain sentences a homeowner understands, stating what changed and whether anything drifted. No scores, no jargon.",
+    "Be strict about architecture: any wall, window, door, or opening difference is always an unintended change."
+  ].join("\n")
+} as const;
+
+export const revisionVisualDiffResponseSchema = z.object({
+  changeApplied: z.enum(["yes", "partial", "no"]),
+  unintendedChanges: z.array(z.string().min(2).max(200)).max(10),
+  summary: z.string().min(8).max(400)
+});
+
+export const revisionVisualDiffJsonSchema = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    changeApplied: { type: "string", enum: ["yes", "partial", "no"] },
+    unintendedChanges: {
+      type: "array",
+      maxItems: 10,
+      items: { type: "string", minLength: 2, maxLength: 200 }
+    },
+    summary: { type: "string", minLength: 8, maxLength: 400 }
+  },
+  required: ["changeApplied", "unintendedChanges", "summary"]
+} as const;
+
+export type RevisionVisualDiffResponse = z.infer<typeof revisionVisualDiffResponseSchema>;
+
+// Spec extraction at approval (S2): a vision pass over the approved concept
+// image plus the brief and geometry produces the canonical room_design_spec —
+// the objects the design commits to, and the architecture that must never
+// change. Sourcing and rendering consume the CONFIRMED spec as truth.
+export const specExtractionPrompt = {
+  key: "concept.spec_extraction",
+  version: "2026-09-01.1",
+  system: [
+    "You are Ritzy Studio's design spec extractor.",
+    "Input: the approved concept image, the room type, the brief, and any measurements.",
+    "List every distinct furnishing and decor object the concept commits to: seating, tables, storage, lighting, rugs, textiles, art, decor.",
+    "Each object gets: role (a short machine key like sofa, coffee_table, dining_chairs, floor_lamp), label (what a homeowner would call it), quantity (count visible or clearly implied), sizeDescriptor (approximate size or proportion in plain words, e.g. 'three-seat, around 240 cm' or 'large, floor-anchoring'), capacity when the role seats or stores (e.g. 'seats 6'), and paletteMaterials (the colours and materials this object carries in the concept).",
+    "Quantities are honest counts from the image; do not invent objects that are not visible or clearly implied by the concept.",
+    "mustPreserve lists the fixed architecture and features renders may never change: walls, windows, doors, openings, ceiling details, built-ins, flooring, and any feature the brief asked to keep.",
+    "Use only provided measurements as verified; sizes read from the image are approximate descriptors, never precise dimensions.",
+    "Plain language a homeowner understands. No SKUs, no product names, no prices."
+  ].join("\n")
+} as const;
+
+// Single source of truth for the spec shape: the domain schemas that validate
+// the room_design_specs jsonb columns also validate the extraction response, so
+// the two can never drift (a drift would make every extraction re-run on read).
+export const specExtractionResponseSchema = z.object({
+  objects: designSpecObjectsSchema,
+  mustPreserve: designSpecMustPreserveSchema
+});
+
+export const specExtractionJsonSchema = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    objects: {
+      type: "array",
+      minItems: 1,
+      maxItems: 30,
+      items: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          role: { type: "string", minLength: 2, maxLength: 60 },
+          label: { type: "string", minLength: 2, maxLength: 120 },
+          quantity: { type: "integer", minimum: 1, maximum: 24 },
+          sizeDescriptor: { type: ["string", "null"], minLength: 2, maxLength: 200 },
+          capacity: { type: ["string", "null"], minLength: 2, maxLength: 120 },
+          paletteMaterials: {
+            type: "array",
+            maxItems: 8,
+            items: { type: "string", minLength: 2, maxLength: 120 }
+          }
+        },
+        required: ["role", "label", "quantity", "sizeDescriptor", "capacity", "paletteMaterials"]
+      }
+    },
+    mustPreserve: {
+      type: "array",
+      maxItems: 16,
+      items: { type: "string", minLength: 2, maxLength: 200 }
+    }
+  },
+  required: ["objects", "mustPreserve"]
+} as const;
+
+export type SpecExtractionResponse = z.infer<typeof specExtractionResponseSchema>;
+
 export const conceptProductSourcingPrompt = {
   key: "sourcing.concept_visual_product_match",
   version: "2026-05-22.1",
@@ -498,12 +642,15 @@ export type ConceptProductSourcingResponse = z.infer<typeof conceptProductSourci
 
 export const conceptRevisionPrompt = {
   key: "concept.revision_from_critique",
-  version: "2026-05-04.1",
+  version: "2026-09-01.1",
   system: [
     "You are Ritzy Studio's concept revision assistant.",
-    "Use the original room photo, previous concept, and designer critique to create one revised concept direction.",
-    "Preserve approved qualities from the previous concept unless the critique explicitly changes them.",
+    "A revision is a reference-preserving EDIT of the previous concept image, not a new concept.",
+    "Inputs: the previous concept image, all photos of the real room, the floor plan when provided, the saved brief, and the designer critique.",
+    "First derive a change plan from the critique: mustChange lists exactly what the critique asks to change; mustPreserve lists the elements of the previous concept that the critique does not touch and that must stay visually identical (palette register, key furniture, layout, lighting mood, architecture).",
+    "The generation prompt must direct an image EDIT of the previous concept image: apply every mustChange item, keep every mustPreserve item, and change nothing else.",
     "Keep the room architecture stable and identify uncertainty plainly.",
+    "Preserve the previous concept's palette and material register unless the critique explicitly changes it.",
     "The revised image direction must read as a photorealistic interior-design photograph, not an illustration, sketch, collage, CGI showroom, or mood board.",
     "Do not claim real product availability or exact SKU matching.",
     "Return a practical generation prompt for image editing."

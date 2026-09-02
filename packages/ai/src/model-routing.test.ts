@@ -28,5 +28,6 @@ assert.equal(resolveStageTextModel("spatial_qa", { RITZY_TEXT_MODEL_SPATIAL_QA: 
 // sites, and the env var name derivation is stable and documented.
 assert.ok(TEXT_STAGES.includes("product_sourcing"));
 assert.ok(TEXT_STAGES.includes("revision_direction"));
+assert.ok(TEXT_STAGES.includes("spec_extraction"));
 
 console.log("model-routing tests passed");
