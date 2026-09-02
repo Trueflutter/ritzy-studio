@@ -241,6 +241,45 @@ async function main() {
     );
   }
 
+  // --- A failed jobs read is surfaced, never mistaken for "no attempt" (the
+  // one state in which a page load may spend): no lease, nothing scheduled
+  {
+    const { client } = userClient();
+    const { client: service, calls: serviceCalls } = fakeSupabase((call) => {
+      if (call.table === "ai_jobs" && call.op === "select") return { error: { message: "statement timeout" } };
+      return { data: null };
+    });
+    await assert.rejects(
+      () => readRoomDesignSpec({ supabase: client, serviceSupabase: service }, INPUT, { now: NOW, leaseMs: LEASE_MS }),
+      /statement timeout/
+    );
+    const { tasks, defer } = recorder();
+    await assert.rejects(
+      () =>
+        ensureRoomDesignSpec(
+          { supabase: client, serviceSupabase: service },
+          INPUT,
+          { defer, run: async () => {}, now: NOW, leaseMs: LEASE_MS }
+        ),
+      /statement timeout/
+    );
+    assert.equal(serviceCalls.filter((call) => call.op === "insert").length, 0);
+    assert.equal(tasks.length, 0);
+  }
+
+  // --- A failed spec-row read is surfaced the same way
+  {
+    const { client } = userClient((call) =>
+      call.table === "room_design_specs" ? { error: { message: "pooler blip" } } : { data: null }
+    );
+    const { client: service, calls: serviceCalls } = fakeSupabase(() => ({ data: null }));
+    await assert.rejects(
+      () => readRoomDesignSpec({ supabase: client, serviceSupabase: service }, INPUT),
+      /pooler blip/
+    );
+    assert.equal(serviceCalls.length, 0);
+  }
+
   // --- A recorded failed attempt reports failed (retryable) and writes nothing
   {
     const { client } = userClient();
@@ -652,6 +691,48 @@ async function main() {
     assert.equal(closed?.payload?.error_message, "write refused");
     assert.equal(closed?.payload?.cost_estimate_usd, 0.001, "spend that happened is recorded even on failure");
     assert.equal(closed?.payload?.model, "stub");
+  }
+
+  // --- The terminal write is checked: a transient failure closing the job as
+  // succeeded is retried once ...
+  {
+    let jobUpdates = 0;
+    const { client: service, calls } = runnerService((call) => {
+      if (call.table === "room_design_specs" && call.op === "upsert") {
+        return { data: { ...VALID_SPEC_ROW, status: "extracted" } };
+      }
+      if (call.table === "ai_jobs" && call.op === "update") {
+        jobUpdates += 1;
+        return jobUpdates === 1 ? { error: { message: "pooler blip" } } : { data: null };
+      }
+      return { data: null };
+    });
+    await runRoomDesignSpecExtraction(service, { jobId: "job-1" }, { extract: async () => EXTRACTION });
+    const updates = calls.filter((call) => call.table === "ai_jobs" && call.op === "update");
+    assert.equal(updates.length, 2);
+    assert.equal(updates[1]?.payload?.status, "succeeded");
+  }
+
+  // --- ... and past that the row is still never left running: closed failed
+  // with the spend recorded and the stored spec named in the message
+  {
+    let jobUpdates = 0;
+    const { client: service, calls } = runnerService((call) => {
+      if (call.table === "room_design_specs" && call.op === "upsert") {
+        return { data: { ...VALID_SPEC_ROW, status: "extracted" } };
+      }
+      if (call.table === "ai_jobs" && call.op === "update") {
+        jobUpdates += 1;
+        return jobUpdates <= 2 ? { error: { message: "db down" } } : { data: null };
+      }
+      return { data: null };
+    });
+    await runRoomDesignSpecExtraction(service, { jobId: "job-1" }, { extract: async () => EXTRACTION });
+    const updates = calls.filter((call) => call.table === "ai_jobs" && call.op === "update");
+    assert.equal(updates.length, 3);
+    assert.equal(updates[2]?.payload?.status, "failed");
+    assert.equal(updates[2]?.payload?.cost_estimate_usd, 0.001);
+    assert.match(String(updates[2]?.payload?.error_message), /Spec stored/);
   }
 
   // ---------------------------------------------------------------- confirm

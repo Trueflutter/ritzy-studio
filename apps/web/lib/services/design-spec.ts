@@ -1,5 +1,6 @@
 import { extractRoomDesignSpec, stageTextConfig } from "@ritzy-studio/ai";
 import { configuredTextModel } from "@ritzy-studio/config";
+import type { Database } from "@ritzy-studio/db";
 import {
   designSpecMustPreserveSchema,
   designSpecObjectsSchema,
@@ -86,12 +87,18 @@ async function readState(
     return { status: "no_selected_concept" };
   }
 
-  const { data: existing } = await supabase
+  // The two reads below gate spending. A failed read is surfaced, never
+  // mistaken for "nothing on record": that is the one state in which a page
+  // load may open a lease, and a pooler blip must not buy a second run.
+  const { data: existing, error: existingError } = await supabase
     .from("room_design_specs")
     .select("*")
     .eq("room_id", roomId)
     .eq("concept_id", concept.id)
     .maybeSingle();
+  if (existingError) {
+    throw new Error(existingError.message);
+  }
 
   if (existing) {
     const parsed = parseRoomDesignSpecRow(existing);
@@ -118,7 +125,7 @@ async function readState(
     return { status: "concept_image_unprepared" };
   }
 
-  const { data: latestJob } = await serviceSupabase
+  const { data: latestJob, error: latestJobError } = await serviceSupabase
     .from("ai_jobs")
     .select("id, status, created_at")
     .eq("room_id", roomId)
@@ -127,6 +134,9 @@ async function readState(
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();
+  if (latestJobError) {
+    throw new Error(latestJobError.message);
+  }
 
   if (!latestJob) {
     return { status: "extraction_needed", conceptId: concept.id };
@@ -333,24 +343,34 @@ export async function runRoomDesignSpecExtraction(
 
   let extraction: Awaited<ReturnType<typeof extract>> | null = null;
 
+  // Every terminal write is checked: a lease must never outlive its run
+  // because the closing write itself failed silently.
+  const closeJob = async (payload: Database["public"]["Tables"]["ai_jobs"]["Update"]): Promise<boolean> => {
+    const { error } = await serviceSupabase.from("ai_jobs").update(payload).eq("id", jobId);
+    if (error) {
+      console.error(
+        `Spec extraction job ${jobId}: terminal write (${String(payload.status)}) failed: ${error.message}`
+      );
+      return false;
+    }
+    return true;
+  };
+
   const fail = async (message: string) => {
-    await serviceSupabase
-      .from("ai_jobs")
-      .update({
-        status: "failed",
-        completed_at: new Date().toISOString(),
-        error_message: message,
-        // Honest cost: a paid call that succeeded before persistence failed is
-        // still spend, and the row says so.
-        ...(extraction
-          ? {
-              model: extraction.model,
-              prompt_version: extraction.promptVersion,
-              cost_estimate_usd: extraction.textCostUsd ?? null
-            }
-          : {})
-      })
-      .eq("id", jobId);
+    await closeJob({
+      status: "failed",
+      completed_at: new Date().toISOString(),
+      error_message: message,
+      // Honest cost: a paid call that succeeded before persistence failed is
+      // still spend, and the row says so.
+      ...(extraction
+        ? {
+            model: extraction.model,
+            prompt_version: extraction.promptVersion,
+            cost_estimate_usd: extraction.textCostUsd ?? null
+          }
+        : {})
+    });
   };
 
   if (!conceptId || !roomId) {
@@ -484,23 +504,27 @@ export async function runRoomDesignSpecExtraction(
       }
     }
 
-    await serviceSupabase
-      .from("ai_jobs")
-      .update({
-        status: "succeeded",
-        completed_at: new Date().toISOString(),
-        model: extraction.model,
-        prompt_version: extraction.promptVersion,
-        cost_estimate_usd: extraction.textCostUsd ?? null,
-        output_summary: {
-          conceptId,
-          objectCount: extraction.objects.length,
-          mustPreserveCount: extraction.mustPreserve.length,
-          storedByAnotherRun,
-          repairedStoredRow
-        }
-      })
-      .eq("id", jobId);
+    const succeeded: Database["public"]["Tables"]["ai_jobs"]["Update"] = {
+      status: "succeeded",
+      completed_at: new Date().toISOString(),
+      model: extraction.model,
+      prompt_version: extraction.promptVersion,
+      cost_estimate_usd: extraction.textCostUsd ?? null,
+      output_summary: {
+        conceptId,
+        objectCount: extraction.objects.length,
+        mustPreserveCount: extraction.mustPreserve.length,
+        storedByAnotherRun,
+        repairedStoredRow
+      }
+    };
+    // The spec is stored, so readers return ready from the spec row and would
+    // never reclaim this lease: the audit row must not stay `running`. One
+    // immediate retry covers a transient blip; past that, close it failed with
+    // the spend recorded and the truth in the message.
+    if (!(await closeJob(succeeded)) && !(await closeJob(succeeded))) {
+      await fail("Spec stored, but the job could not be closed as succeeded; the cost is recorded here.");
+    }
   } catch (error) {
     await fail(error instanceof Error ? error.message : "Spec extraction failed.");
   }
