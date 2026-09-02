@@ -1006,7 +1006,17 @@ export type RoomProductRoleSpec = {
   disallowedClasses?: readonly ClassTag[];
   sizeClass?: RoleSizeClass;
   roomScope?: RoomScope;
+  // Explicit identity for selection maps when a list can carry two roles in one
+  // category (S3 spec roles: a floor lamp and a pendant are both lighting).
+  // Absent for blueprint roles, whose identity is their category.
+  roleKey?: string;
 };
+
+// The key a selection map uses for a role: its explicit key when it has one,
+// else its category (legacy blueprint roles, one per category).
+export function roleOptionKey(role: { category: string; roleKey?: string }): string {
+  return role.roleKey ?? role.category;
+}
 
 export type RoleProductOptions = RoomProductRoleSpec & {
   options: RankedProductMatch[];
@@ -1120,6 +1130,8 @@ export type ShoppingItemRoleFields = {
 };
 
 export type ShoppingRoleGroup<T> = {
+  // category::label — distinct for two spec roles that share a category.
+  roleKey: string;
   category: string;
   label: string;
   priority: "required" | "supporting";
@@ -2969,7 +2981,7 @@ export function fitSelectionToBudget({
     return option ? optionUnitPriceAed(option) * Math.max(1, role.quantity || 1) : 0;
   };
   const currentTotal = () =>
-    roleOptions.reduce((total, role) => total + lineTotalFor(role, selection.get(role.category)), 0);
+    roleOptions.reduce((total, role) => total + lineTotalFor(role, selection.get(roleOptionKey(role))), 0);
 
   const initialTotal = currentTotal();
   if (budgetMaxAed === null || budgetMaxAed <= 0 || initialTotal <= budgetMaxAed) {
@@ -2998,7 +3010,7 @@ export function fitSelectionToBudget({
 
     for (const role of roleOptions) {
       const quantity = Math.max(1, role.quantity || 1);
-      const selectedId = selection.get(role.category);
+      const selectedId = selection.get(roleOptionKey(role));
       const selectedOption = selectedId ? role.options.find((option) => option.id === selectedId) : undefined;
       if (!selectedOption) {
         continue;
@@ -3027,8 +3039,8 @@ export function fitSelectionToBudget({
       break;
     }
 
-    const fromId = selection.get(swap.role.category)!;
-    selection.set(swap.role.category, swap.to.id);
+    const fromId = selection.get(roleOptionKey(swap.role))!;
+    selection.set(roleOptionKey(swap.role), swap.to.id);
     downgrades.push({
       category: swap.role.category,
       fromProductId: fromId,
@@ -3068,7 +3080,7 @@ export function buildShoppingListItemRows({
   let sortOrder = 0;
 
   for (const role of roleOptions) {
-    const selectedId = selectedProductIdByRole.get(role.category) ?? null;
+    const selectedId = selectedProductIdByRole.get(roleOptionKey(role)) ?? null;
     role.options.forEach((match, rank) => {
       const unitPrice = match.salePriceAed ?? match.priceAed ?? 0;
       rows.push({
@@ -3176,33 +3188,44 @@ export function buildPersistedSelectionSnapshot({
 // Group sourced items back into role groups for the picker. Rejected items are
 // dropped; options are ordered best-first; the selected option seeds the pick.
 // Legacy one-row-per-product lists group cleanly too — each row is its category.
+// A persisted row's role identity: category plus the role label the row carries
+// (the spec object's label after S3, the blueprint label before). Two spec
+// roles in one category (a floor lamp and a pendant) never merge.
+export function shoppingItemRoleKey(item: { category: string; role_label?: string | null }): string {
+  const label = (item.role_label ?? "").trim().toLowerCase();
+  return label ? `${item.category}::${label}` : item.category;
+}
+
 export function groupShoppingItemsByRole<T extends ShoppingItemRoleFields>(
   items: ReadonlyArray<T>
 ): ShoppingRoleGroup<T>[] {
-  const byCategory = new Map<string, T[]>();
+  const byRoleKey = new Map<string, T[]>();
   const order: string[] = [];
 
   for (const item of items) {
     if (item.status === "rejected") {
       continue;
     }
-    const existing = byCategory.get(item.category);
+    const key = shoppingItemRoleKey(item);
+    const existing = byRoleKey.get(key);
     if (existing) {
       existing.push(item);
     } else {
-      byCategory.set(item.category, [item]);
-      order.push(item.category);
+      byRoleKey.set(key, [item]);
+      order.push(key);
     }
   }
 
-  return order.map((category) => {
-    const options = byCategory
-      .get(category)!
+  return order.map((roleKey) => {
+    const options = byRoleKey
+      .get(roleKey)!
       .slice()
       .sort((left, right) => left.option_rank - right.option_rank);
     const first = options[0];
+    const category = first.category;
     const selected = options.find((item) => item.status === "selected") ?? null;
     return {
+      roleKey,
       category,
       label: first.role_label || category.replace(/_/g, " "),
       priority: first.role_priority === "required" ? "required" : "supporting",

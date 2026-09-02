@@ -249,3 +249,139 @@ assert.deepEqual(parseMissingRoles([{ nope: true }]), []);
 assert.equal(parseMissingRoles(entries).length, 2);
 
 console.log("spec-sourcing tests passed");
+
+// ------------------------------------------------------------- plan tests
+{
+  const {
+    buildSpecSourcingPlan,
+    imageCandidateIdsForPools,
+    resolveSpecRoleOutcomes,
+    resolveSpecRoleOutcomesByRanking,
+    roleOptionsFromOutcomes
+  } = await import("./spec-sourcing");
+  const { groupShoppingItemsByRole, buildShoppingListItemRows, fitSelectionToBudget, roleOptionKey } = await import(
+    "./product-matching"
+  );
+
+  const withId = (candidate: ProductMatchCandidate, id: string) => ({ ...candidate, id });
+  const catalogue: ProductMatchCandidate[] = [
+    withId(twoSeater, "00000000-0000-4000-8000-000000000011"),
+    withId(threeSeater, "00000000-0000-4000-8000-000000000012"),
+    withId(sectional, "00000000-0000-4000-8000-000000000013"),
+    withId(chandelier, "00000000-0000-4000-8000-000000000021"),
+    withId(sconce, "00000000-0000-4000-8000-000000000022"),
+    withId(stilo, "00000000-0000-4000-8000-000000000031"),
+    withId(swingChair, "00000000-0000-4000-8000-000000000032")
+  ];
+  const planSpec = {
+    objects: [
+      SPEC.objects[0], // sofa, seats 3
+      SPEC.objects[1], // lounge chair
+      SPEC.objects[3], // floor lamp
+      SPEC.objects[4] // recessed downlights (built in)
+    ]
+  };
+  const mapped = sourcingRolesFromDesignSpec(planSpec, "Living Room");
+  const plan = buildSpecSourcingPlan({
+    roles: mapped.roles,
+    unsourceable: mapped.unsourceable,
+    candidates: catalogue,
+    roomType: "Living Room",
+    conceptText: "Warm contemporary lounge; ivory boucle sofa, cognac leather chair, brass floor lamp"
+  });
+
+  // --- the contract filters BEFORE the scorer's top-N: only contract-clean
+  // candidates reach a pool, and the rejections are counted
+  const sofaPool = plan.pools.find((pool) => pool.role.specRole === "sofa");
+  assert.ok(sofaPool, "the sofa role has a pool");
+  assert.deepEqual(
+    sofaPool?.candidates.map((candidate) => candidate.name),
+    ["Milo 3 Seater Sofa"],
+    "the two-seater and the sectional never reach the pool"
+  );
+  assert.equal(sofaPool?.rejectionReasons.capacity_mismatch, 1);
+  assert.equal(sofaPool?.rejectionReasons.size_class_mismatch, 1);
+  const chairPool = plan.pools.find((pool) => pool.role.specRole === "lounge_chair");
+  assert.deepEqual(
+    chairPool?.candidates.map((candidate) => candidate.name),
+    ["Stilo Armchair in Savoy Cognac Brown Leather with Metal Legs"],
+    "the swing chair never reaches the lounge-chair pool"
+  );
+  assert.equal(chairPool?.rejectionReasons.silhouette_excluded, 1);
+
+  // --- a role with no contract-clean candidate is reported missing with the
+  // reason the rejections tell, beside the built-in fixture
+  assert.equal(plan.pools.some((pool) => pool.role.specRole === "floor_lamp"), false);
+  const missingLamp = plan.missing.find((entry) => entry.specKey.endsWith(":floor_lamp"));
+  assert.equal(missingLamp?.kind, "missing");
+  assert.equal(missingLamp?.category, "lighting");
+  assert.match(missingLamp?.reason ?? "", /wrong kind of fixture.*floor or table lamp/);
+  assert.equal(missingLamp?.guidance, "Try Refresh matches after the nightly catalogue update, or source this piece directly from a retailer.");
+  const builtIn = plan.missing.find((entry) => entry.kind === "built_in");
+  assert.equal(builtIn?.label, "recessed downlights");
+  assert.equal(builtIn?.quantity, 8);
+
+  // --- image budget: top of every pool first, only candidates with an image
+  const ids = imageCandidateIdsForPools(plan.pools, { perRole: 2, total: 8 });
+  assert.deepEqual(ids, ["00000000-0000-4000-8000-000000000012", "00000000-0000-4000-8000-000000000031"]);
+  assert.deepEqual(imageCandidateIdsForPools(plan.pools, { perRole: 2, total: 1 }), ["00000000-0000-4000-8000-000000000012"]);
+
+  // --- outcomes: the visual pass's pick inside the pool wins; a role it
+  // judged unmatched stays missing with its reason; a pick outside the pool
+  // never lands
+  const outcomes = resolveSpecRoleOutcomes({
+    pools: plan.pools,
+    roleResults: [
+      { category: "sofas", roleLabel: "curved three-seat sofa", status: "strong_match", productId: "00000000-0000-4000-8000-000000000012", reason: "Curved ivory boucle three-seater matches the render." },
+      { category: "armchairs", roleLabel: "sculptural cognac leather lounge chair", status: "missing_required", productId: null, reason: "No cognac leather lounge chair with a sculptural shell in the pool." }
+    ],
+    selections: [
+      { productId: "00000000-0000-4000-8000-000000000012", category: "sofas", roleLabel: "curved three-seat sofa", matchStatus: "strong_match", visualMatchReason: "Curved ivory boucle three-seater matches the render.", mismatchNote: null }
+    ]
+  });
+  assert.equal(outcomes.length, 2);
+  assert.equal(outcomes[0].kind, "selected");
+  assert.equal(outcomes[0].kind === "selected" && outcomes[0].selectedProductId, "00000000-0000-4000-8000-000000000012");
+  assert.equal(outcomes[1].kind, "missing");
+  assert.match(outcomes[1].kind === "missing" ? outcomes[1].entry.reason : "", /visual pass found no catalogue piece.*cognac leather/);
+
+  const outsidePool = resolveSpecRoleOutcomes({
+    pools: plan.pools,
+    roleResults: [
+      { category: "sofas", roleLabel: "curved three-seat sofa", status: "strong_match", productId: "00000000-0000-4000-8000-000000000011", reason: "two seater" }
+    ],
+    selections: []
+  });
+  assert.equal(outsidePool[0].kind, "missing", "a pick outside the contract-clean pool is never accepted");
+
+  // --- ranking fallback: honest closest-available, never a visual claim
+  const ranked = resolveSpecRoleOutcomesByRanking(plan.pools, "The visual pass timed out.");
+  assert.ok(ranked.every((outcome) => outcome.kind === "selected" && outcome.matchStatus === "closest_available"));
+
+  // --- role options + item rows keyed by the spec role key, two roles in one
+  // category stay distinct end to end
+  const twoLightingRoles = sourcingRolesFromDesignSpec(
+    { objects: [SPEC.objects[3], SPEC.objects[7]] },
+    "Living Room"
+  ).roles;
+  assert.notEqual(roleOptionKey(twoLightingRoles[0]), roleOptionKey(twoLightingRoles[1]));
+  const { roleOptions, selectedProductIdByRole, missing } = roleOptionsFromOutcomes(outcomes);
+  assert.equal(roleOptions.length, 1);
+  assert.equal(missing.length, 1);
+  assert.equal(selectedProductIdByRole.get(roleOptionKey(roleOptions[0])), "00000000-0000-4000-8000-000000000012");
+  const rows = buildShoppingListItemRows({ roleOptions, selectedProductIdByRole });
+  assert.equal(rows[0].status, "selected");
+  assert.equal(rows[0].role_label, "curved three-seat sofa");
+  const fit = fitSelectionToBudget({ roleOptions, selectedProductIdByRole, budgetMaxAed: null });
+  assert.equal(fit.selectedProductIdByRole.get(roleOptionKey(roleOptions[0])), "00000000-0000-4000-8000-000000000012");
+
+  const groups = groupShoppingItemsByRole([
+    { id: "a", status: "selected", category: "lighting", role_label: "tall tripod floor lamp", role_priority: "required", role_quantity: 1, option_rank: 0 },
+    { id: "b", status: "option", category: "lighting", role_label: "linen drum pendant", role_priority: "required", role_quantity: 1, option_rank: 0 },
+    { id: "c", status: "option", category: "lighting", role_label: "tall tripod floor lamp", role_priority: "required", role_quantity: 1, option_rank: 1 }
+  ]);
+  assert.equal(groups.length, 2, "two lighting roles never merge into one group");
+  assert.deepEqual(groups.map((group) => group.roleKey), ["lighting::tall tripod floor lamp", "lighting::linen drum pendant"]);
+  assert.deepEqual(groups[0].options.map((option) => option.id), ["a", "c"]);
+  console.log("spec-sourcing plan tests passed");
+}

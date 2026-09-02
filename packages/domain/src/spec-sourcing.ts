@@ -2,11 +2,16 @@ import { z } from "zod";
 
 import type { DesignSpecObject } from "./design-spec";
 import {
+  buildRoleScopedCandidatePools,
   classTagsConflictWithRole,
   roleClassContractForRole,
+  roleOptionKey,
   roomScopeConflictsWithRole,
   sizeClassConflictsWithRole,
   type ProductMatchCandidate,
+  type ProductMatchRequest,
+  type RoleProductOptions,
+  type RoleScopedRankedProductMatch,
   type RoleSizeClass,
   type RoomProductRoleSpec
 } from "./product-matching";
@@ -376,6 +381,7 @@ export function sourcingRolesFromDesignSpec(
       ...baseRole,
       allowedCategories: classContract.allowedCategories,
       roomScope: classContract.roomScope,
+      roleKey: `${category}::${specKey}`,
       specKey,
       specObjectIndex: index,
       specRole: object.role,
@@ -460,4 +466,332 @@ export function checkCandidateAgainstSpecRole(
   }
 
   return { ok: true };
+}
+
+// ------------------------------------------------------------------ plan
+
+export type SpecRolePool = {
+  role: SpecSourcingRole;
+  // Contract-clean, scorer-ranked candidates for this role.
+  candidates: RoleScopedRankedProductMatch[];
+  // Why the rest were left out (contract rejections plus the scorer's gates).
+  rejectionReasons: Record<string, number>;
+};
+
+export type SpecSourcingPlan = {
+  pools: SpecRolePool[];
+  missing: MissingRoleEntry[];
+};
+
+const CATEGORY_NOUNS: Record<string, string> = {
+  armchairs: "armchair",
+  bedding: "bedding",
+  beds: "bed",
+  chairs: "chair",
+  coffee_tables: "coffee table",
+  curtains: "curtains",
+  decor: "decor piece",
+  desks: "desk",
+  dining_tables: "dining table",
+  headboards: "headboard",
+  lighting: "light",
+  mirrors: "mirror",
+  office_chairs: "office chair",
+  rugs: "rug",
+  side_tables: "side table",
+  sofas: "sofa",
+  storage: "storage piece",
+  stools: "stool",
+  towels: "towel",
+  wall_art: "artwork"
+};
+
+export function humanizeCategory(category: string): string {
+  return CATEGORY_NOUNS[category] ?? category.replace(/_/g, " ");
+}
+
+export const MISSING_ROLE_GUIDANCE =
+  "Try Refresh matches after the nightly catalogue update, or source this piece directly from a retailer.";
+
+function fixtureNoun(fixtureClass: SpecRoleFixtureClass | undefined) {
+  switch (fixtureClass) {
+    case "ceiling":
+      return "a ceiling fixture";
+    case "wall":
+      return "a wall light";
+    case "floor_or_table":
+      return "a floor or table lamp";
+    default:
+      return "a light";
+  }
+}
+
+// Honest, user-facing reason for an unfilled role, from what the contract and
+// the scorer rejected. No dollar signs, no internal identifiers.
+export function missingRoleReason(
+  role: SpecSourcingRole,
+  rejectionReasons: Record<string, number>,
+  contractCleanCount: number
+): string {
+  const noun = humanizeCategory(role.category);
+  const [topReason] =
+    Object.entries(rejectionReasons)
+      .filter(([reason]) => reason !== "category_mismatch")
+      .sort((left, right) => right[1] - left[1])[0] ?? [];
+
+  if (contractCleanCount > 0) {
+    return `No ${noun} in the catalogue fit the design's palette, budget and room size.`;
+  }
+  switch (topReason) {
+    case "lighting_fixture_class_mismatch":
+      return `Every lighting piece in the catalogue is the wrong kind of fixture for this role; the design asks for ${fixtureNoun(role.contract.fixtureClass)}.`;
+    case "silhouette_excluded":
+      return `The only ${noun} pieces left were swing, rocking or outdoor silhouettes, which the design does not ask for.`;
+    case "capacity_mismatch": {
+      const seats =
+        role.contract.minSeats === role.contract.maxSeats
+          ? `${role.contract.minSeats}`
+          : `${role.contract.minSeats} to ${role.contract.maxSeats}`;
+      return `No ${noun} matched the seat count the design asks for (seats ${seats}).`;
+    }
+    case "size_class_mismatch":
+      return `No ${noun} matched the size the design asks for.`;
+    case "class_tag_conflict":
+    case "room_scope_conflict":
+      return `The matching ${noun} pieces were made for another room or use.`;
+    default:
+      return `No ${noun} in the live catalogue matched this piece.`;
+  }
+}
+
+export function missingRoleEntryForRole(
+  role: SpecSourcingRole,
+  rejectionReasons: Record<string, number>,
+  contractCleanCount: number,
+  reason = missingRoleReason(role, rejectionReasons, contractCleanCount)
+): MissingRoleEntry {
+  return {
+    specKey: role.specKey,
+    kind: "missing",
+    label: role.specLabel,
+    category: role.category,
+    quantity: role.quantity,
+    reason,
+    guidance: MISSING_ROLE_GUIDANCE
+  };
+}
+
+// Per-role retrieval through the existing scorer, with the spec contract
+// applied BEFORE the pool's top-N cut: a floor lamp at rank thirteen behind
+// twelve chandeliers must survive, so the contract filters the whole catalogue
+// for the role and the scorer ranks what is left. Roles that end up empty are
+// reported as missing with the reason the rejections tell.
+export function buildSpecSourcingPlan({
+  roles,
+  unsourceable,
+  candidates,
+  roomType,
+  conceptText,
+  budgetMaxAed = null,
+  roomMeasurements = null,
+  recentlyUsedProductIds,
+  avoidColorTags,
+  candidatesPerRole = 12
+}: {
+  roles: SpecSourcingRole[];
+  unsourceable: UnsourceableSpecObject[];
+  candidates: ProductMatchCandidate[];
+  roomType: string;
+  conceptText: string;
+  budgetMaxAed?: number | null;
+  roomMeasurements?: ProductMatchRequest["roomMeasurements"];
+  recentlyUsedProductIds?: string[];
+  avoidColorTags?: string[];
+  candidatesPerRole?: number;
+}): SpecSourcingPlan {
+  const pools: SpecRolePool[] = [];
+  const missing: MissingRoleEntry[] = unsourceable.map(missingRoleEntryForUnsourceable);
+
+  for (const role of roles) {
+    const rejectionReasons: Record<string, number> = {};
+    const clean = candidates.filter((candidate) => {
+      const verdict = checkCandidateAgainstSpecRole(candidate, role);
+      if (!verdict.ok) {
+        rejectionReasons[verdict.reason] = (rejectionReasons[verdict.reason] ?? 0) + 1;
+      }
+      return verdict.ok;
+    });
+    const pool =
+      clean.length > 0
+        ? buildRoleScopedCandidatePools({
+            roomType,
+            conceptText,
+            roles: [role],
+            candidates: clean,
+            budgetMaxAed,
+            roomMeasurements,
+            candidatesPerRole,
+            recentlyUsedProductIds,
+            avoidColorTags
+          }).pools[0]
+        : null;
+    const reasons = { ...rejectionReasons, ...(pool?.rejectionReasons ?? {}) };
+    if (pool && pool.candidates.length > 0) {
+      pools.push({ role, candidates: pool.candidates, rejectionReasons: reasons });
+    } else {
+      missing.push(missingRoleEntryForRole(role, reasons, clean.length));
+    }
+  }
+
+  return { pools, missing };
+}
+
+// Which candidates get an image in front of the visual pass: the top of every
+// pool first (round-robin by rank), so a budget of N images covers every role
+// before any role gets its second, and only candidates that have an image.
+export function imageCandidateIdsForPools(
+  pools: SpecRolePool[],
+  { perRole, total }: { perRole: number; total: number }
+): string[] {
+  const ids: string[] = [];
+  const seen = new Set<string>();
+  for (let rank = 0; rank < Math.max(0, perRole); rank += 1) {
+    let any = false;
+    for (const pool of pools) {
+      const candidate = pool.candidates[rank];
+      if (!candidate) {
+        continue;
+      }
+      any = true;
+      if (!candidate.primaryImageUrl || seen.has(candidate.id) || ids.length >= total) {
+        continue;
+      }
+      seen.add(candidate.id);
+      ids.push(candidate.id);
+    }
+    if (!any || ids.length >= total) {
+      break;
+    }
+  }
+  return ids;
+}
+
+// -------------------------------------------------------------- outcomes
+
+export type SpecVisualRoleResult = {
+  category: string;
+  roleLabel: string;
+  status: "strong_match" | "acceptable_match" | "closest_available" | "missing_required" | "missing_supporting";
+  productId: string | null;
+  reason: string;
+};
+
+export type SpecVisualSelection = {
+  productId: string;
+  category: string;
+  roleLabel: string;
+  matchStatus: "strong_match" | "acceptable_match" | "closest_available";
+  visualMatchReason: string;
+  mismatchNote: string | null;
+};
+
+export type SpecRoleOutcome =
+  | {
+      kind: "selected";
+      role: SpecSourcingRole;
+      pool: SpecRolePool;
+      selectedProductId: string;
+      matchStatus: SpecVisualSelection["matchStatus"];
+      reason: string;
+      mismatchNote: string | null;
+    }
+  | { kind: "missing"; role: SpecSourcingRole; entry: MissingRoleEntry };
+
+function poolMatches(pool: SpecRolePool, category: string, roleLabel: string) {
+  return (
+    pool.role.category === category &&
+    pool.role.label.trim().toLowerCase() === roleLabel.trim().toLowerCase()
+  );
+}
+
+// The visual pass's verdict per role, held to the contract: a pick outside the
+// role's contract-clean pool is never accepted, and a role the pass judged
+// unmatched stays missing with the pass's own reason. The product that
+// visibly belongs to the design wins; a wrong-looking product never does.
+export function resolveSpecRoleOutcomes({
+  pools,
+  roleResults,
+  selections
+}: {
+  pools: SpecRolePool[];
+  roleResults: SpecVisualRoleResult[];
+  selections: SpecVisualSelection[];
+}): SpecRoleOutcome[] {
+  return pools.map((pool) => {
+    const result = roleResults.find((entry) => poolMatches(pool, entry.category, entry.roleLabel)) ?? null;
+    const selection = selections.find((entry) => poolMatches(pool, entry.category, entry.roleLabel)) ?? null;
+    const pickedId = result?.productId ?? selection?.productId ?? null;
+    const picked = pickedId ? pool.candidates.find((candidate) => candidate.id === pickedId) : undefined;
+
+    if (picked && result && (result.status === "missing_required" || result.status === "missing_supporting")) {
+      // Contradictory verdict: a product named on a role declared missing.
+      // The missing verdict is the honest one.
+    } else if (picked) {
+      return {
+        kind: "selected",
+        role: pool.role,
+        pool,
+        selectedProductId: picked.id,
+        matchStatus:
+          selection?.matchStatus ??
+          (result?.status === "strong_match" || result?.status === "acceptable_match" ? result.status : "closest_available"),
+        reason: selection?.visualMatchReason ?? result?.reason ?? "Chosen by the visual pass.",
+        mismatchNote: selection?.mismatchNote ?? null
+      };
+    }
+
+    const reason = result
+      ? `The visual pass found no catalogue piece that matches the design: ${result.reason}`
+      : "The visual pass returned no verdict for this piece.";
+    return { kind: "missing", role: pool.role, entry: missingRoleEntryForRole(pool.role, pool.rejectionReasons, pool.candidates.length, reason) };
+  });
+}
+
+// Deterministic outcomes for when the visual pass is unavailable (timeout or
+// provider failure): the top contract-clean candidate per role, labelled
+// honestly as chosen by ranking, never presented as a visual match.
+export function resolveSpecRoleOutcomesByRanking(pools: SpecRolePool[], note: string): SpecRoleOutcome[] {
+  return pools.map((pool) => ({
+    kind: "selected",
+    role: pool.role,
+    pool,
+    selectedProductId: pool.candidates[0].id,
+    matchStatus: "closest_available",
+    reason: "Chosen by catalogue ranking against the design spec.",
+    mismatchNote: note
+  }));
+}
+
+export function roleOptionsFromOutcomes(outcomes: SpecRoleOutcome[]): {
+  roleOptions: RoleProductOptions[];
+  selectedProductIdByRole: Map<string, string>;
+  missing: MissingRoleEntry[];
+} {
+  const roleOptions: RoleProductOptions[] = [];
+  const selectedProductIdByRole = new Map<string, string>();
+  const missing: MissingRoleEntry[] = [];
+  for (const outcome of outcomes) {
+    if (outcome.kind === "missing") {
+      missing.push(outcome.entry);
+      continue;
+    }
+    const selected = outcome.pool.candidates.find((candidate) => candidate.id === outcome.selectedProductId);
+    const options = selected
+      ? [selected, ...outcome.pool.candidates.filter((candidate) => candidate.id !== selected.id)]
+      : outcome.pool.candidates;
+    const key = roleOptionKey(outcome.role);
+    roleOptions.push({ ...outcome.role, options });
+    selectedProductIdByRole.set(key, outcome.selectedProductId);
+  }
+  return { roleOptions, selectedProductIdByRole, missing };
 }
