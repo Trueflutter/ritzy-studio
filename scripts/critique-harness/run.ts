@@ -210,6 +210,163 @@ async function judgeRoom({
   return (JSON.parse(text) as { verdicts: CheckVerdict[] }).verdicts;
 }
 
+const PRODUCT_CONSISTENCY_SYSTEM = [
+  "You are Ritzy Studio's critique harness, judging whether sourced catalog products belong to the approved design.",
+  "For each product you are shown one catalog product image and told the design role it was selected for (from the confirmed design spec) and the concept render it must match.",
+  "Judge category first: the product must be the same kind of object as the role (a floor lamp for a floor-lamp role, never a chandelier; an armchair for a lounge-chair role, never a swing or rocking chair).",
+  "Then judge visual similarity to the corresponding object in the concept render: silhouette, colour family, material, scale and distinctive features. Return similarity from 0 (unrelated) to 1 (the same piece).",
+  "A product passes only when the category matches AND similarity is at or above the threshold given. Notes name concrete evidence."
+].join("\n");
+
+type ProductVerdict = {
+  productId: string;
+  productName: string;
+  roleLabel: string;
+  categoryMatches: boolean;
+  similarity: number;
+  verdict: "pass" | "fail";
+  notes: string;
+};
+
+// A retailer image the judge can see: fetched here (public product URLs)
+// and inlined, bounded so a slow CDN cannot stall the run.
+async function remoteImageDataUrl(url: string): Promise<string | null> {
+  try {
+    const response = await fetch(url, { signal: AbortSignal.timeout(8_000) });
+    if (!response.ok) {
+      return null;
+    }
+    const contentType = (response.headers.get("content-type") ?? "image/jpeg").split(";")[0];
+    if (!contentType.startsWith("image/")) {
+      return null;
+    }
+    const bytes = Buffer.from(await response.arrayBuffer());
+    return `data:${contentType};base64,${bytes.toString("base64")}`;
+  } catch {
+    return null;
+  }
+}
+
+// Judges every SELECTED product on the room's shopping list against the
+// concept render and the spec role it fills (criterion 8, Ayo's Gate 1
+// condition). Threshold committed in checklist.md.
+async function judgeProducts({
+  model,
+  conceptImage,
+  products,
+  threshold
+}: {
+  model: string;
+  conceptImage: string;
+  products: Array<{ productId: string; productName: string; roleLabel: string; category: string; imageDataUrl: string }>;
+  threshold: number;
+}): Promise<ProductVerdict[]> {
+  if (products.length === 0) {
+    return [];
+  }
+  const content: Array<Record<string, unknown>> = [
+    {
+      type: "input_text",
+      text: JSON.stringify({
+        threshold,
+        products: products.map((product) => ({
+          productId: product.productId,
+          productName: product.productName,
+          roleLabel: product.roleLabel,
+          category: product.category
+        }))
+      })
+    },
+    { type: "input_text", text: "Image 1: the approved concept render every product must belong to." },
+    { type: "input_image", image_url: conceptImage, detail: "high" }
+  ];
+  products.forEach((product, index) => {
+    content.push(
+      { type: "input_text", text: `Product ${index + 1} (id ${product.productId}): ${product.productName}, selected for the role "${product.roleLabel}" (${product.category}).` },
+      { type: "input_image", image_url: product.imageDataUrl, detail: "low" }
+    );
+  });
+
+  const response = await fetch("https://api.openai.com/v1/responses", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      model,
+      max_output_tokens: 6000,
+      input: [
+        { role: "system", content: PRODUCT_CONSISTENCY_SYSTEM },
+        { role: "user", content }
+      ],
+      text: {
+        format: {
+          type: "json_schema",
+          name: "critique_harness_product_verdicts",
+          strict: true,
+          schema: {
+            type: "object",
+            additionalProperties: false,
+            properties: {
+              products: {
+                type: "array",
+                minItems: products.length,
+                maxItems: products.length,
+                items: {
+                  type: "object",
+                  additionalProperties: false,
+                  properties: {
+                    productId: { type: "string" },
+                    categoryMatches: { type: "boolean" },
+                    similarity: { type: "number", minimum: 0, maximum: 1 },
+                    notes: { type: "string", minLength: 4, maxLength: 400 }
+                  },
+                  required: ["productId", "categoryMatches", "similarity", "notes"]
+                }
+              }
+            },
+            required: ["products"]
+          }
+        }
+      }
+    })
+  });
+  if (!response.ok) {
+    throw new Error(`OpenAI product-consistency call failed: HTTP ${response.status} ${await response.text()}`);
+  }
+  const payload = (await response.json()) as {
+    output?: Array<{ type: string; content?: Array<{ type: string; text?: string }> }>;
+  };
+  const text = payload.output?.flatMap((item) => item.content ?? []).find((part) => part.type === "output_text")?.text;
+  if (!text) {
+    throw new Error("OpenAI product-consistency call returned no output text.");
+  }
+  const parsed = (JSON.parse(text) as { products: Array<{ productId: string; categoryMatches: boolean; similarity: number; notes: string }> }).products;
+  return products.map((product) => {
+    const judged = parsed.find((entry) => entry.productId === product.productId);
+    const categoryMatches = judged?.categoryMatches ?? false;
+    const similarity = judged?.similarity ?? 0;
+    return {
+      productId: product.productId,
+      productName: product.productName,
+      roleLabel: product.roleLabel,
+      categoryMatches,
+      similarity,
+      verdict: categoryMatches && similarity >= threshold ? "pass" : "fail",
+      notes: judged?.notes ?? "The judge returned no verdict for this product."
+    };
+  });
+}
+
+// The committed threshold lives in checklist.md ("product_consistency ...
+// similarity at or above 0.6"); read it there so the two never drift.
+function productConsistencyThreshold(): number {
+  const checklist = readFileSync(path.join(process.cwd(), "scripts/critique-harness/checklist.md"), "utf8");
+  const match = checklist.match(/similarity at or above ([0-9.]+)/);
+  return match ? Number(match[1]) : 0.6;
+}
+
 async function runRoom(model: string, room: ManifestRoom) {
   if (!room.roomId) {
     return { room: room.key, status: "SKIPPED (no roomId in manifest — pending creation)" as const };
@@ -276,7 +433,56 @@ async function runRoom(model: string, room: ManifestRoom) {
     spec: specs[0] ?? null
   });
 
-  return { room: room.key, status: "JUDGED" as const, conceptId: hero.id, verdicts };
+  // Criterion 8: every SELECTED product on the concept's shopping list must
+  // belong to the design. NOT_APPLICABLE when the room has no list yet.
+  const lists = (await supabaseGet(
+    `shopping_lists?room_id=eq.${room.roomId}&concept_id=eq.${hero.id}&select=id,missing_roles&order=updated_at.desc&limit=1`
+  )) as Array<{ id: string; missing_roles: unknown }>;
+  let productVerdicts: ProductVerdict[] = [];
+  let productImagesUnavailable: string[] = [];
+  if (lists[0]) {
+    const items = (await supabaseGet(
+      `shopping_list_items?shopping_list_id=eq.${lists[0].id}&status=eq.selected&select=product_id,role_label,category,products(name,primary_image_url)`
+    )) as Array<{ product_id: string; role_label: string; category: string; products: { name: string; primary_image_url: string | null } | null }>;
+    const withImages = await Promise.all(
+      items.map(async (item) => ({
+        productId: item.product_id,
+        productName: item.products?.name ?? item.product_id,
+        roleLabel: item.role_label,
+        category: item.category,
+        imageDataUrl: item.products?.primary_image_url ? await remoteImageDataUrl(item.products.primary_image_url) : null
+      }))
+    );
+    productImagesUnavailable = withImages.filter((product) => !product.imageDataUrl).map((product) => product.productName);
+    productVerdicts = await judgeProducts({
+      model,
+      conceptImage,
+      products: withImages.filter((product): product is typeof product & { imageDataUrl: string } => Boolean(product.imageDataUrl)),
+      threshold: productConsistencyThreshold()
+    });
+    const failed = productVerdicts.filter((product) => product.verdict === "fail");
+    const missingRoles = Array.isArray(lists[0].missing_roles) ? (lists[0].missing_roles as Array<{ kind?: string; label?: string }>) : [];
+    const missingLabels = missingRoles.filter((entry) => entry.kind === "missing").map((entry) => entry.label);
+    verdicts.push({
+      check: "product_consistency",
+      verdict: productVerdicts.length === 0 && productImagesUnavailable.length === 0 ? "not_applicable" : failed.length === 0 ? "pass" : "fail",
+      notes:
+        productVerdicts.length === 0 && productImagesUnavailable.length === 0
+          ? "The list has no selected products."
+          : [
+              `${productVerdicts.length - failed.length}/${productVerdicts.length} selected products belong to the design`,
+              failed.length > 0 ? `failed: ${failed.map((product) => `${product.productName} (${product.roleLabel}, similarity ${product.similarity.toFixed(2)})`).join("; ")}` : null,
+              productImagesUnavailable.length > 0 ? `images unavailable, not judged: ${productImagesUnavailable.join("; ")}` : null,
+              missingLabels.length > 0 ? `honestly missing on the list: ${missingLabels.join("; ")}` : null
+            ]
+              .filter(Boolean)
+              .join(". ")
+    });
+  } else {
+    verdicts.push({ check: "product_consistency", verdict: "not_applicable", notes: "No shopping list for this concept yet." });
+  }
+
+  return { room: room.key, status: "JUDGED" as const, conceptId: hero.id, verdicts, productVerdicts };
 }
 
 async function main() {
