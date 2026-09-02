@@ -34,18 +34,6 @@ const serverEnvSchema = z.object({
     .enum(["true", "false"])
     .default("false")
     .transform((value) => value === "true"),
-  RITZY_PRODUCT_MATCHING_ENGINE_V1_ENABLED: z
-    .enum(["true", "false"])
-    .default("false")
-    .transform((value) => value === "true"),
-  RITZY_PRODUCT_MATCHING_ENGINE_V1_CONTROLLED_PREVIEW_ENABLED: z
-    .enum(["true", "false"])
-    .default("false")
-    .transform((value) => value === "true"),
-  RITZY_PRODUCT_MATCHING_ENGINE_V1_PREVIEW_PROJECT_IDS: z.string().optional(),
-  RITZY_PRODUCT_MATCHING_ENGINE_V1_PREVIEW_ROOM_IDS: z.string().optional(),
-  RITZY_PRODUCT_MATCHING_ENGINE_V1_PREVIEW_USER_IDS: z.string().optional(),
-  RITZY_PRODUCT_MATCHING_ENGINE_V1_PREVIEW_USER_EMAILS: z.string().optional(),
   RITZY_RENDER_EXECUTION: z.enum(["queue", "inline"]).optional(),
   // Visual sourcing image budget (S3): candidate product images shown to the
   // visual pass per spec role and in total, at low detail. Unset uses the
@@ -217,41 +205,3 @@ function commaSeparatedLowercaseValues(value: string | undefined) {
   return new Set(Array.from(commaSeparatedValues(value)).map((entry) => entry.toLowerCase()));
 }
 
-export function productMatchingControlledPreviewGate({
-  env,
-  projectId,
-  roomId,
-  userId,
-  userEmail
-}: ProductMatchingControlledPreviewGateInput): ProductMatchingControlledPreviewGate {
-  const projectIds = commaSeparatedValues(env.RITZY_PRODUCT_MATCHING_ENGINE_V1_PREVIEW_PROJECT_IDS);
-  const roomIds = commaSeparatedValues(env.RITZY_PRODUCT_MATCHING_ENGINE_V1_PREVIEW_ROOM_IDS);
-  const userIds = commaSeparatedValues(env.RITZY_PRODUCT_MATCHING_ENGINE_V1_PREVIEW_USER_IDS);
-  const userEmails = commaSeparatedLowercaseValues(
-    env.RITZY_PRODUCT_MATCHING_ENGINE_V1_PREVIEW_USER_EMAILS
-  );
-  const enabled = env.RITZY_PRODUCT_MATCHING_ENGINE_V1_CONTROLLED_PREVIEW_ENABLED === "true";
-  const configured =
-    enabled || projectIds.size > 0 || roomIds.size > 0 || userIds.size > 0 || userEmails.size > 0;
-
-  const matchedScopes: ProductMatchingControlledPreviewGate["matchedScopes"] = [];
-  if (projectId && projectIds.has(projectId)) {
-    matchedScopes.push("project");
-  }
-  if (roomId && roomIds.has(roomId)) {
-    matchedScopes.push("room");
-  }
-  if (userId && userIds.has(userId)) {
-    matchedScopes.push("user");
-  }
-  if (userEmail && userEmails.has(userEmail.toLowerCase())) {
-    matchedScopes.push("email");
-  }
-
-  return {
-    configured,
-    enabled,
-    allowed: enabled && matchedScopes.length > 0,
-    matchedScopes
-  };
-}
