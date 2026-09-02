@@ -33,23 +33,39 @@ const ANCHOR_WEIGHT: Record<string, number> = {
   coffee_tables: 50,
   storage: 40,
   desks: 40,
+  side_tables: 35,
   chairs: 30,
   lighting: 20
 };
 
 export const DEFAULT_ANCHOR_LIMIT = 4;
 
-// The blueprint roles worth anchoring for a room: required ones only, heaviest
-// first. Everything else is sourced after the render as it is today.
+// The roles worth anchoring for a room: the heaviest pieces its blueprint
+// names, whether or not the blueprint marks them required. Weight is what
+// matters here, because these are the pieces the RENDER is built around; a
+// bedroom's rug carries more of its look than its bedside tables, and both are
+// still sourced afterwards either way. Required wins a tie, so a room's
+// must-have piece is never displaced by an optional one of equal weight.
 export function anchorRolesFromBlueprint(
   blueprint: ReadonlyArray<RoomProductRole>,
   { limit = DEFAULT_ANCHOR_LIMIT }: { limit?: number } = {}
 ): RoomProductRole[] {
   return blueprint
-    .filter((role) => role.required && ANCHOR_WEIGHT[role.category] !== undefined)
+    .filter((role) => ANCHOR_WEIGHT[role.category] !== undefined)
     .slice()
-    .sort((left, right) => (ANCHOR_WEIGHT[right.category] ?? 0) - (ANCHOR_WEIGHT[left.category] ?? 0))
+    .sort((left, right) => {
+      const weight = (ANCHOR_WEIGHT[right.category] ?? 0) - (ANCHOR_WEIGHT[left.category] ?? 0);
+      return weight !== 0 ? weight : Number(right.required) - Number(left.required);
+    })
     .slice(0, Math.max(0, limit));
+}
+
+// The rotation seed for one role in one room. Rotating every role of a room by
+// the same offset means two rooms whose offsets collide get an identical SET;
+// qualifying by role decorrelates them, so a collision costs one piece rather
+// than the whole scheme.
+export function anchorSeedFor(roomSeed: string, roleCategory: string): string {
+  return `${roomSeed}::${roleCategory}`;
 }
 
 function candidateColorText(candidate: ProductMatchCandidate) {

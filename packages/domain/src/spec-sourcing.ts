@@ -479,26 +479,60 @@ function fixtureClassForText(text: string): SpecRoleFixtureClass | undefined {
 // into an arc floor-lamp role; every one of them passed every other contract.
 // Rules are ordered most specific first, and the kind a rule names is the
 // human noun used in the honest missing-role reason.
-const OBJECT_KIND_RULES: Array<{ kind: string; phrases: string[] }> = [
-  { kind: "floor lamp", phrases: ["floor lamp", "floor light", "arc lamp", "arch lamp", "arched lamp", "standing lamp", "tripod lamp", "torchiere"] },
-  { kind: "table lamp", phrases: ["table lamp", "desk lamp", "bedside lamp", "reading lamp", "task lamp", "accent lamp", "bedside light"] },
-  { kind: "cushion", phrases: ["cushion", "pillow", "bolster"] },
-  { kind: "throw", phrases: ["throw", "blanket", "plaid"] },
-  { kind: "tray", phrases: ["tray", "platter"] },
-  { kind: "bowl", phrases: ["bowl", "dish"] },
-  { kind: "vase", phrases: ["vase", "vessel", "urn", "jug", "carafe"] },
-  { kind: "sculpture", phrases: ["sculpture", "figurine", "statue", "statuette", "bust", "objet"] },
-  { kind: "candle", phrases: ["candle", "candleholder", "candle holder", "candlestick", "tealight", "tea light", "diffuser"] },
-  { kind: "book", phrases: ["book", "coffee table book"] },
-  { kind: "plant", phrases: ["plant", "planter", "greenery", "fern", "palm", "fig", "olive tree", "succulent", "orchid", "bouquet", "stems"] },
-  { kind: "basket", phrases: ["basket", "hamper"] },
-  { kind: "clock", phrases: ["clock"] }
+// Kinds belong to a category family. Without that, a decor role called
+// "coffee table tray" would take the kind "coffee table" from the surface it
+// sits on, and a bowl role on a media console would take "storage unit".
+const OBJECT_KIND_RULES: Array<{ kind: string; phrases: string[]; categories: string[] }> = [
+  { kind: "floor lamp", categories: ["lighting"], phrases: ["floor lamp", "floor light", "arc lamp", "arch lamp", "arched lamp", "standing lamp", "tripod lamp", "torchiere"] },
+  { kind: "table lamp", categories: ["lighting"], phrases: ["table lamp", "desk lamp", "bedside lamp", "reading lamp", "task lamp", "accent lamp", "bedside light"] },
+  { kind: "cushion", categories: ["decor"], phrases: ["cushion", "pillow", "bolster"] },
+  { kind: "throw", categories: ["decor"], phrases: ["throw", "blanket", "plaid"] },
+  { kind: "tray", categories: ["decor"], phrases: ["tray", "platter"] },
+  { kind: "bowl", categories: ["decor"], phrases: ["bowl", "dish"] },
+  { kind: "vase", categories: ["decor"], phrases: ["vase", "vessel", "urn", "jug", "carafe"] },
+  { kind: "sculpture", categories: ["decor"], phrases: ["sculpture", "figurine", "statue", "statuette", "bust", "objet"] },
+  { kind: "candle", categories: ["decor"], phrases: ["candle", "candleholder", "candle holder", "candlestick", "tealight", "tea light", "diffuser"] },
+  { kind: "book", categories: ["decor"], phrases: ["book", "coffee table book"] },
+  { kind: "plant", categories: ["decor"], phrases: ["plant", "planter", "greenery", "fern", "palm", "fig", "olive tree", "succulent", "orchid", "bouquet", "stems"] },
+  { kind: "basket", categories: ["decor"], phrases: ["basket", "hamper"] },
+  { kind: "clock", categories: ["decor"], phrases: ["clock"] },
+  // Anchor furniture. These carry the render, so a piece of the wrong kind here
+  // is not one bad row on a list, it is the whole scheme: the prototype
+  // anchored a bedroom on a "Madeira Dark Dresser" because the catalogue files
+  // it under beds. Rules are ordered so a compound name resolves to its head
+  // piece ("sofa bed" is a sofa above, "tv unit" is storage, not a table).
+  { kind: "bed", categories: ["beds"], phrases: ["bed frame", "bed", "divan", "bedstead"] },
+  { kind: "storage unit", categories: ["storage"], phrases: ["dresser", "chest of drawers", "sideboard", "credenza", "wardrobe", "armoire", "bookcase", "cabinet", "tv unit", "tv stand", "media unit", "console"] },
+  { kind: "sofa", categories: ["sofas"], phrases: ["sofa", "sectional", "loveseat", "couch", "settee"] },
+  { kind: "armchair", categories: ["armchairs"], phrases: ["armchair", "accent chair", "lounge chair", "occasional chair", "club chair", "swivel chair", "wingback"] },
+  // A runner is not a room rug, whatever the catalogue calls it.
+  { kind: "runner", categories: ["rugs"], phrases: ["floor runner", "runner"] },
+  { kind: "rug", categories: ["rugs"], phrases: ["rug", "carpet", "dhurry", "dhurrie", "kilim"] },
+  { kind: "coffee table", categories: ["coffee_tables"], phrases: ["coffee table", "cocktail table", "centre table", "center table"] },
+  { kind: "dining table", categories: ["dining_tables"], phrases: ["dining table"] },
+  { kind: "side table", categories: ["side_tables"], phrases: ["side table", "end table", "bedside table", "nightstand", "night stand", "accent table"] },
+  { kind: "desk", categories: ["desks"], phrases: ["desk", "writing table", "workstation"] }
 ];
 
 // Only where the evidence says a category is a grab bag. Anchor furniture is
 // already separated by category, class tags and size, and artwork or textiles
 // would over-reject on wording alone ("canvas" against "painting").
-const KIND_CONSTRAINED_CATEGORIES = new Set<string>(["decor", "lighting"]);
+// Decor and lighting because they are grab bags. The anchor categories because
+// the render is BUILT from those pieces: a wrong kind there is not a bad row on
+// a list, it is a room designed around the wrong object.
+const KIND_CONSTRAINED_CATEGORIES = new Set<string>([
+  "decor",
+  "lighting",
+  "beds",
+  "sofas",
+  "armchairs",
+  "rugs",
+  "coffee_tables",
+  "dining_tables",
+  "side_tables",
+  "storage",
+  "desks"
+]);
 
 // Catch-all nouns that make a line open-ended: "cushions, tray, ceramics and
 // decor" names EXAMPLES, not a closed list, so pinning it to the two nouns
@@ -513,7 +547,19 @@ const OPEN_KIND_TAIL_PHRASES = [
 // Every kind a text names. Both sides use this: a role line may ask for two
 // ("decorative tray and small bowl") and a product may name two ("Marble Bowl
 // and Tray Set"); the contract holds when the two sets intersect.
-function objectKindsIn(text: string): string[] {
+// What a ROLE asks for: only kinds belonging to the role's own category, so a
+// decor role named "coffee table tray" asks for a tray and not for the table it
+// sits on.
+function roleObjectKindsIn(text: string, category: string): string[] {
+  return OBJECT_KIND_RULES.filter(
+    (rule) => rule.categories.includes(category) && rule.phrases.some((phrase) => hasPhrase(text, phrase))
+  ).map((rule) => rule.kind);
+}
+
+// What a PRODUCT is: every kind its name names, whatever category the catalogue
+// filed it under. The filing is the thing least to be trusted here, which is how
+// a dresser came to be a candidate for a bed role.
+function productObjectKindsIn(text: string): string[] {
   return OBJECT_KIND_RULES.filter((rule) => rule.phrases.some((phrase) => hasPhrase(text, phrase))).map((rule) => rule.kind);
 }
 
@@ -521,9 +567,9 @@ function objectKindsIn(text: string): string[] {
 // and the label speaks only when the role names no kind at all. Anything else
 // lets a kind mentioned in passing ("arc floor lamp echoing the table lamp
 // opposite") silently widen the contract.
-function objectKindsForRole(roleText: string, labelText: string): string[] | undefined {
+function objectKindsForRole(roleText: string, labelText: string, category: string): string[] | undefined {
   for (const text of [placementStrippedText(roleText), labelText]) {
-    const kinds = objectKindsIn(text);
+    const kinds = roleObjectKindsIn(text, category);
     if (kinds.length === 0) {
       continue;
     }
@@ -736,7 +782,7 @@ function specSourcingRole({
     roomType,
     fixtureClass:
       category === "lighting" ? (fixtureClassForRoleText(roleText) ?? fixtureClassForRoleText(labelText)) : undefined,
-    objectKinds: KIND_CONSTRAINED_CATEGORIES.has(category) ? objectKindsForRole(roleText, labelText) : undefined,
+    objectKinds: KIND_CONSTRAINED_CATEGORIES.has(category) ? objectKindsForRole(roleText, labelText, category) : undefined,
     minSeats: seats?.min,
     maxSeats: seats?.max,
     excludedSilhouettes: SEATING_CATEGORIES.has(category) ? excludedSilhouettesFor(combined) : []
@@ -866,7 +912,7 @@ export function checkCandidateAgainstSpecRole(
     // A product's kinds come from its NAME and style tags only, never its
     // marketing copy, and one shared kind is enough: a bowl-and-tray set fills
     // a bowl role. A product naming no kind cannot be proven wrong.
-    const candidateKinds = objectKindsIn(nameText);
+    const candidateKinds = productObjectKindsIn(nameText);
     const kinds = role.contract.objectKinds;
     if (candidateKinds.length > 0 && !candidateKinds.some((kind) => kinds.includes(kind))) {
       return { ok: false, reason: "object_kind_mismatch" };

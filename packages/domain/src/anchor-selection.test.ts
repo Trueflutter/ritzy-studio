@@ -4,6 +4,7 @@ import type { ProductMatchCandidate, RankedProductMatch, RoomProductRole } from 
 import {
   DEFAULT_ANCHOR_LIMIT,
   anchorContradictsBrief,
+  anchorSeedFor,
   anchorRolesFromBlueprint,
   anchorSetFromShortlists,
   anchorSetSignature,
@@ -61,13 +62,29 @@ const ranked = (overrides: Partial<RankedProductMatch> & { id: string }): Ranked
   assert.deepEqual(
     roles.map((role) => role.category),
     ["sofas", "armchairs", "rugs", "coffee_tables"],
-    "required roles only, heaviest first"
+    "required roles first, heaviest first"
   );
   assert.ok(roles.length <= DEFAULT_ANCHOR_LIMIT);
   assert.equal(anchorRolesFromBlueprint(blueprint, { limit: 2 }).length, 2);
-  // A role the room does not require is never an anchor, however cheap it is
-  // to source: anchors set the palette of the whole render.
-  assert.ok(!roles.some((role) => role.category === "decor" || role.category === "lighting"));
+  assert.ok(!roles.some((role) => role.category === "decor"), "decor never anchors a room");
+  // Weight decides, not the required flag: an optional rug outranks a required
+  // side table because the render is built around the heavier piece.
+
+  // A room whose blueprint requires only one or two pieces is topped up from
+  // its heaviest optional roles: a bedroom rendered from a bed alone is not an
+  // anchored room, it is a bed.
+  const bedroom: RoomProductRole[] = [
+    { category: "beds", label: "bed", quantity: 1, required: true },
+    { category: "side_tables", label: "bedside tables", quantity: 2, required: true },
+    { category: "rugs", label: "rug", quantity: 1, required: false },
+    { category: "lighting", label: "bedside lighting", quantity: 2, required: false },
+    { category: "decor", label: "decor accent", quantity: 2, required: false }
+  ];
+  assert.deepEqual(
+    anchorRolesFromBlueprint(bedroom).map((role) => role.category),
+    ["beds", "rugs", "side_tables", "lighting"],
+    "the heaviest pieces the blueprint names, required or not, never decor"
+  );
 }
 
 // --- warning 1: the brief is a hard filter for an anchor
@@ -102,6 +119,16 @@ const ranked = (overrides: Partial<RankedProductMatch> & { id: string }): Ranked
   const seeds = ["room-1", "room-2", "room-3", "room-4", "room-5"];
   const heads = seeds.map((seed) => anchorShortlist({ candidates, seed })[0].id);
   assert.ok(new Set(heads).size > 1, "five rooms do not all start from the same product");
+
+  // Criterion 8b is about the SET, not one role. Rotating every role of a room
+  // by one offset means two rooms whose offsets collide get an identical
+  // scheme; qualifying the seed by role makes a collision cost one piece.
+  const roleCategories = ["sofas", "armchairs", "rugs", "coffee_tables"];
+  const setFor = (seed: string) =>
+    roleCategories.map((category) => anchorShortlist({ candidates, seed: anchorSeedFor(seed, category) })[0].id).join("|");
+  const sets = seeds.map(setFor);
+  assert.equal(new Set(sets).size, seeds.length, "five rooms, one brief, five different schemes");
+  assert.equal(setFor("room-1"), setFor("room-1"), "and the same room is still reproducible");
   // And the same room is stable, so a run can be reproduced.
   assert.equal(anchorShortlist({ candidates, seed: "room-1" })[0].id, anchorShortlist({ candidates, seed: "room-1" })[0].id);
 

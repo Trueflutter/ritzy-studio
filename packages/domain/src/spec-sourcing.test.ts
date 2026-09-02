@@ -1066,6 +1066,47 @@ console.log("spec-sourcing tests passed");
     ok: false,
     reason: "object_kind_mismatch"
   });
+  // --- anchor furniture: the render is built from these, so a wrong kind is
+  // the whole scheme rather than one row. Every name below is a real catalogue
+  // row the anchor prototype picked or nearly picked.
+  {
+    const anchorRoles = sourcingRolesFromDesignSpec(
+      {
+        objects: [
+          object("bed", "king bed"),
+          object("rug", "large area rug"),
+          object("sofa", "three-seat sofa"),
+          object("coffee_table", "round coffee table")
+        ]
+      },
+      "Bedroom"
+    ).roles;
+    const named = (category: string, name: string): ProductMatchCandidate => ({ ...base, categoryNormalized: category, name });
+    const bedRole = anchorRoles[0];
+    assert.deepEqual(bedRole.contract.objectKinds, ["bed"]);
+    assert.deepEqual(
+      checkCandidateAgainstSpecRole(named("beds", "Madeira Dark Dresser - Brown - Mango Solid Wood and Steel - Storage"), bedRole),
+      { ok: false, reason: "object_kind_mismatch" },
+      "a dresser the catalogue files under beds can never anchor a bedroom"
+    );
+    assert.deepEqual(checkCandidateAgainstSpecRole(named("beds", "Anastasia King bed Taupe - 180x200 CM"), bedRole), { ok: true });
+
+    const rugRole = anchorRoles[1];
+    assert.deepEqual(
+      checkCandidateAgainstSpecRole(named("rugs", "Elaan Pile Floor Runner - 80X300 CM"), rugRole),
+      { ok: false, reason: "object_kind_mismatch" },
+      "a runner is not a room rug, whatever the catalogue calls it"
+    );
+    assert.deepEqual(checkCandidateAgainstSpecRole(named("rugs", "Fara Dhurry 300X400cm"), rugRole), { ok: true });
+
+    const sofaRole = anchorRoles[2];
+    assert.deepEqual(checkCandidateAgainstSpecRole(named("sofas", "Praia 3-Seater Sofa - Brown"), sofaRole), { ok: true });
+    assert.deepEqual(
+      checkCandidateAgainstSpecRole(named("sofas", "Lantine Walnut Veneer TV Unit, Large Size"), sofaRole),
+      { ok: false, reason: "object_kind_mismatch" }
+    );
+  }
+
   console.log("spec-sourcing object-kind tests passed");
 }
 
