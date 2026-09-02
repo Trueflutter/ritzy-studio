@@ -431,13 +431,14 @@ async function main() {
     const jobUpdate = serviceCalls.find((call: RecordedCall) => call.table === "ai_jobs" && call.op === "update");
     const summary = jobUpdate?.payload?.output_summary as {
       openRoleCount: number;
-      openRoles: Array<{ label: string; similarity: number | null; reason: string }>;
+      openRoles: Array<{ label: string; passSimilarity: number | null; checkSimilarity: number | null; reason: string }>;
       verification: { used: boolean; judgedCount: number; model: string; verdicts: Array<{ role: string | null; similarity: number; passSimilarity: number | null }> };
     };
     assert.equal(summary.openRoleCount, 1);
     assert.equal(summary.openRoles.length, 1);
     assert.equal(summary.openRoles[0].label, "cognac leather lounge chair");
-    assert.equal(summary.openRoles[0].similarity, 0.35, "the judge's score is on the record");
+    assert.equal(summary.openRoles[0].checkSimilarity, 0.35, "the judge's score is on the record");
+    assert.equal(summary.openRoles[0].passSimilarity, 0.9, "beside what the pass claimed for the same piece");
     assert.match(summary.openRoles[0].reason, /checked against the render/);
     // Both measurements are recorded side by side: the pass sold the chair at
     // 0.9 and the check scored it 0.35, which is the drift that made the

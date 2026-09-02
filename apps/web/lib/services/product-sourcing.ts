@@ -35,7 +35,8 @@ import {
   type UnsourceableSpecObject,
   BUDGET_OPEN_REASON,
   applyProductVerification,
-  type SpecRolePool
+  type SpecRolePool,
+  PRODUCT_CONSISTENCY_THRESHOLD
 } from "@ritzy-studio/domain";
 
 import { providerTimeoutMs, visualPassTimeoutMs } from "@/lib/sourcing-run-budget";
@@ -427,6 +428,10 @@ export async function groundProductsForRoom(
     }>;
   } = { used: false, error: null, promptKey: null, promptVersion: null, model: null, textCostUsd: null, judgedCount: 0, verdicts: [] };
   const sourcingModel = stageTextConfig("product_sourcing", configuredTextModel()).model;
+  // Product images fetched once for this run: the visual pass sees a budgeted
+  // top-of-pool set, and the design check reuses whatever of its proposals is
+  // already here rather than downloading the same pictures twice.
+  const imageDataUrls: Record<string, string> = {};
 
   try {
     let outcomes: SpecRoleOutcome[];
@@ -440,17 +445,20 @@ export async function groundProductsForRoom(
         }
       }
       const imageIds = imageCandidateIdsForPools(plan.pools, imageBudget);
-      let candidateImageDataUrls: Record<string, string> = {};
       if (imageIds.length > 0) {
         try {
-          candidateImageDataUrls = await fetchCandidateImages(
-            imageIds.map((id) => poolCandidatesById.get(id)!),
-            imageIds.length
+          Object.assign(
+            imageDataUrls,
+            await fetchCandidateImages(
+              imageIds.map((id) => poolCandidatesById.get(id)!),
+              imageIds.length
+            )
           );
         } catch (error) {
           console.error("Candidate image fetch failed; the visual pass judges from text.", error);
         }
       }
+      const candidateImageDataUrls = imageDataUrls;
       visualPass.imageCount = Object.keys(candidateImageDataUrls).length;
 
       // The pass gets what is left of the request after palette extraction,
@@ -532,18 +540,24 @@ export async function groundProductsForRoom(
       (outcome): outcome is Extract<SpecRoleOutcome, { kind: "selected" }> => outcome.kind === "selected"
     );
     if (proposals.length > 0) {
-      const verifyTimeoutMs = visualPassTimeoutMs({ startedAt, now: now() });
       try {
-        if (verifyTimeoutMs === null) {
-          throw new Error("The request had no time left for the design check.");
-        }
         const byId = new Map(proposals.map((outcome) => [outcome.selectedProductId, outcome]));
-        const images = await fetchCandidateImages(
-          proposals.map((outcome) => poolCandidateById(plan.pools, outcome.selectedProductId)).filter(Boolean) as RoleScopedRankedProductMatch[],
-          proposals.length
-        );
+        // Any proposal the pass did not already have a picture of. Fetching
+        // happens BEFORE the deadline is taken, so its time is inside the
+        // request budget rather than added on top of it.
+        const unfetched = proposals
+          .filter((outcome) => !imageDataUrls[outcome.selectedProductId])
+          .map((outcome) => poolCandidateById(plan.pools, outcome.selectedProductId))
+          .filter((candidate): candidate is RoleScopedRankedProductMatch => Boolean(candidate));
+        if (unfetched.length > 0) {
+          try {
+            Object.assign(imageDataUrls, await fetchCandidateImages(unfetched, unfetched.length));
+          } catch (error) {
+            console.error("Product image fetch for the design check failed.", error);
+          }
+        }
         const judged = proposals
-          .filter((outcome) => Boolean(images[outcome.selectedProductId]))
+          .filter((outcome) => Boolean(imageDataUrls[outcome.selectedProductId]))
           .map((outcome) => {
             const candidate = poolCandidateById(plan.pools, outcome.selectedProductId);
             return {
@@ -551,16 +565,21 @@ export async function groundProductsForRoom(
               productName: candidate?.name ?? "Catalogue product",
               roleLabel: outcome.role.label,
               category: outcome.role.category,
-              imageDataUrl: images[outcome.selectedProductId]
+              imageDataUrl: imageDataUrls[outcome.selectedProductId]
             };
           });
         if (judged.length === 0) {
           throw new Error("No proposed product had a usable image for the design check.");
         }
+        const verifyTimeoutMs = visualPassTimeoutMs({ startedAt, now: now() });
+        if (verifyTimeoutMs === null) {
+          throw new Error("The request had no time left for the design check.");
+        }
         const checked = await withTimeout(
           verifyProducts({
             conceptImageUrl,
             products: judged,
+            threshold: PRODUCT_CONSISTENCY_THRESHOLD,
             timeoutMs: providerTimeoutMs(verifyTimeoutMs)
           }),
           verifyTimeoutMs,
@@ -625,7 +644,8 @@ export async function groundProductsForRoom(
           specKey: role.specKey ?? roleOptionKey(role),
           label: role.label,
           reason: BUDGET_OPEN_REASON,
-          similarity: null
+          passSimilarity: null,
+          checkSimilarity: null
         }))
     ];
     const roleOptions = selectedFirst(resolved.roleOptions, selection);
@@ -718,9 +738,15 @@ export async function groundProductsForRoom(
           poolCount: plan.pools.length,
           selectedCount,
           openRoleCount,
-          // Why each open role was left to the shopper, and the pass's own
-          // score where it gave one: the audit trail for the bar.
-          openRoles: openRoles.map((entry) => ({ label: entry.label, similarity: entry.similarity, reason: entry.reason })),
+          // Why each open role was left to the shopper, with both scores kept
+          // apart: the sourcing pass's self-report and the design check's own
+          // number. The drift between them is the audit trail for the bar.
+          openRoles: openRoles.map((entry) => ({
+            label: entry.label,
+            passSimilarity: entry.passSimilarity,
+            checkSimilarity: entry.checkSimilarity,
+            reason: entry.reason
+          })),
           missingRoles: missingRoles.filter((entry) => entry.kind === "missing").map((entry) => entry.label),
           unsourceable: missingRoles.filter((entry) => entry.kind !== "missing").map((entry) => entry.label),
           contractRejections,

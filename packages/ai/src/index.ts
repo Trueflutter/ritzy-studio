@@ -1621,6 +1621,9 @@ export type ProductDesignVerificationResult = {
 export async function verifyProductsAgainstConcept(input: {
   conceptImageUrl: string;
   products: ProductDesignVerificationCandidate[];
+  // The bar the judge is anchored to, sent in the payload exactly as the
+  // critique harness sends it to its own judge.
+  threshold: number;
   timeoutMs?: number;
 }): Promise<ProductDesignVerificationResult> {
   if (input.products.length === 0) {
@@ -1634,6 +1637,7 @@ export async function verifyProductsAgainstConcept(input: {
     {
       type: "input_text",
       text: JSON.stringify({
+        threshold: input.threshold,
         products: input.products.map((product) => ({
           productId: product.productId,
           productName: product.productName,
@@ -1667,7 +1671,7 @@ export async function verifyProductsAgainstConcept(input: {
         format: {
           type: "json_schema",
           name: "ritzy_product_design_verification",
-          schema: productDesignVerificationJsonSchema,
+          schema: productDesignVerificationJsonSchema(input.products.length),
           strict: true
         }
       }

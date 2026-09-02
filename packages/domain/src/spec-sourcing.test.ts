@@ -704,7 +704,7 @@ console.log("spec-sourcing tests passed");
   // Its reason names the contract violation, not the bar, and it carries no
   // score: the pass's number belongs to a piece this role could never have.
   assert.equal(outsidePool[0].kind === "open" && outsidePool[0].reason, OUTSIDE_POOL_OPEN_REASON);
-  assert.equal(outsidePool[0].kind === "open" && outsidePool[0].similarity, null);
+  assert.equal(outsidePool[0].kind === "open" && outsidePool[0].passSimilarity, null);
 
   // --- a validator-synthesized "missing" entry is no verdict at all: the
   // role is left OPEN with its options, never marked missing on the pass's
@@ -761,7 +761,8 @@ console.log("spec-sourcing tests passed");
   const failed = verdict(true, PRODUCT_CONSISTENCY_THRESHOLD - 0.01);
   assert.equal(failed.kind, "open", "a hair under the bar it is not");
   assert.equal(failed.kind === "open" && failed.reason, VERIFICATION_FAILED_OPEN_REASON);
-  assert.equal(failed.kind === "open" && failed.similarity, PRODUCT_CONSISTENCY_THRESHOLD - 0.01, "the judge's score is kept");
+  assert.equal(failed.kind === "open" && failed.checkSimilarity, PRODUCT_CONSISTENCY_THRESHOLD - 0.01, "the judge's score is kept");
+  assert.equal(failed.kind === "open" && failed.passSimilarity, 0.9, "beside the pass's own claim, so the drift is legible");
   assert.equal(verdict(false, 0.95).kind, "open", "a wrong kind of object fails however similar it looks");
   assert.equal(
     failed.kind === "open" && failed.pool.candidates.length,
@@ -778,7 +779,7 @@ console.log("spec-sourcing tests passed");
   const unjudged = applyProductVerification({ outcomes: proposal(0.9), verdicts: new Map() })[0];
   assert.equal(unjudged.kind, "open");
   assert.equal(unjudged.kind === "open" && unjudged.reason, VERIFICATION_UNAVAILABLE_OPEN_REASON);
-  assert.equal(unjudged.kind === "open" && unjudged.similarity, null);
+  assert.equal(unjudged.kind === "open" && unjudged.checkSimilarity, null);
   // Open and missing outcomes pass through the check untouched.
   const untouched = applyProductVerification({
     outcomes: openSpecRoleOutcomes([pool(roleB, [Y])], "note"),
@@ -817,9 +818,9 @@ console.log("spec-sourcing tests passed");
   assert.equal(mixed.roleOptions.length, 2, "an open role is still on the list");
   assert.equal(mixed.selectedProductIdByRole.size, 1, "with nothing chosen for it");
   assert.deepEqual(
-    mixed.openRoles.map((entry) => [entry.label, entry.similarity]),
-    [[roleB.label, 0.2]],
-    "the open role, its reason and the score are recorded for the job"
+    mixed.openRoles.map((entry) => [entry.label, entry.passSimilarity, entry.checkSimilarity]),
+    [[roleB.label, 0.9, 0.2]],
+    "the open role records what the pass claimed and what the check saw"
   );
   const mixedRows = buildShoppingListItemRows({ roleOptions: mixed.roleOptions, selectedProductIdByRole: mixed.selectedProductIdByRole });
   assert.deepEqual(

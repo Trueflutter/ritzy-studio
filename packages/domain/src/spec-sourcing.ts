@@ -1174,7 +1174,17 @@ export type SpecRoleOutcome =
     }
   // Sourced, but nothing was chosen FOR the shopper: the role's ranked,
   // contract-clean options are on the list and the shopper picks.
-  | { kind: "open"; role: SpecSourcingRole; pool: SpecRolePool; reason: string; similarity: number | null }
+  // Two different measurements can explain an open role, so each is named:
+  // passSimilarity is the sourcing pass's self-report for the piece it
+  // proposed, checkSimilarity the design check's independent score.
+  | {
+      kind: "open";
+      role: SpecSourcingRole;
+      pool: SpecRolePool;
+      reason: string;
+      passSimilarity: number | null;
+      checkSimilarity: number | null;
+    }
   | { kind: "missing"; role: SpecSourcingRole; entry: MissingRoleEntry };
 
 // The pass echoes the role's short key (or, failing that, its label); either
@@ -1295,14 +1305,15 @@ export function resolveSpecRoleOutcomes({
       };
     }
     if (verdict.outsidePool) {
-      return { kind: "open", role: pool.role, pool, reason: OUTSIDE_POOL_OPEN_REASON, similarity: null };
+      return { kind: "open", role: pool.role, pool, reason: OUTSIDE_POOL_OPEN_REASON, passSimilarity: null, checkSimilarity: null };
     }
     return {
       kind: "open",
       role: pool.role,
       pool,
       reason: verdict.confident ? CONTESTED_OPEN_REASON : NO_VERDICT_OPEN_REASON,
-      similarity: verdict.similarity
+      passSimilarity: verdict.similarity,
+      checkSimilarity: null
     };
   });
 }
@@ -1336,7 +1347,8 @@ export function applyProductVerification({
       role: outcome.role,
       pool: outcome.pool,
       reason: verdict ? VERIFICATION_FAILED_OPEN_REASON : VERIFICATION_UNAVAILABLE_OPEN_REASON,
-      similarity: verdict?.similarity ?? null
+      passSimilarity: outcome.similarity,
+      checkSimilarity: verdict?.similarity ?? null
     };
   });
 }
@@ -1345,10 +1357,19 @@ export function applyProductVerification({
 // left in the request), nothing has been judged against the design, so nothing
 // is chosen for the shopper: every role is open with its ranked options.
 export function openSpecRoleOutcomes(pools: SpecRolePool[], reason: string): SpecRoleOutcome[] {
-  return pools.map((pool) => ({ kind: "open", role: pool.role, pool, reason, similarity: null }));
+  return pools.map((pool) => ({ kind: "open", role: pool.role, pool, reason, passSimilarity: null, checkSimilarity: null }));
 }
 
-export type OpenRoleEntry = { specKey: string; label: string; reason: string; similarity: number | null };
+export type OpenRoleEntry = {
+  specKey: string;
+  label: string;
+  reason: string;
+  // The sourcing pass's self-report and the design check's score, kept apart:
+  // one run can carry both, and reading either as the other misreads the drift
+  // between what the pass claims and what the check sees.
+  passSimilarity: number | null;
+  checkSimilarity: number | null;
+};
 
 export function roleOptionsFromOutcomes(outcomes: SpecRoleOutcome[]): {
   roleOptions: RoleProductOptions[];
@@ -1371,7 +1392,8 @@ export function roleOptionsFromOutcomes(outcomes: SpecRoleOutcome[]): {
         specKey: outcome.role.specKey,
         label: outcome.role.label,
         reason: outcome.reason,
-        similarity: outcome.similarity
+        passSimilarity: outcome.passSimilarity,
+        checkSimilarity: outcome.checkSimilarity
       });
       continue;
     }

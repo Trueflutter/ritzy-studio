@@ -436,8 +436,13 @@ export const productDesignVerificationPrompt = {
     "You are shown the approved concept render, then each catalogue product image with the design role it was chosen for.",
     "Judge category first: the product must be the same kind of object as the role (a floor lamp for a floor-lamp role, never a chandelier; an armchair for a lounge-chair role, never a swing or rocking chair; a tray for a tray role, never a vase).",
     "Then judge visual similarity to the corresponding object in the render: silhouette, colour family, material, scale and distinctive features. Return similarity from 0 (unrelated) to 1 (the same piece), and name in matchedObject which object in the render you compared against, by where it sits and what it is.",
-    "You are not choosing anything and you are not filling any gaps. A product that does not belong is reported as it is: the app will show that role's options and let the shopper choose, which is the right outcome. Nothing is lost by failing a piece, and a wrong piece presented as a match is the failure this check exists to prevent.",
-    "notes name concrete visible evidence in one sentence a homeowner would understand."
+    "You are not choosing anything and you are not filling any gaps. A product that does not belong is reported as it is: the app will show that role's options and let the shopper choose, which is the right outcome.",
+    // Carried verbatim from the critique harness's product_consistency judge:
+    // the app and the design gate have to be anchored to the same sentence and
+    // the same number, or their scores are not comparable and the committed
+    // threshold means nothing.
+    "A product passes only when the category matches AND similarity is at or above the threshold given. Notes name concrete evidence.",
+    "Return exactly one verdict per product you are shown, echoing its productId."
   ].join("\n")
 } as const;
 
@@ -455,13 +460,18 @@ export const productDesignVerificationResponseSchema = z.object({
     .max(40)
 });
 
-export const productDesignVerificationJsonSchema = {
+// Pinned to the exact number of products sent, like the harness's own schema:
+// a judge that answers for eight of ten proposals would silently open two
+// roles as "the check could not run".
+export const productDesignVerificationJsonSchema = (productCount: number) =>
+  ({
   type: "object",
   additionalProperties: false,
   properties: {
     products: {
       type: "array",
-      maxItems: 40,
+      minItems: productCount,
+      maxItems: productCount,
       items: {
         type: "object",
         additionalProperties: false,
@@ -477,7 +487,7 @@ export const productDesignVerificationJsonSchema = {
     }
   },
   required: ["products"]
-} as const;
+}) as const;
 
 export type ProductDesignVerificationResponse = z.infer<typeof productDesignVerificationResponseSchema>;
 
