@@ -140,7 +140,7 @@ function userClient(respond: Responder = () => ({ data: null })) {
     if (call.table === "projects") return { data: { id: "proj-1", budget_max_aed: null } };
     if (call.table === "rooms" && call.op === "select") return { data: { id: "room-1", room_type: "Living Room" } };
     if (call.table === "concepts" && call.op === "select") return { data: CONCEPT };
-    if (call.table === "shopping_lists" && call.op === "insert") return { data: { id: "list-1" } };
+    if (call.table === "shopping_lists" && (call.op === "insert" || call.op === "upsert")) return { data: { id: "list-1" } };
     return respond(call);
   }, (storageCall) => (storageCall.op === "download" ? { data: new Blob([Buffer.from([1, 2, 3])]) } : { data: null }));
 }
@@ -459,7 +459,7 @@ async function main() {
       if (call.table === "projects") return { data: { id: "proj-1", budget_max_aed: 3500 } };
       if (call.table === "rooms" && call.op === "select") return { data: { id: "room-1", room_type: "Living Room" } };
       if (call.table === "concepts" && call.op === "select") return { data: CONCEPT };
-      if (call.table === "shopping_lists" && call.op === "insert") return { data: { id: "list-1" } };
+      if (call.table === "shopping_lists" && (call.op === "insert" || call.op === "upsert")) return { data: { id: "list-1" } };
       return { data: null };
     }, (storageCall) => (storageCall.op === "download" ? { data: new Blob([Buffer.from([1, 2, 3])]) } : { data: null }));
     // The sofa role holds a cheaper piece the pass never scored: exactly the
@@ -607,7 +607,7 @@ async function main() {
       if (call.table === "projects") return { data: { id: "proj-1", budget_max_aed: 8000 } };
       if (call.table === "rooms" && call.op === "select") return { data: { id: "room-1", room_type: "Living Room" } };
       if (call.table === "concepts" && call.op === "select") return { data: CONCEPT };
-      if (call.table === "shopping_lists" && call.op === "insert") return { data: { id: "list-1" } };
+      if (call.table === "shopping_lists" && (call.op === "insert" || call.op === "upsert")) return { data: { id: "list-1" } };
       return { data: null };
     }, (storageCall) => (storageCall.op === "download" ? { data: new Blob([Buffer.from([1, 2, 3])]) } : { data: null }));
     const { client: service, calls: serviceCalls } = serviceClient();
@@ -707,8 +707,60 @@ async function main() {
     assert.match(String(pass.error), /no time left/);
   }
 
-  // --- a run closes any sourcing job an earlier run for this room left
-  // running, so a terminal write that failed twice cannot orphan it forever
+  // --- a run already in flight for this room is not paid for twice, and an
+  // expired one is reclaimed rather than blocking the room forever
+  {
+    const { client, calls } = userClient();
+    let paid = false;
+    const { client: service, calls: serviceCalls } = fakeSupabase(
+      (call) => {
+        if (call.table === "products") return { data: CATALOGUE };
+        if (call.table === "ai_jobs" && call.op === "insert") return { data: { id: "job-1" } };
+        // A sourcing job started moments ago and still inside its lease.
+        if (call.table === "ai_jobs" && call.op === "select") return { data: { id: "job-earlier" } };
+        return { data: null };
+      },
+      (storageCall) => (storageCall.op === "download" ? { data: new Blob([Buffer.from([1, 2, 3])]) } : { data: null })
+    );
+    const result = await groundProductsForRoom(
+      { supabase: client, serviceSupabase: service },
+      GROUND_INPUT,
+      {
+        readSpec: async () => CONFIRMED_SPEC,
+        extractPalette: noPalette,
+        fetchCandidateImages: imagesForAll,
+        verifyProducts: verifyAll(),
+        sourceProducts: async () => {
+          paid = true;
+          throw new Error("must not be called");
+        }
+      }
+    );
+    assert.equal(result.status, "blocked");
+    assert.match(
+      result.status === "blocked" ? result.message : "",
+      /already running/,
+      "the shopper is told why, not handed a second bill"
+    );
+    assert.equal(paid, false, "no provider call while another run is in flight");
+    assert.equal(
+      serviceCalls.filter((call: RecordedCall) => call.table === "ai_jobs" && call.op === "insert").length,
+      0,
+      "and no second job row"
+    );
+    assert.equal(calls.filter((call: RecordedCall) => call.op !== "select").length, 0, "nothing is written");
+    // The reclaim that runs first is bounded by the lease, so it can only
+    // close a run that outlived what one request can take.
+    const reclaim = serviceCalls.find((call: RecordedCall) => call.table === "ai_jobs" && call.op === "update");
+    assert.equal(reclaim?.payload?.status, "failed");
+    assert.ok(
+      reclaim?.lt.some(([column]) => column === "created_at"),
+      "only jobs older than the request budget are reclaimed"
+    );
+  }
+
+  // --- a run closes any sourcing job whose lease expired, so a terminal write
+  // that failed twice cannot orphan it forever
   {
     const { client } = userClient();
     const { client: service, calls: serviceCalls } = serviceClient();
@@ -741,7 +793,7 @@ async function main() {
         if (call.table === "projects") return { data: { id: "proj-1", budget_max_aed: null } };
         if (call.table === "rooms" && call.op === "select") return { data: { id: "room-1", room_type: "Living Room" } };
         if (call.table === "concepts" && call.op === "select") return { data: { ...CONCEPT, palette_json: null } };
-        if (call.table === "shopping_lists" && call.op === "insert") return { data: { id: "list-1" } };
+        if (call.table === "shopping_lists" && (call.op === "insert" || call.op === "upsert")) return { data: { id: "list-1" } };
         return { data: null };
       },
       (storageCall) => (storageCall.op === "download" ? { data: new Blob([Buffer.from([1, 2, 3])]) } : { data: null })

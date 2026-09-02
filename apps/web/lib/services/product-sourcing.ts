@@ -38,7 +38,13 @@ import {
   PRODUCT_CONSISTENCY_THRESHOLD
 } from "@ritzy-studio/domain";
 
-import { designCheckTimeoutMs, palettePassTimeoutMs, providerTimeoutMs, sourcingPassTimeoutMs } from "@/lib/sourcing-run-budget";
+import {
+  PRODUCT_SOURCING_RUN_BUDGET_MS,
+  designCheckTimeoutMs,
+  palettePassTimeoutMs,
+  providerTimeoutMs,
+  sourcingPassTimeoutMs
+} from "@/lib/sourcing-run-budget";
 
 import { readRoomDesignSpec } from "./design-spec";
 import {
@@ -313,20 +319,40 @@ export async function groundProductsForRoom(
   // the run's FIRST paid call, so the row is opened before it. What the plan
   // and the pools turn out to be is written on the terminal update.
   //
-  // A new run for this room also closes any sourcing job an earlier run left
-  // running: a terminal write that failed twice has no other reader, and this
-  // is the path every re-source takes. (A reconciler for a room that is never
-  // re-sourced belongs with S7's credit reservations.)
+  // The running row is a LEASE bounded by what one request can possibly take.
+  // Past that, an earlier run cannot still be working (its terminal write
+  // failed, or the platform killed it), so this run closes it: that is the
+  // durable recovery for a job nothing else reads. Inside the lease, an
+  // earlier run may genuinely still be paying for this room, and starting a
+  // second one would buy the same answer twice, so this one refuses.
+  const leaseCutoff = new Date(now() - PRODUCT_SOURCING_RUN_BUDGET_MS).toISOString();
   await serviceSupabase
     .from("ai_jobs")
     .update({
       status: "failed",
       completed_at: new Date().toISOString(),
-      error_message: "Abandoned: a later sourcing run for this room replaced it."
+      error_message: "Abandoned: it outlived the request that started it."
     })
     .eq("room_id", roomId)
     .eq("job_type", "product_visual_sourcing")
-    .eq("status", "running");
+    .eq("status", "running")
+    .lt("created_at", leaseCutoff);
+
+  const { data: inFlight } = await serviceSupabase
+    .from("ai_jobs")
+    .select("id")
+    .eq("room_id", roomId)
+    .eq("job_type", "product_visual_sourcing")
+    .eq("status", "running")
+    .gte("created_at", leaseCutoff)
+    .limit(1)
+    .maybeSingle();
+  if (inFlight) {
+    return {
+      status: "blocked",
+      message: "Matching is already running for this room. Give it a moment, then refresh the page."
+    };
+  }
 
   const { data: sourcingJob, error: sourcingJobError } = await serviceSupabase
     .from("ai_jobs")
@@ -732,11 +758,14 @@ export async function groundProductsForRoom(
       .limit(1)
       .maybeSingle();
 
+    // One list per (room, concept), enforced by a unique index: an insert that
+    // races another run resolves to the same row instead of a second list that
+    // later reads would pick between arbitrarily.
     const shoppingListResult = existingList
       ? { data: existingList, error: null }
       : await supabase
           .from("shopping_lists")
-          .insert({ room_id: roomId, concept_id: conceptId, status: "draft" })
+          .upsert({ room_id: roomId, concept_id: conceptId, status: "draft" }, { onConflict: "room_id,concept_id" })
           .select("id")
           .single();
 
