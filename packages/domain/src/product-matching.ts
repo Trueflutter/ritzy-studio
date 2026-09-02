@@ -1010,6 +1010,9 @@ export type RoomProductRoleSpec = {
   // category (S3 spec roles: a floor lamp and a pendant are both lighting).
   // Absent for blueprint roles, whose identity is their category.
   roleKey?: string;
+  // The spec object's stable key ("3:floor_lamp"), persisted on every row the
+  // role produces so swaps and refills resolve the row's contract by identity.
+  specKey?: string;
 };
 
 // The key a selection map uses for a role: its explicit key when it has one,
@@ -1085,6 +1088,7 @@ export type ShoppingListItemDraft = {
   product_id: string;
   category: string;
   status: ShoppingListItemStatus;
+  spec_key: string | null;
   role_label: string;
   role_visual_brief: string | null;
   role_priority: "required" | "supporting";
@@ -1127,11 +1131,15 @@ export type ShoppingItemRoleFields = {
   role_priority: string;
   role_quantity: number;
   option_rank: number;
+  spec_key?: string | null;
 };
 
 export type ShoppingRoleGroup<T> = {
+  // spec:<key> for rows that carry their spec object's key, else
   // category::label — distinct for two spec roles that share a category.
   roleKey: string;
+  // The spec object's key the rows carry (null for legacy or blueprint rows).
+  specKey: string | null;
   category: string;
   label: string;
   priority: "required" | "supporting";
@@ -3094,6 +3102,7 @@ export function buildShoppingListItemRows({
         product_id: match.id,
         category: role.category,
         status: match.id === selectedId ? "selected" : "option",
+        spec_key: role.specKey ?? null,
         role_label: role.label,
         role_visual_brief: role.visualBrief,
         role_priority: role.priority,
@@ -3195,10 +3204,17 @@ export function buildPersistedSelectionSnapshot({
 // Group sourced items back into role groups for the picker. Rejected items are
 // dropped; options are ordered best-first; the selected option seeds the pick.
 // Legacy one-row-per-product lists group cleanly too — each row is its category.
-// A persisted row's role identity: category plus the role label the row carries
-// (the spec object's label after S3, the blueprint label before). Two spec
-// roles in one category (a floor lamp and a pendant) never merge.
-export function shoppingItemRoleKey(item: { category: string; role_label?: string | null }): string {
+// A persisted row's role identity: the spec object's key when the row carries
+// one (S3 rows), else category plus the role label the row carries. Two spec
+// roles never merge, even when the user gave them the same label.
+export function shoppingItemRoleKey(item: {
+  category: string;
+  role_label?: string | null;
+  spec_key?: string | null;
+}): string {
+  if (item.spec_key) {
+    return `spec:${item.spec_key}`;
+  }
   const label = (item.role_label ?? "").trim().toLowerCase();
   return label ? `${item.category}::${label}` : item.category;
 }
@@ -3233,6 +3249,7 @@ export function groupShoppingItemsByRole<T extends ShoppingItemRoleFields>(
     const selected = options.find((item) => item.status === "selected") ?? null;
     return {
       roleKey,
+      specKey: first.spec_key ?? null,
       category,
       label: first.role_label || category.replace(/_/g, " "),
       priority: first.role_priority === "required" ? "required" : "supporting",

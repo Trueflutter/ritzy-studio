@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 
 import type { extractConceptImagePalette, SourceProductsFromConceptInput } from "@ritzy-studio/ai";
+import { sourcingRolesFromDesignSpec } from "@ritzy-studio/domain";
 
 import type { RoomDesignSpecState } from "./design-spec";
 import { findMoreShoppingOptions, groundProductsForRoom, refreshShoppingOptions } from "./product-sourcing";
@@ -118,6 +119,9 @@ const CONFIRMED_SPEC: Extract<RoomDesignSpecState, { status: "ready" }> = {
     ]
   }
 };
+
+// The spec key the sofa object carries, as the service will persist it.
+const SOFA_SPEC_KEY = sourcingRolesFromDesignSpec(CONFIRMED_SPEC.spec, "Living Room").roles[0].specKey;
 
 const CONCEPT = {
   id: "concept-1",
@@ -276,8 +280,13 @@ async function main() {
       ]
     );
     assert.equal(rows[0].selection_reason, "Selected for its curved ivory boucle silhouette, matching the sofa in the concept.");
+    // Rows carry the spec object's key; the list carries its provenance.
+    assert.equal(rows[0].spec_key, SOFA_SPEC_KEY);
+    assert.ok(rows.every((row) => typeof row.spec_key === "string"));
     const listUpdate = calls.find((call: RecordedCall) => call.table === "shopping_lists" && call.op === "update");
     assert.equal(listUpdate?.payload?.estimated_total_aed, 3000 + 5670);
+    assert.equal(listUpdate?.payload?.spec_source, "confirmed_spec");
+    assert.equal(listUpdate?.payload?.spec_id, "spec-1");
     const missing = listUpdate?.payload?.missing_roles as Array<Record<string, unknown>>;
     assert.deepEqual(
       missing.map((entry) => [entry.kind, entry.label, entry.category]),
@@ -366,10 +375,46 @@ async function main() {
     assert.match(String(pass.error), /timed out/);
   }
 
+  // --- the paid pass succeeded but the list could not be written: the job
+  // closes failed WITH the pass's cost, and the failure surfaces to the caller
+  {
+    const { client } = userClient((call) =>
+      call.table === "shopping_list_items" && call.op === "delete" ? { error: { message: "shopping_list_items is unavailable" } } : { data: null }
+    );
+    const { client: service, calls: serviceCalls } = serviceClient();
+    await assert.rejects(
+      groundProductsForRoom(
+        { supabase: client, serviceSupabase: service },
+        GROUND_INPUT,
+        {
+          readSpec: async () => CONFIRMED_SPEC,
+          extractPalette: noPalette,
+          fetchCandidateImages: async () => ({}),
+          sourceProducts: async () => ({
+            promptKey: "k",
+            promptVersion: "v",
+            model: "stub",
+            textCostUsd: 0.03,
+            needs: [],
+            selectedProducts: [],
+            roleResults: [{ category: "sofas", roleLabel: "role-1", status: "strong_match", productId: SOFA_ID, reason: "Matches." }],
+            missingRoles: []
+          })
+        }
+      ),
+      /shopping_list_items is unavailable/
+    );
+    const jobUpdate = serviceCalls.find((call: RecordedCall) => call.table === "ai_jobs" && call.op === "update");
+    assert.equal(jobUpdate?.payload?.status, "failed", "a paid pass never leaves the job running");
+    assert.equal(jobUpdate?.payload?.cost_estimate_usd, 0.03, "the spend is real even though the list was not written");
+    assert.match(String(jobUpdate?.payload?.error_message), /shopping_list_items is unavailable/);
+    assert.equal((jobUpdate?.payload?.output_summary as { failedAfterVisualPass: boolean }).failedAfterVisualPass, true);
+  }
+
   // --- a room whose extraction failed sources against the blueprint roles
   // through the same contracts, and the job says so
   {
-    const { client } = userClient();
+    const { client, calls } = userClient();
     const { client: service, calls: serviceCalls } = serviceClient();
     let poolLabels: string[] = [];
     const result = await groundProductsForRoom(
@@ -389,6 +434,10 @@ async function main() {
     assert.ok(poolLabels.length > 0, "blueprint roles produced pools");
     const jobInsert = serviceCalls.find((call: RecordedCall) => call.table === "ai_jobs" && call.op === "insert");
     assert.equal((jobInsert?.payload?.input_summary as { specSource?: string })?.specSource, "blueprint_fallback");
+    // The list records that its rows came from the room type, not the design.
+    const listUpdate = calls.find((call: RecordedCall) => call.table === "shopping_lists" && call.op === "update");
+    assert.equal(listUpdate?.payload?.spec_source, "blueprint_fallback");
+    assert.equal(listUpdate?.payload?.spec_id, null);
   }
 
   // --- an empty catalogue blocks honestly before any job is opened
@@ -473,6 +522,96 @@ async function main() {
     assert.equal(rows[0].role_label, "curved three-seat sofa");
   }
 
+  // --- refreshShoppingOptions without a caller identity: the rows' spec key
+  // defines the role, the reject is scoped by that key, and new rows carry it
+  {
+    const freshId = "00000000-0000-4000-8000-00000000bbbb";
+    const specRow = { id: "spec-1", room_id: "room-1", concept_id: "concept-1", objects: CONFIRMED_SPEC.spec.objects, must_preserve: [], status: "confirmed" };
+    const { client, calls } = fakeSupabase((call) => {
+      if (call.table === "shopping_lists") return { data: { id: "list-1", concept_id: "concept-1" } };
+      if (call.table === "rooms") return { data: { id: "room-1", room_type: "Living Room" } };
+      if (call.table === "projects") return { data: { id: "proj-1", budget_max_aed: null } };
+      if (call.table === "concepts") return { data: { title: "T", description: null } };
+      if (call.table === "shopping_list_items" && call.op === "select") {
+        return {
+          data: [
+            { id: "i1", product_id: "p1", status: "selected", ...ITEM_TEMPLATE, spec_key: SOFA_SPEC_KEY, role_label: "renamed on /spec", option_rank: 0 },
+            { id: "i2", product_id: "p2", status: "option", ...ITEM_TEMPLATE, spec_key: SOFA_SPEC_KEY, role_label: "renamed on /spec", option_rank: 1 }
+          ]
+        };
+      }
+      return { data: null };
+    });
+    const { client: service } = fakeSupabase((call) => {
+      if (call.table === "products") {
+        return {
+          data: [
+            productRow({ id: freshId, name: "Milo 3 Seater Sofa" }),
+            productRow({ id: "00000000-0000-4000-8000-00000000cccc", name: "Milo 2 Seater Sofa", dimensions: [{ width_cm: 160, depth_cm: 90, height_cm: 80, source_text: "160x90x80" }] })
+          ]
+        };
+      }
+      if (call.table === "room_design_specs") return { data: specRow };
+      return { data: null };
+    });
+    const result = await refreshShoppingOptions({ supabase: client, serviceSupabase: service }, REFILL_INPUT);
+    assert.deepEqual(result, { status: "refreshed" }, "an edited label never drops the contract: identity is the key");
+    const reject = calls.find((call: RecordedCall) => call.table === "shopping_list_items" && call.op === "update");
+    assert.ok(reject?.filters.some(([column, value]) => column === "spec_key" && value === SOFA_SPEC_KEY), "reject is scoped by spec key");
+    assert.ok(!reject?.filters.some(([column]) => column === "role_label"));
+    const insert = calls.find((call: RecordedCall) => call.table === "shopping_list_items" && call.op === "insert");
+    const rows = (insert?.payload as unknown as Array<Record<string, unknown>>) ?? [];
+    assert.deepEqual(rows.map((row) => [row.product_id, row.spec_key]), [[freshId, SOFA_SPEC_KEY]], "seats-3 contract applied; the key is carried");
+    assert.ok(!String(rows[0].selection_reason).includes("Warning"), "reasons are prose, never ranking warnings");
+  }
+
+  // --- refills on a list whose spec moved on refuse with stale_spec, no writes
+  {
+    const specRow = { id: "spec-2", room_id: "room-1", concept_id: "concept-1", objects: CONFIRMED_SPEC.spec.objects, must_preserve: [], status: "confirmed" };
+    const staleRows = [
+      { id: "i1", product_id: "p1", status: "selected", ...ITEM_TEMPLATE, spec_key: "obj:99:vanished", option_rank: 0 },
+      { id: "i2", product_id: "p2", status: "option", ...ITEM_TEMPLATE, spec_key: "obj:99:vanished", option_rank: 1 }
+    ];
+    const { client, calls } = fakeSupabase((call) => {
+      if (call.table === "shopping_lists") return { data: { id: "list-1", concept_id: "concept-1" } };
+      if (call.table === "rooms") return { data: { id: "room-1", room_type: "Living Room" } };
+      if (call.table === "projects") return { data: { id: "proj-1", budget_max_aed: null } };
+      if (call.table === "concepts") return { data: { title: "T", description: null } };
+      if (call.table === "shopping_list_items" && call.op === "select") return { data: staleRows };
+      return { data: null };
+    });
+    const { client: service } = fakeSupabase((call) => {
+      if (call.table === "products") return { data: [productRow({ id: "00000000-0000-4000-8000-00000000bbbb" })] };
+      if (call.table === "room_design_specs") return { data: specRow };
+      return { data: null };
+    });
+    assert.deepEqual(await refreshShoppingOptions({ supabase: client, serviceSupabase: service }, REFILL_INPUT), { status: "stale_spec" });
+    assert.deepEqual(await findMoreShoppingOptions({ supabase: client, serviceSupabase: service }, REFILL_INPUT), { status: "stale_spec" });
+    assert.equal(calls.filter((call: RecordedCall) => call.op !== "select").length, 0);
+  }
+
+  // --- two roles in one category with no caller identity are never blended
+  {
+    const { client, calls } = fakeSupabase((call) => {
+      if (call.table === "shopping_lists") return { data: { id: "list-1", concept_id: "concept-1" } };
+      if (call.table === "rooms") return { data: { id: "room-1", room_type: "Living Room" } };
+      if (call.table === "projects") return { data: { id: "proj-1", budget_max_aed: null } };
+      if (call.table === "concepts") return { data: { title: "T", description: null } };
+      if (call.table === "shopping_list_items" && call.op === "select") {
+        return {
+          data: [
+            { id: "i1", product_id: "p1", status: "selected", ...ITEM_TEMPLATE, spec_key: "obj:3:floor_lamp", role_label: "floor lamp", option_rank: 0 },
+            { id: "i2", product_id: "p2", status: "option", ...ITEM_TEMPLATE, spec_key: "obj:7:pendant", role_label: "pendant", option_rank: 1 }
+          ]
+        };
+      }
+      return { data: null };
+    });
+    const { client: service } = fakeSupabase(() => ({ data: [] }));
+    assert.deepEqual(await refreshShoppingOptions({ supabase: client, serviceSupabase: service }, { ...REFILL_INPUT, category: "lighting" }), { status: "no_change" });
+    assert.equal(calls.filter((call: RecordedCall) => call.op !== "select").length, 0);
+  }
+
   // --- findMoreShoppingOptions: zero candidates resolves no_candidates without insert
   {
     const { client, calls } = fakeSupabase((call) => {
@@ -483,7 +622,9 @@ async function main() {
       if (call.table === "shopping_list_items") return { data: [{ product_id: "p1", ...ITEM_TEMPLATE }] };
       return { data: null };
     });
-    const { client: service } = fakeSupabase(() => ({ data: [] }));
+    // No spec row for the concept (a real maybeSingle answers null, never an
+    // empty array) and an empty catalogue.
+    const { client: service } = fakeSupabase((call) => (call.table === "room_design_specs" ? { data: null } : { data: [] }));
     const result = await findMoreShoppingOptions({ supabase: client, serviceSupabase: service }, REFILL_INPUT);
     assert.deepEqual(result, { status: "no_candidates" });
     assert.equal(calls.filter((call: RecordedCall) => call.op === "insert").length, 0);

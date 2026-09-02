@@ -1691,6 +1691,14 @@ export async function substituteProductAction(formData: FormData) {
     redirect(`${redirectPath}?message=${encodeURIComponent("The current product cannot be substituted yet.")}`);
   }
 
+  if (result.status === "stale_spec") {
+    redirect(
+      `${redirectPath}?message=${encodeURIComponent(
+        "The design spec changed since this list was sourced. Refresh matches first, then swap."
+      )}`
+    );
+  }
+
   if (result.status === "no_replacement") {
     redirect(`${redirectPath}?message=${encodeURIComponent("No suitable replacement found for that line yet.")}`);
   }
@@ -1738,9 +1746,10 @@ export async function refreshShoppingOptionsAction(input: {
   roomId: string;
   shoppingListId: string;
   category: string;
+  specKey?: string | null;
   roleLabel?: string | null;
 }) {
-  const { projectId, roomId, shoppingListId, category, roleLabel } = input;
+  const { projectId, roomId, shoppingListId, category, specKey, roleLabel } = input;
   const supabase = await createClient();
   const {
     data: { user },
@@ -1754,7 +1763,7 @@ export async function refreshShoppingOptionsAction(input: {
   const serviceSupabase = createServiceClient();
   const result = await refreshShoppingOptions(
     { supabase, serviceSupabase },
-    { projectId, roomId, shoppingListId, category, roleLabel: roleLabel ?? null }
+    { projectId, roomId, shoppingListId, category, specKey: specKey ?? null, roleLabel: roleLabel ?? null }
   );
 
   if (result.status === "refreshed") {
@@ -1769,9 +1778,10 @@ export async function findMoreShoppingOptionsAction(input: {
   roomId: string;
   shoppingListId: string;
   category: string;
+  specKey?: string | null;
   roleLabel?: string | null;
 }) {
-  const { projectId, roomId, shoppingListId, category, roleLabel } = input;
+  const { projectId, roomId, shoppingListId, category, specKey, roleLabel } = input;
   const supabase = await createClient();
   const {
     data: { user },
@@ -1785,7 +1795,7 @@ export async function findMoreShoppingOptionsAction(input: {
   const serviceSupabase = createServiceClient();
   const result = await findMoreShoppingOptions(
     { supabase, serviceSupabase },
-    { projectId, roomId, shoppingListId, category, roleLabel: roleLabel ?? null }
+    { projectId, roomId, shoppingListId, category, specKey: specKey ?? null, roleLabel: roleLabel ?? null }
   );
 
   if (result.status !== "no_change") {

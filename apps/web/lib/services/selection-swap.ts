@@ -6,7 +6,7 @@ import {
   type SubstitutionMode
 } from "@ritzy-studio/domain";
 
-import { specRoleForListRow } from "./product-sourcing";
+import { alternateProse, specRoleForListRow } from "./product-sourcing";
 import type { ServiceSupabaseClient, UserSupabaseClient } from "./supabase-clients";
 import {
   PRODUCT_MATCHING_CATALOG_LIMIT,
@@ -32,6 +32,8 @@ export type SubstituteProductResult =
   | { status: "swapped"; priceImpactAed: number }
   | { status: "not_substitutable" }
   | { status: "no_replacement" }
+  // The design spec changed since this list was sourced: re-source first.
+  | { status: "stale_spec" }
   | { status: "not_found" };
 
 export async function substituteProduct(
@@ -138,15 +140,20 @@ export async function substituteProduct(
     return { status: "not_substitutable" };
   }
 
-  // S3: a swap stays inside the row's spec contract. The row's role_label is
-  // the spec object's label verbatim; when the list was built from a spec,
-  // only contract-clean candidates can replace the piece.
-  const specRole = await specRoleForListRow(serviceSupabase, {
+  // S3: a swap stays inside the row's spec contract, resolved by the row's
+  // spec key (its label for rows that predate keys). A list whose spec has
+  // moved on is stale and must be re-sourced, never swapped unconstrained.
+  const rowRole = await specRoleForListRow(serviceSupabase, {
     roomId,
     conceptId: shoppingList.concept_id,
     roomType: room.room_type,
+    specKey: item.spec_key,
     roleLabel: item.role_label
   });
+  if (rowRole.status === "stale") {
+    return { status: "stale_spec" };
+  }
+  const specRole = rowRole.status === "role" ? rowRole.role : null;
   const contractClean = specRole
     ? candidates.filter((candidate) => checkCandidateAgainstSpecRole(candidate, specRole).ok)
     : candidates;
@@ -193,10 +200,8 @@ export async function substituteProduct(
       category: replacement.categoryNormalized ?? item.category,
       unit_price_aed: unitPrice,
       line_total_aed: lineTotal,
-      selection_reason: [
-        replacement.selectionReason,
-        ...replacement.warnings.filter((warning) => warning !== replacement.dimensionFitNote)
-      ].join(" "),
+      // Prose only (12.7); the swap's own reason, not ranking warnings.
+      selection_reason: `Swapped in as the ${SWAP_MODE_LABEL[mode]} option. ${alternateProse(replacement, role)}`,
       dimension_fit_note: replacement.dimensionFitNote,
       updated_at: new Date().toISOString()
     })
@@ -211,6 +216,13 @@ export async function substituteProduct(
 
   return { status: "swapped", priceImpactAed: priceImpact };
 }
+
+const SWAP_MODE_LABEL: Record<SubstitutionMode, string> = {
+  cheaper: "cheaper",
+  closer_style: "closer-style",
+  same_retailer: "same-retailer",
+  in_stock: "in-stock"
+};
 
 export async function recalculateShoppingListTotal(supabase: UserSupabaseClient, shoppingListId: string) {
   const { data: rows } = await supabase
@@ -239,7 +251,7 @@ export async function selectShoppingItem(
 ): Promise<SelectShoppingItemResult> {
   const { data: item } = await supabase
     .from("shopping_list_items")
-    .select("id, category, role_label")
+    .select("id, category, role_label, spec_key")
     .eq("id", itemId)
     .eq("shopping_list_id", shoppingListId)
     .single();
@@ -248,15 +260,18 @@ export async function selectShoppingItem(
     return { status: "not_found" };
   }
 
-  // One pick per ROLE (category plus label: a floor lamp and a pendant are
-  // both lighting) — clear the role's current selection, then set this.
-  await supabase
+  // One pick per ROLE, identified by the row's spec key (its label for rows
+  // that predate keys): a floor lamp and a pendant are both lighting, and two
+  // roles the user labelled alike are still two roles.
+  const clearSelection = supabase
     .from("shopping_list_items")
     .update({ status: "option" })
     .eq("shopping_list_id", shoppingListId)
-    .eq("category", item.category)
-    .eq("role_label", item.role_label)
-    .eq("status", "selected");
+    .eq("category", item.category);
+  await (item.spec_key ? clearSelection.eq("spec_key", item.spec_key) : clearSelection.eq("role_label", item.role_label)).eq(
+    "status",
+    "selected"
+  );
   await supabase
     .from("shopping_list_items")
     .update({ status: "selected" })

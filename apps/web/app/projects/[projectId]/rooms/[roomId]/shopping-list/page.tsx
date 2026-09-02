@@ -156,6 +156,7 @@ export default async function ShoppingListPage({
   const cardItemById = new Map(cardItems.map((card) => [card.id, card]));
   const roleGroups: CategoryGroup[] = groupShoppingItemsByRole(listItems).map((group) => ({
     roleKey: group.roleKey,
+    specKey: group.specKey,
     category: group.category,
     label: group.label,
     priority: group.priority,

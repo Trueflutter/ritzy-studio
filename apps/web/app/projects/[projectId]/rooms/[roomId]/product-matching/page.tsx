@@ -19,7 +19,6 @@ import {
   groundProductsAction,
   substituteProductAction
 } from "@/app/actions";
-import { readRoomDesignSpec } from "@/lib/services/design-spec";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import { MissingRolesSection, missingRolesCaveat } from "../shopping-list/missing-roles";
@@ -267,13 +266,13 @@ export default async function ProductMatchingPage({
   const latestRenderJob = (conceptRenderJobs ?? [])[0] ?? null;
 
   const shoppingItemsList = shoppingItems ?? [];
-  // S3: the honest gap and its provenance. Missing roles live on the list row;
-  // a list built without a confirmed spec (extraction failed, user continued)
-  // says so, because its rows came from the room type, not the design.
+  // S3: the honest gap and its provenance, both read from the list itself. A
+  // list built without a confirmed spec (extraction failed, user continued,
+  // or a list from before specs) says so until it is re-sourced: its rows
+  // came from the room type, not the design.
   const missingRoles = parseMissingRoles(shoppingList.missing_roles);
   const missingCaveat = missingRolesCaveat(missingRoles);
-  const specState = await readRoomDesignSpec({ supabase, serviceSupabase }, { roomId });
-  const builtFromConfirmedSpec = specState.status === "ready" && specState.spec.status === "confirmed";
+  const builtFromConfirmedSpec = shoppingList.spec_source === "confirmed_spec";
   const latestRender = finalRenders[0] ?? null;
   const heroSrc = latestRender?.signedUrl ?? signedConceptImage?.signedUrl ?? null;
   const heroLabel = latestRender ? "Final render" : "Selected concept";

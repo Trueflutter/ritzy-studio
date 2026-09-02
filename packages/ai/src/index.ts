@@ -432,6 +432,10 @@ export type SourceProductsFromConceptResult = {
     status: ProductVisualMatchStatus;
     productId: string | null;
     reason: string;
+    // Set when the validator synthesized this entry (no valid verdict, or a
+    // pick outside the pool): not the pass's own judgement, so callers must
+    // never present it as one.
+    synthesized?: boolean;
   }>;
   missingRoles: string[];
 };
@@ -1874,7 +1878,8 @@ function missingRoleResult(role: ConceptProductSourcingRolePool, reason: string)
     roleLabel: role.roleLabel,
     status: role.priority === "required" ? ("missing_required" as const) : ("missing_supporting" as const),
     productId: null,
-    reason
+    reason,
+    synthesized: true as const
   };
 }
 

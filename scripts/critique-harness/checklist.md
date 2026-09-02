@@ -54,9 +54,12 @@ model (`--model`).
    match the role (a floor lamp for a floor-lamp role, never a chandelier; an
    armchair for a lounge-chair role, never a swing or rocking chair) and the
    visual similarity to the corresponding object in the render must be at or
-   above the committed threshold: similarity at or above 0.6. Roles the list
-   honestly reports as missing are not failures; a wrong product is.
-   PASS: every judged product passes. FAIL: any selected product fails.
+   above the committed threshold: similarity at or above 0.6 (the whole render
+   is shown and the judge names which object it compared against; the spec
+   carries no regions, so there is no crop). Roles the list honestly reports
+   as missing are not failures; a wrong product is.
+   PASS: every selected product was judged and passes. FAIL: any selected
+   product fails, or could not be judged (no usable image).
    NOT_APPLICABLE when the concept has no shopping list yet.
 
 ## Room matrix

@@ -1027,7 +1027,13 @@ export type SpecVisualRoleResult = {
   status: "strong_match" | "acceptable_match" | "closest_available" | "missing_required" | "missing_supporting";
   productId: string | null;
   reason: string;
+  // A validator-synthesized entry (no valid verdict came back for the role):
+  // not the pass's judgement, so it never becomes a user-facing reason.
+  synthesized?: boolean;
 };
+
+export const NO_VERDICT_REASON =
+  "The visual pass returned no verdict for this piece; chosen by catalogue ranking against the design spec.";
 
 export type SpecVisualSelection = {
   productId: string;
@@ -1079,11 +1085,32 @@ export function resolveSpecRoleOutcomes({
   // labelled closest-available, or goes missing when none is left.
   const taken = new Set<string>();
   return pools.map((pool) => {
-    const result = roleResults.find((entry) => poolMatches(pool, entry.category, entry.roleLabel)) ?? null;
+    const found = roleResults.find((entry) => poolMatches(pool, entry.category, entry.roleLabel)) ?? null;
+    // A synthesized entry means the pass gave no usable verdict for this
+    // role: neither a pick nor an honest "nothing fits". It is treated like an
+    // unavailable pass for this one role (ranking, labelled), never as the
+    // pass's own missing verdict, and its internal text never reaches a user.
+    const result = found?.synthesized ? null : found;
     const selection = selections.find((entry) => poolMatches(pool, entry.category, entry.roleLabel)) ?? null;
     const pickedId = result?.productId ?? selection?.productId ?? null;
     const picked = pickedId ? pool.candidates.find((candidate) => candidate.id === pickedId) : undefined;
     const declaredMissing = result?.status === "missing_required" || result?.status === "missing_supporting";
+
+    if (!result && !selection) {
+      const rankedPick = pool.candidates.find((candidate) => !taken.has(candidate.id));
+      if (rankedPick) {
+        taken.add(rankedPick.id);
+        return {
+          kind: "selected",
+          role: pool.role,
+          pool,
+          selectedProductId: rankedPick.id,
+          matchStatus: "closest_available",
+          reason: NO_VERDICT_REASON,
+          mismatchNote: null
+        };
+      }
+    }
 
     if (picked && !declaredMissing) {
       if (!taken.has(picked.id)) {
@@ -1119,7 +1146,7 @@ export function resolveSpecRoleOutcomes({
       ? `The visual pass found no catalogue piece that matches the design: ${result.reason}`
       : picked
         ? "The visual pass proposed a piece already chosen for another role, and no other catalogue piece fits this one."
-        : "The visual pass returned no verdict for this piece.";
+        : "Every catalogue piece that fits this role was already chosen for another one.";
     return { kind: "missing", role: pool.role, entry: missingRoleEntryForRole(pool.role, pool.rejectionReasons, pool.candidates.length, reason) };
   });
 }

@@ -6,7 +6,8 @@ import {
   missingRolesSchema,
   parseMissingRoles,
   sourcingRolesFromDesignSpec,
-  type SpecSourcingRole
+  type SpecSourcingRole,
+  NO_VERDICT_REASON
 } from "./spec-sourcing";
 
 // S3: the confirmed design spec is the sourcing contract. These pin the
@@ -678,6 +679,21 @@ console.log("spec-sourcing tests passed");
   });
   assert.equal(outsidePool[0].kind, "missing", "a pick outside the contract-clean pool is never accepted");
 
+  // --- a validator-synthesized "missing" entry is no verdict at all: the role
+  // falls back to ranking with the fixed no-verdict reason, and the
+  // validator's internal text never becomes a user-facing reason
+  const synthesized = resolveSpecRoleOutcomes({
+    pools: plan.pools,
+    roleResults: [
+      { category: "sofas", roleLabel: "curved three-seat sofa", status: "missing_required", productId: null, reason: "No roleResults entry was returned for this role.", synthesized: true }
+    ],
+    selections: []
+  });
+  assert.equal(synthesized[0].kind, "selected", "a synthesized entry never marks the role missing");
+  assert.equal(synthesized[0].kind === "selected" && synthesized[0].matchStatus, "closest_available");
+  assert.equal(synthesized[0].kind === "selected" && synthesized[0].reason, NO_VERDICT_REASON);
+  assert.ok(!JSON.stringify(synthesized).includes("No roleResults entry"), "validator text must not leak");
+
   // --- ranking fallback: honest closest-available, never a visual claim
   const ranked = resolveSpecRoleOutcomesByRanking(plan.pools, "The visual pass timed out.");
   assert.ok(ranked.every((outcome) => outcome.kind === "selected" && outcome.matchStatus === "closest_available"));
@@ -696,6 +712,9 @@ console.log("spec-sourcing tests passed");
   const rows = buildShoppingListItemRows({ roleOptions, selectedProductIdByRole });
   assert.equal(rows[0].status, "selected");
   assert.equal(rows[0].role_label, "curved three-seat sofa");
+  // Rows carry the spec object's key: identity for swaps, refills and grouping.
+  assert.equal(typeof roleOptions[0].specKey, "string");
+  assert.equal(rows[0].spec_key, roleOptions[0].specKey);
   const fit = fitSelectionToBudget({ roleOptions, selectedProductIdByRole, budgetMaxAed: null });
   assert.equal(fit.selectedProductIdByRole.get(roleOptionKey(roleOptions[0])), "00000000-0000-4000-8000-000000000012");
 
@@ -707,6 +726,19 @@ console.log("spec-sourcing tests passed");
   assert.equal(groups.length, 2, "two lighting roles never merge into one group");
   assert.deepEqual(groups.map((group) => group.roleKey), ["lighting::tall tripod floor lamp", "lighting::linen drum pendant"]);
   assert.deepEqual(groups[0].options.map((option) => option.id), ["a", "c"]);
+
+  // Keyed rows group by spec key, so two roles the user labelled alike stay
+  // two roles, and the group exposes the key for the refill actions.
+  const keyed = groupShoppingItemsByRole([
+    { id: "a", status: "selected", category: "lighting", role_label: "lamp", spec_key: "obj:3:floor_lamp", role_priority: "required", role_quantity: 1, option_rank: 0 },
+    { id: "b", status: "option", category: "lighting", role_label: "lamp", spec_key: "obj:7:pendant", role_priority: "required", role_quantity: 1, option_rank: 0 },
+    { id: "c", status: "option", category: "lighting", role_label: "lamp", spec_key: "obj:3:floor_lamp", role_priority: "required", role_quantity: 1, option_rank: 1 }
+  ]);
+  assert.deepEqual(keyed.map((group) => [group.roleKey, group.specKey]), [
+    ["spec:obj:3:floor_lamp", "obj:3:floor_lamp"],
+    ["spec:obj:7:pendant", "obj:7:pendant"]
+  ]);
+  assert.deepEqual(keyed[0].options.map((option) => option.id), ["a", "c"]);
   console.log("spec-sourcing plan tests passed");
 }
 

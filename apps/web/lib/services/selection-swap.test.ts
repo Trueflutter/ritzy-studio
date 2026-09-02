@@ -78,6 +78,27 @@ async function main() {
     assert.equal(updates[2].payload?.estimated_total_aed, 200);
   }
 
+  // --- selectShoppingItem: a keyed row clears by spec key, never by label
+  {
+    const { client, calls } = fakeSupabase((call) => {
+      if (call.table === "shopping_list_items" && call.op === "select" && call.single) {
+        return { data: { id: "item-2", category: "lighting", role_label: "lamp", spec_key: "obj:3:floor_lamp" } };
+      }
+      if (call.table === "shopping_list_items" && call.op === "select") {
+        return { data: [] };
+      }
+      return { data: null };
+    });
+    await selectShoppingItem(client, { shoppingListId: "list-1", itemId: "item-2" });
+    const clear = calls.filter((call) => call.op === "update")[0];
+    assert.deepEqual(clear.filters, [
+      ["shopping_list_id", "list-1"],
+      ["category", "lighting"],
+      ["spec_key", "obj:3:floor_lamp"],
+      ["status", "selected"]
+    ]);
+  }
+
   // --- selectShoppingItem: unknown item writes nothing
   {
     const { client, calls } = fakeSupabase(() => ({ data: null }));
@@ -177,6 +198,9 @@ async function main() {
     assert.ok(itemUpdate, "swap must write the item row");
     assert.equal(itemUpdate?.payload?.product_id, "00000000-0000-4000-8000-000000000002");
     assert.equal(itemUpdate?.payload?.unit_price_aed, 2000);
+    // The reason is prose about the swap, never a ranking warning dump.
+    assert.match(String(itemUpdate?.payload?.selection_reason), /^Swapped in as the cheaper option\./);
+    assert.ok(!String(itemUpdate?.payload?.selection_reason).includes("Warning"));
     // The swap keeps the row's purchase quantity: line total is 2 x 2000.
     assert.equal(itemUpdate?.payload?.line_total_aed, 4000);
     // Impact = new line total minus previous line total.
@@ -218,6 +242,66 @@ async function main() {
       { ensureEntitled: async () => {} }
     );
     assert.deepEqual(result, { status: "no_replacement" });
+    assert.equal(userUpdates.length, 0);
+  }
+
+  // --- substituteProduct: a row whose spec key is no longer in the concept's
+  // spec is stale; the swap refuses (stale_spec) and writes nothing
+  {
+    const currentProduct = productRow({ id: "00000000-0000-4000-8000-000000000001", price_aed: 3000 });
+    const cheaper = productRow({ id: "00000000-0000-4000-8000-000000000002", price_aed: 2000 });
+    const userUpdates: RecordedCall[] = [];
+    const { client } = fakeSupabase((call) => {
+      if (call.op === "update") {
+        userUpdates.push(call);
+        return { data: null };
+      }
+      if (call.table === "projects") return { data: { id: "p", budget_max_aed: null } };
+      if (call.table === "rooms") return { data: { id: "r", room_type: "Living Room" } };
+      if (call.table === "shopping_lists") return { data: { id: "l", concept_id: "c" } };
+      if (call.table === "concepts") return { data: { id: "c", title: "T", description: null } };
+      if (call.table === "room_measurements") return { data: null };
+      if (call.table === "shopping_list_items") return { data: [] };
+      return { data: null };
+    });
+    const { client: service } = fakeSupabase((call) => {
+      if (call.table === "shopping_list_items" && call.single) {
+        return {
+          data: {
+            id: "item-1",
+            category: "sofas",
+            quantity: 1,
+            unit_price_aed: 3000,
+            line_total_aed: 3000,
+            role_label: "sofa",
+            spec_key: "obj:99:vanished",
+            role_priority: "required",
+            role_quantity: 1,
+            product: currentProduct
+          }
+        };
+      }
+      if (call.table === "products") return { data: [currentProduct, cheaper] };
+      if (call.table === "room_design_specs") {
+        return {
+          data: {
+            id: "spec-2",
+            room_id: "r",
+            concept_id: "c",
+            status: "confirmed",
+            must_preserve: [],
+            objects: [{ role: "sofa", label: "curved sofa", quantity: 1, sizeDescriptor: null, capacity: null, paletteMaterials: [] }]
+          }
+        };
+      }
+      return { data: null };
+    });
+    const result = await substituteProduct(
+      { supabase: client, serviceSupabase: service },
+      { projectId: "p", roomId: "r", shoppingListId: "l", itemId: "item-1", mode: "cheaper" },
+      { ensureEntitled: async () => {} }
+    );
+    assert.deepEqual(result, { status: "stale_spec" });
     assert.equal(userUpdates.length, 0);
   }
 

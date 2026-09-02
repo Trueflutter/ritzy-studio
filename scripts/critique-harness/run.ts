@@ -214,7 +214,7 @@ const PRODUCT_CONSISTENCY_SYSTEM = [
   "You are Ritzy Studio's critique harness, judging whether sourced catalog products belong to the approved design.",
   "For each product you are shown one catalog product image and told the design role it was selected for (from the confirmed design spec) and the concept render it must match.",
   "Judge category first: the product must be the same kind of object as the role (a floor lamp for a floor-lamp role, never a chandelier; an armchair for a lounge-chair role, never a swing or rocking chair).",
-  "Then judge visual similarity to the corresponding object in the concept render: silhouette, colour family, material, scale and distinctive features. Return similarity from 0 (unrelated) to 1 (the same piece).",
+  "Then judge visual similarity to the corresponding object in the concept render: silhouette, colour family, material, scale and distinctive features. Return similarity from 0 (unrelated) to 1 (the same piece), and name in matchedObject which object in the render you compared against (where it sits, what it is).",
   "A product passes only when the category matches AND similarity is at or above the threshold given. Notes name concrete evidence."
 ].join("\n");
 
@@ -224,6 +224,9 @@ type ProductVerdict = {
   roleLabel: string;
   categoryMatches: boolean;
   similarity: number;
+  // Which object in the render the judge compared against, in its words, so
+  // a verdict can be traced to the intended piece.
+  matchedObject: string;
   verdict: "pass" | "fail";
   notes: string;
 };
@@ -320,9 +323,10 @@ async function judgeProducts({
                     productId: { type: "string" },
                     categoryMatches: { type: "boolean" },
                     similarity: { type: "number", minimum: 0, maximum: 1 },
+                    matchedObject: { type: "string", minLength: 2, maxLength: 200 },
                     notes: { type: "string", minLength: 4, maxLength: 400 }
                   },
-                  required: ["productId", "categoryMatches", "similarity", "notes"]
+                  required: ["productId", "categoryMatches", "similarity", "matchedObject", "notes"]
                 }
               }
             },
@@ -342,7 +346,11 @@ async function judgeProducts({
   if (!text) {
     throw new Error("OpenAI product-consistency call returned no output text.");
   }
-  const parsed = (JSON.parse(text) as { products: Array<{ productId: string; categoryMatches: boolean; similarity: number; notes: string }> }).products;
+  const parsed = (
+    JSON.parse(text) as {
+      products: Array<{ productId: string; categoryMatches: boolean; similarity: number; matchedObject: string; notes: string }>;
+    }
+  ).products;
   return products.map((product) => {
     const judged = parsed.find((entry) => entry.productId === product.productId);
     const categoryMatches = judged?.categoryMatches ?? false;
@@ -353,6 +361,7 @@ async function judgeProducts({
       roleLabel: product.roleLabel,
       categoryMatches,
       similarity,
+      matchedObject: judged?.matchedObject ?? "(no verdict)",
       verdict: categoryMatches && similarity >= threshold ? "pass" : "fail",
       notes: judged?.notes ?? "The judge returned no verdict for this product."
     };
@@ -360,11 +369,17 @@ async function judgeProducts({
 }
 
 // The committed threshold lives in checklist.md ("product_consistency ...
-// similarity at or above 0.6"); read it there so the two never drift.
+// similarity at or above 0.6"); read it there so the two never drift, and
+// refuse to run on a checklist that does not state one (a silent default
+// would be exactly the drift this prevents).
 function productConsistencyThreshold(): number {
   const checklist = readFileSync(path.join(process.cwd(), "scripts/critique-harness/checklist.md"), "utf8");
-  const match = checklist.match(/similarity at or above ([0-9.]+)/);
-  return match ? Number(match[1]) : 0.6;
+  const match = checklist.match(/similarity at or above (\d+(?:\.\d+)?)/);
+  const threshold = match ? Number(match[1]) : Number.NaN;
+  if (!Number.isFinite(threshold) || threshold <= 0 || threshold > 1) {
+    throw new Error("checklist.md must state the product_consistency threshold as 'similarity at or above <0..1>'.");
+  }
+  return threshold;
 }
 
 async function runRoom(model: string, room: ManifestRoom) {
@@ -463,20 +478,25 @@ async function runRoom(model: string, room: ManifestRoom) {
     const failed = productVerdicts.filter((product) => product.verdict === "fail");
     const missingRoles = Array.isArray(lists[0].missing_roles) ? (lists[0].missing_roles as Array<{ kind?: string; label?: string }>) : [];
     const missingLabels = missingRoles.filter((entry) => entry.kind === "missing").map((entry) => entry.label);
+    // AC 8 reads "every selected product passes": a product that could not
+    // be judged (no image) is never counted as passing, so the check fails
+    // until every selected product has been seen.
+    const nothingSelected = productVerdicts.length === 0 && productImagesUnavailable.length === 0;
     verdicts.push({
       check: "product_consistency",
-      verdict: productVerdicts.length === 0 && productImagesUnavailable.length === 0 ? "not_applicable" : failed.length === 0 ? "pass" : "fail",
-      notes:
-        productVerdicts.length === 0 && productImagesUnavailable.length === 0
-          ? "The list has no selected products."
-          : [
-              `${productVerdicts.length - failed.length}/${productVerdicts.length} selected products belong to the design`,
-              failed.length > 0 ? `failed: ${failed.map((product) => `${product.productName} (${product.roleLabel}, similarity ${product.similarity.toFixed(2)})`).join("; ")}` : null,
-              productImagesUnavailable.length > 0 ? `images unavailable, not judged: ${productImagesUnavailable.join("; ")}` : null,
-              missingLabels.length > 0 ? `honestly missing on the list: ${missingLabels.join("; ")}` : null
-            ]
-              .filter(Boolean)
-              .join(". ")
+      verdict: nothingSelected ? "not_applicable" : failed.length === 0 && productImagesUnavailable.length === 0 ? "pass" : "fail",
+      notes: nothingSelected
+        ? "The list has no selected products."
+        : [
+            `${productVerdicts.length - failed.length}/${productVerdicts.length} judged products belong to the design`,
+            failed.length > 0
+              ? `failed: ${failed.map((product) => `${product.productName} (${product.roleLabel}, similarity ${product.similarity.toFixed(2)}, compared with ${product.matchedObject})`).join("; ")}`
+              : null,
+            productImagesUnavailable.length > 0 ? `NOT judged (image unavailable), so the check cannot pass: ${productImagesUnavailable.join("; ")}` : null,
+            missingLabels.length > 0 ? `honestly missing on the list: ${missingLabels.join("; ")}` : null
+          ]
+            .filter(Boolean)
+            .join(". ")
     });
   } else {
     verdicts.push({ check: "product_consistency", verdict: "not_applicable", notes: "No shopping list for this concept yet." });

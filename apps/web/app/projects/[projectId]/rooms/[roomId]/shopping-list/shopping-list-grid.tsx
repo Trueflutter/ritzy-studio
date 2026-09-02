@@ -13,8 +13,11 @@ import { DetailDrawer } from "./detail-drawer";
 import { ProductCard, type ProductCardItem } from "./product-card";
 
 export type CategoryGroup = {
-  // category::label — a floor lamp and a pendant are both lighting but two roles.
+  // spec:<key> or category::label — a floor lamp and a pendant are both
+  // lighting but two roles.
   roleKey: string;
+  // The spec object's key the rows carry (null for legacy or blueprint rows).
+  specKey: string | null;
   category: string;
   label: string;
   priority: "required" | "supporting";
@@ -134,6 +137,7 @@ export function ShoppingListGrid({
           roomId,
           shoppingListId,
           category: group.category,
+          specKey: group.specKey,
           roleLabel: group.label
         });
       });
@@ -157,6 +161,7 @@ export function ShoppingListGrid({
           roomId,
           shoppingListId,
           category: group.category,
+          specKey: group.specKey,
           roleLabel: group.label
         });
       });

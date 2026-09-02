@@ -14,6 +14,7 @@ import {
   fitSelectionToBudget,
   imageCandidateIdsForPools,
   parseConceptImagePalette,
+  parseRoomDesignSpecRow,
   resolveSpecRoleOutcomes,
   resolveSpecRoleOutcomesByRanking,
   roleOptionKey,
@@ -109,7 +110,7 @@ function whyThisPiece(outcome: Extract<SpecRoleOutcome, { kind: "selected" }>): 
   return [outcome.reason, outcome.mismatchNote].filter(Boolean).join(" ");
 }
 
-function alternateProse(match: RankedProductMatch | RoleScopedRankedProductMatch, role: RoomProductRoleSpec): string {
+export function alternateProse(match: RankedProductMatch | RoleScopedRankedProductMatch, role: RoomProductRoleSpec): string {
   const reasons = "attributeScore" in match ? match.attributeScore.reasons.slice(0, 2) : [];
   return reasons.length > 0
     ? `Offered as an alternative for the ${role.label}: ${reasons.join("; ")}.`
@@ -349,7 +350,9 @@ export async function groundProductsForRoom(
   }
 
   // The visual pass: concept image plus the top candidates' images per role.
-  let outcomes: SpecRoleOutcome[];
+  // From here every exit closes the job: a persistence failure after a paid
+  // pass records the spend on a failed row before the error propagates, so a
+  // job never sits `running` with its cost unrecorded.
   let visualPass: {
     used: boolean;
     error: string | null;
@@ -359,215 +362,242 @@ export async function groundProductsForRoom(
     textCostUsd: number | null;
     imageCount: number;
   } = { used: false, error: null, promptKey: null, promptVersion: null, model: null, textCostUsd: null, imageCount: 0 };
+  const sourcingModel = stageTextConfig("product_sourcing", configuredTextModel()).model;
 
-  if (plan.pools.length === 0) {
-    outcomes = [];
-  } else {
-    const poolCandidatesById = new Map<string, RoleScopedRankedProductMatch>();
-    for (const pool of plan.pools) {
-      for (const candidate of pool.candidates) {
-        poolCandidatesById.set(candidate.id, candidate);
+  try {
+    let outcomes: SpecRoleOutcome[];
+    if (plan.pools.length === 0) {
+      outcomes = [];
+    } else {
+      const poolCandidatesById = new Map<string, RoleScopedRankedProductMatch>();
+      for (const pool of plan.pools) {
+        for (const candidate of pool.candidates) {
+          poolCandidatesById.set(candidate.id, candidate);
+        }
       }
-    }
-    const imageIds = imageCandidateIdsForPools(plan.pools, imageBudget);
-    let candidateImageDataUrls: Record<string, string> = {};
-    if (imageIds.length > 0) {
+      const imageIds = imageCandidateIdsForPools(plan.pools, imageBudget);
+      let candidateImageDataUrls: Record<string, string> = {};
+      if (imageIds.length > 0) {
+        try {
+          candidateImageDataUrls = await fetchCandidateImages(
+            imageIds.map((id) => poolCandidatesById.get(id)!),
+            imageIds.length
+          );
+        } catch (error) {
+          console.error("Candidate image fetch failed; the visual pass judges from text.", error);
+        }
+      }
+      visualPass.imageCount = Object.keys(candidateImageDataUrls).length;
+
       try {
-        candidateImageDataUrls = await fetchCandidateImages(
-          imageIds.map((id) => poolCandidatesById.get(id)!),
-          imageIds.length
-        );
-      } catch (error) {
-        console.error("Candidate image fetch failed; the visual pass judges from text.", error);
-      }
-    }
-    visualPass.imageCount = Object.keys(candidateImageDataUrls).length;
-
-    try {
-      const result = await withTimeout(
-        sourceProducts({
-          roomType: room.room_type,
-          conceptTitle: concept.title,
-          conceptDescription: concept.description,
-          conceptImageUrl,
-          candidates: Array.from(poolCandidatesById.values()).map(matchToSourcingCandidate),
-          roleCandidatePools: plan.pools.map((pool) => ({
-            category: pool.role.category,
-            roleLabel: pool.role.echoKey,
-            visualBrief: pool.role.visualBrief,
-            quantity: pool.role.quantity,
-            priority: pool.role.priority,
-            candidateIds: pool.candidates.map((candidate) => candidate.id)
-          })),
-          conceptImageDetail: "high",
-          candidateImageDetail: "low",
-          candidateImageDataUrls,
-          designSpec: {
-            roles: plan.pools.map((pool) => ({
-              echoKey: pool.role.echoKey,
+        const result = await withTimeout(
+          sourceProducts({
+            roomType: room.room_type,
+            conceptTitle: concept.title,
+            conceptDescription: concept.description,
+            conceptImageUrl,
+            candidates: Array.from(poolCandidatesById.values()).map(matchToSourcingCandidate),
+            roleCandidatePools: plan.pools.map((pool) => ({
               category: pool.role.category,
-              label: pool.role.label,
+              roleLabel: pool.role.echoKey,
+              visualBrief: pool.role.visualBrief,
               quantity: pool.role.quantity,
-              sizeDescriptor: pool.role.specSizeDescriptor,
-              capacity: pool.role.specCapacity,
-              paletteMaterials: pool.role.specPaletteMaterials
+              priority: pool.role.priority,
+              candidateIds: pool.candidates.map((candidate) => candidate.id)
             })),
-            mustPreserve
-          }
-        }),
-        PRODUCT_SOURCING_AI_TIMEOUT_MS,
-        "Product visual sourcing timed out."
-      );
-      outcomes = resolveSpecRoleOutcomes({
-        pools: plan.pools,
-        roleResults: result.roleResults,
-        selections: result.selectedProducts
-      });
-      visualPass = {
-        ...visualPass,
-        used: true,
-        promptKey: result.promptKey,
-        promptVersion: result.promptVersion,
-        model: result.model,
-        textCostUsd: result.textCostUsd ?? null
-      };
-    } catch (error) {
-      // Honest degraded path: catalogue ranking against the spec, labelled as
-      // such on every row, never presented as a visual match.
-      const message = error instanceof Error ? error.message : "Product visual sourcing failed.";
-      console.error("Product visual sourcing failed; falling back to ranking.", error);
-      outcomes = resolveSpecRoleOutcomesByRanking(
-        plan.pools,
-        "Chosen by catalogue ranking because the visual pass was unavailable; check it against the concept."
-      );
-      visualPass = { ...visualPass, used: false, error: message };
-    }
-  }
-
-  const resolved = roleOptionsFromOutcomes(outcomes);
-  missingRoles = [...plan.missing, ...resolved.missing];
-
-  // Aggregate budget adherence: per-role picks have no view of the running
-  // total, so downgrade to cheaper in-pool alternates before persisting.
-  const budgetFit = fitSelectionToBudget({
-    roleOptions: resolved.roleOptions,
-    selectedProductIdByRole: resolved.selectedProductIdByRole,
-    budgetMaxAed: project.budget_max_aed ?? null
-  });
-  const selection = budgetFit.selectedProductIdByRole;
-  const roleOptions = selectedFirst(resolved.roleOptions, selection);
-  const reasonBySelectedId = new Map(
-    outcomes
-      .filter((outcome): outcome is Extract<SpecRoleOutcome, { kind: "selected" }> => outcome.kind === "selected")
-      .map((outcome) => [outcome.selectedProductId, whyThisPiece(outcome)])
-  );
-  // A budget downgrade replaces the pick with a cheaper in-pool alternate; the
-  // row then says so instead of borrowing the alternate's ranking prose.
-  for (const downgrade of budgetFit.downgrades) {
-    reasonBySelectedId.set(
-      downgrade.toProductId,
-      `Chosen as the closest piece within the room's budget; the first choice for this role was above it.`
-    );
-  }
-  const roleByProductId = new Map<string, RoomProductRoleSpec>();
-  for (const role of roleOptions) {
-    for (const option of role.options) {
-      roleByProductId.set(option.id, role);
-    }
-  }
-  const itemRows = buildShoppingListItemRows({
-    roleOptions,
-    selectedProductIdByRole: selection,
-    reasonFor: (match) =>
-      reasonBySelectedId.get(match.id) ??
-      alternateProse(match, roleByProductId.get(match.id) ?? { category: match.categoryNormalized ?? "", label: "role", visualBrief: null, quantity: 1, priority: "supporting" })
-  });
-
-  const { data: existingList } = await supabase
-    .from("shopping_lists")
-    .select("id")
-    .eq("room_id", roomId)
-    .eq("concept_id", conceptId)
-    .limit(1)
-    .maybeSingle();
-
-  const shoppingListResult = existingList
-    ? { data: existingList, error: null }
-    : await supabase
-        .from("shopping_lists")
-        .insert({ room_id: roomId, concept_id: conceptId, status: "draft" })
-        .select("id")
-        .single();
-
-  if (shoppingListResult.error || !shoppingListResult.data) {
-    throw new Error(shoppingListResult.error?.message ?? "Could not open the shopping list.");
-  }
-
-  const shoppingListId = shoppingListResult.data.id;
-  const { error: deleteError } = await supabase
-    .from("shopping_list_items")
-    .delete()
-    .eq("shopping_list_id", shoppingListId);
-  if (deleteError) {
-    throw new Error(deleteError.message);
-  }
-
-  if (itemRows.length > 0) {
-    const { error: itemError } = await supabase
-      .from("shopping_list_items")
-      .insert(itemRows.map((row) => ({ ...row, shopping_list_id: shoppingListId })));
-    if (itemError) {
-      throw new Error(itemError.message);
-    }
-  }
-
-  const estimatedTotal = selectedItemsTotalAed(itemRows);
-  const { error: listUpdateError } = await supabase
-    .from("shopping_lists")
-    .update({
-      estimated_total_aed: estimatedTotal,
-      missing_roles: missingRoles,
-      updated_at: new Date().toISOString()
-    })
-    .eq("id", shoppingListId);
-  if (listUpdateError) {
-    throw new Error(listUpdateError.message);
-  }
-
-  await supabase.from("rooms").update({ status: "sourcing" }).eq("id", roomId);
-
-  const selectedCount = itemRows.filter((row) => row.status === "selected").length;
-  const missingRoleCount = missingRoles.filter((entry) => entry.kind === "missing").length;
-
-  await serviceSupabase
-    .from("ai_jobs")
-    .update({
-      status: "succeeded",
-      completed_at: new Date().toISOString(),
-      model: visualPass.model ?? stageTextConfig("product_sourcing", configuredTextModel()).model,
-      prompt_version: visualPass.promptVersion,
-      cost_estimate_usd: sumUsdCosts(visualPass.textCostUsd, paletteTextCostUsd),
-      output_summary: {
-        specSource,
-        roleCount: roles.length,
-        poolCount: plan.pools.length,
-        selectedCount,
-        missingRoles: missingRoles.filter((entry) => entry.kind === "missing").map((entry) => entry.label),
-        unsourceable: missingRoles.filter((entry) => entry.kind !== "missing").map((entry) => entry.label),
-        contractRejections,
-        visualPass,
-        budgetFit: {
-          adjusted: budgetFit.adjusted,
-          withinBudget: budgetFit.withinBudget,
-          downgrades: budgetFit.downgrades.length
-        },
-        shoppingListId,
-        estimatedTotalAed: estimatedTotal
+            conceptImageDetail: "high",
+            candidateImageDetail: "low",
+            candidateImageDataUrls,
+            designSpec: {
+              roles: plan.pools.map((pool) => ({
+                echoKey: pool.role.echoKey,
+                category: pool.role.category,
+                label: pool.role.label,
+                quantity: pool.role.quantity,
+                sizeDescriptor: pool.role.specSizeDescriptor,
+                capacity: pool.role.specCapacity,
+                paletteMaterials: pool.role.specPaletteMaterials
+              })),
+              mustPreserve
+            }
+          }),
+          PRODUCT_SOURCING_AI_TIMEOUT_MS,
+          "Product visual sourcing timed out."
+        );
+        outcomes = resolveSpecRoleOutcomes({
+          pools: plan.pools,
+          roleResults: result.roleResults,
+          selections: result.selectedProducts
+        });
+        visualPass = {
+          ...visualPass,
+          used: true,
+          promptKey: result.promptKey,
+          promptVersion: result.promptVersion,
+          model: result.model,
+          textCostUsd: result.textCostUsd ?? null
+        };
+      } catch (error) {
+        // Honest degraded path: catalogue ranking against the spec, labelled as
+        // such on every row, never presented as a visual match.
+        const message = error instanceof Error ? error.message : "Product visual sourcing failed.";
+        console.error("Product visual sourcing failed; falling back to ranking.", error);
+        outcomes = resolveSpecRoleOutcomesByRanking(
+          plan.pools,
+          "Chosen by catalogue ranking because the visual pass was unavailable; check it against the concept."
+        );
+        visualPass = { ...visualPass, used: false, error: message };
       }
-    })
-    .eq("id", sourcingJob.id);
+    }
 
-  return { status: "sourced", selectedCount, missingRoleCount };
+    const resolved = roleOptionsFromOutcomes(outcomes);
+    missingRoles = [...plan.missing, ...resolved.missing];
+
+    // Aggregate budget adherence: per-role picks have no view of the running
+    // total, so downgrade to cheaper in-pool alternates before persisting.
+    const budgetFit = fitSelectionToBudget({
+      roleOptions: resolved.roleOptions,
+      selectedProductIdByRole: resolved.selectedProductIdByRole,
+      budgetMaxAed: project.budget_max_aed ?? null
+    });
+    const selection = budgetFit.selectedProductIdByRole;
+    const roleOptions = selectedFirst(resolved.roleOptions, selection);
+    const reasonByProductId = new Map(
+      outcomes
+        .filter((outcome): outcome is Extract<SpecRoleOutcome, { kind: "selected" }> => outcome.kind === "selected")
+        .map((outcome) => [outcome.selectedProductId, whyThisPiece(outcome)])
+    );
+    // A budget downgrade replaces the pick with a cheaper in-pool alternate:
+    // both rows then say what happened, the pass's first choice included.
+    for (const downgrade of budgetFit.downgrades) {
+      reasonByProductId.set(
+        downgrade.toProductId,
+        "Chosen as the closest piece within the room's budget; the first choice for this role was above it."
+      );
+      reasonByProductId.set(
+        downgrade.fromProductId,
+        "The visual pass's first choice for this role; above the room's budget, so a cheaper piece was chosen instead."
+      );
+    }
+    const roleByProductId = new Map<string, RoomProductRoleSpec>();
+    for (const role of roleOptions) {
+      for (const option of role.options) {
+        roleByProductId.set(option.id, role);
+      }
+    }
+    const itemRows = buildShoppingListItemRows({
+      roleOptions,
+      selectedProductIdByRole: selection,
+      reasonFor: (match) =>
+        reasonByProductId.get(match.id) ??
+        alternateProse(match, roleByProductId.get(match.id) ?? { category: match.categoryNormalized ?? "", label: "role", visualBrief: null, quantity: 1, priority: "supporting" })
+    });
+
+    const { data: existingList } = await supabase
+      .from("shopping_lists")
+      .select("id")
+      .eq("room_id", roomId)
+      .eq("concept_id", conceptId)
+      .limit(1)
+      .maybeSingle();
+
+    const shoppingListResult = existingList
+      ? { data: existingList, error: null }
+      : await supabase
+          .from("shopping_lists")
+          .insert({ room_id: roomId, concept_id: conceptId, status: "draft" })
+          .select("id")
+          .single();
+
+    if (shoppingListResult.error || !shoppingListResult.data) {
+      throw new Error(shoppingListResult.error?.message ?? "Could not open the shopping list.");
+    }
+
+    const shoppingListId = shoppingListResult.data.id;
+    const { error: deleteError } = await supabase
+      .from("shopping_list_items")
+      .delete()
+      .eq("shopping_list_id", shoppingListId);
+    if (deleteError) {
+      throw new Error(deleteError.message);
+    }
+
+    if (itemRows.length > 0) {
+      const { error: itemError } = await supabase
+        .from("shopping_list_items")
+        .insert(itemRows.map((row) => ({ ...row, shopping_list_id: shoppingListId })));
+      if (itemError) {
+        throw new Error(itemError.message);
+      }
+    }
+
+    const estimatedTotal = selectedItemsTotalAed(itemRows);
+    const { error: listUpdateError } = await supabase
+      .from("shopping_lists")
+      .update({
+        estimated_total_aed: estimatedTotal,
+        missing_roles: missingRoles,
+        // Provenance lives on the list itself: the screens state where the
+        // rows came from without consulting the room's live spec state.
+        spec_source: specSource,
+        spec_id: specState.status === "ready" ? specState.spec.id : null,
+        updated_at: new Date().toISOString()
+      })
+      .eq("id", shoppingListId);
+    if (listUpdateError) {
+      throw new Error(listUpdateError.message);
+    }
+
+    await supabase.from("rooms").update({ status: "sourcing" }).eq("id", roomId);
+
+    const selectedCount = itemRows.filter((row) => row.status === "selected").length;
+    const missingRoleCount = missingRoles.filter((entry) => entry.kind === "missing").length;
+
+    await serviceSupabase
+      .from("ai_jobs")
+      .update({
+        status: "succeeded",
+        completed_at: new Date().toISOString(),
+        model: visualPass.model ?? sourcingModel,
+        prompt_version: visualPass.promptVersion,
+        cost_estimate_usd: sumUsdCosts(visualPass.textCostUsd, paletteTextCostUsd),
+        output_summary: {
+          specSource,
+          roleCount: roles.length,
+          poolCount: plan.pools.length,
+          selectedCount,
+          missingRoles: missingRoles.filter((entry) => entry.kind === "missing").map((entry) => entry.label),
+          unsourceable: missingRoles.filter((entry) => entry.kind !== "missing").map((entry) => entry.label),
+          contractRejections,
+          visualPass,
+          budgetFit: {
+            adjusted: budgetFit.adjusted,
+            withinBudget: budgetFit.withinBudget,
+            downgrades: budgetFit.downgrades.length
+          },
+          shoppingListId,
+          estimatedTotalAed: estimatedTotal
+        }
+      })
+      .eq("id", sourcingJob.id);
+
+    return { status: "sourced", selectedCount, missingRoleCount };
+  } catch (error) {
+    await serviceSupabase
+      .from("ai_jobs")
+      .update({
+        status: "failed",
+        completed_at: new Date().toISOString(),
+        error_message: error instanceof Error ? error.message : "Product sourcing failed.",
+        model: visualPass.model ?? sourcingModel,
+        prompt_version: visualPass.promptVersion,
+        // The pass's spend is real even when the list could not be written.
+        cost_estimate_usd: sumUsdCosts(visualPass.textCostUsd, paletteTextCostUsd),
+        output_summary: { specSource, visualPass, failedAfterVisualPass: visualPass.used }
+      })
+      .eq("id", sourcingJob.id);
+    throw error;
+  }
 }
 
 // ------------------------------------------------------------- refill
@@ -577,12 +607,16 @@ export type ShoppingOptionRefillInput = {
   roomId: string;
   shoppingListId: string;
   category: string;
-  // The role's label (a spec object's label after S3). Scopes the refill to
-  // ONE role when a category carries several; absent for legacy lists.
+  // The role's identity: the spec object's key (S3 rows) or its label. Either
+  // scopes the refill to ONE role when a category carries several; when the
+  // caller passes neither, the identity is derived from the rows themselves
+  // and a category holding several roles is refused rather than blended.
+  specKey?: string | null;
   roleLabel?: string | null;
 };
 
 type OptionRowTemplate = {
+  spec_key?: string | null;
   role_label: string;
   role_visual_brief: string | null;
   role_priority: string;
@@ -596,7 +630,8 @@ function optionRowsFromMatches(
   shoppingListId: string,
   category: string,
   template: OptionRowTemplate,
-  matches: RankedProductMatch[]
+  matches: RankedProductMatch[],
+  role: RoomProductRoleSpec
 ) {
   return matches.map((match, index) => {
     const unitPrice = match.salePriceAed ?? match.priceAed ?? 0;
@@ -605,6 +640,7 @@ function optionRowsFromMatches(
       product_id: match.id,
       category,
       status: "option",
+      spec_key: template.spec_key ?? null,
       role_label: template.role_label,
       role_visual_brief: template.role_visual_brief,
       role_priority: template.role_priority,
@@ -613,22 +649,47 @@ function optionRowsFromMatches(
       quantity: template.role_quantity,
       unit_price_aed: unitPrice,
       line_total_aed: unitPrice * template.role_quantity,
-      selection_reason: [match.selectionReason, ...match.warnings.filter((warning) => warning !== match.dimensionFitNote)].join(" "),
+      // Prose only (12.7): ranking warnings are not folded into the reason.
+      selection_reason: alternateProse(match, role),
       dimension_fit_note: match.dimensionFitNote,
       sort_order: template.option_rank + index + 1
     };
   });
 }
 
-// The spec role a persisted row belongs to, by label (the row's role_label is
-// the spec object's label verbatim), so refills and swaps re-run the SAME
-// contract sourcing used. Null when the list was built without a spec.
+export type ListRowSpecRole =
+  // The row's role under the concept's current spec: swaps and refills re-run
+  // this contract.
+  | { status: "role"; role: SpecSourcingRole }
+  // The concept has no spec (a blueprint-built list): no contract to apply.
+  | { status: "no_spec" }
+  // The concept has a spec but this row's identity is not in it (the spec was
+  // re-extracted or re-numbered since the list was built): the list is stale
+  // and must be re-sourced before its rows are changed.
+  | { status: "stale" };
+
+// The spec role a persisted row belongs to: by the row's spec key first (S3
+// rows carry the spec object's stable key), else by label for rows that
+// predate keys. Resolution is by identity, so a label the user edited on
+// /spec after sourcing never silently drops the contract.
 export async function specRoleForListRow(
   serviceSupabase: ServiceSupabaseClient,
-  { roomId, conceptId, roomType, roleLabel }: { roomId: string; conceptId: string | null; roomType: string; roleLabel: string | null | undefined }
-): Promise<SpecSourcingRole | null> {
-  if (!conceptId || !roleLabel) {
-    return null;
+  {
+    roomId,
+    conceptId,
+    roomType,
+    specKey,
+    roleLabel
+  }: {
+    roomId: string;
+    conceptId: string | null;
+    roomType: string;
+    specKey?: string | null;
+    roleLabel?: string | null;
+  }
+): Promise<ListRowSpecRole> {
+  if (!conceptId) {
+    return { status: "no_spec" };
   }
   const { data: specRow } = await serviceSupabase
     .from("room_design_specs")
@@ -637,22 +698,25 @@ export async function specRoleForListRow(
     .eq("concept_id", conceptId)
     .maybeSingle();
   if (!specRow) {
-    return null;
+    return { status: "no_spec" };
   }
-  const { parseRoomDesignSpecRow } = await import("@ritzy-studio/domain");
   const spec = parseRoomDesignSpecRow(specRow);
   if (!spec) {
-    return null;
+    return { status: "stale" };
   }
-  const wanted = roleLabel.trim().toLowerCase();
-  return (
-    sourcingRolesFromDesignSpec(spec, roomType).roles.find((role) => role.label.trim().toLowerCase() === wanted) ?? null
-  );
+  const roles = sourcingRolesFromDesignSpec(spec, roomType).roles;
+  if (specKey) {
+    const byKey = roles.find((role) => role.specKey === specKey);
+    return byKey ? { status: "role", role: byKey } : { status: "stale" };
+  }
+  const wanted = (roleLabel ?? "").trim().toLowerCase();
+  const byLabel = wanted ? roles.find((role) => role.label.trim().toLowerCase() === wanted) : undefined;
+  return byLabel ? { status: "role", role: byLabel } : { status: "stale" };
 }
 
 async function loadRefillContext(
   { supabase, serviceSupabase }: Clients,
-  { projectId, roomId, shoppingListId, category, roleLabel }: ShoppingOptionRefillInput,
+  { projectId, roomId, shoppingListId, category, specKey, roleLabel }: ShoppingOptionRefillInput,
   itemColumns: string
 ) {
   const { data: shoppingList } = await supabase
@@ -689,10 +753,23 @@ async function loadRefillContext(
     .select(itemColumns)
     .eq("shopping_list_id", shoppingListId)
     .eq("category", category);
-  if (roleLabel) {
+  if (specKey) {
+    rowsQuery = rowsQuery.eq("spec_key", specKey);
+  } else if (roleLabel) {
     rowsQuery = rowsQuery.eq("role_label", roleLabel);
   }
-  const { data: existingRows } = await rowsQuery;
+  const { data: existingRowsRaw } = await rowsQuery;
+  // The rows define the role. Without a caller-supplied identity, a category
+  // that holds several roles is refused: blending them would reject one
+  // role's options and relabel the other's.
+  const rowsForIdentity = ((existingRowsRaw ?? []) as unknown as Array<{ spec_key?: string | null; role_label?: string | null }>);
+  const identities = new Set(rowsForIdentity.map((row) => row.spec_key ?? `label:${row.role_label ?? ""}`));
+  if (identities.size > 1) {
+    return null;
+  }
+  const rowSpecKey = specKey ?? rowsForIdentity[0]?.spec_key ?? null;
+  const rowLabel = roleLabel ?? rowsForIdentity[0]?.role_label ?? null;
+  const existingRows = existingRowsRaw;
 
   const { data: measurements } = await supabase
     .from("room_measurements")
@@ -720,7 +797,8 @@ async function loadRefillContext(
     roomId,
     conceptId: shoppingList.concept_id,
     roomType: room.room_type,
-    roleLabel: roleLabel ?? null
+    specKey: rowSpecKey,
+    roleLabel: rowLabel
   });
 
   return { room, project, concept, existingRows, measurements, products, specRole };
@@ -748,7 +826,7 @@ function rankFreshOptions({
   usedProductIds: Set<string>;
   limit: number;
   specRole: SpecSourcingRole | null;
-}) {
+}): { role: RoomProductRoleSpec; matches: RankedProductMatch[] } {
   const allCandidates = (products ?? [])
     .map(productToMatchCandidate)
     .filter((candidate): candidate is ProductMatchCandidate => Boolean(candidate));
@@ -767,7 +845,7 @@ function rankFreshOptions({
       role_priority: template.role_priority,
       role_quantity: template.role_quantity
     });
-  return roleScopedShoppingAlternates({
+  const matches = roleScopedShoppingAlternates({
     roomType: room.room_type,
     conceptText,
     budgetMaxAed: project.budget_max_aed,
@@ -779,9 +857,10 @@ function rankFreshOptions({
     excludeProductIds: usedProductIds,
     limit
   });
+  return { role, matches };
 }
 
-export type RefreshShoppingOptionsResult = { status: "refreshed" } | { status: "no_change" };
+export type RefreshShoppingOptionsResult = { status: "refreshed" } | { status: "no_change" } | { status: "stale_spec" };
 
 // Replace the non-selected options for a role while preserving the shopper's
 // current pick. This keeps refresh scoped to exploration, not selection.
@@ -792,7 +871,7 @@ export async function refreshShoppingOptions(
   const context = await loadRefillContext(
     clients,
     input,
-    "id, product_id, status, role_label, role_visual_brief, role_priority, role_quantity, option_rank"
+    "id, product_id, status, spec_key, role_label, role_visual_brief, role_priority, role_quantity, option_rank"
   );
   if (!context) {
     return { status: "no_change" };
@@ -805,6 +884,9 @@ export async function refreshShoppingOptions(
   if (!context.concept || existingRows.length === 0 || !selectedRow) {
     return { status: "no_change" };
   }
+  if (context.specRole.status === "stale") {
+    return { status: "stale_spec" };
+  }
 
   const usedProductIds = new Set(existingRows.map((row) => row.product_id));
   const template = existingRows.reduce(
@@ -812,7 +894,7 @@ export async function refreshShoppingOptions(
     existingRows[0]
   );
 
-  const fresh = rankFreshOptions({
+  const { role, matches: fresh } = rankFreshOptions({
     room: context.room,
     project: context.project,
     concept: context.concept,
@@ -822,7 +904,7 @@ export async function refreshShoppingOptions(
     template,
     usedProductIds,
     limit: 2,
-    specRole: context.specRole
+    specRole: context.specRole.status === "role" ? context.specRole.role : null
   });
 
   if (fresh.length === 0) {
@@ -835,21 +917,25 @@ export async function refreshShoppingOptions(
     .eq("shopping_list_id", input.shoppingListId)
     .eq("category", input.category)
     .neq("status", "selected");
-  if (input.roleLabel) {
-    rejectQuery = rejectQuery.eq("role_label", input.roleLabel);
+  const rejectSpecKey = input.specKey ?? template.spec_key ?? null;
+  if (rejectSpecKey) {
+    rejectQuery = rejectQuery.eq("spec_key", rejectSpecKey);
+  } else if (input.roleLabel ?? template.role_label) {
+    rejectQuery = rejectQuery.eq("role_label", input.roleLabel ?? template.role_label);
   }
   await rejectQuery;
 
   await clients.supabase
     .from("shopping_list_items")
-    .insert(optionRowsFromMatches(input.shoppingListId, input.category, template, fresh));
+    .insert(optionRowsFromMatches(input.shoppingListId, input.category, template, fresh, role));
   return { status: "refreshed" };
 }
 
 export type FindMoreShoppingOptionsResult =
   | { status: "appended" }
   | { status: "no_candidates" }
-  | { status: "no_change" };
+  | { status: "no_change" }
+  | { status: "stale_spec" };
 
 // Rare path: every loaded option for a role was rejected. Rank the catalog for
 // that role, skip products already in the list, and append fresh options.
@@ -860,7 +946,7 @@ export async function findMoreShoppingOptions(
   const context = await loadRefillContext(
     clients,
     input,
-    "product_id, role_label, role_visual_brief, role_priority, role_quantity, option_rank"
+    "product_id, spec_key, role_label, role_visual_brief, role_priority, role_quantity, option_rank"
   );
   if (!context) {
     return { status: "no_change" };
@@ -872,6 +958,9 @@ export async function findMoreShoppingOptions(
   if (!context.concept || existingRows.length === 0) {
     return { status: "no_change" };
   }
+  if (context.specRole.status === "stale") {
+    return { status: "stale_spec" };
+  }
 
   const usedProductIds = new Set(existingRows.map((row) => row.product_id));
   const template = existingRows.reduce(
@@ -879,7 +968,7 @@ export async function findMoreShoppingOptions(
     existingRows[0]
   );
 
-  const fresh = rankFreshOptions({
+  const { role, matches: fresh } = rankFreshOptions({
     room: context.room,
     project: context.project,
     concept: context.concept,
@@ -889,7 +978,7 @@ export async function findMoreShoppingOptions(
     template,
     usedProductIds,
     limit: 3,
-    specRole: context.specRole
+    specRole: context.specRole.status === "role" ? context.specRole.role : null
   });
 
   if (fresh.length === 0) {
@@ -898,6 +987,6 @@ export async function findMoreShoppingOptions(
 
   await clients.supabase
     .from("shopping_list_items")
-    .insert(optionRowsFromMatches(input.shoppingListId, input.category, template, fresh));
+    .insert(optionRowsFromMatches(input.shoppingListId, input.category, template, fresh, role));
   return { status: "appended" };
 }
