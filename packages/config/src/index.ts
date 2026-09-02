@@ -177,31 +177,3 @@ export function signupAllowed(
   return entries.some((entry) => entry === "*" || entry === normalized || entry === domain);
 }
 
-export type ProductMatchingControlledPreviewGateInput = {
-  env: Record<string, string | undefined>;
-  projectId?: string | null;
-  roomId?: string | null;
-  userId?: string | null;
-  userEmail?: string | null;
-};
-
-export type ProductMatchingControlledPreviewGate = {
-  configured: boolean;
-  enabled: boolean;
-  allowed: boolean;
-  matchedScopes: Array<"project" | "room" | "user" | "email">;
-};
-
-function commaSeparatedValues(value: string | undefined) {
-  return new Set(
-    (value ?? "")
-      .split(",")
-      .map((entry) => entry.trim())
-      .filter(Boolean)
-  );
-}
-
-function commaSeparatedLowercaseValues(value: string | undefined) {
-  return new Set(Array.from(commaSeparatedValues(value)).map((entry) => entry.toLowerCase()));
-}
-

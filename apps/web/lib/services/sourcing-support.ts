@@ -110,10 +110,6 @@ export type ProductRow = Database["public"]["Tables"]["products"]["Row"] & {
     | null;
 };
 
-
-
-
-
 export function shoppingListRoleSpecFromRow(row: {
   category: string | null;
   role_label?: string | null;
@@ -168,7 +164,6 @@ export function roleScopedShoppingAlternates({
     .slice(0, Math.max(1, limit));
 }
 
-
 const AVOID_CUE_COLOR_TOKENS = [
   "beige", "black", "blue", "brown", "burgundy", "charcoal", "cream", "gold", "green", "grey",
   "gray", "ivory", "navy", "orange", "pink", "purple", "red", "rust", "sage", "taupe",
@@ -201,14 +196,6 @@ export function splitAvoidColorCues(text: string): { cueText: string; avoidColor
     cueText: cleanedLines.join("\n").replace(/[ \t]{2,}/g, " ").trim(),
     avoidColorTags: Array.from(avoidColorTags)
   };
-}
-
-
-
-
-
-export function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value && typeof value === "object" && !Array.isArray(value));
 }
 
 export function productToMatchCandidate(product: ProductRow): ProductMatchCandidate | null {
@@ -283,41 +270,6 @@ export function catalogUnavailableMessage(products: ProductRow[]) {
 
   return "The shopping catalog is refreshing eligible products. Please try again shortly.";
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 export function matchToSourcingCandidate(match: RankedProductMatch) {
   return {
