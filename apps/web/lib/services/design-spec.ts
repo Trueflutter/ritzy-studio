@@ -27,7 +27,11 @@ import type { ServiceSupabaseClient, UserSupabaseClient } from "./supabase-clien
 //     row and hand ONLY the job id to the detached runner through the injected
 //     `defer` (after() in production, so a closed tab cannot abort it).
 //   - The RUNNER (`runRoomDesignSpecExtraction`) re-derives everything from the
-//     job row and always ends with a terminal write, recording the cost even
+//     job row and finalizes ONLY while it still owns the lease: every terminal
+//     write is a status-conditional compare-and-swap, ownership is re-verified
+//     before anything is persisted, and a run whose lease was reclaimed
+//     discards its result and records only its spend, never touching the
+//     terminal status the reclaim set. Cost is recorded on every exit, even
 //     when the spec write fails after a paid call.
 // A paid extraction therefore can never sit in `running` past its lease, the
 // user is never locked out behind a dead job, and a GET starts at most ONE
@@ -310,7 +314,8 @@ type SpecExtractionJobSummary = { conceptId?: unknown };
 
 // The detached runner. Re-derives everything from the job row (like the final
 // render runner), so it is safe to invoke for any job id at any time: a row that
-// is no longer a live lease never spends again. Every exit is a terminal write.
+// is no longer a live lease never spends again, and a run that loses its lease
+// mid-flight never writes the spec or the terminal status (see finalize).
 export async function runRoomDesignSpecExtraction(
   serviceSupabase: ServiceSupabaseClient,
   { jobId }: { jobId: string },
@@ -341,36 +346,77 @@ export async function runRoomDesignSpecExtraction(
   const conceptId = typeof summary.conceptId === "string" ? summary.conceptId : null;
   const roomId = job.room_id;
 
+  type JobUpdate = Database["public"]["Tables"]["ai_jobs"]["Update"];
   let extraction: Awaited<ReturnType<typeof extract>> | null = null;
 
-  // Every terminal write is checked: a lease must never outlive its run
-  // because the closing write itself failed silently.
-  const closeJob = async (payload: Database["public"]["Tables"]["ai_jobs"]["Update"]): Promise<boolean> => {
-    const { error } = await serviceSupabase.from("ai_jobs").update(payload).eq("id", jobId);
+  // Honest cost: a paid call is spend whether or not its result was kept, and
+  // the row says so on every exit.
+  const spendFields = (): Pick<JobUpdate, "model" | "prompt_version" | "cost_estimate_usd"> =>
+    extraction
+      ? {
+          model: extraction.model,
+          prompt_version: extraction.promptVersion,
+          cost_estimate_usd: extraction.textCostUsd ?? null
+        }
+      : {};
+
+  // A run that lost its lease (a reader reclaimed it as abandoned) no longer
+  // owns the terminal status. It records what happened and what it cost on
+  // the row without touching the status the reclaim set.
+  const recordLateOutcome = async (outcome: { status: "discarded" | "succeeded" | "failed"; message: string }) => {
+    console.warn(`Spec extraction job ${jobId}: lease reclaimed before this run finished; ${outcome.status}: ${outcome.message}`);
+    const { error } = await serviceSupabase
+      .from("ai_jobs")
+      .update({ ...spendFields(), output_summary: { conceptId, lateOutcome: outcome } })
+      .eq("id", jobId)
+      .neq("status", "running");
     if (error) {
-      console.error(
-        `Spec extraction job ${jobId}: terminal write (${String(payload.status)}) failed: ${error.message}`
-      );
-      return false;
+      console.error(`Spec extraction job ${jobId}: late-outcome write failed: ${error.message}`);
     }
-    return true;
+  };
+
+  // Terminal writes are lease-owned: a status-conditional compare-and-swap
+  // that lands only while this run still holds the lease. Zero rows means a
+  // reader reclaimed it in the meantime, and the reclaim's verdict stands.
+  const finalize = async (
+    payload: JobUpdate & { status: "succeeded" | "failed" }
+  ): Promise<"finalized" | "lost_lease" | "write_failed"> => {
+    const { data, error } = await serviceSupabase
+      .from("ai_jobs")
+      .update(payload)
+      .eq("id", jobId)
+      .in("status", ["running", "queued"])
+      .select("id");
+    if (error) {
+      console.error(`Spec extraction job ${jobId}: terminal write (${payload.status}) failed: ${error.message}`);
+      return "write_failed";
+    }
+    if (!data || data.length === 0) {
+      await recordLateOutcome({
+        status: payload.status,
+        message:
+          payload.status === "failed"
+            ? payload.error_message ?? "Spec extraction failed."
+            : "spec stored, then the lease was found reclaimed; the Retry reads it back"
+      });
+      return "lost_lease";
+    }
+    return "finalized";
   };
 
   const fail = async (message: string) => {
-    await closeJob({
-      status: "failed",
+    const payload = {
+      status: "failed" as const,
       completed_at: new Date().toISOString(),
       error_message: message,
-      // Honest cost: a paid call that succeeded before persistence failed is
-      // still spend, and the row says so.
-      ...(extraction
-        ? {
-            model: extraction.model,
-            prompt_version: extraction.promptVersion,
-            cost_estimate_usd: extraction.textCostUsd ?? null
-          }
-        : {})
-    });
+      ...spendFields()
+    };
+    // One immediate retry covers a transient blip; past that the lease expiry
+    // reclaims the row, which is the honest state for a run that could not
+    // report.
+    if ((await finalize(payload)) === "write_failed") {
+      await finalize(payload);
+    }
   };
 
   if (!conceptId || !roomId) {
@@ -439,6 +485,28 @@ export async function runRoomDesignSpecExtraction(
         : null
     });
 
+    // Lease ownership is re-verified before anything is persisted: a run the
+    // reader has already reclaimed as abandoned is dead by contract, so it
+    // discards its result (spend recorded) instead of writing a spec the user
+    // has been told to retry. The window between this check and the upsert is
+    // sub-millisecond and can only race a first-write-wins write of a valid
+    // spec, which the Retry then reads back.
+    const { data: lease, error: leaseError } = await serviceSupabase
+      .from("ai_jobs")
+      .select("status")
+      .eq("id", jobId)
+      .maybeSingle();
+    if (leaseError) {
+      throw new Error(leaseError.message);
+    }
+    if (!lease || (lease.status !== "running" && lease.status !== "queued")) {
+      await recordLateOutcome({
+        status: "discarded",
+        message: "extraction finished after the lease was reclaimed; the result was discarded"
+      });
+      return;
+    }
+
     // First write wins (codex finding): ignoreDuplicates means a slower
     // duplicate run can never overwrite a row another run stored, and above all
     // can never reset a spec the user has already CONFIRMED. A stored malformed
@@ -504,8 +572,8 @@ export async function runRoomDesignSpecExtraction(
       }
     }
 
-    const succeeded: Database["public"]["Tables"]["ai_jobs"]["Update"] = {
-      status: "succeeded",
+    const succeeded = {
+      status: "succeeded" as const,
       completed_at: new Date().toISOString(),
       model: extraction.model,
       prompt_version: extraction.promptVersion,
@@ -521,8 +589,14 @@ export async function runRoomDesignSpecExtraction(
     // The spec is stored, so readers return ready from the spec row and would
     // never reclaim this lease: the audit row must not stay `running`. One
     // immediate retry covers a transient blip; past that, close it failed with
-    // the spend recorded and the truth in the message.
-    if (!(await closeJob(succeeded)) && !(await closeJob(succeeded))) {
+    // the spend recorded and the truth in the message. A lost lease here means
+    // a reader reclaimed the row during persistence; its verdict stands and the
+    // late outcome (spec stored) is recorded beside it.
+    let closed = await finalize(succeeded);
+    if (closed === "write_failed") {
+      closed = await finalize(succeeded);
+    }
+    if (closed === "write_failed") {
       await fail("Spec stored, but the job could not be closed as succeeded; the cost is recorded here.");
     }
   } catch (error) {

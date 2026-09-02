@@ -541,16 +541,25 @@ async function main() {
   };
   // Everything the runner reads comes through the service client, re-derived
   // from the job row; `respond` overrides the spec-table behaviour per case.
+  // Every ai_jobs select returns the job (the initial load and the pre-persist
+  // lease check); a terminal write is a CAS hit unless the case says otherwise.
+  const CAS_HIT = { data: [{ id: "job-1" }] };
   function runnerService(respond: Responder, job: Record<string, unknown> = JOB_ROW) {
     return fakeSupabase((call) => {
       if (call.table === "ai_jobs" && call.op === "select") return { data: job };
       if (call.table === "rooms") return { data: ROOM };
       if (call.table === "concepts") return { data: { id: "concept-1", primary_image_asset_id: "asset-1" } };
       if (call.table === "room_assets") return { data: { storage_path: "u/room-1/concept-1.png", mime_type: "image/png" } };
-      return respond(call);
+      const custom = respond(call);
+      if (call.table === "ai_jobs" && call.op === "update" && !custom.error && custom.data == null) {
+        return CAS_HIT;
+      }
+      return custom;
     }, RUNNER_STORAGE);
   }
   const jobUpdate = (calls: RecordedCall[]) => calls.find((call) => call.table === "ai_jobs" && call.op === "update");
+  const jobUpdates = (calls: RecordedCall[]) => calls.filter((call) => call.table === "ai_jobs" && call.op === "update");
+  const LEASE_CAS = [["status", ["running", "queued"]]];
 
   // --- A job that is no longer a live lease (reclaimed, or already reported)
   // never spends again: at-least-once safety
@@ -616,6 +625,7 @@ async function main() {
     assert.equal(closed?.payload?.model, "stub");
     assert.equal(closed?.payload?.prompt_version, "test");
     assert.deepEqual(closed?.filters, [["id", "job-1"]]);
+    assert.deepEqual(closed?.in, LEASE_CAS, "finalization must be a CAS on a still-live lease");
     assert.equal((closed?.payload?.output_summary as { objectCount?: number })?.objectCount, 1);
     assert.equal(calls.filter((call) => call.table === "room_design_specs" && call.op === "update").length, 0);
   }
@@ -696,19 +706,19 @@ async function main() {
   // --- The terminal write is checked: a transient failure closing the job as
   // succeeded is retried once ...
   {
-    let jobUpdates = 0;
+    let attempts = 0;
     const { client: service, calls } = runnerService((call) => {
       if (call.table === "room_design_specs" && call.op === "upsert") {
         return { data: { ...VALID_SPEC_ROW, status: "extracted" } };
       }
       if (call.table === "ai_jobs" && call.op === "update") {
-        jobUpdates += 1;
-        return jobUpdates === 1 ? { error: { message: "pooler blip" } } : { data: null };
+        attempts += 1;
+        return attempts === 1 ? { error: { message: "pooler blip" } } : CAS_HIT;
       }
       return { data: null };
     });
     await runRoomDesignSpecExtraction(service, { jobId: "job-1" }, { extract: async () => EXTRACTION });
-    const updates = calls.filter((call) => call.table === "ai_jobs" && call.op === "update");
+    const updates = jobUpdates(calls);
     assert.equal(updates.length, 2);
     assert.equal(updates[1]?.payload?.status, "succeeded");
   }
@@ -716,23 +726,94 @@ async function main() {
   // --- ... and past that the row is still never left running: closed failed
   // with the spend recorded and the stored spec named in the message
   {
-    let jobUpdates = 0;
+    let attempts = 0;
     const { client: service, calls } = runnerService((call) => {
       if (call.table === "room_design_specs" && call.op === "upsert") {
         return { data: { ...VALID_SPEC_ROW, status: "extracted" } };
       }
       if (call.table === "ai_jobs" && call.op === "update") {
-        jobUpdates += 1;
-        return jobUpdates <= 2 ? { error: { message: "db down" } } : { data: null };
+        attempts += 1;
+        return attempts <= 2 ? { error: { message: "db down" } } : CAS_HIT;
       }
       return { data: null };
     });
     await runRoomDesignSpecExtraction(service, { jobId: "job-1" }, { extract: async () => EXTRACTION });
-    const updates = calls.filter((call) => call.table === "ai_jobs" && call.op === "update");
+    const updates = jobUpdates(calls);
     assert.equal(updates.length, 3);
     assert.equal(updates[2]?.payload?.status, "failed");
     assert.equal(updates[2]?.payload?.cost_estimate_usd, 0.001);
     assert.match(String(updates[2]?.payload?.error_message), /Spec stored/);
+    assert.deepEqual(updates[2]?.in, LEASE_CAS, "the failure close is lease-owned too");
+  }
+
+  // --- A LATE runner (its lease was reclaimed while the provider worked)
+  // never writes the spec and never marks the job succeeded: it records only
+  // its spend and the discarded outcome, without touching the terminal status
+  {
+    let jobReads = 0;
+    const { client: service, calls } = fakeSupabase((call) => {
+      if (call.table === "ai_jobs" && call.op === "select") {
+        jobReads += 1;
+        // Live at load; reclaimed as abandoned by the time persistence starts.
+        return { data: jobReads === 1 ? JOB_ROW : { ...JOB_ROW, status: "failed" } };
+      }
+      if (call.table === "rooms") return { data: ROOM };
+      if (call.table === "concepts") return { data: { id: "concept-1", primary_image_asset_id: "asset-1" } };
+      if (call.table === "room_assets") return { data: { storage_path: "u/room-1/concept-1.png", mime_type: "image/png" } };
+      return { data: null };
+    }, RUNNER_STORAGE);
+    let paidCalls = 0;
+    await runRoomDesignSpecExtraction(service, { jobId: "job-1" }, {
+      extract: async () => {
+        paidCalls += 1;
+        return EXTRACTION;
+      }
+    });
+    assert.equal(paidCalls, 1);
+    assert.equal(jobReads, 2, "ownership is re-verified before persistence");
+    assert.equal(
+      calls.filter((call) => call.table === "room_design_specs" && call.op !== "select").length,
+      0,
+      "a late runner must not write the spec"
+    );
+    const updates = jobUpdates(calls);
+    assert.equal(updates.length, 1);
+    assert.equal("status" in (updates[0]?.payload ?? {}), false, "a late runner must not touch the terminal status");
+    assert.equal(updates[0]?.payload?.cost_estimate_usd, 0.001, "its spend is still recorded");
+    assert.deepEqual(updates[0]?.neq, [["status", "running"]]);
+    assert.equal(
+      (updates[0]?.payload?.output_summary as { lateOutcome?: { status?: string } })?.lateOutcome?.status,
+      "discarded"
+    );
+  }
+
+  // --- A lease reclaimed DURING persistence (the succeeded CAS finds zero
+  // rows) leaves the reclaim's verdict standing: no retry of the succeeded
+  // write, no failed write, only the late outcome recorded beside it
+  {
+    let attempts = 0;
+    const { client: service, calls } = runnerService((call) => {
+      if (call.table === "room_design_specs" && call.op === "upsert") {
+        return { data: { ...VALID_SPEC_ROW, status: "extracted" } };
+      }
+      if (call.table === "ai_jobs" && call.op === "update") {
+        attempts += 1;
+        return attempts === 1 ? { data: [] } : { data: [{ id: "job-1" }] };
+      }
+      return { data: null };
+    });
+    await runRoomDesignSpecExtraction(service, { jobId: "job-1" }, { extract: async () => EXTRACTION });
+    const updates = jobUpdates(calls);
+    assert.equal(updates.length, 2);
+    assert.equal(updates[0]?.payload?.status, "succeeded");
+    assert.deepEqual(updates[0]?.in, LEASE_CAS);
+    assert.equal("status" in (updates[1]?.payload ?? {}), false, "the reclaim's terminal status is never overwritten");
+    assert.deepEqual(updates[1]?.neq, [["status", "running"]]);
+    assert.equal(
+      (updates[1]?.payload?.output_summary as { lateOutcome?: { status?: string } })?.lateOutcome?.status,
+      "succeeded"
+    );
+    assert.equal(updates[1]?.payload?.cost_estimate_usd, 0.001);
   }
 
   // ---------------------------------------------------------------- confirm

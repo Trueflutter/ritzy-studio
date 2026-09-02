@@ -41,12 +41,26 @@ for (const route of [
   );
 }
 
-// A deadline configured past the route budget is clamped: the function dies at
-// the budget, so the lease cannot honestly extend beyond it.
+// The lease never exceeds the route budget: the function dies at the budget,
+// so a run cannot be alive past it, whatever RITZY_TEXT_TIMEOUT_MS says. The
+// cap applies after the overhead (a deadline just under the budget still
+// yields exactly the budget, never budget + overhead).
+assert.equal(specExtractionLeaseMs({ RITZY_TEXT_TIMEOUT_MS: String(routeBudgetMs * 10) }), routeBudgetMs);
+assert.equal(specExtractionLeaseMs({ RITZY_TEXT_TIMEOUT_MS: String(routeBudgetMs) }), routeBudgetMs);
 assert.equal(
-  specExtractionLeaseMs({ RITZY_TEXT_TIMEOUT_MS: String(routeBudgetMs * 10) }),
-  routeBudgetMs + SPEC_EXTRACTION_OVERHEAD_MS
+  specExtractionLeaseMs({ RITZY_TEXT_TIMEOUT_MS: String(routeBudgetMs - SPEC_EXTRACTION_OVERHEAD_MS) }),
+  routeBudgetMs
 );
+assert.equal(
+  specExtractionLeaseMs({ RITZY_TEXT_TIMEOUT_MS: String(routeBudgetMs - SPEC_EXTRACTION_OVERHEAD_MS - 1_000) }),
+  routeBudgetMs - 1_000
+);
+for (const configured of ["1", "3000", "90000", "250000", "299999", "300000", "600000", "garbage"]) {
+  assert.ok(
+    specExtractionLeaseMs({ RITZY_TEXT_TIMEOUT_MS: configured }) <= routeBudgetMs,
+    `lease for RITZY_TEXT_TIMEOUT_MS=${configured} must not exceed the route budget`
+  );
+}
 
 const lease = 120_000;
 

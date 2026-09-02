@@ -24,9 +24,10 @@ export function specExtractionLeaseMs(
   env: { RITZY_TEXT_TIMEOUT_MS?: string } = { RITZY_TEXT_TIMEOUT_MS: process.env.RITZY_TEXT_TIMEOUT_MS }
 ): number {
   const routeBudgetMs = SPEC_EXTRACTION_ROUTE_MAX_DURATION_S * 1000;
-  // A provider deadline longer than the route budget cannot be honoured (the
-  // function dies first), so the lease is bounded by whichever ends sooner.
-  return Math.min(textTimeoutMs(env), routeBudgetMs) + SPEC_EXTRACTION_OVERHEAD_MS;
+  // The function dies at the route budget whatever the provider deadline says,
+  // so no run can be alive past it: the cap applies AFTER the overhead, and the
+  // lease never exceeds the budget.
+  return Math.min(textTimeoutMs(env) + SPEC_EXTRACTION_OVERHEAD_MS, routeBudgetMs);
 }
 
 // A live-looking job whose lease has run out. A start time that cannot be read
