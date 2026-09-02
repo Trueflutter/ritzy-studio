@@ -1,5 +1,5 @@
 // What survives of the catalogue-first product-matching apparatus, which S3
-// retired: the two helpers that still describe how a role's category is
+// retired: the helper that still describes how a role's category is
 // normalised for reconciliation. The QA stop-rule, confidence tiering and
 // pool-summary machinery around them had no caller left once sourcing was
 // rebuilt against the confirmed spec, and a module that still exported them
@@ -13,9 +13,6 @@ function normalizeRoleKeyPart(value: string) {
     .replace(/^_+|_+$/g, "");
 }
 
-export function productMatchRoleKey(category: string, roleLabel: string) {
-  return `${normalizeRoleKeyPart(category)}::${normalizeRoleKeyPart(roleLabel)}`;
-}
 
 function isBedRoleText(text: string, normalizedCategory: string) {
   if (normalizedCategory === "beds") {

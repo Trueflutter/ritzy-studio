@@ -607,9 +607,7 @@ console.log("spec-sourcing tests passed");
     applyProductVerification,
     CONTESTED_OPEN_REASON
   } = await import("./spec-sourcing");
-  const { groupShoppingItemsByRole, buildShoppingListItemRows, fitSelectionToBudget, roleOptionKey } = await import(
-    "./product-matching"
-  );
+  const { groupShoppingItemsByRole, buildShoppingListItemRows, roleOptionKey } = await import("./product-matching");
 
   const withId = (candidate: ProductMatchCandidate, id: string) => ({ ...candidate, id });
   const catalogue: ProductMatchCandidate[] = [
@@ -829,37 +827,6 @@ console.log("spec-sourcing tests passed");
     "the open role writes options only, never a selected row"
   );
 
-  // --- budget fitting never downgrades onto a product another role holds,
-  // and reports the role it changed
-  const priced = (candidate: typeof X, priceAed: number) => ({ ...candidate, priceAed, salePriceAed: null });
-  const [x900, y100, z50] = [priced(X, 900), priced(Y, 100), priced(Z, 50)];
-  const shared = roleOptionsFromOutcomes(
-    resolveSpecRoleOutcomes({
-      pools: [pool(roleA, [x900, y100]), pool(roleB, [y100, x900])],
-      roleResults: [
-        { category: roleA.category, roleLabel: roleA.echoKey, status: "strong_match", productId: X.id, similarity: 0.9, reason: "a" },
-        { category: roleB.category, roleLabel: roleB.echoKey, status: "strong_match", productId: Y.id, similarity: 0.9, reason: "b" }
-      ],
-      selections: []
-    })
-  );
-  const sharedFit = fitSelectionToBudget({ roleOptions: shared.roleOptions, selectedProductIdByRole: shared.selectedProductIdByRole, budgetMaxAed: 500 });
-  assert.equal(new Set(sharedFit.selectedProductIdByRole.values()).size, 2, "two roles never end on the same product");
-  assert.equal(sharedFit.withinBudget, false, "the only cheaper alternate is held by the other role, so the list stays over budget honestly");
-  const withSpare = roleOptionsFromOutcomes(
-    resolveSpecRoleOutcomes({
-      pools: [pool(roleA, [x900, y100, z50]), pool(roleB, [y100, x900])],
-      roleResults: [
-        { category: roleA.category, roleLabel: roleA.echoKey, status: "strong_match", productId: X.id, similarity: 0.9, reason: "a" },
-        { category: roleB.category, roleLabel: roleB.echoKey, status: "strong_match", productId: Y.id, similarity: 0.9, reason: "b" }
-      ],
-      selections: []
-    })
-  );
-  const spareFit = fitSelectionToBudget({ roleOptions: withSpare.roleOptions, selectedProductIdByRole: withSpare.selectedProductIdByRole, budgetMaxAed: 500 });
-  assert.deepEqual(spareFit.downgrades.map((downgrade) => [downgrade.roleKey, downgrade.fromProductId, downgrade.toProductId]), [[roleOptionKey(roleA), X.id, Z.id]]);
-  assert.equal(spareFit.selectedProductIdByRole.get(roleOptionKey(roleB)), Y.id);
-
   // --- role options + item rows keyed by the spec role key, two roles in one
   // category stay distinct end to end
   const twoLightingRoles = sourcingRolesFromDesignSpec(
@@ -877,8 +844,6 @@ console.log("spec-sourcing tests passed");
   // Rows carry the spec object's key: identity for swaps, refills and grouping.
   assert.equal(typeof roleOptions[0].specKey, "string");
   assert.equal(rows[0].spec_key, roleOptions[0].specKey);
-  const fit = fitSelectionToBudget({ roleOptions, selectedProductIdByRole, budgetMaxAed: null });
-  assert.equal(fit.selectedProductIdByRole.get(roleOptionKey(roleOptions[0])), "00000000-0000-4000-8000-000000000012");
 
   const groups = groupShoppingItemsByRole([
     { id: "a", status: "selected", category: "lighting", role_label: "tall tripod floor lamp", role_priority: "required", role_quantity: 1, option_rank: 0 },

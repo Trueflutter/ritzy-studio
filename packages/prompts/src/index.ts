@@ -8,7 +8,6 @@ export {
   finalRenderViewConsistencyLanguage,
   globalPhotorealismLanguage,
   paletteRegisterLanguage,
-  productRoleLanguage,
   roomBlueprintDefaultsLanguage,
   roomDesignLanguage,
   roomSpatialPlacementGuardrailLanguage,

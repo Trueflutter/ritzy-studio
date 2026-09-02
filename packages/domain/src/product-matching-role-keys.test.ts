@@ -1,13 +1,10 @@
 import assert from "node:assert/strict";
 
-import { normalizeProductMatchRoleResultCategory, productMatchRoleKey } from "./product-matching-role-keys";
+import { normalizeProductMatchRoleResultCategory } from "./product-matching-role-keys";
 
 // What survives of the catalogue-first apparatus: how a role's category is
 // normalised when the visual pass's answer is reconciled with the pool it came
 // from. A drift here silently sends a verdict to the wrong role.
-
-assert.equal(productMatchRoleKey("Side Tables", "Bedside table"), "side_tables::bedside_table");
-assert.equal(productMatchRoleKey("  lighting  ", "Arc floor lamp!"), "lighting::arc_floor_lamp");
 
 // A dining chair is a chair, not an armchair, whatever the pool called it.
 assert.equal(normalizeProductMatchRoleResultCategory("armchairs", "upholstered dining chairs"), "chairs");

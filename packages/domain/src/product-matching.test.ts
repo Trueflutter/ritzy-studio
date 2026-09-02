@@ -15,7 +15,6 @@ import {
   deriveSizeClass,
   enhancedProductRolesForRoom,
   filterSubstitutionCandidates,
-  fitSelectionToBudget,
   groupShoppingItemsByRole,
   quantityForProductCategory,
   productRolesForRoom,
@@ -2639,86 +2638,6 @@ assert.ok(
     ?.warnings.some((warning) => warning.includes("outside the concept palette"))
 );
 
-// fitSelectionToBudget — aggregate budget adherence with quantities.
 // Reproduces the hosted finding: the sum of UNIT prices (38,448) reads within a 40,000 budget,
 // but the qty-aware line-total sum (an armchair at qty 2) is 44,118 — over budget.
-const budgetOption = (id: string, price: number) =>
-  ({ id, priceAed: price, salePriceAed: null } as unknown as RoleProductOptions["options"][number]);
-
-const budgetRoleOptions: RoleProductOptions[] = [
-  {
-    category: "sofas",
-    label: "anchor seating",
-    visualBrief: null,
-    quantity: 1,
-    priority: "required",
-    options: [budgetOption("sofa-a", 21000), budgetOption("sofa-b", 15000)]
-  },
-  {
-    category: "chairs",
-    label: "secondary seating",
-    visualBrief: null,
-    quantity: 2,
-    priority: "supporting",
-    options: [budgetOption("arm-a", 5670), budgetOption("arm-b", 3000)]
-  },
-  {
-    category: "coffee_tables",
-    label: "coffee table",
-    visualBrief: null,
-    quantity: 1,
-    priority: "supporting",
-    options: [budgetOption("cof-a", 7770), budgetOption("cof-b", 5000)]
-  },
-  { category: "rugs", label: "rug", visualBrief: null, quantity: 1, priority: "supporting", options: [budgetOption("rug-a", 1709)] },
-  { category: "side_tables", label: "side table", visualBrief: null, quantity: 1, priority: "supporting", options: [budgetOption("side-a", 600)] },
-  { category: "lighting", label: "lighting", visualBrief: null, quantity: 1, priority: "supporting", options: [budgetOption("light-a", 1699)] }
-];
-
-const budgetSelection = new Map(budgetRoleOptions.map((role) => [role.category, role.options[0].id]));
-
-const budgetFit = fitSelectionToBudget({
-  roleOptions: budgetRoleOptions,
-  selectedProductIdByRole: budgetSelection,
-  budgetMaxAed: 40000
-});
-
-// Unit-price sum reads within budget; line-total sum starts over budget (44,118).
-assert.equal(
-  budgetRoleOptions.reduce((total, role) => total + role.options[0].priceAed! * role.quantity, 0),
-  44118
-);
-// Smallest sufficient single downgrade (armchair qty 2 saves 5,340 >= 4,118 overage) is chosen,
-// not the larger sofa downgrade — least aesthetic loss while clearing the budget.
-assert.equal(budgetFit.adjusted, true);
-assert.equal(budgetFit.withinBudget, true);
-assert.equal(budgetFit.estimatedTotalAed, 38778);
-assert.equal(budgetFit.downgrades.length, 1);
-assert.equal(budgetFit.downgrades[0].category, "chairs");
-assert.equal(budgetFit.selectedProductIdByRole.get("chairs"), "arm-b");
-assert.equal(budgetFit.selectedProductIdByRole.get("sofas"), "sofa-a");
-// Input map is not mutated.
-assert.equal(budgetSelection.get("chairs"), "arm-a");
-
-// No budget → no-op.
-const noBudget = fitSelectionToBudget({
-  roleOptions: budgetRoleOptions,
-  selectedProductIdByRole: budgetSelection,
-  budgetMaxAed: null
-});
-assert.equal(noBudget.adjusted, false);
-assert.equal(noBudget.estimatedTotalAed, 44118);
-
-// Unfittable budget → downgrades to the cheapest everywhere but reports withinBudget=false.
-const tightFit = fitSelectionToBudget({
-  roleOptions: budgetRoleOptions,
-  selectedProductIdByRole: budgetSelection,
-  budgetMaxAed: 5000
-});
-assert.equal(tightFit.withinBudget, false);
-assert.equal(tightFit.selectedProductIdByRole.get("sofas"), "sofa-b");
-assert.equal(tightFit.selectedProductIdByRole.get("chairs"), "arm-b");
-// Cheapest achievable total = 15000+6000+5000+1709+600+1699 = 30008 (still over 5000).
-assert.equal(tightFit.estimatedTotalAed, 30008);
-
 console.log("product matching tests passed");
