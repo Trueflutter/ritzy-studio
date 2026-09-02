@@ -222,6 +222,86 @@ assert.deepEqual(checkCandidateAgainstSpecRole(fourSeatTable, byRole("dining_tab
 });
 assert.deepEqual(checkCandidateAgainstSpecRole(sixSeatTable, byRole("dining_table")), { ok: true });
 
+// --- review findings on the contract module (6b3e959): compound role
+// keys, placement phrases, seat ranges, size vocabulary, marketing copy
+{
+  const { parseSeatRange, placementStrippedText } = await import("./spec-sourcing");
+  const compound = sourcingRolesFromDesignSpec(
+    {
+      objects: [
+        { role: "desk_lamp", label: "brass desk lamp", quantity: 1, sizeDescriptor: null, capacity: null, paletteMaterials: [] },
+        { role: "bedside_lamp", label: "pair of ceramic bedside lamps", quantity: 2, sizeDescriptor: null, capacity: null, paletteMaterials: [] },
+        { role: "desk_chair", label: "leather desk chair", quantity: 1, sizeDescriptor: null, capacity: null, paletteMaterials: [] },
+        { role: "bed_throw", label: "mohair bed throw", quantity: 1, sizeDescriptor: null, capacity: null, paletteMaterials: [] },
+        { role: "coffee_table_books", label: "stack of coffee table books", quantity: 1, sizeDescriptor: null, capacity: null, paletteMaterials: [] },
+        { role: "accessories", label: "decorative accessories", quantity: 3, sizeDescriptor: null, capacity: null, paletteMaterials: [] },
+        { role: "floor_lamp", label: "arc floor lamp hanging over the sofa", quantity: 1, sizeDescriptor: null, capacity: null, paletteMaterials: [] },
+        { role: "wall_art", label: "large abstract artwork above the fireplace", quantity: 1, sizeDescriptor: null, capacity: null, paletteMaterials: [] },
+        { role: "sconces", label: "pair of wall sconces flanking the fireplace", quantity: 2, sizeDescriptor: null, capacity: null, paletteMaterials: [] },
+        { role: "sofa", label: "long four-seat sofa", quantity: 1, sizeDescriptor: null, capacity: "seats 4", paletteMaterials: [] }
+      ]
+    },
+    "Bedroom"
+  );
+  assert.deepEqual(
+    compound.roles.map((role) => [role.specRole, role.category, role.contract.fixtureClass ?? null]),
+    [
+      ["desk_lamp", "lighting", "floor_or_table"],
+      ["bedside_lamp", "lighting", "floor_or_table"],
+      ["desk_chair", "office_chairs", null],
+      ["bed_throw", "decor", null],
+      ["coffee_table_books", "decor", null],
+      ["accessories", "decor", null],
+      ["floor_lamp", "lighting", "floor_or_table"],
+      ["wall_art", "wall_art", null],
+      ["sconces", "lighting", "wall"],
+      ["sofa", "sofas", null]
+    ]
+  );
+  assert.deepEqual(compound.unsourceable, [], "placement phrases never make a purchasable piece built-in");
+  assert.equal(compound.roles[9].sizeClass, "standard", "a straight four-seater is standard, like the scorer says");
+  const fourSeater: ProductMatchCandidate = {
+    ...base,
+    name: "Milo 4 Seater Sofa",
+    categoryNormalized: "sofas",
+    dimensions: { widthCm: 260, depthCm: 95, heightCm: 80, sourceText: "260x95x80" }
+  };
+  assert.deepEqual(checkCandidateAgainstSpecRole(fourSeater, compound.roles[9]), { ok: true });
+  const stripped = placementStrippedText("large abstract artwork above the fireplace");
+  assert.equal(stripped, "large abstract artwork");
+
+  assert.deepEqual(parseSeatRange("12 seater"), { min: 12, max: 12 });
+  assert.deepEqual(parseSeatRange("seats 12"), { min: 12, max: 12 });
+  assert.deepEqual(parseSeatRange("seats 6-8"), { min: 6, max: 8 });
+  assert.deepEqual(parseSeatRange("seats 6 to 8"), { min: 6, max: 8 });
+  assert.deepEqual(parseSeatRange("seats up to 8"), { min: 1, max: 8 });
+  assert.deepEqual(parseSeatRange("2-3 seater"), { min: 2, max: 3 });
+  assert.deepEqual(parseSeatRange("three-seat"), { min: 3, max: 3 });
+  assert.equal(parseSeatRange("around 240 cm"), null);
+  const twelveSeatTable: ProductMatchCandidate = { ...base, name: "Grand 12 Seater Dining Table", categoryNormalized: "dining_tables" };
+  const twelveRole = sourcingRolesFromDesignSpec(
+    { objects: [{ role: "dining_table", label: "long dining table", quantity: 1, sizeDescriptor: null, capacity: "seats 12", paletteMaterials: [] }] },
+    "Dining Room"
+  ).roles[0];
+  assert.deepEqual(checkCandidateAgainstSpecRole(twelveSeatTable, twelveRole), { ok: true });
+
+  // marketing copy never rejects; an unqualified "lamp" proves nothing
+  const chattySofa: ProductMatchCandidate = { ...base, name: "Milo 3 Seater Sofa", categoryNormalized: "sofas", description: "Perfect for hanging out with friends." };
+  assert.deepEqual(checkCandidateAgainstSpecRole(chattySofa, byRole("sofa")), { ok: true });
+  const dropLamp: ProductMatchCandidate = { ...base, name: "Nordic Glass Drop Lamp" };
+  assert.deepEqual(checkCandidateAgainstSpecRole(dropLamp, byRole("floor_lamp")), { ok: true });
+  assert.deepEqual(checkCandidateAgainstSpecRole(dropLamp, byRole("pendant")), { ok: true });
+
+  // partially malformed column keeps the valid entries
+  assert.equal(
+    parseMissingRoles([
+      { specKey: "1:x", kind: "missing", label: "x", category: "rugs", quantity: 1, reason: "r", guidance: "g" },
+      { nope: true }
+    ]).length,
+    1
+  );
+}
+
 // --- the missing-roles column contract
 const entries = missingRolesSchema.parse([
   {
