@@ -1738,8 +1738,9 @@ export async function refreshShoppingOptionsAction(input: {
   roomId: string;
   shoppingListId: string;
   category: string;
+  roleLabel?: string | null;
 }) {
-  const { projectId, roomId, shoppingListId, category } = input;
+  const { projectId, roomId, shoppingListId, category, roleLabel } = input;
   const supabase = await createClient();
   const {
     data: { user },
@@ -1753,7 +1754,7 @@ export async function refreshShoppingOptionsAction(input: {
   const serviceSupabase = createServiceClient();
   const result = await refreshShoppingOptions(
     { supabase, serviceSupabase },
-    { projectId, roomId, shoppingListId, category }
+    { projectId, roomId, shoppingListId, category, roleLabel: roleLabel ?? null }
   );
 
   if (result.status === "refreshed") {
@@ -1768,8 +1769,9 @@ export async function findMoreShoppingOptionsAction(input: {
   roomId: string;
   shoppingListId: string;
   category: string;
+  roleLabel?: string | null;
 }) {
-  const { projectId, roomId, shoppingListId, category } = input;
+  const { projectId, roomId, shoppingListId, category, roleLabel } = input;
   const supabase = await createClient();
   const {
     data: { user },
@@ -1783,7 +1785,7 @@ export async function findMoreShoppingOptionsAction(input: {
   const serviceSupabase = createServiceClient();
   const result = await findMoreShoppingOptions(
     { supabase, serviceSupabase },
-    { projectId, roomId, shoppingListId, category }
+    { projectId, roomId, shoppingListId, category, roleLabel: roleLabel ?? null }
   );
 
   if (result.status !== "no_change") {

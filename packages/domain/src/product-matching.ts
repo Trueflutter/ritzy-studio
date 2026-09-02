@@ -1399,6 +1399,7 @@ export function buildRoleScopedCandidatePools({
   conceptText,
   roles,
   candidates,
+  companionCandidates,
   budgetMaxAed = null,
   roomMeasurements = null,
   candidatesPerRole = 12,
@@ -1409,6 +1410,9 @@ export function buildRoleScopedCandidatePools({
   conceptText: string;
   roles?: RoomProductRoleSpec[];
   candidates: ProductMatchCandidate[];
+  // The set the aesthetic-fit companion checks read (defaults to candidates);
+  // callers that pre-filter candidates per role pass the full catalogue here.
+  companionCandidates?: ProductMatchCandidate[];
   budgetMaxAed?: number | null;
   roomMeasurements?: ProductMatchRequest["roomMeasurements"];
   candidatesPerRole?: number;
@@ -1436,7 +1440,8 @@ export function buildRoleScopedCandidatePools({
         role,
         request: parsed,
         preferredCategories,
-        candidatesPerRole: limit
+        candidatesPerRole: limit,
+        companionCandidates: companionCandidates ?? parsed.candidates
       })
     )
   };
@@ -1566,12 +1571,14 @@ function buildRolePool({
   role,
   request,
   preferredCategories,
-  candidatesPerRole
+  candidatesPerRole,
+  companionCandidates = request.candidates
 }: {
   role: RoomProductRoleSpec;
   request: ProductMatchRequest;
   preferredCategories: string[];
   candidatesPerRole: number;
+  companionCandidates?: ProductMatchCandidate[];
 }): RoleScopedCandidatePool {
   const scored: ScoredRoleCandidate[] = [];
   const rejectionReasons: Record<string, number> = {};
@@ -1597,7 +1604,7 @@ function buildRolePool({
       role,
       roomType: request.roomType,
       conceptText: request.conceptText,
-      companionCandidates: request.candidates
+      companionCandidates
     });
     const roleScore = fit.total + aestheticFit.scoreAdjustment;
     scored.push({

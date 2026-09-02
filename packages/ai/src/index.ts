@@ -15,7 +15,6 @@ import {
   designSpecSourcingLanguage,
   specProductSourcingPrompt,
   type DesignSpecSourcingRoleLanguageInput,
-  conceptProductSourcingPrompt,
   conceptProductSourcingResponseSchema,
   conceptRevisionJsonSchema,
   conceptRevisionPrompt,
@@ -44,7 +43,6 @@ import {
   initialConceptPrompt,
   initialConceptResponseSchema,
   finalGroundedRenderPrompt,
-  productRoleLanguage,
   roomBlueprintDefaultsLanguage,
   roomDesignLanguage,
   roomSpatialPlacementGuardrailLanguage,
@@ -386,15 +384,15 @@ export type SourceProductsFromConceptInput = {
   candidates: ConceptProductSourcingCandidate[];
   roleCandidatePools?: ConceptProductSourcingRolePool[];
   conceptImageDetail?: ProductSourcingImageDetail;
-  candidateImageLimit?: number;
   candidateImageDetail?: ProductSourcingImageDetail;
   candidateImageDataUrls?: Record<string, string>;
-  // S3: the confirmed design spec drives the roles. When present, the spec
-  // prompt replaces the room-blueprint prompt, every supplied candidate is
-  // listed (the pools are already role-scoped and contract-clean), and the
-  // ONLY candidate images shown are the app-fetched data URLs in
-  // candidateImageDataUrls: the provider never downloads from retailer hosts.
-  designSpec?: {
+  // S3: the design spec drives the roles (the confirmed spec, or the
+  // room-blueprint roles carried through the same contract when no spec could
+  // be read). Every supplied candidate is listed (the pools are role-scoped
+  // and contract-clean), and the ONLY candidate images shown are the
+  // app-fetched data URLs in candidateImageDataUrls: the provider never
+  // downloads from retailer hosts.
+  designSpec: {
     roles: DesignSpecSourcingRoleLanguageInput[];
     mustPreserve?: readonly string[];
   };
@@ -1449,16 +1447,20 @@ export async function analyzeInspirationImages(
 export async function sourceProductsFromConcept(
   input: SourceProductsFromConceptInput
 ): Promise<SourceProductsFromConceptResult> {
+  // The pools are the contract: without them the response cannot be held to
+  // one result per role inside its pool, so the pass is refused up front
+  // rather than run with prompt-only guarantees.
+  const roleCandidatePools = input.roleCandidatePools ?? [];
+  if (roleCandidatePools.length === 0) {
+    throw new Error("Product sourcing needs role candidate pools; refusing to run the visual pass without them.");
+  }
   const env = parseServerEnv(process.env);
   const client = createTextClient(env);
   const { model: stageModel, requestParams: stageRequestParams } = stageTextConfig("product_sourcing", env.OPENAI_TEXT_MODEL);
-  const specDriven = Boolean(input.designSpec);
-  const prompt = specDriven ? specProductSourcingPrompt : conceptProductSourcingPrompt;
-  // The spec path's candidates are already the per-role pools, so every one
-  // of them is listed; the blueprint path keeps its historical cap.
-  const candidateLimit = specDriven ? Math.max(1, input.candidates.length) : 36;
+  const prompt = specProductSourcingPrompt;
+  // The candidates are already the per-role pools, so every one of them is listed.
+  const candidateLimit = Math.max(1, input.candidates.length);
   const allowedProductIds = new Set(input.candidates.map((candidate) => candidate.id));
-  const roleCandidatePools = input.roleCandidatePools ?? [];
   const candidateSummary = input.candidates
     .slice(0, candidateLimit)
     .map((candidate, index) =>
@@ -1499,20 +1501,12 @@ export async function sourceProductsFromConcept(
           )
           .join("\n")
       : "No role-scoped pools supplied. Use the expected product roles and candidate list.";
-  const candidateImageContent = specDriven
-    ? productSourcingProvidedImageContent(input.candidates, input.candidateImageDataUrls ?? {}, input.candidateImageDetail ?? "low")
-    : productSourcingCandidateImageContent(input.candidates, {
-        imageDataUrls: input.candidateImageDataUrls,
-        candidateLimit,
-        candidateImageLimit: input.candidateImageLimit,
-        detail: input.candidateImageDetail
-      });
-  const roleContextLines = input.designSpec
-    ? [designSpecSourcingLanguage(input.designSpec)]
-    : [
-        `Room blueprint: ${roomBlueprintDefaultsLanguage(input.roomType)}`,
-        `Expected product roles: ${productRoleLanguage(input.roomType)}`
-      ];
+  const candidateImageContent = productSourcingProvidedImageContent(
+    input.candidates,
+    input.candidateImageDataUrls ?? {},
+    input.candidateImageDetail ?? "low"
+  );
+  const roleContextLines = [designSpecSourcingLanguage(input.designSpec)];
 
   const response = await client.responses.create({
     max_output_tokens: 32000,
@@ -1572,41 +1566,6 @@ export async function sourceProductsFromConcept(
     needs: parsed.needs,
     ...validated
   };
-}
-
-export function productSourcingCandidateImageContent(
-  candidates: ConceptProductSourcingCandidate[],
-  {
-    candidateLimit = 36,
-    candidateImageLimit = candidateLimit,
-    detail = "high",
-    imageDataUrls
-  }: {
-    candidateLimit?: number;
-    candidateImageLimit?: number;
-    detail?: ProductSourcingImageDetail;
-    // Downscaled data URLs by candidate id; preferred over provider-side URL
-    // downloads, which flake on rate-limited CDNs and non-public hosts.
-    imageDataUrls?: Record<string, string>;
-  } = {}
-) {
-  const imageLimit = Math.max(0, Math.min(candidateLimit, candidateImageLimit));
-
-  return candidates
-    .slice(0, candidateLimit)
-    .filter((candidate) => imageDataUrls?.[candidate.id] || candidate.primaryImageUrl)
-    .slice(0, imageLimit)
-    .flatMap((candidate) => [
-      {
-        type: "input_text" as const,
-        text: `Candidate product image for id ${candidate.id}: ${candidate.name}`
-      },
-      {
-        type: "input_image" as const,
-        image_url: imageDataUrls?.[candidate.id] ?? (candidate.primaryImageUrl as string),
-        detail
-      }
-    ]);
 }
 
 // S3 image content: exactly the candidates the app fetched a data URL for, in

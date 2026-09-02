@@ -302,6 +302,51 @@ assert.deepEqual(checkCandidateAgainstSpecRole(sixSeatTable, byRole("dining_tabl
   );
 }
 
+// --- review findings on the plan increment (251f34a): same-label objects
+// merge, the pass reconciles by echo key with a normalized category
+{
+  const { resolveSpecRoleOutcomes, buildSpecSourcingPlan } = await import("./spec-sourcing");
+  const mergedRoles = sourcingRolesFromDesignSpec(
+    {
+      objects: [
+        { role: "table_lamp", label: "ceramic table lamp", quantity: 1, sizeDescriptor: null, capacity: null, paletteMaterials: ["ceramic"] },
+        { role: "table_lamp", label: "Ceramic  table lamp", quantity: 1, sizeDescriptor: "small", capacity: null, paletteMaterials: ["brass"] },
+        { role: "floor_lamp", label: "arc floor lamp", quantity: 1, sizeDescriptor: null, capacity: null, paletteMaterials: [] }
+      ]
+    },
+    "Living Room"
+  ).roles;
+  assert.equal(mergedRoles.length, 2, "same-label objects in one category are one role");
+  assert.equal(mergedRoles[0].quantity, 2, "with the summed quantity");
+  assert.deepEqual(mergedRoles[0].specPaletteMaterials, ["ceramic", "brass"]);
+  assert.equal(mergedRoles[0].specSizeDescriptor, "small");
+  assert.deepEqual(mergedRoles.map((role) => role.echoKey), ["role-1", "role-2"]);
+
+  const lampPlan = buildSpecSourcingPlan({
+    roles: mergedRoles,
+    unsourceable: [],
+    candidates: [
+      { ...tableLamp, id: "00000000-0000-4000-8000-000000000041" },
+      { ...floorLamp, id: "00000000-0000-4000-8000-000000000042" }
+    ],
+    roomType: "Living Room",
+    conceptText: "warm lounge"
+  });
+  const echoed = resolveSpecRoleOutcomes({
+    pools: lampPlan.pools,
+    roleResults: [
+      { category: "Lighting", roleLabel: "role-1", status: "acceptable_match", productId: "00000000-0000-4000-8000-000000000041", reason: "Ceramic lamp fits." },
+      { category: "lighting", roleLabel: "ROLE-2", status: "strong_match", productId: "00000000-0000-4000-8000-000000000042", reason: "Arc lamp matches." }
+    ],
+    selections: []
+  });
+  assert.deepEqual(
+    echoed.map((outcome) => outcome.kind),
+    ["selected", "selected"],
+    "a normalized category and the echo key reconcile the pass, whatever the label length"
+  );
+}
+
 // --- the missing-roles column contract
 const entries = missingRolesSchema.parse([
   {
@@ -464,4 +509,29 @@ console.log("spec-sourcing tests passed");
   assert.deepEqual(groups.map((group) => group.roleKey), ["lighting::tall tripod floor lamp", "lighting::linen drum pendant"]);
   assert.deepEqual(groups[0].options.map((option) => option.id), ["a", "c"]);
   console.log("spec-sourcing plan tests passed");
+}
+
+// --- blueprint fallback roles carry the same contracts
+{
+  const { sourcingRolesFromBlueprint } = await import("./spec-sourcing");
+  const roles = sourcingRolesFromBlueprint(
+    [
+      { category: "sofas", label: "living-zone sofa or sectional", visualBrief: "generous seating", quantity: 1, required: true },
+      { category: "lighting", label: "floor/table lighting", visualBrief: null, quantity: 1, required: false },
+      { category: "chairs", label: "dining chairs", visualBrief: null, quantity: 6, required: true }
+    ],
+    "Living & Dining"
+  );
+  assert.deepEqual(
+    roles.map((role) => [role.category, role.priority, role.quantity, role.contract.fixtureClass ?? null]),
+    [
+      ["sofas", "required", 1, null],
+      ["lighting", "supporting", 1, "floor_or_table"],
+      ["chairs", "required", 6, null]
+    ]
+  );
+  assert.equal(roles[0].specKey, "blueprint:0:sofas");
+  assert.equal(roles[0].sizeClass, "large", "a blueprint label naming a sectional keeps the scorer's large class");
+  assert.deepEqual(checkCandidateAgainstSpecRole(chandelier, roles[1]), { ok: false, reason: "lighting_fixture_class_mismatch" });
+  console.log("spec-sourcing blueprint tests passed");
 }

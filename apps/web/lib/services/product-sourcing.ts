@@ -4,151 +4,84 @@ import {
   stageTextConfig,
   sumUsdCosts
 } from "@ritzy-studio/ai";
-import { configuredTextModel, productMatchingControlledPreviewGate } from "@ritzy-studio/config";
+import { configuredTextModel, productSourcingImageBudget } from "@ritzy-studio/config";
 import {
-  buildProductSourcingRuntimePlan,
-  buildRoleScopedCandidatePools,
   buildShoppingListItemRows,
-  buildPersistedSelectionSnapshot,
-  composeRoomProductOptions,
+  buildSpecSourcingPlan,
+  checkCandidateAgainstSpecRole,
   conceptPaletteMatchingText,
   enhancedProductRolesForRoom,
   fitSelectionToBudget,
+  imageCandidateIdsForPools,
   parseConceptImagePalette,
-  productRolesForRoom,
-  rankProductMatches,
+  resolveSpecRoleOutcomes,
+  resolveSpecRoleOutcomesByRanking,
+  roleOptionKey,
+  roleOptionsFromOutcomes,
   selectedItemsTotalAed,
-  summarizeRolePoolDiversity,
-  summarizeRolePoolQuality,
-  summarizePoolQaRollup,
+  sourcingRolesFromBlueprint,
+  sourcingRolesFromDesignSpec,
+  type MissingRoleEntry,
   type ProductMatchCandidate,
   type RankedProductMatch,
-  type RoomProductRoleSpec
+  type RoleProductOptions,
+  type RoleScopedRankedProductMatch,
+  type RoomProductRoleSpec,
+  type SpecRoleOutcome,
+  type SpecSourcingRole,
+  type UnsourceableSpecObject
 } from "@ritzy-studio/domain";
 
-import { localSkuFidelityModeEnabled } from "@/lib/render-flags";
 import { readRoomDesignSpec } from "./design-spec";
-import { PRODUCT_SOURCING_MAX_IMAGE_BYTES } from "@/lib/render-images";
 import {
-  isProviderImageDownloadError,
-  isProductSourcingTimeoutError,
-  productSourcingTimeoutMessage
-} from "@/lib/product-sourcing-failure";
-import { buildProductSourcingTextFallbackResult } from "@/lib/product-sourcing-text-fallback";
-import {
-  productSourcingRetryFallbackEvidenceForStrategy,
-  productSourcingVisualStrategy
-} from "@/lib/product-sourcing-visual-strategy";
-import {
-  buildProductImagePreflightGate,
-  preflightProductCandidateImages,
-  skippedProductImagePreflight,
-  type ProductImagePreflightSummary
-} from "@/lib/product-image-preflight";
-
-import {
-  LOCAL_SKU_FIDELITY_CANDIDATES_PER_ROLE,
   PRODUCT_MATCHING_CATALOG_LIMIT,
-  PRODUCT_SOURCING_AI_CANDIDATE_IMAGE_DETAIL,
-  PRODUCT_SOURCING_AI_CANDIDATE_IMAGE_LIMIT,
-  PRODUCT_SOURCING_AI_CONCEPT_IMAGE_DETAIL,
-  PRODUCT_SOURCING_AI_PRODUCT_IMAGES_ENABLED,
   PRODUCT_SOURCING_AI_TIMEOUT_MS,
-  PRODUCT_SOURCING_IMAGE_PREFLIGHT_BUDGET_MS,
-  PRODUCT_SOURCING_IMAGE_PREFLIGHT_TIMEOUT_MS,
-  bestThemeAlignedOptionForRole,
   catalogUnavailableMessage,
-  catalogueGroundingAnchorsForConcept,
-  ensureLocalSkuFidelitySupportOptions,
-  fetchLocalSkuFidelityRoleWindowCandidates,
-  fetchProductsById,
-  isRecord,
   matchToSourcingCandidate,
-  mergeProductMatchCandidates,
-  mergeRoomRoles,
-  normalizeSourcingCategory,
-  polishRoleOptionsForAestheticDemo,
-  poolToSourcingRolePool,
-  previousShoppingListRefreshHistory,
-  productImageCatalogRefreshMessage,
-  productSourcingAiPayloadSummary,
-  productSourcingFailureMessage,
-  productSourcingTimeoutDiagnostics,
-  type ProductRow,
   productToMatchCandidate,
+  recentlyUsedProductIdsForUser,
   roleScopedShoppingAlternates,
   shoppingListRoleSpecFromRow,
-  rankMatchesForLocalSkuFidelity,
-  recentlyUsedProductIdsForUser,
-  rerankRolePoolForAestheticFit,
-  roleCandidateCountSummary,
-  roleConfidenceOutputFields,
-  roleScopedCandidatesForLocalSkuFidelityPlan,
-  roleStatusSummary,
   sourcingCandidateImageDataUrls,
-  splitAvoidColorCues
+  splitAvoidColorCues,
+  type ProductRow
 } from "./sourcing-support";
 import type { ServiceSupabaseClient, UserSupabaseClient } from "./supabase-clients";
 import { storageImageDataUrl } from "./storage-images";
 
-// The product-sourcing service (S1 extraction): typed inputs and results, all
-// persisted state transitions owned here. Blocked terminals collapse to one
-// { status: "blocked", message } shape because every pre-extraction terminal was
-// a message redirect back to product matching; S3 re-types these as it reworks
-// sourcing against the confirmed spec.
+// The product-sourcing service (S3): sourcing against the CONFIRMED design spec.
+//
+// Every purchasable spec object is a role with a hard contract (domain
+// spec-sourcing). Retrieval runs per role through the scorer with the contract
+// applied before the cut; the visual pass sees the concept image plus the
+// top candidates' images per role (app-fetched, budgeted) and picks per role
+// or declares the role unmatched; picks are held to the contract again; a
+// role the catalogue cannot honestly fill is persisted on the list as a
+// missing-role entry with the reason and what to do, never filled with the
+// wrong thing and never silently dropped. Swaps and refills re-run the same
+// contract for the row's spec object.
+//
+// Sourcing never runs the paid spec extraction itself: a room whose spec is
+// not yet read, still being read, or not yet confirmed is sent to /spec. A
+// room whose extraction failed (and whose user chose to continue) sources
+// against the room-type blueprint roles through the same contract machinery,
+// and the job records that it did.
+
+type Clients = { supabase: UserSupabaseClient; serviceSupabase: ServiceSupabaseClient };
 
 async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
-  let timeout: ReturnType<typeof setTimeout> | undefined;
-
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(message)), timeoutMs);
+  });
   try {
-    return await Promise.race([
-      promise,
-      new Promise<T>((_, reject) => {
-        timeout = setTimeout(() => reject(new Error(message)), timeoutMs);
-      })
-    ]);
+    return await Promise.race([promise, timeout]);
   } finally {
-    if (timeout) {
-      clearTimeout(timeout);
+    if (timer) {
+      clearTimeout(timer);
     }
   }
 }
-
-function productMatchingEngineV1Enabled() {
-  return process.env.RITZY_PRODUCT_MATCHING_ENGINE_V1_ENABLED === "true";
-}
-
-function productMatchingEngineV1EnabledForRequest({
-  projectId,
-  roomId,
-  userId,
-  userEmail,
-  roomType
-}: {
-  projectId: string;
-  roomId: string;
-  userId: string;
-  userEmail?: string | null;
-  roomType: string;
-}) {
-  const engineFlagEnabled = productMatchingEngineV1Enabled();
-  const previewGate = productMatchingControlledPreviewGate({
-    env: process.env,
-    projectId,
-    roomId,
-    userId,
-    userEmail
-  });
-
-  return {
-    enabled:
-      (engineFlagEnabled && (!previewGate.configured || previewGate.allowed)) ||
-      localSkuFidelityModeEnabled(roomType),
-    gate: previewGate
-  };
-}
-
-
 
 export type GroundProductsInput = {
   userId: string;
@@ -162,16 +95,53 @@ export type GroundProductsResult =
   | { status: "not_found" }
   | { status: "blocked"; message: string }
   | { status: "spec_pending" }
-  | { status: "sourced" };
+  | { status: "sourced"; selectedCount: number; missingRoleCount: number };
+
+export type SpecSource = "confirmed_spec" | "blueprint_fallback";
+
+const CANDIDATES_PER_ROLE = 8;
+
+// One sentence a person can read (design system 12.7): the visual pass's own
+// reason for the chosen piece, the ranking's reason for the alternates.
+function whyThisPiece(outcome: Extract<SpecRoleOutcome, { kind: "selected" }>): string {
+  return [outcome.reason, outcome.mismatchNote].filter(Boolean).join(" ");
+}
+
+function alternateProse(match: RankedProductMatch | RoleScopedRankedProductMatch, role: RoomProductRoleSpec): string {
+  const reasons = "attributeScore" in match ? match.attributeScore.reasons.slice(0, 2) : [];
+  return reasons.length > 0
+    ? `Offered as an alternative for the ${role.label}: ${reasons.join("; ")}.`
+    : `Offered as an alternative for the ${role.label}.`;
+}
+
+function selectedFirst(roleOptions: RoleProductOptions[], selection: Map<string, string>): RoleProductOptions[] {
+  return roleOptions.map((role) => {
+    const selectedId = selection.get(roleOptionKey(role));
+    const selected = selectedId ? role.options.find((option) => option.id === selectedId) : undefined;
+    if (!selected || role.options[0]?.id === selected.id) {
+      return role;
+    }
+    return { ...role, options: [selected, ...role.options.filter((option) => option.id !== selected.id)] };
+  });
+}
 
 export async function groundProductsForRoom(
-  { supabase, serviceSupabase }: { supabase: UserSupabaseClient; serviceSupabase: ServiceSupabaseClient },
-  { userId, userEmail, projectId, roomId, conceptId }: GroundProductsInput,
+  { supabase, serviceSupabase }: Clients,
+  { userId, projectId, roomId, conceptId }: GroundProductsInput,
   {
-    // Injectable like the sibling services' seams, so the spec gate is testable
-    // without a live provider.
-    readSpec = readRoomDesignSpec
-  }: { readSpec?: typeof readRoomDesignSpec } = {}
+    // Injectable seams (sibling-service pattern): the spec read, the paid
+    // visual pass, the candidate image fetch, and the palette extraction, so
+    // every persisted transition is testable without a live provider.
+    readSpec = readRoomDesignSpec,
+    sourceProducts = sourceProductsFromConcept,
+    fetchCandidateImages = sourcingCandidateImageDataUrls,
+    extractPalette = extractConceptImagePalette
+  }: {
+    readSpec?: typeof readRoomDesignSpec;
+    sourceProducts?: typeof sourceProductsFromConcept;
+    fetchCandidateImages?: typeof sourcingCandidateImageDataUrls;
+    extractPalette?: typeof extractConceptImagePalette;
+  } = {}
 ): Promise<GroundProductsResult> {
   const { data: project } = await supabase
     .from("projects")
@@ -188,7 +158,9 @@ export async function groundProductsForRoom(
 
   const { data: concept } = await supabase
     .from("concepts")
-    .select("id, title, description, status, generation_job_id, palette_json, primary_image_asset:room_assets!concepts_primary_image_asset_id_fkey(*)")
+    .select(
+      "id, title, description, status, palette_json, primary_image_asset:room_assets!concepts_primary_image_asset_id_fkey(*)"
+    )
     .eq("id", conceptId)
     .eq("room_id", roomId)
     .single();
@@ -201,17 +173,33 @@ export async function groundProductsForRoom(
     return { status: "blocked", message: "Select a concept before product grounding." };
   }
 
-  // Step 8 backfill (codex finding): sourcing is the OTHER first-touch surface,
-  // so no route can source around the canonical spec. Sourcing never runs the
-  // paid extraction itself (PR #332 review fix: the lifecycle lives in the
-  // design-spec service): a room whose spec is not yet read, or still being
-  // read, is sent to /spec, which starts or shows the extraction and lands back
-  // here on confirm. A failed or image-less extraction does NOT block (that
-  // would create a dead end that never existed) — the attempt is recorded and
-  // S3 makes the spec load-bearing when sourcing starts consuming it.
+  // The spec gate. Sourcing consumes CONFIRMED truth: an unread, in-flight,
+  // or unconfirmed spec sends the user to /spec (which starts or shows the
+  // extraction, or asks for the confirm) and lands back here. A failed or
+  // image-less extraction does not block: the blueprint fallback keeps the
+  // journey alive, and the job says which source built the list.
   const specState = await readSpec({ supabase, serviceSupabase }, { roomId });
   if (specState.status === "extraction_needed" || specState.status === "extraction_running") {
     return { status: "spec_pending" };
+  }
+  if (specState.status === "ready" && specState.spec.status !== "confirmed") {
+    return { status: "spec_pending" };
+  }
+
+  let roles: SpecSourcingRole[];
+  let unsourceable: UnsourceableSpecObject[] = [];
+  let missingRoles: MissingRoleEntry[] = [];
+  let mustPreserve: string[] = [];
+  let specSource: SpecSource;
+  if (specState.status === "ready") {
+    const mapped = sourcingRolesFromDesignSpec(specState.spec, room.room_type);
+    roles = mapped.roles;
+    unsourceable = mapped.unsourceable;
+    mustPreserve = specState.spec.mustPreserve;
+    specSource = "confirmed_spec";
+  } else {
+    roles = sourcingRolesFromBlueprint(enhancedProductRolesForRoom(room.room_type), room.room_type);
+    specSource = "blueprint_fallback";
   }
 
   const { data: measurements } = await supabase
@@ -222,9 +210,9 @@ export async function groundProductsForRoom(
     .limit(1)
     .maybeSingle();
 
-  // The user's explicit avoid-colour instruction (brief avoid_notes, e.g. "avoid bright red") must
-  // reach product matching. The concept-image palette's avoidColors is an inferred signal and can
-  // miss what the user asked for, so union the two before the sourcing avoid-colour filter runs.
+  // The user's explicit avoid-colour instruction (brief avoid_notes) must
+  // reach matching; the concept palette's avoidColors is an inferred signal
+  // and can miss what the user asked for, so the two are unioned.
   const { data: sourcingDesignBrief } = await supabase
     .from("design_briefs")
     .select("avoid_notes")
@@ -233,15 +221,20 @@ export async function groundProductsForRoom(
     .limit(1)
     .maybeSingle();
 
-  const baseConceptText = `${concept.title}\n${concept.description ?? ""}`;
-  const blueprintRoles: RoomProductRoleSpec[] = enhancedProductRolesForRoom(room.room_type).map((role) => ({
-    category: role.category,
-    label: role.label,
-    visualBrief: role.visualBrief ?? null,
-    quantity: role.quantity,
-    priority: role.required ? "required" : "supporting"
-  }));
-  const localSkuFidelityMode = localSkuFidelityModeEnabled(room.room_type);
+  const conceptImageAsset = Array.isArray(concept.primary_image_asset)
+    ? concept.primary_image_asset[0]
+    : concept.primary_image_asset;
+  const conceptImageUrl = conceptImageAsset?.storage_path
+    ? await storageImageDataUrl(
+        serviceSupabase,
+        "generated-renders",
+        conceptImageAsset.storage_path,
+        conceptImageAsset.mime_type
+      )
+    : null;
+  if (!conceptImageUrl) {
+    return { status: "blocked", message: "Product sourcing needs the concept image before it can match catalog pieces." };
+  }
 
   const { data: products = [], error: productsError } = await serviceSupabase
     .from("products")
@@ -264,171 +257,66 @@ export async function groundProductsForRoom(
   const candidates = (products ?? [])
     .map(productToMatchCandidate)
     .filter((candidate): candidate is ProductMatchCandidate => Boolean(candidate));
-  const localRoleWindowCandidates = localSkuFidelityMode
-    ? await fetchLocalSkuFidelityRoleWindowCandidates({
-        serviceSupabase,
-        roomType: room.room_type,
-        roles: blueprintRoles,
-        conceptText: baseConceptText
-      })
-    : [];
 
   if (candidates.length === 0) {
-    const message = catalogUnavailableMessage(products ?? []);
-    return { status: "blocked", message: message };
-  }
-
-  const catalogueGroundingAnchors = await catalogueGroundingAnchorsForConcept({
-    serviceSupabase,
-    generationJobId: concept.generation_job_id
-  });
-  const catalogueAnchorIdsByCategory = new Map(
-    catalogueGroundingAnchors.map((anchor) => [
-      normalizeSourcingCategory(anchor.category, anchor.roleLabel),
-      anchor.productId
-    ])
-  );
-  const catalogueAnchorProducts = await fetchProductsById({
-    serviceSupabase,
-    productIds: catalogueGroundingAnchors.map((anchor) => anchor.productId)
-  });
-  const catalogueAnchorCandidates = catalogueAnchorProducts
-    .map(productToMatchCandidate)
-    .filter((candidate): candidate is ProductMatchCandidate => Boolean(candidate));
-  const matchingCandidates = mergeProductMatchCandidates(
-    mergeProductMatchCandidates(candidates, localRoleWindowCandidates),
-    catalogueAnchorCandidates
-  );
-
-  const conceptImageAsset = Array.isArray(concept.primary_image_asset)
-    ? concept.primary_image_asset[0]
-    : concept.primary_image_asset;
-  const conceptImageVisionUrl = conceptImageAsset?.storage_path
-    ? await storageImageDataUrl(
-        serviceSupabase,
-        "generated-renders",
-        conceptImageAsset.storage_path,
-        conceptImageAsset.mime_type
-      )
-    : null;
-  const conceptSignedImage = conceptImageVisionUrl ? { signedUrl: conceptImageVisionUrl } : null;
-  if (!conceptSignedImage?.signedUrl) {
-    return { status: "blocked", message: "Product sourcing needs the concept image before it can match catalog pieces." };
+    return { status: "blocked", message: catalogUnavailableMessage(products ?? []) };
   }
 
   // Aesthetic coherence is scored against the palette of the concept image as
   // rendered (extracted once, cached on the concept row), not only against the
   // concept's text tokens. Extraction failure degrades to text-only matching.
+  const baseConceptText = `${concept.title}\n${concept.description ?? ""}`;
   let conceptPalette = parseConceptImagePalette(concept.palette_json);
   let paletteTextCostUsd: number | null = null;
-  let initialSourcingTextCostUsd: number | null = null;
   if (!conceptPalette) {
     try {
-      const paletteResult = await extractConceptImagePalette({
-        imageUrl: conceptSignedImage.signedUrl
-      });
+      const paletteResult = await extractPalette({ imageUrl: conceptImageUrl });
       paletteTextCostUsd = paletteResult.textCostUsd ?? null;
       conceptPalette = paletteResult.palette;
-      await serviceSupabase
-        .from("concepts")
-        .update({ palette_json: conceptPalette })
-        .eq("id", concept.id);
+      await serviceSupabase.from("concepts").update({ palette_json: conceptPalette }).eq("id", concept.id);
     } catch (error) {
       console.error("Concept palette extraction failed; matching falls back to text tokens.", error);
     }
   }
-  const conceptPaletteText = conceptPalette ? conceptPaletteMatchingText(conceptPalette) : null;
-  const paletteGroundedConceptText = conceptPaletteText
-    ? `${baseConceptText}
-${conceptPaletteText}`
+  const conceptText = conceptPalette
+    ? `${baseConceptText}\n${conceptPaletteMatchingText(conceptPalette)}`
     : baseConceptText;
-  const briefAvoidColorTags = splitAvoidColorCues(sourcingDesignBrief?.avoid_notes ?? "").avoidColorTags;
-  const conceptAvoidColorTags = Array.from(
-    new Set([...(conceptPalette?.avoidColors ?? []), ...briefAvoidColorTags])
+  const avoidColorTags = Array.from(
+    new Set([
+      ...(conceptPalette?.avoidColors ?? []),
+      ...splitAvoidColorCues(sourcingDesignBrief?.avoid_notes ?? "").avoidColorTags
+    ])
   );
-
-  const productMatchingPreview = productMatchingEngineV1EnabledForRequest({
-    projectId,
-    roomId,
-    userId: userId,
-    userEmail,
-    roomType: room.room_type
-  });
-  const productMatchingEngineEnabled = productMatchingPreview.enabled;
   const recentlyUsedProductIds = await recentlyUsedProductIdsForUser({
     serviceSupabase,
-    userId: userId,
+    userId,
     excludeRoomId: roomId
   });
-  const candidatesPerRole = localSkuFidelityMode ? LOCAL_SKU_FIDELITY_CANDIDATES_PER_ROLE : 6;
-  const flatCandidateLimit = localSkuFidelityMode
-    ? Math.max(72, blueprintRoles.length * candidatesPerRole)
-    : 36;
-  const sourcingPlan = buildProductSourcingRuntimePlan({
-    engineEnabled: productMatchingEngineEnabled,
-    roomType: room.room_type,
-    conceptText: paletteGroundedConceptText,
-    roles: blueprintRoles,
-    candidates: matchingCandidates,
-    recentlyUsedProductIds,
-    avoidColorTags: conceptAvoidColorTags,
-    budgetMaxAed: project.budget_max_aed,
-    roomMeasurements: measurements
-      ? {
-          wallLengthCm: measurements.wall_length_cm,
-          roomDepthCm: measurements.room_depth_cm
-        }
-      : null,
-    candidatesPerRole,
-    flatCandidateLimit
-  });
-  const sourcingPools = localSkuFidelityMode
-    ? sourcingPlan.roleScopedPools.map((pool) =>
-        rerankRolePoolForAestheticFit(pool, room.room_type, paletteGroundedConceptText)
-      )
-    : sourcingPlan.roleScopedPools;
-  const sourcingCandidates = localSkuFidelityMode
-    ? roleScopedCandidatesForLocalSkuFidelityPlan(sourcingPools, flatCandidateLimit)
-    : sourcingPlan.candidates;
-  const legacyRequiredRoles: RoomProductRoleSpec[] = productRolesForRoom(room.room_type)
-    .filter((role) => role.required)
-    .map((role) => ({
-      category: role.category,
-      label: role.label,
-      visualBrief: role.visualBrief ?? null,
-      quantity: role.quantity,
-      priority: "required"
-    }));
-  const staticRoles = mergeRoomRoles(blueprintRoles, legacyRequiredRoles);
-  // Only fetch when the AI actually consumes product images; otherwise the gate and sanitized
-  // candidates are discarded, so a slow CDN would add up to the whole preflight budget for nothing.
-  const initialImagePreflight = PRODUCT_SOURCING_AI_PRODUCT_IMAGES_ENABLED
-    ? await preflightProductCandidateImages(sourcingCandidates, {
-        timeoutMs: PRODUCT_SOURCING_IMAGE_PREFLIGHT_TIMEOUT_MS,
-        budgetMs: PRODUCT_SOURCING_IMAGE_PREFLIGHT_BUDGET_MS,
-        maxBytes: PRODUCT_SOURCING_MAX_IMAGE_BYTES
-      })
-    : skippedProductImagePreflight(sourcingCandidates);
-  const aiSourcingCandidates = PRODUCT_SOURCING_AI_PRODUCT_IMAGES_ENABLED
-    ? initialImagePreflight.candidates
-    : sourcingCandidates;
-  const sourcingCandidateIds = new Set(sourcingCandidates.map((candidate) => candidate.id));
-  const sourcingCandidatePools = sourcingPools.map((pool) => poolToSourcingRolePool(pool, sourcingCandidateIds));
-  const initialImageGate = buildProductImagePreflightGate({
-    candidateCount: sourcingCandidates.length,
-    acceptedCandidateIds: initialImagePreflight.acceptedCandidateIds,
-    rolePools: sourcingPools
-  });
-  const rolePoolDiversity = productMatchingEngineEnabled ? summarizeRolePoolDiversity(sourcingPools) : undefined;
-  const rolePoolQuality = productMatchingEngineEnabled ? summarizeRolePoolQuality(sourcingPools) : undefined;
-  const productMatchingRoomMeasurements = measurements
-    ? {
-        wallLengthCm: measurements.wall_length_cm,
-        roomDepthCm: measurements.room_depth_cm
-      }
+  const roomMeasurements = measurements
+    ? { wallLengthCm: measurements.wall_length_cm, roomDepthCm: measurements.room_depth_cm }
     : null;
-  let latestConfidencePools = sourcingPools;
-  const productMatchingLoggedAtMs = Date.now();
+
+  const plan = buildSpecSourcingPlan({
+    roles,
+    unsourceable,
+    candidates,
+    roomType: room.room_type,
+    conceptText,
+    budgetMaxAed: project.budget_max_aed,
+    roomMeasurements,
+    recentlyUsedProductIds,
+    avoidColorTags,
+    candidatesPerRole: CANDIDATES_PER_ROLE
+  });
+  const contractRejections = plan.pools.reduce<Record<string, number>>((totals, pool) => {
+    for (const [reason, count] of Object.entries(pool.rejectionReasons)) {
+      totals[reason] = (totals[reason] ?? 0) + count;
+    }
+    return totals;
+  }, {});
+  const imageBudget = productSourcingImageBudget();
+
+  // Spend never precedes its audit row.
   const { data: sourcingJob, error: sourcingJobError } = await serviceSupabase
     .from("ai_jobs")
     .insert({
@@ -442,870 +330,148 @@ ${conceptPaletteText}`
       input_summary: {
         roomId,
         conceptId: concept.id,
-        productMatchingEngineEnabled,
-        localSkuFidelityMode,
-        productMatchingPreviewGate: {
-          configured: productMatchingPreview.gate.configured,
-          enabled: productMatchingPreview.gate.enabled,
-          allowed: productMatchingPreview.gate.allowed,
-          matchedScopes: productMatchingPreview.gate.matchedScopes
-        },
-        candidateCount: sourcingCandidates.length,
-        productSourcingAiPayload: productSourcingAiPayloadSummary(),
-        productImagePreflight: initialImagePreflight.summary,
-        productImagePreflightGate: initialImageGate,
-        blueprintRoleCount: blueprintRoles.length,
-        roleCandidateCounts: productMatchingEngineEnabled ? roleCandidateCountSummary(sourcingPools) : undefined,
-        rolePoolDiversity,
-        rolePoolQuality,
-        rolePoolQaRollup:
-          rolePoolQuality && rolePoolDiversity
-            ? summarizePoolQaRollup({
-                rolePoolQuality,
-                rolePoolDiversity
-              })
-            : undefined
+        specSource,
+        roleCount: roles.length,
+        poolCount: plan.pools.length,
+        unsourceableCount: unsourceable.length,
+        missingBeforeVisualPass: plan.missing.filter((entry) => entry.kind === "missing").map((entry) => entry.label),
+        candidateCount: candidates.length,
+        imageBudget
       }
     })
     .select("id")
     .single();
 
-  if (sourcingJobError) {
-    throw new Error(sourcingJobError.message);
+  if (sourcingJobError || !sourcingJob) {
+    throw new Error(sourcingJobError?.message ?? "Could not open the sourcing job.");
   }
 
-  if (PRODUCT_SOURCING_AI_PRODUCT_IMAGES_ENABLED && !initialImageGate.usable) {
-    await serviceSupabase
-      .from("ai_jobs")
-      .update({
-        status: "failed",
-        completed_at: new Date().toISOString(),
-        error_message: "Product visual sourcing did not have enough AI-usable product images.",
-        output_summary: {
-          productMatchingEngineEnabled,
-          localSkuFidelityMode,
-          productSourcingAiPayload: productSourcingAiPayloadSummary(),
-          productImagePreflight: initialImagePreflight.summary,
-          productImagePreflightGate: initialImageGate,
-          usableProductImageCount: initialImagePreflight.summary.acceptedCount,
-          minUsableProductImageCount: initialImageGate.minAcceptedCount
-        }
-      })
-      .eq("id", sourcingJob.id);
+  // The visual pass: concept image plus the top candidates' images per role.
+  let outcomes: SpecRoleOutcome[];
+  let visualPass: {
+    used: boolean;
+    error: string | null;
+    promptKey: string | null;
+    promptVersion: string | null;
+    model: string | null;
+    textCostUsd: number | null;
+    imageCount: number;
+  } = { used: false, error: null, promptKey: null, promptVersion: null, model: null, textCostUsd: null, imageCount: 0 };
 
-    return { status: "blocked", message: productImageCatalogRefreshMessage() };
-  }
+  if (plan.pools.length === 0) {
+    outcomes = [];
+  } else {
+    const poolCandidatesById = new Map<string, RoleScopedRankedProductMatch>();
+    for (const pool of plan.pools) {
+      for (const candidate of pool.candidates) {
+        poolCandidatesById.set(candidate.id, candidate);
+      }
+    }
+    const imageIds = imageCandidateIdsForPools(plan.pools, imageBudget);
+    let candidateImageDataUrls: Record<string, string> = {};
+    if (imageIds.length > 0) {
+      try {
+        candidateImageDataUrls = await fetchCandidateImages(
+          imageIds.map((id) => poolCandidatesById.get(id)!),
+          imageIds.length
+        );
+      } catch (error) {
+        console.error("Candidate image fetch failed; the visual pass judges from text.", error);
+      }
+    }
+    visualPass.imageCount = Object.keys(candidateImageDataUrls).length;
 
-  let sourcingResult: Awaited<ReturnType<typeof sourceProductsFromConcept>>;
-  let productSourcingTextFallbackUsed = false;
-  let productSourcingTextFallbackReason: string | null = null;
-  let productSourcingInitialTimedOut = false;
-  const productSourcingStrategy = productSourcingVisualStrategy({
-    productCandidateImagesEnabled: PRODUCT_SOURCING_AI_PRODUCT_IMAGES_ENABLED,
-    candidateImageLimit: PRODUCT_SOURCING_AI_CANDIDATE_IMAGE_LIMIT,
-    rolePoolCount: sourcingCandidatePools.length
-  });
-  const productSourcingInitialAttemptStartedAtMs = Date.now();
-  let productSourcingInitialAttemptDurationMs: number | null = null;
-  try {
-    if (!productSourcingStrategy.shouldAttemptVisualSourcing) {
-      productSourcingTextFallbackUsed = true;
-      productSourcingTextFallbackReason = productSourcingStrategy.fallbackReason;
-      productSourcingInitialAttemptDurationMs = 0;
-      sourcingResult = buildProductSourcingTextFallbackResult({
-        roomType: room.room_type,
-        conceptTitle: concept.title,
-        conceptDescription: concept.description,
-        roles: staticRoles,
-        rankedCandidates: sourcingCandidates,
-        model: configuredTextModel()
-      });
-    } else {
-      sourcingResult = await withTimeout(
-        sourceProductsFromConcept({
+    try {
+      const result = await withTimeout(
+        sourceProducts({
           roomType: room.room_type,
           conceptTitle: concept.title,
           conceptDescription: concept.description,
-          conceptImageUrl: conceptSignedImage.signedUrl,
-          candidates: aiSourcingCandidates.map(matchToSourcingCandidate),
-          roleCandidatePools: productMatchingEngineEnabled ? sourcingCandidatePools : undefined,
-          conceptImageDetail: PRODUCT_SOURCING_AI_CONCEPT_IMAGE_DETAIL,
-          candidateImageLimit: PRODUCT_SOURCING_AI_CANDIDATE_IMAGE_LIMIT,
-          candidateImageDetail: PRODUCT_SOURCING_AI_CANDIDATE_IMAGE_DETAIL,
-          candidateImageDataUrls: await sourcingCandidateImageDataUrls(
-            aiSourcingCandidates,
-            PRODUCT_SOURCING_AI_CANDIDATE_IMAGE_LIMIT
-          )
+          conceptImageUrl,
+          candidates: Array.from(poolCandidatesById.values()).map(matchToSourcingCandidate),
+          roleCandidatePools: plan.pools.map((pool) => ({
+            category: pool.role.category,
+            roleLabel: pool.role.echoKey,
+            visualBrief: pool.role.visualBrief,
+            quantity: pool.role.quantity,
+            priority: pool.role.priority,
+            candidateIds: pool.candidates.map((candidate) => candidate.id)
+          })),
+          conceptImageDetail: "high",
+          candidateImageDetail: "low",
+          candidateImageDataUrls,
+          designSpec: {
+            roles: plan.pools.map((pool) => ({
+              echoKey: pool.role.echoKey,
+              category: pool.role.category,
+              label: pool.role.label,
+              quantity: pool.role.quantity,
+              sizeDescriptor: pool.role.specSizeDescriptor,
+              capacity: pool.role.specCapacity,
+              paletteMaterials: pool.role.specPaletteMaterials
+            })),
+            mustPreserve
+          }
         }),
         PRODUCT_SOURCING_AI_TIMEOUT_MS,
         "Product visual sourcing timed out."
       );
-      productSourcingInitialAttemptDurationMs = Date.now() - productSourcingInitialAttemptStartedAtMs;
-    }
-
-    await serviceSupabase
-      .from("ai_jobs")
-      .update({
-        status: "succeeded",
-        completed_at: new Date().toISOString(),
-        model: sourcingResult.model,
-        prompt_version: sourcingResult.promptVersion,
-        cost_estimate_usd: sumUsdCosts(sourcingResult.textCostUsd, paletteTextCostUsd),
-        output_summary: {
-          promptKey: sourcingResult.promptKey,
-          needCount: sourcingResult.needs.length,
-          selectedProductCount: sourcingResult.selectedProducts.length,
-          missingRoleCount: sourcingResult.missingRoles.length,
-          missingRoles: sourcingResult.missingRoles,
-          productMatchingEngineEnabled,
-          localSkuFidelityMode,
-          productSourcingAiPayload: productSourcingAiPayloadSummary(),
-          productSourcingVisualStrategy: productSourcingStrategy,
-          productSourcingTimeoutDiagnostics: productSourcingTimeoutDiagnostics({
-            attemptDurationMs: productSourcingInitialAttemptDurationMs,
-            timedOut: false,
-            fallbackUsed: productSourcingTextFallbackUsed,
-            fallbackReason: productSourcingTextFallbackReason,
-            candidateCount: aiSourcingCandidates.length,
-            rolePoolCount: sourcingCandidatePools.length
-          }),
-          productSourcingTextFallbackUsed,
-          productSourcingTextFallbackReason,
-          productImagePreflight: initialImagePreflight.summary,
-          productImagePreflightGate: initialImageGate,
-          roleCandidateCounts: productMatchingEngineEnabled ? roleCandidateCountSummary(sourcingPools) : undefined,
-          roleStatuses: productMatchingEngineEnabled ? roleStatusSummary(sourcingResult.roleResults) : undefined,
-          ...(productMatchingEngineEnabled
-            ? roleConfidenceOutputFields(
-                sourcingPools,
-                sourcingResult.roleResults,
-                productMatchingLoggedAtMs,
-                productMatchingRoomMeasurements,
-                productSourcingTimeoutDiagnostics({
-                  attemptDurationMs: productSourcingInitialAttemptDurationMs,
-                  timedOut: false,
-                  fallbackUsed: productSourcingTextFallbackUsed,
-                  fallbackReason: productSourcingTextFallbackReason,
-                  candidateCount: aiSourcingCandidates.length,
-                  rolePoolCount: sourcingCandidatePools.length
-                })
-              )
-            : {})
-        }
-      })
-      .eq("id", sourcingJob.id);
-  } catch (error) {
-    productSourcingInitialAttemptDurationMs = Date.now() - productSourcingInitialAttemptStartedAtMs;
-    const productSourcingTimedOut = isProductSourcingTimeoutError(error);
-    productSourcingInitialTimedOut = productSourcingTimedOut;
-    if (productSourcingTimedOut) {
-      productSourcingTextFallbackUsed = true;
-      productSourcingTextFallbackReason = "initial_visual_sourcing_timeout";
-      sourcingResult = buildProductSourcingTextFallbackResult({
-        roomType: room.room_type,
-        conceptTitle: concept.title,
-        conceptDescription: concept.description,
-        roles: staticRoles,
-        rankedCandidates: sourcingCandidates,
-        model: configuredTextModel()
+      outcomes = resolveSpecRoleOutcomes({
+        pools: plan.pools,
+        roleResults: result.roleResults,
+        selections: result.selectedProducts
       });
-
-      if (sourcingResult.needs.length > 0 && sourcingResult.selectedProducts.length > 0) {
-        await serviceSupabase
-          .from("ai_jobs")
-          .update({
-            status: "succeeded",
-            completed_at: new Date().toISOString(),
-            model: sourcingResult.model,
-            prompt_version: sourcingResult.promptVersion,
-            cost_estimate_usd: sumUsdCosts(sourcingResult.textCostUsd, paletteTextCostUsd),
-            output_summary: {
-              promptKey: sourcingResult.promptKey,
-              needCount: sourcingResult.needs.length,
-              selectedProductCount: sourcingResult.selectedProducts.length,
-              missingRoleCount: sourcingResult.missingRoles.length,
-              missingRoles: sourcingResult.missingRoles,
-              productMatchingEngineEnabled,
-              localSkuFidelityMode,
-              productSourcingAiPayload: productSourcingAiPayloadSummary(),
-              productSourcingVisualStrategy: productSourcingStrategy,
-              productSourcingTimeoutDiagnostics: productSourcingTimeoutDiagnostics({
-                attemptDurationMs: productSourcingInitialAttemptDurationMs,
-                timedOut: productSourcingTimedOut,
-                fallbackUsed: productSourcingTextFallbackUsed,
-                fallbackReason: productSourcingTextFallbackReason,
-                candidateCount: aiSourcingCandidates.length,
-                rolePoolCount: sourcingCandidatePools.length
-              }),
-              productSourcingTimedOut,
-              productSourcingTextFallbackUsed,
-              productSourcingTextFallbackReason,
-              productImagePreflight: initialImagePreflight.summary,
-              productImagePreflightGate: initialImageGate,
-              roleCandidateCounts: productMatchingEngineEnabled ? roleCandidateCountSummary(sourcingPools) : undefined,
-              roleStatuses: productMatchingEngineEnabled ? roleStatusSummary(sourcingResult.roleResults) : undefined,
-              ...(productMatchingEngineEnabled
-                ? roleConfidenceOutputFields(
-                    sourcingPools,
-                    sourcingResult.roleResults,
-                    productMatchingLoggedAtMs,
-                    productMatchingRoomMeasurements,
-                    productSourcingTimeoutDiagnostics({
-                      attemptDurationMs: productSourcingInitialAttemptDurationMs,
-                      timedOut: productSourcingTimedOut,
-                      fallbackUsed: productSourcingTextFallbackUsed,
-                      fallbackReason: productSourcingTextFallbackReason,
-                      candidateCount: aiSourcingCandidates.length,
-                      rolePoolCount: sourcingCandidatePools.length
-                    })
-                  )
-                : {})
-            }
-          })
-          .eq("id", sourcingJob.id);
-      } else {
-        await serviceSupabase
-          .from("ai_jobs")
-          .update({
-            status: "failed",
-            completed_at: new Date().toISOString(),
-            error_message: "Product visual sourcing timed out and text fallback found no usable products.",
-            output_summary: {
-              productMatchingEngineEnabled,
-              localSkuFidelityMode,
-              productSourcingAiPayload: productSourcingAiPayloadSummary(),
-              productSourcingVisualStrategy: productSourcingStrategy,
-              productSourcingTimeoutDiagnostics: productSourcingTimeoutDiagnostics({
-                attemptDurationMs: productSourcingInitialAttemptDurationMs,
-                timedOut: productSourcingTimedOut,
-                fallbackUsed: productSourcingTextFallbackUsed,
-                fallbackReason: productSourcingTextFallbackReason,
-                candidateCount: aiSourcingCandidates.length,
-                rolePoolCount: sourcingCandidatePools.length
-              }),
-              productImagePreflight: initialImagePreflight.summary,
-              productImagePreflightGate: initialImageGate,
-              productSourcingTimedOut,
-              productSourcingTextFallbackUsed,
-              productSourcingTextFallbackReason,
-              providerImageDownloadFailure: false
-            }
-          })
-          .eq("id", sourcingJob.id);
-
-        return { status: "blocked", message: productSourcingTimeoutMessage() };
-      }
-    } else {
-      await serviceSupabase
-        .from("ai_jobs")
-        .update({
-          status: "failed",
-          completed_at: new Date().toISOString(),
-          error_message: error instanceof Error ? error.message : "Product visual sourcing failed.",
-          output_summary: {
-            productMatchingEngineEnabled,
-            localSkuFidelityMode,
-            productSourcingAiPayload: productSourcingAiPayloadSummary(),
-            productSourcingVisualStrategy: productSourcingStrategy,
-            productSourcingTimeoutDiagnostics: productSourcingTimeoutDiagnostics({
-              attemptDurationMs: productSourcingInitialAttemptDurationMs,
-              timedOut: productSourcingTimedOut,
-              fallbackUsed: productSourcingTextFallbackUsed,
-              fallbackReason: productSourcingTextFallbackReason,
-              candidateCount: aiSourcingCandidates.length,
-              rolePoolCount: sourcingCandidatePools.length
-            }),
-            productImagePreflight: initialImagePreflight.summary,
-            productImagePreflightGate: initialImageGate,
-            productSourcingTimedOut,
-            productSourcingTextFallbackUsed,
-            productSourcingTextFallbackReason,
-            providerImageDownloadFailure: isProviderImageDownloadError(error)
-          }
-        })
-        .eq("id", sourcingJob.id);
-
-      const message = productSourcingFailureMessage(error);
-      return { status: "blocked", message: message };
-    }
-  }
-
-  if (sourcingResult.needs.length === 0 || sourcingResult.selectedProducts.length === 0) {
-    return { status: "blocked", message: "Product sourcing could not find enough visually relevant catalog pieces. Please try sourcing again." };
-  }
-  const visualConceptText = [
-    paletteGroundedConceptText,
-    ...(sourcingResult?.needs.map(
-      (need) => `${need.roleLabel}: ${need.visualBrief}`
-    ) ?? [])
-  ].join("\n");
-  let visualMissingRoleCategories = new Set(
-    sourcingResult.missingRoles.map((role) => normalizeSourcingCategory(role, role))
-  );
-  // The AI's read of the concept defines the room's roles; fall back to the
-  // static room roles, and append any required static role the AI didn't name.
-  const aiRoles: RoomProductRoleSpec[] = sourcingResult.needs.map((need) => ({
-    category: normalizeSourcingCategory(need.category, need.roleLabel),
-    label: need.roleLabel,
-    visualBrief: need.visualBrief,
-    quantity: Math.max(1, need.quantity),
-    priority: need.priority === "required" ? "required" : "supporting"
-  }));
-  const usableAiRoles = aiRoles.filter((role) => !visualMissingRoleCategories.has(role.category));
-  const aiRoleCategories = new Set(usableAiRoles.map((role) => role.category));
-  const roles =
-    usableAiRoles.length > 0
-      ? [
-          ...usableAiRoles,
-          ...staticRoles.filter(
-            (role) => !aiRoleCategories.has(role.category) && !visualMissingRoleCategories.has(role.category)
-          )
-        ]
-      : staticRoles.filter((role) => !visualMissingRoleCategories.has(role.category));
-
-  const baseVisualRanked = rankProductMatches({
-    roomType: room.room_type,
-    conceptText: visualConceptText,
-    recentlyUsedProductIds,
-    avoidColorTags: conceptAvoidColorTags,
-    budgetMaxAed: project.budget_max_aed,
-    roomMeasurements: measurements
-      ? {
-          wallLengthCm: measurements.wall_length_cm,
-          roomDepthCm: measurements.room_depth_cm
-        }
-      : null,
-    candidates: matchingCandidates
-  });
-  const visualRanked = localSkuFidelityMode
-    ? rankMatchesForLocalSkuFidelity({
-        ranked: baseVisualRanked,
-        roles,
-        roomType: room.room_type,
-        conceptText: visualConceptText,
-        roomMeasurements: measurements
-          ? {
-              wallLengthCm: measurements.wall_length_cm,
-              roomDepthCm: measurements.room_depth_cm
-            }
-          : null
-      })
-    : baseVisualRanked;
-  let missingRequiredVisualRoles = staticRoles.filter(
-    (role) => role.priority === "required" && visualMissingRoleCategories.has(role.category)
-  );
-  let retryProductImagePreflightSummary: ProductImagePreflightSummary | null = null;
-  let retryProductImagePreflightGate: ReturnType<typeof buildProductImagePreflightGate> | null = null;
-  let retryProviderImageDownloadFailure = false;
-  let retryProductSourcingTimedOut = false;
-  let retryProductSourcingAttemptDurationMs: number | null = null;
-  let retryProductSourcingTextFallbackUsed = false;
-  let retryProductSourcingTextFallbackReason: string | null = null;
-
-  if (!productSourcingTextFallbackUsed && missingRequiredVisualRoles.length > 0) {
-    const retryRoles = mergeRoomRoles(missingRequiredVisualRoles, staticRoles);
-    const retryPlan = buildProductSourcingRuntimePlan({
-      engineEnabled: productMatchingEngineEnabled,
-      roomType: room.room_type,
-      conceptText: visualConceptText,
-      roles: retryRoles,
-      candidates: matchingCandidates,
-      recentlyUsedProductIds,
-      avoidColorTags: conceptAvoidColorTags,
-      budgetMaxAed: project.budget_max_aed,
-      roomMeasurements: measurements
-        ? {
-            wallLengthCm: measurements.wall_length_cm,
-            roomDepthCm: measurements.room_depth_cm
-          }
-        : null,
-      candidatesPerRole: localSkuFidelityMode ? LOCAL_SKU_FIDELITY_CANDIDATES_PER_ROLE : 8,
-      flatCandidateLimit: localSkuFidelityMode
-        ? Math.max(72, retryRoles.length * LOCAL_SKU_FIDELITY_CANDIDATES_PER_ROLE)
-        : 36
-    });
-    const retryPools = retryPlan.roleScopedPools;
-    const retryCandidates = retryPlan.candidates;
-    const retryImagePreflight = PRODUCT_SOURCING_AI_PRODUCT_IMAGES_ENABLED
-      ? await preflightProductCandidateImages(retryCandidates, {
-          timeoutMs: PRODUCT_SOURCING_IMAGE_PREFLIGHT_TIMEOUT_MS,
-          budgetMs: PRODUCT_SOURCING_IMAGE_PREFLIGHT_BUDGET_MS,
-          maxBytes: PRODUCT_SOURCING_MAX_IMAGE_BYTES
-        })
-      : skippedProductImagePreflight(retryCandidates);
-    retryProductImagePreflightSummary = retryImagePreflight.summary;
-    const aiRetryCandidates = PRODUCT_SOURCING_AI_PRODUCT_IMAGES_ENABLED
-      ? retryImagePreflight.candidates
-      : retryCandidates;
-    const retryCandidateIds = new Set(retryCandidates.map((candidate) => candidate.id));
-    const retryImageGate = buildProductImagePreflightGate({
-      candidateCount: retryCandidates.length,
-      acceptedCandidateIds: retryImagePreflight.acceptedCandidateIds,
-      rolePools: retryPools
-    });
-    retryProductImagePreflightGate = retryImageGate;
-    const retryProductSourcingStrategy = productSourcingVisualStrategy({
-      productCandidateImagesEnabled: PRODUCT_SOURCING_AI_PRODUCT_IMAGES_ENABLED,
-      candidateImageLimit: PRODUCT_SOURCING_AI_CANDIDATE_IMAGE_LIMIT,
-      rolePoolCount: retryPools.length
-    });
-    const retryFallbackEvidence = productSourcingRetryFallbackEvidenceForStrategy(retryProductSourcingStrategy);
-    const retryAttemptStartedAtMs = Date.now();
-    let retryResult: Awaited<ReturnType<typeof sourceProductsFromConcept>> | null = null;
-    if (retryFallbackEvidence) {
-      retryProductSourcingAttemptDurationMs = retryFallbackEvidence.retryAttemptDurationMs;
-      retryProductSourcingTextFallbackUsed = retryFallbackEvidence.retryFallbackUsed;
-      retryProductSourcingTextFallbackReason = retryFallbackEvidence.retryFallbackReason;
-      retryProviderImageDownloadFailure = retryFallbackEvidence.retryProviderImageDownloadFailure;
-      retryProductSourcingTimedOut = retryFallbackEvidence.retryTimedOut;
-      retryResult = buildProductSourcingTextFallbackResult({
-        roomType: room.room_type,
-        conceptTitle: concept.title,
-        conceptDescription: concept.description,
-        roles: retryRoles,
-        rankedCandidates: retryCandidates,
-        model: configuredTextModel()
-      });
-    } else if (!PRODUCT_SOURCING_AI_PRODUCT_IMAGES_ENABLED || retryImageGate.usable) {
-      retryResult = await withTimeout(
-        sourceProductsFromConcept({
-          roomType: room.room_type,
-          conceptTitle: concept.title,
-          conceptDescription: concept.description,
-          conceptImageUrl: conceptSignedImage.signedUrl,
-          candidates: aiRetryCandidates.map(matchToSourcingCandidate),
-          roleCandidatePools: productMatchingEngineEnabled
-            ? retryPools.map((pool) => poolToSourcingRolePool(pool, retryCandidateIds))
-            : undefined,
-          conceptImageDetail: PRODUCT_SOURCING_AI_CONCEPT_IMAGE_DETAIL,
-          candidateImageLimit: PRODUCT_SOURCING_AI_CANDIDATE_IMAGE_LIMIT,
-          candidateImageDetail: PRODUCT_SOURCING_AI_CANDIDATE_IMAGE_DETAIL,
-          candidateImageDataUrls: await sourcingCandidateImageDataUrls(
-            aiRetryCandidates,
-            PRODUCT_SOURCING_AI_CANDIDATE_IMAGE_LIMIT
-          )
-        }),
-        PRODUCT_SOURCING_AI_TIMEOUT_MS,
-        "Product visual sourcing retry timed out."
-      ).catch((error) => {
-        retryProductSourcingAttemptDurationMs = Date.now() - retryAttemptStartedAtMs;
-        retryProviderImageDownloadFailure = isProviderImageDownloadError(error);
-        retryProductSourcingTimedOut = isProductSourcingTimeoutError(error);
-        return null;
-      });
-    }
-    if (retryResult && !retryFallbackEvidence) {
-      retryProductSourcingAttemptDurationMs = Date.now() - retryAttemptStartedAtMs;
-    }
-
-    if (retryResult?.needs.length && retryResult.selectedProducts.length) {
-      // The first attempt's spend is real even though its result is being replaced.
-      initialSourcingTextCostUsd = sourcingResult?.textCostUsd ?? initialSourcingTextCostUsd;
-      sourcingResult = retryResult;
-      latestConfidencePools = retryPools;
-      visualMissingRoleCategories = new Set(
-        sourcingResult.missingRoles.map((role) => normalizeSourcingCategory(role, role))
+      visualPass = {
+        ...visualPass,
+        used: true,
+        promptKey: result.promptKey,
+        promptVersion: result.promptVersion,
+        model: result.model,
+        textCostUsd: result.textCostUsd ?? null
+      };
+    } catch (error) {
+      // Honest degraded path: catalogue ranking against the spec, labelled as
+      // such on every row, never presented as a visual match.
+      const message = error instanceof Error ? error.message : "Product visual sourcing failed.";
+      console.error("Product visual sourcing failed; falling back to ranking.", error);
+      outcomes = resolveSpecRoleOutcomesByRanking(
+        plan.pools,
+        "Chosen by catalogue ranking because the visual pass was unavailable; check it against the concept."
       );
-      missingRequiredVisualRoles = staticRoles.filter(
-        (role) => role.priority === "required" && visualMissingRoleCategories.has(role.category)
-      );
-
-      await serviceSupabase
-        .from("ai_jobs")
-        .update({
-          status: "succeeded",
-          completed_at: new Date().toISOString(),
-          model: sourcingResult.model,
-          prompt_version: sourcingResult.promptVersion,
-          cost_estimate_usd: sumUsdCosts(initialSourcingTextCostUsd, sourcingResult.textCostUsd, paletteTextCostUsd),
-          output_summary: {
-            promptKey: sourcingResult.promptKey,
-            needCount: sourcingResult.needs.length,
-            selectedProductCount: sourcingResult.selectedProducts.length,
-            missingRoleCount: sourcingResult.missingRoles.length,
-            missingRoles: sourcingResult.missingRoles,
-            productMatchingEngineEnabled,
-            localSkuFidelityMode,
-            productSourcingAiPayload: productSourcingAiPayloadSummary(),
-            productSourcingVisualStrategy: productSourcingStrategy,
-            retryProductSourcingVisualStrategy: retryProductSourcingStrategy,
-            productSourcingTimeoutDiagnostics: productSourcingTimeoutDiagnostics({
-              attemptDurationMs: productSourcingInitialAttemptDurationMs,
-              timedOut: productSourcingInitialTimedOut,
-              fallbackUsed: productSourcingTextFallbackUsed,
-              fallbackReason: productSourcingTextFallbackReason,
-              candidateCount: aiSourcingCandidates.length,
-              rolePoolCount: sourcingCandidatePools.length,
-              retryAttempted: true,
-              retryAttemptDurationMs: retryProductSourcingAttemptDurationMs,
-              retryTimedOut: retryProductSourcingTimedOut,
-              retryFallbackUsed: retryProductSourcingTextFallbackUsed,
-              retryFallbackReason: retryProductSourcingTextFallbackReason,
-              retryProviderImageDownloadFailure,
-              retryImageGateUsable: retryImageGate.usable
-            }),
-            productSourcingTextFallbackUsed,
-            productSourcingTextFallbackReason,
-            retryProductSourcingTextFallbackUsed,
-            retryProductSourcingTextFallbackReason,
-            productImagePreflight: initialImagePreflight.summary,
-            productImagePreflightGate: initialImageGate,
-            retryProductImagePreflight: retryImagePreflight.summary,
-            retryProductImagePreflightGate: retryImageGate,
-            roleCandidateCounts: productMatchingEngineEnabled ? roleCandidateCountSummary(retryPools) : undefined,
-            roleStatuses: productMatchingEngineEnabled ? roleStatusSummary(sourcingResult.roleResults) : undefined,
-            ...(productMatchingEngineEnabled
-              ? roleConfidenceOutputFields(
-                  retryPools,
-                  sourcingResult.roleResults,
-                  productMatchingLoggedAtMs,
-                  productMatchingRoomMeasurements,
-                  productSourcingTimeoutDiagnostics({
-                    attemptDurationMs: productSourcingInitialAttemptDurationMs,
-                    timedOut: productSourcingInitialTimedOut,
-                    fallbackUsed: productSourcingTextFallbackUsed,
-                    fallbackReason: productSourcingTextFallbackReason,
-                    candidateCount: aiRetryCandidates.length,
-                    rolePoolCount: retryPools.length,
-                    retryAttempted: true,
-                    retryAttemptDurationMs: retryProductSourcingAttemptDurationMs,
-                    retryTimedOut: retryProductSourcingTimedOut,
-                    retryFallbackUsed: retryProductSourcingTextFallbackUsed,
-                    retryFallbackReason: retryProductSourcingTextFallbackReason,
-                    retryProviderImageDownloadFailure,
-                    retryImageGateUsable: retryImageGate.usable
-                  })
-                )
-              : {}),
-            retryUsed: true,
-            usable: missingRequiredVisualRoles.length === 0
-          }
-        })
-        .eq("id", sourcingJob.id);
+      visualPass = { ...visualPass, used: false, error: message };
     }
   }
 
-  if (missingRequiredVisualRoles.length > 0) {
-    const missingLabels = missingRequiredVisualRoles.map((role) => role.label);
-    await serviceSupabase
-      .from("ai_jobs")
-      .update({
-        status: "failed",
-        completed_at: new Date().toISOString(),
-        error_message: `Visual sourcing reported missing required roles: ${missingLabels.join(", ")}.`,
-        output_summary: {
-          promptKey: sourcingResult.promptKey,
-          needCount: sourcingResult.needs.length,
-          selectedProductCount: sourcingResult.selectedProducts.length,
-          missingRoleCount: sourcingResult.missingRoles.length,
-          missingRoles: sourcingResult.missingRoles,
-          productMatchingEngineEnabled,
-          localSkuFidelityMode,
-          productSourcingAiPayload: productSourcingAiPayloadSummary(),
-          productSourcingVisualStrategy: productSourcingStrategy,
-          productSourcingTimeoutDiagnostics: productSourcingTimeoutDiagnostics({
-            attemptDurationMs: productSourcingInitialAttemptDurationMs,
-            timedOut: productSourcingInitialTimedOut,
-            fallbackUsed: productSourcingTextFallbackUsed,
-            fallbackReason: productSourcingTextFallbackReason,
-            candidateCount: aiSourcingCandidates.length,
-            rolePoolCount: sourcingCandidatePools.length,
-            retryAttempted: retryProductImagePreflightSummary !== null,
-            retryAttemptDurationMs: retryProductSourcingAttemptDurationMs,
-            retryTimedOut: retryProductSourcingTimedOut,
-            retryFallbackUsed: retryProductSourcingTextFallbackUsed,
-            retryFallbackReason: retryProductSourcingTextFallbackReason,
-            retryProviderImageDownloadFailure,
-            retryImageGateUsable: retryProductImagePreflightGate?.usable ?? null
-          }),
-          productSourcingTextFallbackUsed,
-          productSourcingTextFallbackReason,
-          productImagePreflight: initialImagePreflight.summary,
-          productImagePreflightGate: initialImageGate,
-          retryProductImagePreflight: retryProductImagePreflightSummary,
-          retryProductImagePreflightGate,
-          retryProductSourcingTimedOut,
-          retryProductSourcingTextFallbackUsed,
-          retryProductSourcingTextFallbackReason,
-          retryProviderImageDownloadFailure,
-          roleCandidateCounts: productMatchingEngineEnabled
-            ? roleCandidateCountSummary(latestConfidencePools)
-            : undefined,
-          roleStatuses: productMatchingEngineEnabled ? roleStatusSummary(sourcingResult.roleResults) : undefined,
-          ...(productMatchingEngineEnabled
-            ? roleConfidenceOutputFields(
-                latestConfidencePools,
-                sourcingResult.roleResults,
-                productMatchingLoggedAtMs,
-                productMatchingRoomMeasurements,
-                productSourcingTimeoutDiagnostics({
-                  attemptDurationMs: productSourcingInitialAttemptDurationMs,
-                  timedOut: productSourcingInitialTimedOut,
-                  fallbackUsed: productSourcingTextFallbackUsed,
-                  fallbackReason: productSourcingTextFallbackReason,
-                  candidateCount: latestConfidencePools.reduce((count, pool) => count + pool.candidateCount, 0),
-                  rolePoolCount: latestConfidencePools.length,
-                  retryAttempted: retryProductImagePreflightSummary !== null,
-                  retryAttemptDurationMs: retryProductSourcingAttemptDurationMs,
-                  retryTimedOut: retryProductSourcingTimedOut,
-                  retryFallbackUsed: retryProductSourcingTextFallbackUsed,
-                  retryFallbackReason: retryProductSourcingTextFallbackReason,
-                  retryProviderImageDownloadFailure,
-                  retryImageGateUsable: retryProductImagePreflightGate?.usable ?? null
-                })
-              )
-            : {}),
-          usable: false
-        }
-      })
-      .eq("id", sourcingJob.id);
+  const resolved = roleOptionsFromOutcomes(outcomes);
+  missingRoles = [...plan.missing, ...resolved.missing];
 
-    return { status: "blocked", message: retryProviderImageDownloadFailure ? productImageCatalogRefreshMessage() : retryProductSourcingTimedOut ? productSourcingTimeoutMessage() : "We need one more catalogue pass before this shopping list is ready. Please try sourcing again." };
-  }
-
-  const sourceSelectionsById = new Map(
-    sourcingResult.selectedProducts.map((selection) => [selection.productId, selection])
-  );
-  const sourceRoleResultsByCategory = productMatchingEngineEnabled
-    ? new Map(
-        sourcingResult.roleResults.map((result) => [
-          normalizeSourcingCategory(result.category, result.roleLabel),
-          result
-        ])
-      )
-    : new Map<string, (typeof sourcingResult.roleResults)[number]>();
-  const refreshDiversityHistory = localSkuFidelityMode
-    ? await previousShoppingListRefreshHistory({
-        serviceSupabase,
-        roomId,
-        conceptId
-      })
-    : [];
-
-  const visualRankedById = new Map(visualRanked.map((match) => [match.id, match]));
-  const optionsPerRole = localSkuFidelityMode ? LOCAL_SKU_FIDELITY_CANDIDATES_PER_ROLE : 6;
-  const roleScopedOptionPools = productMatchingEngineEnabled
-    ? buildRoleScopedCandidatePools({
-        roomType: room.room_type,
-        conceptText: visualConceptText,
-        roles,
-        candidates: matchingCandidates,
-        recentlyUsedProductIds,
-        avoidColorTags: conceptAvoidColorTags,
-        budgetMaxAed: project.budget_max_aed,
-        roomMeasurements: measurements
-          ? {
-              wallLengthCm: measurements.wall_length_cm,
-              roomDepthCm: measurements.room_depth_cm
-            }
-          : null,
-        candidatesPerRole: Math.max(optionsPerRole * 2, optionsPerRole)
-      }).pools.map((pool) =>
-        localSkuFidelityMode ? rerankRolePoolForAestheticFit(pool, room.room_type, visualConceptText) : pool
-      )
-    : [];
-  const roleOptions = ensureLocalSkuFidelitySupportOptions({
-    roleOptions: polishRoleOptionsForAestheticDemo({
-      roleOptions: composeRoomProductOptions({
-        ranked: visualRanked,
-        roles,
-        roleScopedPools: roleScopedOptionPools,
-        roomType: room.room_type,
-        // Store a reserve beyond the three shown, so rejecting an option reveals a
-        // replacement instantly with no catalog round-trip.
-        optionsPerRole,
-        refreshDiversityHistory: localSkuFidelityMode ? refreshDiversityHistory : []
-      }),
-      ranked: visualRanked,
-      rankedById: visualRankedById,
-      catalogueGroundingAnchors,
-      conceptText: visualConceptText,
-      localSkuFidelityMode,
-      optionsPerRole: 6
-    }),
-    roles,
-    ranked: visualRanked,
-    conceptText: visualConceptText,
-    localSkuFidelityMode
+  // Aggregate budget adherence: per-role picks have no view of the running
+  // total, so downgrade to cheaper in-pool alternates before persisting.
+  const budgetFit = fitSelectionToBudget({
+    roleOptions: resolved.roleOptions,
+    selectedProductIdByRole: resolved.selectedProductIdByRole,
+    budgetMaxAed: project.budget_max_aed ?? null
   });
-  const missingCatalogueAnchors = catalogueGroundingAnchors
-    .filter((anchor) => anchor.priority === "required")
-    .filter((anchor) => {
-      const category = normalizeSourcingCategory(anchor.category, anchor.roleLabel);
-      const role = roleOptions.find((option) => option.category === category);
-      return !role?.options.some((option) => option.id === anchor.productId);
-    });
-
-  if (missingCatalogueAnchors.length > 0 && !localSkuFidelityMode) {
-    const missingAnchorLabels = missingCatalogueAnchors.map((anchor) => anchor.roleLabel || anchor.category);
-    const { data: currentSourcingJob } = await serviceSupabase
-      .from("ai_jobs")
-      .select("output_summary")
-      .eq("id", sourcingJob.id)
-      .maybeSingle();
-    const currentSourcingSummary = isRecord(currentSourcingJob?.output_summary)
-      ? currentSourcingJob.output_summary
-      : {};
-
-    await serviceSupabase
-      .from("ai_jobs")
-      .update({
-        status: "failed",
-        completed_at: new Date().toISOString(),
-        error_message: `Required catalogue anchors were missing from product options: ${missingAnchorLabels.join(", ")}.`,
-        output_summary: {
-          ...currentSourcingSummary,
-          promptKey: sourcingResult.promptKey,
-          needCount: sourcingResult.needs.length,
-          selectedProductCount: sourcingResult.selectedProducts.length,
-          missingRoleCount: sourcingResult.missingRoles.length,
-          missingRoles: sourcingResult.missingRoles,
-          productMatchingEngineEnabled,
-          localSkuFidelityMode,
-          productSourcingAiPayload: productSourcingAiPayloadSummary(),
-          productSourcingVisualStrategy: productSourcingStrategy,
-          productSourcingTimeoutDiagnostics: productSourcingTimeoutDiagnostics({
-            attemptDurationMs: productSourcingInitialAttemptDurationMs,
-            timedOut: productSourcingInitialTimedOut,
-            fallbackUsed: productSourcingTextFallbackUsed,
-            fallbackReason: productSourcingTextFallbackReason,
-            candidateCount: aiSourcingCandidates.length,
-            rolePoolCount: sourcingCandidatePools.length,
-            retryAttempted: retryProductImagePreflightSummary !== null,
-            retryAttemptDurationMs: retryProductSourcingAttemptDurationMs,
-            retryTimedOut: retryProductSourcingTimedOut,
-            retryFallbackUsed: retryProductSourcingTextFallbackUsed,
-            retryFallbackReason: retryProductSourcingTextFallbackReason,
-            retryProviderImageDownloadFailure,
-            retryImageGateUsable: retryProductImagePreflightGate?.usable ?? null
-          }),
-          productSourcingTextFallbackUsed,
-          productSourcingTextFallbackReason,
-          productImagePreflight: initialImagePreflight.summary,
-          productImagePreflightGate: initialImageGate,
-          retryProductImagePreflight: retryProductImagePreflightSummary,
-          retryProductImagePreflightGate,
-          retryProductSourcingTimedOut,
-          retryProductSourcingTextFallbackUsed,
-          retryProductSourcingTextFallbackReason,
-          retryProviderImageDownloadFailure,
-          roleCandidateCounts: productMatchingEngineEnabled
-            ? roleCandidateCountSummary(latestConfidencePools)
-            : undefined,
-          roleStatuses: productMatchingEngineEnabled ? roleStatusSummary(sourcingResult.roleResults) : undefined,
-          ...(productMatchingEngineEnabled
-            ? roleConfidenceOutputFields(
-                latestConfidencePools,
-                sourcingResult.roleResults,
-                productMatchingLoggedAtMs,
-                productMatchingRoomMeasurements,
-                productSourcingTimeoutDiagnostics({
-                  attemptDurationMs: productSourcingInitialAttemptDurationMs,
-                  timedOut: productSourcingInitialTimedOut,
-                  fallbackUsed: productSourcingTextFallbackUsed,
-                  fallbackReason: productSourcingTextFallbackReason,
-                  candidateCount: latestConfidencePools.reduce((count, pool) => count + pool.candidateCount, 0),
-                  rolePoolCount: latestConfidencePools.length,
-                  retryAttempted: retryProductImagePreflightSummary !== null,
-                  retryAttemptDurationMs: retryProductSourcingAttemptDurationMs,
-                  retryTimedOut: retryProductSourcingTimedOut,
-                  retryFallbackUsed: retryProductSourcingTextFallbackUsed,
-                  retryFallbackReason: retryProductSourcingTextFallbackReason,
-                  retryProviderImageDownloadFailure,
-                  retryImageGateUsable: retryProductImagePreflightGate?.usable ?? null
-                })
-              )
-            : {}),
-          usable: false,
-          catalogueAnchorDivergence: {
-            missingRequiredAnchorCount: missingCatalogueAnchors.length,
-            missingRequiredAnchors: missingCatalogueAnchors.map((anchor) => ({
-              productId: anchor.productId,
-              category: anchor.category,
-              roleLabel: anchor.roleLabel
-            }))
-          }
-        }
-      })
-      .eq("id", sourcingJob.id);
-
-    return { status: "blocked", message: "We need one more catalogue pass before this shopping list is ready. Please try sourcing again." };
+  const selection = budgetFit.selectedProductIdByRole;
+  const roleOptions = selectedFirst(resolved.roleOptions, selection);
+  const reasonBySelectedId = new Map(
+    outcomes
+      .filter((outcome): outcome is Extract<SpecRoleOutcome, { kind: "selected" }> => outcome.kind === "selected")
+      .map((outcome) => [outcome.selectedProductId, whyThisPiece(outcome)])
+  );
+  const roleByProductId = new Map<string, RoomProductRoleSpec>();
+  for (const role of roleOptions) {
+    for (const option of role.options) {
+      roleByProductId.set(option.id, role);
+    }
   }
-  if (missingCatalogueAnchors.length > 0 && localSkuFidelityMode) {
-    const { data: currentSourcingJob } = await serviceSupabase
-      .from("ai_jobs")
-      .select("output_summary")
-      .eq("id", sourcingJob.id)
-      .maybeSingle();
-    const currentSourcingSummary = isRecord(currentSourcingJob?.output_summary)
-      ? currentSourcingJob.output_summary
-      : {};
-
-    await serviceSupabase
-      .from("ai_jobs")
-      .update({
-        output_summary: {
-          ...currentSourcingSummary,
-          catalogueAnchorDivergence: {
-            localReplacementAllowed: true,
-            missingRequiredAnchorCount: missingCatalogueAnchors.length,
-            missingRequiredAnchors: missingCatalogueAnchors.map((anchor) => ({
-              category: normalizeSourcingCategory(anchor.category, anchor.roleLabel),
-              roleLabel: anchor.roleLabel,
-              productId: anchor.productId
-            }))
-          }
-        }
-      })
-      .eq("id", sourcingJob.id);
-  }
-
-  const coveredCategories = new Set(roleOptions.map((role) => role.category));
-  const missingRequiredRoles = roles
-    .filter((role) => role.priority === "required" && !coveredCategories.has(role.category))
-    .map((role) => role.label);
-
-  if (missingRequiredRoles.length > 0) {
-    const { data: currentSourcingJob } = await serviceSupabase
-      .from("ai_jobs")
-      .select("output_summary")
-      .eq("id", sourcingJob.id)
-      .maybeSingle();
-    const currentSourcingSummary = isRecord(currentSourcingJob?.output_summary)
-      ? currentSourcingJob.output_summary
-      : {};
-
-    await serviceSupabase
-      .from("ai_jobs")
-      .update({
-        status: "failed",
-        completed_at: new Date().toISOString(),
-        error_message: `Required product roles were missing from product options: ${missingRequiredRoles.join(", ")}.`,
-        output_summary: {
-          ...currentSourcingSummary,
-          missingRequiredRoles,
-          productSourcingTimeoutDiagnostics: productSourcingTimeoutDiagnostics({
-            attemptDurationMs: productSourcingInitialAttemptDurationMs,
-            timedOut: productSourcingInitialTimedOut,
-            fallbackUsed: productSourcingTextFallbackUsed,
-            fallbackReason: productSourcingTextFallbackReason,
-            candidateCount: aiSourcingCandidates.length,
-            rolePoolCount: sourcingCandidatePools.length,
-            retryAttempted: retryProductImagePreflightSummary !== null,
-            retryAttemptDurationMs: retryProductSourcingAttemptDurationMs,
-            retryTimedOut: retryProductSourcingTimedOut,
-            retryFallbackUsed: retryProductSourcingTextFallbackUsed,
-            retryFallbackReason: retryProductSourcingTextFallbackReason,
-            retryProviderImageDownloadFailure,
-            retryImageGateUsable: retryProductImagePreflightGate?.usable ?? null
-          }),
-          usable: false
-        }
-      })
-      .eq("id", sourcingJob.id);
-
-    return { status: "blocked", message: "We need one more catalogue pass before this shopping list is ready. Please try sourcing again." };
-  }
+  const itemRows = buildShoppingListItemRows({
+    roleOptions,
+    selectedProductIdByRole: selection,
+    reasonFor: (match) =>
+      reasonBySelectedId.get(match.id) ??
+      alternateProse(match, roleByProductId.get(match.id) ?? { category: match.categoryNormalized ?? "", label: "role", visualBrief: null, quantity: 1, priority: "supporting" })
+  });
 
   const { data: existingList } = await supabase
     .from("shopping_lists")
@@ -1319,209 +485,91 @@ ${conceptPaletteText}`
     ? { data: existingList, error: null }
     : await supabase
         .from("shopping_lists")
-        .insert({
-          room_id: roomId,
-          concept_id: conceptId,
-          status: "draft"
-        })
+        .insert({ room_id: roomId, concept_id: conceptId, status: "draft" })
         .select("id")
         .single();
 
-  if (shoppingListResult.error) {
-    throw new Error(shoppingListResult.error.message);
+  if (shoppingListResult.error || !shoppingListResult.data) {
+    throw new Error(shoppingListResult.error?.message ?? "Could not open the shopping list.");
   }
 
   const shoppingListId = shoppingListResult.data.id;
-  await supabase.from("shopping_list_items").delete().eq("shopping_list_id", shoppingListId);
-
-  // Pre-select the AI's recommended product per role. If the AI does not pick
-  // one, fall back to the top-ranked option so every role starts chosen.
-  const selectedProductIdByRole = new Map<string, string>();
-  for (const role of roleOptions) {
-    if (localSkuFidelityMode && role.options[0]) {
-      selectedProductIdByRole.set(role.category, role.options[0].id);
-      continue;
-    }
-
-    const catalogueAnchorId = catalogueAnchorIdsByCategory.get(role.category);
-    if (!localSkuFidelityMode && catalogueAnchorId && role.options.some((option) => option.id === catalogueAnchorId)) {
-      selectedProductIdByRole.set(role.category, catalogueAnchorId);
-      continue;
-    }
-
-    const roleResult = sourceRoleResultsByCategory.get(role.category);
-    const roleResultOption = roleResult?.productId
-      ? role.options.find((option) => option.id === roleResult.productId)
-      : undefined;
-    const aiPick = sourcingResult.selectedProducts.find(
-      (selection) =>
-        normalizeSourcingCategory(selection.category, selection.roleLabel) === role.category &&
-        role.options.some((option) => option.id === selection.productId)
-    );
-    const aiPickOption = aiPick ? role.options.find((option) => option.id === aiPick.productId) : undefined;
-    const themeAlignedPick = bestThemeAlignedOptionForRole({
-      role,
-      options: role.options,
-      conceptText: visualConceptText,
-      currentPick: roleResultOption ?? aiPickOption,
-      localSkuFidelityMode
-    });
-    if (themeAlignedPick && themeAlignedPick.id !== (roleResultOption ?? aiPickOption)?.id) {
-      selectedProductIdByRole.set(role.category, themeAlignedPick.id);
-      continue;
-    }
-
-    if (roleResult?.productId && role.options.some((option) => option.id === roleResult.productId)) {
-      selectedProductIdByRole.set(role.category, roleResult.productId);
-      continue;
-    }
-
-    if (aiPick) {
-      selectedProductIdByRole.set(role.category, aiPick.productId);
-    } else if (role.options[0]) {
-      const fallbackPick =
-        bestThemeAlignedOptionForRole({
-          role,
-          options: role.options,
-          conceptText: visualConceptText,
-          currentPick: role.options[0],
-          localSkuFidelityMode
-        }) ?? role.options[0];
-      selectedProductIdByRole.set(role.category, fallbackPick.id);
-    }
+  const { error: deleteError } = await supabase
+    .from("shopping_list_items")
+    .delete()
+    .eq("shopping_list_id", shoppingListId);
+  if (deleteError) {
+    throw new Error(deleteError.message);
   }
 
-  // Aggregate budget adherence: per-role selection above has no view of the running total, so the
-  // qty-aware line-total sum can exceed the stated budget (a role at qty 2 doubles its line). Fit
-  // the selection to budget by downgrading roles to cheaper in-pool alternates before persisting.
-  const budgetFit = fitSelectionToBudget({
-    roleOptions,
-    selectedProductIdByRole,
-    budgetMaxAed: project.budget_max_aed ?? null
-  });
-  const budgetAdjustedSelection = budgetFit.selectedProductIdByRole;
-
-  const selectedFirstRoleOptions = roleOptions.map((role) => {
-    const selectedId = budgetAdjustedSelection.get(role.category);
-    const selectedOption = selectedId ? role.options.find((option) => option.id === selectedId) : undefined;
-    if (!selectedOption || role.options[0]?.id === selectedOption.id) {
-      return role;
+  if (itemRows.length > 0) {
+    const { error: itemError } = await supabase
+      .from("shopping_list_items")
+      .insert(itemRows.map((row) => ({ ...row, shopping_list_id: shoppingListId })));
+    if (itemError) {
+      throw new Error(itemError.message);
     }
-
-    return {
-      ...role,
-      options: [selectedOption, ...role.options.filter((option) => option.id !== selectedOption.id)]
-    };
-  });
-
-  const itemRows = buildShoppingListItemRows({
-    roleOptions: selectedFirstRoleOptions,
-    selectedProductIdByRole: budgetAdjustedSelection,
-    reasonFor: (match) => {
-      const sourceSelection = sourceSelectionsById.get(match.id);
-      return [
-        sourceSelection?.visualMatchReason ? `visual match: ${sourceSelection.visualMatchReason}` : null,
-        sourceSelection?.mismatchNote ? `mismatch: ${sourceSelection.mismatchNote}` : null,
-        match.selectionReason,
-        ...match.warnings.filter((warning) => warning !== match.dimensionFitNote)
-      ]
-        .filter(Boolean)
-        .join(" ");
-    }
-  });
-
-  const { error: itemError } = await supabase
-    .from("shopping_list_items")
-    .insert(itemRows.map((row) => ({ ...row, shopping_list_id: shoppingListId })));
-
-  if (itemError) {
-    throw new Error(itemError.message);
   }
 
   const estimatedTotal = selectedItemsTotalAed(itemRows);
-  await supabase
+  const { error: listUpdateError } = await supabase
     .from("shopping_lists")
     .update({
       estimated_total_aed: estimatedTotal,
+      missing_roles: missingRoles,
       updated_at: new Date().toISOString()
     })
     .eq("id", shoppingListId);
-  if (localSkuFidelityMode && productMatchingEngineEnabled) {
-    const sourceSelectedProductIdByCategory = new Map<string, string | null>();
-    for (const result of sourcingResult.roleResults) {
-      sourceSelectedProductIdByCategory.set(
-        normalizeSourcingCategory(result.category, result.roleLabel),
-        result.productId
-      );
-    }
-    const conceptAnchorProductIdByCategory = new Map<string, string | null>();
-    for (const anchor of catalogueGroundingAnchors) {
-      if (anchor.priority !== "required") {
-        continue;
-      }
-      conceptAnchorProductIdByCategory.set(
-        normalizeSourcingCategory(anchor.category, anchor.roleLabel),
-        anchor.productId
-      );
-    }
-
-    const { data: currentSourcingJob } = await serviceSupabase
-      .from("ai_jobs")
-      .select("output_summary")
-      .eq("id", sourcingJob.id)
-      .maybeSingle();
-    const currentSourcingSummary = isRecord(currentSourcingJob?.output_summary)
-      ? currentSourcingJob.output_summary
-      : {};
-
-    const { error: persistedSelectionSnapshotError } = await serviceSupabase
-      .from("ai_jobs")
-      .update({
-        output_summary: {
-          ...currentSourcingSummary,
-          productSourcingTimeoutDiagnostics:
-            currentSourcingSummary.productSourcingTimeoutDiagnostics ??
-            productSourcingTimeoutDiagnostics({
-              attemptDurationMs: productSourcingInitialAttemptDurationMs,
-              timedOut: productSourcingInitialTimedOut,
-              fallbackUsed: productSourcingTextFallbackUsed,
-              fallbackReason: productSourcingTextFallbackReason,
-              candidateCount: aiSourcingCandidates.length,
-              rolePoolCount: sourcingCandidatePools.length,
-              retryAttempted: retryProductImagePreflightSummary !== null,
-              retryAttemptDurationMs: retryProductSourcingAttemptDurationMs,
-              retryTimedOut: retryProductSourcingTimedOut,
-              retryFallbackUsed: retryProductSourcingTextFallbackUsed,
-              retryFallbackReason: retryProductSourcingTextFallbackReason,
-              retryProviderImageDownloadFailure,
-              retryImageGateUsable: retryProductImagePreflightGate?.usable ?? null
-            }),
-          persistedSelectionSnapshot: buildPersistedSelectionSnapshot({
-            shoppingListId,
-            estimatedTotalAed: estimatedTotal,
-            sourcePath: productSourcingTextFallbackUsed ? "text_fallback" : "visual",
-            roleOptions: selectedFirstRoleOptions,
-            itemRows,
-            sourceSelectedProductIdByCategory,
-            conceptAnchorProductIdByCategory
-          })
-        }
-      })
-      .eq("id", sourcingJob.id);
-    if (persistedSelectionSnapshotError) {
-      throw new Error(persistedSelectionSnapshotError.message);
-    }
+  if (listUpdateError) {
+    throw new Error(listUpdateError.message);
   }
+
   await supabase.from("rooms").update({ status: "sourcing" }).eq("id", roomId);
 
-  return { status: "sourced" };
+  const selectedCount = itemRows.filter((row) => row.status === "selected").length;
+  const missingRoleCount = missingRoles.filter((entry) => entry.kind === "missing").length;
+
+  await serviceSupabase
+    .from("ai_jobs")
+    .update({
+      status: "succeeded",
+      completed_at: new Date().toISOString(),
+      model: visualPass.model ?? stageTextConfig("product_sourcing", configuredTextModel()).model,
+      prompt_version: visualPass.promptVersion,
+      cost_estimate_usd: sumUsdCosts(visualPass.textCostUsd, paletteTextCostUsd),
+      output_summary: {
+        specSource,
+        roleCount: roles.length,
+        poolCount: plan.pools.length,
+        selectedCount,
+        missingRoles: missingRoles.filter((entry) => entry.kind === "missing").map((entry) => entry.label),
+        unsourceable: missingRoles.filter((entry) => entry.kind !== "missing").map((entry) => entry.label),
+        contractRejections,
+        visualPass,
+        budgetFit: {
+          adjusted: budgetFit.adjusted,
+          withinBudget: budgetFit.withinBudget,
+          downgrades: budgetFit.downgrades.length
+        },
+        shoppingListId,
+        estimatedTotalAed: estimatedTotal
+      }
+    })
+    .eq("id", sourcingJob.id);
+
+  return { status: "sourced", selectedCount, missingRoleCount };
 }
+
+// ------------------------------------------------------------- refill
 
 export type ShoppingOptionRefillInput = {
   projectId: string;
   roomId: string;
   shoppingListId: string;
   category: string;
+  // The role's label (a spec object's label after S3). Scopes the refill to
+  // ONE role when a category carries several; absent for legacy lists.
+  roleLabel?: string | null;
 };
 
 type OptionRowTemplate = {
@@ -1538,39 +586,63 @@ function optionRowsFromMatches(
   shoppingListId: string,
   category: string,
   template: OptionRowTemplate,
-  fresh: RankedProductMatch[]
+  matches: RankedProductMatch[]
 ) {
-  return fresh.map((match, index) => {
+  return matches.map((match, index) => {
     const unitPrice = match.salePriceAed ?? match.priceAed ?? 0;
-    const optionRank = template.option_rank + 1 + index;
     return {
       shopping_list_id: shoppingListId,
       product_id: match.id,
       category,
-      status: "option" as const,
+      status: "option",
       role_label: template.role_label,
       role_visual_brief: template.role_visual_brief,
       role_priority: template.role_priority,
       role_quantity: template.role_quantity,
-      option_rank: optionRank,
+      option_rank: template.option_rank + index + 1,
       quantity: template.role_quantity,
       unit_price_aed: unitPrice,
       line_total_aed: unitPrice * template.role_quantity,
-      selection_reason: [
-        match.selectionReason,
-        ...match.warnings.filter((warning) => warning !== match.dimensionFitNote)
-      ]
-        .filter(Boolean)
-        .join(" "),
+      selection_reason: [match.selectionReason, ...match.warnings.filter((warning) => warning !== match.dimensionFitNote)].join(" "),
       dimension_fit_note: match.dimensionFitNote,
-      sort_order: optionRank
+      sort_order: template.option_rank + index + 1
     };
   });
 }
 
+// The spec role a persisted row belongs to, by label (the row's role_label is
+// the spec object's label verbatim), so refills and swaps re-run the SAME
+// contract sourcing used. Null when the list was built without a spec.
+export async function specRoleForListRow(
+  serviceSupabase: ServiceSupabaseClient,
+  { roomId, conceptId, roomType, roleLabel }: { roomId: string; conceptId: string | null; roomType: string; roleLabel: string | null | undefined }
+): Promise<SpecSourcingRole | null> {
+  if (!conceptId || !roleLabel) {
+    return null;
+  }
+  const { data: specRow } = await serviceSupabase
+    .from("room_design_specs")
+    .select("*")
+    .eq("room_id", roomId)
+    .eq("concept_id", conceptId)
+    .maybeSingle();
+  if (!specRow) {
+    return null;
+  }
+  const { parseRoomDesignSpecRow } = await import("@ritzy-studio/domain");
+  const spec = parseRoomDesignSpecRow(specRow);
+  if (!spec) {
+    return null;
+  }
+  const wanted = roleLabel.trim().toLowerCase();
+  return (
+    sourcingRolesFromDesignSpec(spec, roomType).roles.find((role) => role.label.trim().toLowerCase() === wanted) ?? null
+  );
+}
+
 async function loadRefillContext(
-  { supabase, serviceSupabase }: { supabase: UserSupabaseClient; serviceSupabase: ServiceSupabaseClient },
-  { projectId, roomId, shoppingListId, category }: ShoppingOptionRefillInput,
+  { supabase, serviceSupabase }: Clients,
+  { projectId, roomId, shoppingListId, category, roleLabel }: ShoppingOptionRefillInput,
   itemColumns: string
 ) {
   const { data: shoppingList } = await supabase
@@ -1602,11 +674,15 @@ async function loadRefillContext(
     .eq("id", shoppingList.concept_id)
     .single();
 
-  const { data: existingRows } = await supabase
+  let rowsQuery = supabase
     .from("shopping_list_items")
     .select(itemColumns)
     .eq("shopping_list_id", shoppingListId)
     .eq("category", category);
+  if (roleLabel) {
+    rowsQuery = rowsQuery.eq("role_label", roleLabel);
+  }
+  const { data: existingRows } = await rowsQuery;
 
   const { data: measurements } = await supabase
     .from("room_measurements")
@@ -1630,7 +706,14 @@ async function loadRefillContext(
     .order("last_checked_at", { ascending: false, nullsFirst: false })
     .limit(PRODUCT_MATCHING_CATALOG_LIMIT);
 
-  return { room, project, concept, existingRows, measurements, products };
+  const specRole = await specRoleForListRow(serviceSupabase, {
+    roomId,
+    conceptId: shoppingList.concept_id,
+    roomType: room.room_type,
+    roleLabel: roleLabel ?? null
+  });
+
+  return { room, project, concept, existingRows, measurements, products, specRole };
 }
 
 function rankFreshOptions({
@@ -1642,7 +725,8 @@ function rankFreshOptions({
   category,
   template,
   usedProductIds,
-  limit
+  limit,
+  specRole
 }: {
   room: { room_type: string };
   project: { budget_max_aed: number | null };
@@ -1653,19 +737,26 @@ function rankFreshOptions({
   template: OptionRowTemplate;
   usedProductIds: Set<string>;
   limit: number;
+  specRole: SpecSourcingRole | null;
 }) {
-  const candidates = (products ?? [])
+  const allCandidates = (products ?? [])
     .map(productToMatchCandidate)
     .filter((candidate): candidate is ProductMatchCandidate => Boolean(candidate));
+  // Spec-constrained: only contract-clean candidates can refill a spec role.
+  const candidates = specRole
+    ? allCandidates.filter((candidate) => checkCandidateAgainstSpecRole(candidate, specRole).ok)
+    : allCandidates;
 
   const conceptText = `${concept.title}\n${concept.description ?? ""}`;
-  const role = shoppingListRoleSpecFromRow({
-    category,
-    role_label: template.role_label,
-    role_visual_brief: template.role_visual_brief,
-    role_priority: template.role_priority,
-    role_quantity: template.role_quantity
-  });
+  const role =
+    specRole ??
+    shoppingListRoleSpecFromRow({
+      category,
+      role_label: template.role_label,
+      role_visual_brief: template.role_visual_brief,
+      role_priority: template.role_priority,
+      role_quantity: template.role_quantity
+    });
   return roleScopedShoppingAlternates({
     roomType: room.room_type,
     conceptText,
@@ -1685,7 +776,7 @@ export type RefreshShoppingOptionsResult = { status: "refreshed" } | { status: "
 // Replace the non-selected options for a role while preserving the shopper's
 // current pick. This keeps refresh scoped to exploration, not selection.
 export async function refreshShoppingOptions(
-  clients: { supabase: UserSupabaseClient; serviceSupabase: ServiceSupabaseClient },
+  clients: Clients,
   input: ShoppingOptionRefillInput
 ): Promise<RefreshShoppingOptionsResult> {
   const context = await loadRefillContext(
@@ -1720,19 +811,24 @@ export async function refreshShoppingOptions(
     category: input.category,
     template,
     usedProductIds,
-    limit: 2
+    limit: 2,
+    specRole: context.specRole
   });
 
   if (fresh.length === 0) {
     return { status: "no_change" };
   }
 
-  await clients.supabase
+  let rejectQuery = clients.supabase
     .from("shopping_list_items")
     .update({ status: "rejected" })
     .eq("shopping_list_id", input.shoppingListId)
     .eq("category", input.category)
     .neq("status", "selected");
+  if (input.roleLabel) {
+    rejectQuery = rejectQuery.eq("role_label", input.roleLabel);
+  }
+  await rejectQuery;
 
   await clients.supabase
     .from("shopping_list_items")
@@ -1746,9 +842,9 @@ export type FindMoreShoppingOptionsResult =
   | { status: "no_change" };
 
 // Rare path: every loaded option for a role was rejected. Rank the catalog for
-// that category, skip products already in the list, and append fresh options.
+// that role, skip products already in the list, and append fresh options.
 export async function findMoreShoppingOptions(
-  clients: { supabase: UserSupabaseClient; serviceSupabase: ServiceSupabaseClient },
+  clients: Clients,
   input: ShoppingOptionRefillInput
 ): Promise<FindMoreShoppingOptionsResult> {
   const context = await loadRefillContext(
@@ -1782,7 +878,8 @@ export async function findMoreShoppingOptions(
     category: input.category,
     template,
     usedProductIds,
-    limit: 3
+    limit: 3,
+    specRole: context.specRole
   });
 
   if (fresh.length === 0) {

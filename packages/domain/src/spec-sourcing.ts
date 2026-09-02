@@ -46,9 +46,18 @@ export type SpecRoleContract = {
 
 export type SpecSourcingRole = RoomProductRoleSpec & {
   specKey: string;
+  // The short label the visual pass is asked to echo ("role-3"): unique per
+  // role, well under the response schema's label cap, and immune to label
+  // edits, casing and truncation. Reconciliation matches on it first.
+  echoKey: string;
   specObjectIndex: number;
   specRole: string;
   specLabel: string;
+  // The spec object's own words, kept apart from the joined visual brief so
+  // the visual pass can be told size, capacity and palette as the spec says.
+  specSizeDescriptor: string | null;
+  specCapacity: string | null;
+  specPaletteMaterials: string[];
   contract: SpecRoleContract;
 };
 
@@ -325,6 +334,20 @@ const WALL_FIXTURE_PHRASES = ["sconce", "wall light", "wall lamp", "wall mounted
 const CEILING_FIXTURE_PHRASES = ["pendant", "chandelier", "ceiling", "flush mount", "semi flush", "hanging", "suspension", "downlight", "recessed"];
 const FLOOR_OR_TABLE_PHRASES = ["floor lamp", "table lamp", "desk lamp", "bedside lamp", "task lamp", "reading lamp", "floor light", "standing lamp", "tripod lamp", "arc lamp"];
 
+// Role text is the spec's own words ("floor/table lighting", "bedside lamp"),
+// so a bare floor/table/bedside/desk token is enough to classify a ROLE. A
+// candidate's marketing text is not, and keeps the strict phrase list.
+const FLOOR_OR_TABLE_ROLE_TOKENS = ["floor", "table", "desk", "task", "bedside", "reading", "standing", "tripod", "arc"];
+
+function fixtureClassForRoleText(text: string): SpecRoleFixtureClass | undefined {
+  const strict = fixtureClassForText(text);
+  if (strict) {
+    return strict;
+  }
+  const tokens = new Set(text.split(" ").filter(Boolean));
+  return FLOOR_OR_TABLE_ROLE_TOKENS.some((token) => tokens.has(token)) ? "floor_or_table" : undefined;
+}
+
 function fixtureClassForText(text: string): SpecRoleFixtureClass | undefined {
   if (WALL_FIXTURE_PHRASES.some((phrase) => hasPhrase(text, phrase))) {
     return "wall";
@@ -372,7 +395,31 @@ export function sourcingRolesFromDesignSpec(
   const roles: SpecSourcingRole[] = [];
   const unsourceable: UnsourceableSpecObject[] = [];
 
-  spec.objects.forEach((object, index) => {
+  // Two spec objects with the same label in one category are one role with
+  // the summed quantity: persisted rows and the picker identify a role by
+  // category plus label, so two roles with one label would double-select and
+  // double-count. Merged by normalized label (casing and spacing ignored).
+  const merged: DesignSpecObject[] = [];
+  const mergedIndexByKey = new Map<string, number>();
+  for (const object of spec.objects) {
+    const key = `${normalizeText(object.role)}|${normalizeText(object.label)}`;
+    const existingIndex = mergedIndexByKey.get(key);
+    if (existingIndex === undefined) {
+      mergedIndexByKey.set(key, merged.length);
+      merged.push({ ...object, paletteMaterials: [...object.paletteMaterials] });
+      continue;
+    }
+    const existing = merged[existingIndex];
+    merged[existingIndex] = {
+      ...existing,
+      quantity: existing.quantity + object.quantity,
+      sizeDescriptor: existing.sizeDescriptor ?? object.sizeDescriptor,
+      capacity: existing.capacity ?? object.capacity,
+      paletteMaterials: Array.from(new Set([...existing.paletteMaterials, ...object.paletteMaterials]))
+    };
+  }
+
+  merged.forEach((object, index) => {
     const roleText = normalizeText(object.role);
     // The label's object clause only: placement phrases ("above the
     // fireplace", "over the dining table") name other things in the room.
@@ -408,44 +455,136 @@ export function sourcingRolesFromDesignSpec(
       return;
     }
 
-    const seats = parseSeatRange(object.capacity) ?? parseSeatRange(object.label);
-    // The role noun decides the fixture class; the label only when the role
-    // is unclassifiable ("floor_lamp" stays a floor lamp whatever its label
-    // says about where it hangs).
-    const contract: SpecRoleContract = {
-      category,
-      roomType,
-      fixtureClass:
-        category === "lighting" ? (fixtureClassForText(roleText) ?? fixtureClassForText(labelText)) : undefined,
-      minSeats: seats?.min,
-      maxSeats: seats?.max,
-      excludedSilhouettes: SEATING_CATEGORIES.has(category)
-        ? SEATING_SILHOUETTE_EXCLUSIONS.filter((phrase) => !hasPhrase(combined, phrase))
-        : []
-    };
-    const baseRole: RoomProductRoleSpec = {
-      category,
-      label: object.label,
-      visualBrief: visualBriefFor(object),
-      quantity: object.quantity,
-      priority: ANCHOR_CATEGORIES.has(category) ? "required" : "supporting",
-      sizeClass: category === "sofas" ? sofaSizeClassForSpec(combined, seats) : undefined
-    };
-    const classContract = roleClassContractForRole(baseRole, roomType);
-    roles.push({
-      ...baseRole,
-      allowedCategories: classContract.allowedCategories,
-      roomScope: classContract.roomScope,
-      roleKey: `${category}::${specKey}`,
-      specKey,
-      specObjectIndex: index,
-      specRole: object.role,
-      specLabel: object.label,
-      contract
-    });
+    roles.push(
+      specSourcingRole({
+        category,
+        roomType,
+        roleText,
+        labelText,
+        specKey,
+        specObjectIndex: index,
+        specRole: object.role,
+        label: object.label,
+        visualBrief: visualBriefFor(object),
+        quantity: object.quantity,
+        seats: parseSeatRange(object.capacity) ?? parseSeatRange(object.label),
+        specSizeDescriptor: object.sizeDescriptor,
+        specCapacity: object.capacity,
+        specPaletteMaterials: object.paletteMaterials
+      })
+    );
   });
 
   return { roles, unsourceable };
+}
+
+function specSourcingRole({
+  category,
+  roomType,
+  roleText,
+  labelText,
+  specKey,
+  specObjectIndex,
+  specRole,
+  label,
+  visualBrief,
+  quantity,
+  seats,
+  specSizeDescriptor,
+  specCapacity,
+  specPaletteMaterials,
+  priority
+}: {
+  category: SourcingCategory;
+  roomType: string;
+  roleText: string;
+  labelText: string;
+  specKey: string;
+  specObjectIndex: number;
+  specRole: string;
+  label: string;
+  visualBrief: string | null;
+  quantity: number;
+  seats: { min: number; max: number } | null;
+  specSizeDescriptor: string | null;
+  specCapacity: string | null;
+  specPaletteMaterials: string[];
+  priority?: "required" | "supporting";
+}): SpecSourcingRole {
+  const combined = `${roleText} ${labelText}`;
+  // The role noun decides the fixture class; the label only when the role is
+  // unclassifiable ("floor_lamp" stays a floor lamp whatever its label says
+  // about where it hangs).
+  const contract: SpecRoleContract = {
+    category,
+    roomType,
+    fixtureClass:
+      category === "lighting" ? (fixtureClassForRoleText(roleText) ?? fixtureClassForRoleText(labelText)) : undefined,
+    minSeats: seats?.min,
+    maxSeats: seats?.max,
+    excludedSilhouettes: SEATING_CATEGORIES.has(category)
+      ? SEATING_SILHOUETTE_EXCLUSIONS.filter((phrase) => !hasPhrase(combined, phrase))
+      : []
+  };
+  const baseRole: RoomProductRoleSpec = {
+    category,
+    label,
+    visualBrief,
+    quantity,
+    priority: priority ?? (ANCHOR_CATEGORIES.has(category) ? "required" : "supporting"),
+    sizeClass: category === "sofas" ? sofaSizeClassForSpec(combined, seats) : undefined
+  };
+  const classContract = roleClassContractForRole(baseRole, roomType);
+  return {
+    ...baseRole,
+    allowedCategories: classContract.allowedCategories,
+    roomScope: classContract.roomScope,
+    roleKey: `${category}::${specKey}`,
+    specKey,
+    echoKey: `role-${specObjectIndex + 1}`,
+    specObjectIndex,
+    specRole,
+    specLabel: label,
+    specSizeDescriptor,
+    specCapacity,
+    specPaletteMaterials,
+    contract
+  };
+}
+
+// The no-spec fallback (a room whose extraction failed and whose user chose
+// to source anyway): the room-type blueprint roles, carried through the same
+// contract machinery so the list is still honest about what it could not
+// fill. Categories are the blueprint's own; only the contract is derived.
+export function sourcingRolesFromBlueprint(
+  blueprint: ReadonlyArray<{
+    category: string;
+    label: string;
+    visualBrief?: string | null;
+    quantity: number;
+    required?: boolean;
+  }>,
+  roomType: string
+): SpecSourcingRole[] {
+  return blueprint.map((role, index) =>
+    specSourcingRole({
+      category: role.category,
+      roomType,
+      roleText: normalizeText(role.category),
+      labelText: normalizeText(role.label),
+      specKey: `blueprint:${index}:${role.category}`,
+      specObjectIndex: index,
+      specRole: role.category,
+      label: role.label,
+      visualBrief: role.visualBrief ?? null,
+      quantity: Math.max(1, role.quantity),
+      seats: parseSeatRange(role.label),
+      specSizeDescriptor: null,
+      specCapacity: null,
+      specPaletteMaterials: [],
+      priority: role.required ? "required" : "supporting"
+    })
+  );
 }
 
 // ---------------------------------------------------------------- contract
@@ -596,7 +735,18 @@ export function missingRoleReason(
       .sort((left, right) => right[1] - left[1])[0] ?? [];
 
   if (contractCleanCount > 0) {
-    return `No ${noun} in the catalogue fit the design's palette, budget and room size.`;
+    switch (topReason) {
+      case "unavailable":
+        return `Every ${noun} that fits the design is out of stock right now.`;
+      case "missing_image":
+        return `The ${noun} pieces that fit the design have no usable product image yet.`;
+      case "over_budget":
+        return `Every ${noun} that fits the design is above the room's budget.`;
+      case "avoid_color":
+        return `Every ${noun} that fits the design comes in a colour the brief asked to avoid.`;
+      default:
+        return `No ${noun} in the catalogue fit the design's palette, budget and room size.`;
+    }
   }
   switch (topReason) {
     case "lighting_fixture_class_mismatch":
@@ -684,6 +834,10 @@ export function buildSpecSourcingPlan({
             conceptText,
             roles: [role],
             candidates: clean,
+            // The scorer's cross-category adjustments (a statement coffee
+            // table beside a patterned rug) read the whole catalogue, not
+            // just this role's clean list.
+            companionCandidates: candidates,
             budgetMaxAed,
             roomMeasurements,
             candidatesPerRole,
@@ -763,10 +917,14 @@ export type SpecRoleOutcome =
     }
   | { kind: "missing"; role: SpecSourcingRole; entry: MissingRoleEntry };
 
+// The pass echoes the role's short key (or, failing that, its label); either
+// identifies the pool, and the category is compared normalized so "Lighting"
+// and "side tables" reconcile with "lighting" and "side_tables".
 function poolMatches(pool: SpecRolePool, category: string, roleLabel: string) {
+  const echoed = normalizeText(roleLabel);
   return (
-    pool.role.category === category &&
-    pool.role.label.trim().toLowerCase() === roleLabel.trim().toLowerCase()
+    normalizeText(pool.role.category) === normalizeText(category) &&
+    (echoed === normalizeText(pool.role.echoKey) || echoed === normalizeText(pool.role.label))
   );
 }
 

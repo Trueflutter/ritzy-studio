@@ -39,7 +39,7 @@ async function main() {
   {
     const { client, calls } = fakeSupabase((call) => {
       if (call.table === "shopping_list_items" && call.op === "select" && call.single) {
-        return { data: { id: "item-2", category: "sofas" } };
+        return { data: { id: "item-2", category: "sofas", role_label: "living-zone sofa" } };
       }
       if (call.table === "shopping_list_items" && call.op === "select") {
         return {
@@ -57,12 +57,14 @@ async function main() {
 
     const updates = calls.filter((call) => call.op === "update");
     assert.equal(updates.length, 3);
-    // 1. Clear the category's current selection.
+    // 1. Clear the ROLE's current selection (category plus label: two roles in
+    // one category never clear each other).
     assert.equal(updates[0].table, "shopping_list_items");
     assert.deepEqual(updates[0].payload, { status: "option" });
     assert.deepEqual(updates[0].filters, [
       ["shopping_list_id", "list-1"],
       ["category", "sofas"],
+      ["role_label", "living-zone sofa"],
       ["status", "selected"]
     ]);
     // 2. Select the target item.

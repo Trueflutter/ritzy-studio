@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 
 import {
+  conceptProductNeedSchema,
   conceptProductSourcingJsonSchema,
-  conceptProductSourcingPrompt,
+  specProductSourcingPrompt,
   conceptProductSourcingResponseSchema,
   productMetadataEnrichmentJsonSchema,
   productMetadataEnrichmentPrompt
@@ -16,9 +17,20 @@ assert.equal("price" in productMetadataEnrichmentJsonSchema.properties, false);
 assert.equal("availability" in productMetadataEnrichmentJsonSchema.properties, false);
 assert.equal("dimensions" in productMetadataEnrichmentJsonSchema.properties, false);
 
-assert.equal(conceptProductSourcingPrompt.version, "2026-05-22.1");
-assert.ok(conceptProductSourcingPrompt.system.includes("candidates grouped by role"));
-assert.ok(conceptProductSourcingPrompt.system.includes("return exactly one roleResults entry"));
+assert.equal(specProductSourcingPrompt.version, "2026-09-02.1");
+// The pass may echo any confirmed spec role: per-item caps are the spec's own.
+{
+  const longLabel = "x".repeat(120);
+  assert.equal(conceptProductNeedSchema.safeParse({ category: "sofas", roleLabel: longLabel, visualBrief: "a long low sofa", quantity: 24, priority: "required" }).success, true);
+  assert.equal(conceptProductNeedSchema.safeParse({ category: "sofas", roleLabel: `${longLabel}y`, visualBrief: "a long low sofa", quantity: 24, priority: "required" }).success, false);
+  assert.equal(conceptProductNeedSchema.safeParse({ category: "sofas", roleLabel: "sofa", visualBrief: "a long low sofa", quantity: 25, priority: "required" }).success, false);
+  const needItems = (conceptProductSourcingJsonSchema as { properties: { needs: { items: { properties: { roleLabel: { maxLength: number }; quantity: { maximum: number } } } } } }).properties.needs.items.properties;
+  assert.equal(needItems.roleLabel.maxLength, 120);
+  assert.equal(needItems.quantity.maximum, 24);
+}
+assert.ok(specProductSourcingPrompt.system.includes("one result per role"));
+assert.ok(specProductSourcingPrompt.system.includes("Return exactly one roleResults entry per supplied role"));
+assert.ok(specProductSourcingPrompt.system.includes("an honest gap is better than a wrong piece"));
 assert.equal("roleResults" in conceptProductSourcingJsonSchema.properties, true);
 assert.deepEqual(conceptProductSourcingJsonSchema.required, [
   "needs",

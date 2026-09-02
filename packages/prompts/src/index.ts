@@ -1,4 +1,4 @@
-import { designSpecMustPreserveSchema, designSpecObjectsSchema } from "@ritzy-studio/domain";
+import { DESIGN_SPEC_LIMITS, designSpecMustPreserveSchema, designSpecObjectsSchema } from "@ritzy-studio/domain";
 import { z } from "zod";
 
 export {
@@ -485,28 +485,11 @@ export const specExtractionJsonSchema = {
 
 export type SpecExtractionResponse = z.infer<typeof specExtractionResponseSchema>;
 
-export const conceptProductSourcingPrompt = {
-  key: "sourcing.concept_visual_product_match",
-  version: "2026-05-22.1",
-  system: [
-    "You are Ritzy Studio's visual product sourcing assistant.",
-    "Use the approved concept image as the visual source of truth.",
-    "First identify the visible and blueprint-expected movable product roles that materially define the design: seating, tables, rug, lighting, wall art, decor, storage, media units, sideboards, and mirrors.",
-    "Use the room blueprint and expected product roles supplied by the app as required context; do not ignore designer-standard roles just because they are secondary styling layers.",
-    "The app provides candidates grouped by role. Treat each role pool independently; do not choose a sofa for a chair role, a lounge chair for dining chairs, or a bookcase for a TV/media console when role-specific products are available.",
-    "For living rooms, consider TV/media console or built-in media storage as a normal Dubai living-room role unless the brief excludes TV.",
-    "For dining rooms, consider sideboard, credenza, or dining console as a normal dining-room role where wall/circulation space allows.",
-    "For anchor roles, especially sofas, armchairs, beds, dining chairs, rugs, and major lighting, describe the required color family, material, silhouette, and distinctive features in the role visual brief.",
-    "Then choose the closest available catalog candidate from that role's candidate pool.",
-    "Select only product IDs that appear in the provided candidate list.",
-    "For every role supplied by the app, return exactly one roleResults entry with a status. Use strong_match or acceptable_match when the selected product visibly fits. Use closest_available only when it is not contradictory. Use missing_required or missing_supporting when the role pool has no suitable product.",
-    "Prioritize visual similarity to the concept image: category, silhouette, color family, material, scale, and style. For anchor furniture, color family and material are commerce-critical, not optional mood cues.",
-    "Do not invent products, prices, retailer facts, dimensions, or URLs.",
-    "If a blueprint role has no suitable candidate in the provided product list, put that role in missingRoles instead of inventing a product or forcing an unrelated item."
-  ].join("\n")
-} as const;
 
 export type DesignSpecSourcingRoleLanguageInput = {
+  // The short key the model echoes as roleLabel ("role-3"); the app maps it
+  // back to the role pool regardless of label length, edits or casing.
+  echoKey: string;
   category: string;
   label: string;
   quantity: number;
@@ -524,7 +507,8 @@ export function designSpecSourcingLanguage(input: {
 }): string {
   const lines = input.roles.map((role, index) =>
     [
-      `${index + 1}. roleLabel: ${role.label}`,
+      `${index + 1}. roleLabel: ${role.echoKey}`,
+      `describes: ${role.label}`,
       `category: ${role.category}`,
       `quantity: ${role.quantity}`,
       role.sizeDescriptor ? `size: ${role.sizeDescriptor}` : null,
@@ -538,7 +522,7 @@ export function designSpecSourcingLanguage(input: {
     ? `Architecture the design keeps as it is (never source these): ${input.mustPreserve.join("; ")}.`
     : null;
   return [
-    "Confirmed design spec, the roles to fill (one result per role; echo each roleLabel exactly):",
+    "Confirmed design spec, the roles to fill (one result per role; echo each roleLabel key exactly as given, e.g. role-3):",
     ...lines,
     preserve
   ]
@@ -563,19 +547,21 @@ export const specProductSourcingPrompt = {
   ].join("\n")
 } as const;
 
+// Per-item caps follow the design spec, single-sourced from DESIGN_SPEC_LIMITS:
+// a confirmed spec's label or quantity can never exceed what the pass may echo.
 export const conceptProductNeedSchema = z.object({
   category: z.string().min(2).max(80),
-  roleLabel: z.string().min(2).max(80),
+  roleLabel: z.string().min(2).max(DESIGN_SPEC_LIMITS.labelMax),
   visualBrief: z.string().min(8).max(260),
-  quantity: z.number().int().positive().max(12),
+  quantity: z.number().int().positive().max(DESIGN_SPEC_LIMITS.quantityMax),
   priority: z.enum(["required", "supporting"])
 });
 
 export const conceptProductSelectionSchema = z.object({
   productId: z.uuid(),
   category: z.string().min(2).max(80),
-  roleLabel: z.string().min(2).max(80),
-  quantity: z.number().int().positive().max(12),
+  roleLabel: z.string().min(2).max(DESIGN_SPEC_LIMITS.labelMax),
+  quantity: z.number().int().positive().max(DESIGN_SPEC_LIMITS.quantityMax),
   matchStatus: z.enum(["strong_match", "acceptable_match", "closest_available"]),
   visualMatchReason: z.string().min(8).max(260),
   mismatchNote: z.string().max(220).nullable()
@@ -591,7 +577,7 @@ export const conceptProductRoleStatusSchema = z.enum([
 
 export const conceptProductRoleResultSchema = z.object({
   category: z.string().min(2).max(80),
-  roleLabel: z.string().min(2).max(80),
+  roleLabel: z.string().min(2).max(DESIGN_SPEC_LIMITS.labelMax),
   status: conceptProductRoleStatusSchema,
   productId: z.uuid().nullable(),
   reason: z.string().min(8).max(260)
@@ -619,9 +605,9 @@ export const conceptProductSourcingJsonSchema = {
         additionalProperties: false,
         properties: {
           category: { type: "string", minLength: 2, maxLength: 80 },
-          roleLabel: { type: "string", minLength: 2, maxLength: 80 },
+          roleLabel: { type: "string", minLength: 2, maxLength: DESIGN_SPEC_LIMITS.labelMax },
           visualBrief: { type: "string", minLength: 8, maxLength: 260 },
-          quantity: { type: "integer", minimum: 1, maximum: 12 },
+          quantity: { type: "integer", minimum: 1, maximum: DESIGN_SPEC_LIMITS.quantityMax },
           priority: { type: "string", enum: ["required", "supporting"] }
         },
         required: ["category", "roleLabel", "visualBrief", "quantity", "priority"]
@@ -637,8 +623,8 @@ export const conceptProductSourcingJsonSchema = {
         properties: {
           productId: { type: "string", format: "uuid" },
           category: { type: "string", minLength: 2, maxLength: 80 },
-          roleLabel: { type: "string", minLength: 2, maxLength: 80 },
-          quantity: { type: "integer", minimum: 1, maximum: 12 },
+          roleLabel: { type: "string", minLength: 2, maxLength: DESIGN_SPEC_LIMITS.labelMax },
+          quantity: { type: "integer", minimum: 1, maximum: DESIGN_SPEC_LIMITS.quantityMax },
           matchStatus: {
             type: "string",
             enum: ["strong_match", "acceptable_match", "closest_available"]
@@ -668,7 +654,7 @@ export const conceptProductSourcingJsonSchema = {
         additionalProperties: false,
         properties: {
           category: { type: "string", minLength: 2, maxLength: 80 },
-          roleLabel: { type: "string", minLength: 2, maxLength: 80 },
+          roleLabel: { type: "string", minLength: 2, maxLength: DESIGN_SPEC_LIMITS.labelMax },
           status: {
             type: "string",
             enum: [

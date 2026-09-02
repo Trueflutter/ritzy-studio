@@ -1,10 +1,12 @@
 import {
+  checkCandidateAgainstSpecRole,
   filterSubstitutionCandidates,
   selectedItemsTotalAed,
   type ProductMatchCandidate,
   type SubstitutionMode
 } from "@ritzy-studio/domain";
 
+import { specRoleForListRow } from "./product-sourcing";
 import type { ServiceSupabaseClient, UserSupabaseClient } from "./supabase-clients";
 import {
   PRODUCT_MATCHING_CATALOG_LIMIT,
@@ -136,15 +138,27 @@ export async function substituteProduct(
     return { status: "not_substitutable" };
   }
 
+  // S3: a swap stays inside the row's spec contract. The row's role_label is
+  // the spec object's label verbatim; when the list was built from a spec,
+  // only contract-clean candidates can replace the piece.
+  const specRole = await specRoleForListRow(serviceSupabase, {
+    roomId,
+    conceptId: shoppingList.concept_id,
+    roomType: room.room_type,
+    roleLabel: item.role_label
+  });
+  const contractClean = specRole
+    ? candidates.filter((candidate) => checkCandidateAgainstSpecRole(candidate, specRole).ok)
+    : candidates;
   const alternatives = filterSubstitutionCandidates({
     current: currentCandidate,
-    candidates,
+    candidates: contractClean,
     mode,
     selectedProductIds: (selectedItems ?? []).map((selected) => selected.product_id)
   });
 
   const conceptText = `${concept.title}\n${concept.description ?? ""}`;
-  const role = shoppingListRoleSpecFromRow(item);
+  const role = specRole ?? shoppingListRoleSpecFromRow(item);
   const ranked = roleScopedShoppingAlternates({
     roomType: room.room_type,
     conceptText,
@@ -225,7 +239,7 @@ export async function selectShoppingItem(
 ): Promise<SelectShoppingItemResult> {
   const { data: item } = await supabase
     .from("shopping_list_items")
-    .select("id, category")
+    .select("id, category, role_label")
     .eq("id", itemId)
     .eq("shopping_list_id", shoppingListId)
     .single();
@@ -234,12 +248,14 @@ export async function selectShoppingItem(
     return { status: "not_found" };
   }
 
-  // One pick per role — clear the category's current selection, then set this.
+  // One pick per ROLE (category plus label: a floor lamp and a pendant are
+  // both lighting) — clear the role's current selection, then set this.
   await supabase
     .from("shopping_list_items")
     .update({ status: "option" })
     .eq("shopping_list_id", shoppingListId)
     .eq("category", item.category)
+    .eq("role_label", item.role_label)
     .eq("status", "selected");
   await supabase
     .from("shopping_list_items")
