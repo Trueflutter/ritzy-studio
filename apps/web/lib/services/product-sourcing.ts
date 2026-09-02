@@ -908,7 +908,11 @@ export type ListRowSpecRole =
   // The concept has a readable spec but this row's identity is not in it (the
   // spec was re-extracted or re-numbered since the list was built): the list
   // is stale and must be re-sourced before its rows are changed.
-  | { status: "stale" };
+  | { status: "stale" }
+  // The spec could not be read at all. This is NOT "no spec": dropping the
+  // contract on a transient read failure would let a pendant or a vase be
+  // swapped into a floor-lamp role, so the caller refuses instead.
+  | { status: "unavailable" };
 
 // The spec role a persisted row belongs to: by the row's spec key first (S3
 // rows carry the spec object's stable key), else by label for rows that
@@ -936,12 +940,16 @@ export async function specRoleForListRow(
   if (!conceptId) {
     return { status: "no_spec" };
   }
-  const { data: specRow } = await serviceSupabase
+  const { data: specRow, error: specError } = await serviceSupabase
     .from("room_design_specs")
     .select("*")
     .eq("room_id", roomId)
     .eq("concept_id", conceptId)
     .maybeSingle();
+  if (specError) {
+    console.error(`Could not read the design spec for room ${roomId}: ${specError.message}`);
+    return { status: "unavailable" };
+  }
   if (!specRow) {
     return { status: "no_spec" };
   }
@@ -1143,7 +1151,9 @@ export async function refreshShoppingOptions(
   if (!context.concept || existingRows.length === 0 || !selectedRow) {
     return { status: "no_change" };
   }
-  if (context.specRole.status === "stale") {
+  // A spec that could not be read is refused like a stale one: refilling
+  // without the contract is how a wrong piece gets onto the list.
+  if (context.specRole.status === "stale" || context.specRole.status === "unavailable") {
     return { status: "stale_spec" };
   }
 
@@ -1217,7 +1227,7 @@ export async function findMoreShoppingOptions(
   if (!context.concept || existingRows.length === 0) {
     return { status: "no_change" };
   }
-  if (context.specRole.status === "stale") {
+  if (context.specRole.status === "stale" || context.specRole.status === "unavailable") {
     return { status: "stale_spec" };
   }
 

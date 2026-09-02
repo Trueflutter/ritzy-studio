@@ -1,19 +1,23 @@
+import { verifyProductsAgainstConcept } from "@ritzy-studio/ai";
 import {
   checkCandidateAgainstSpecRole,
   filterSubstitutionCandidates,
   selectedItemsTotalAed,
   type ProductMatchCandidate,
-  type SubstitutionMode
+  type SubstitutionMode,
+  PRODUCT_CONSISTENCY_THRESHOLD
 } from "@ritzy-studio/domain";
 
 import { alternateProse, specRoleForListRow } from "./product-sourcing";
+import { storageImageDataUrl } from "./storage-images";
 import type { ServiceSupabaseClient, UserSupabaseClient } from "./supabase-clients";
 import {
   PRODUCT_MATCHING_CATALOG_LIMIT,
   productToMatchCandidate,
   roleScopedShoppingAlternates,
   shoppingListRoleSpecFromRow,
-  type ProductRow
+  type ProductRow,
+  sourcingCandidateImageDataUrls
 } from "./sourcing-support";
 
 // The selection-swap service (S1 extraction): typed inputs and results, all
@@ -28,23 +32,34 @@ export type SubstituteProductInput = {
   mode: SubstitutionMode;
 };
 
+// The app chooses the replacement in a swap, so the same rule holds as in
+// sourcing: it may only become the shopper's selected piece once something has
+// judged it against the design. A swap that cannot be verified is refused
+// rather than written, and the shopper keeps the piece they had.
 export type SubstituteProductResult =
   | { status: "swapped"; priceImpactAed: number }
   | { status: "not_substitutable" }
   | { status: "no_replacement" }
   // The design spec changed since this list was sourced: re-source first.
   | { status: "stale_spec" }
+  // The replacement did not match the design, or could not be checked.
+  | { status: "not_verified" }
   | { status: "not_found" };
 
 export async function substituteProduct(
   { supabase, serviceSupabase }: { supabase: UserSupabaseClient; serviceSupabase: ServiceSupabaseClient },
   { projectId, roomId, shoppingListId, itemId, mode }: SubstituteProductInput,
   {
-    ensureEntitled
+    ensureEntitled,
+    verifyProducts = verifyProductsAgainstConcept,
+    fetchProductImages = sourcingCandidateImageDataUrls
   }: {
     // The commerce paywall gate, injected so it runs at the exact pre-extraction
     // position (before any read or write) and the suite can pin that ordering.
     ensureEntitled: () => Promise<void>;
+    // The design check and its image fetch, injected like the sourcing service's.
+    verifyProducts?: typeof verifyProductsAgainstConcept;
+    fetchProductImages?: typeof sourcingCandidateImageDataUrls;
   }
 ): Promise<SubstituteProductResult> {
   await ensureEntitled();
@@ -94,7 +109,7 @@ export async function substituteProduct(
 
   const { data: concept } = await supabase
     .from("concepts")
-    .select("id, title, description")
+    .select("id, title, description, primary_image_asset:room_assets!concepts_primary_image_asset_id_fkey(storage_path, mime_type)")
     .eq("id", shoppingList.concept_id)
     .eq("room_id", roomId)
     .single();
@@ -154,7 +169,9 @@ export async function substituteProduct(
     specKey: item.spec_key,
     roleLabel: item.role_label
   });
-  if (rowRole.status === "stale") {
+  // Stale, or unreadable: either way the row's contract cannot be applied,
+  // and swapping without it is how a chandelier lands in a floor-lamp role.
+  if (rowRole.status === "stale" || rowRole.status === "unavailable") {
     return { status: "stale_spec" };
   }
   const specRole = rowRole.status === "role" ? rowRole.role : null;
@@ -189,6 +206,41 @@ export async function substituteProduct(
 
   if (!replacement) {
     return { status: "no_replacement" };
+  }
+
+  // The design check, on the one piece being swapped in. Nothing the app
+  // chooses reaches a shopper's list as "selected" without a verdict, and a
+  // swap is the app choosing.
+  const renderPath = concept.primary_image_asset?.storage_path;
+  const conceptImageUrl = renderPath
+    ? await storageImageDataUrl(serviceSupabase, "generated-renders", renderPath, concept.primary_image_asset?.mime_type ?? "image/png")
+    : null;
+  const productImages = conceptImageUrl ? await fetchProductImages([replacement], 1) : {};
+  const replacementImage = productImages[replacement.id];
+  if (!conceptImageUrl || !replacementImage) {
+    return { status: "not_verified" };
+  }
+  try {
+    const checked = await verifyProducts({
+      conceptImageUrl,
+      products: [
+        {
+          productId: replacement.id,
+          productName: replacement.name,
+          roleLabel: role.label,
+          category: role.category,
+          imageDataUrl: replacementImage
+        }
+      ],
+      threshold: PRODUCT_CONSISTENCY_THRESHOLD
+    });
+    const verdict = checked.verdicts.find((entry) => entry.productId === replacement.id);
+    if (!verdict || !verdict.categoryMatches || verdict.similarity < PRODUCT_CONSISTENCY_THRESHOLD) {
+      return { status: "not_verified" };
+    }
+  } catch (error) {
+    console.error("The design check failed for a swap; the shopper keeps the piece they had.", error);
+    return { status: "not_verified" };
   }
 
   const previousPrice = Number(item.line_total_aed ?? item.unit_price_aed ?? 0);

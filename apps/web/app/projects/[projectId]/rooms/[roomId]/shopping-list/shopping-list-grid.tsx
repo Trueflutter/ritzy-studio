@@ -10,6 +10,7 @@ import {
   selectShoppingItemAction
 } from "@/app/actions";
 import { DetailDrawer } from "./detail-drawer";
+import { allRolesChosen, chosenRoleCount } from "./completeness";
 import { ProductCard, type ProductCardItem } from "./product-card";
 
 export type CategoryGroup = {
@@ -184,10 +185,10 @@ export function ShoppingListGrid({
   const closeDetail = useCallback(() => setDetailItem(null), []);
 
   const progressGroups = groups;
-  const chosenGroupCount = groups.filter((group) => selectedByRole.has(group.roleKey)).length;
+  const chosenGroupCount = chosenRoleCount(groups, selectedByRole);
   const progressPct =
     progressGroups.length > 0 ? (chosenGroupCount / progressGroups.length) * 100 : 0;
-  const allGroupsChosen = groups.every((group) => selectedByRole.has(group.roleKey));
+  const allGroupsChosen = allRolesChosen(groups, selectedByRole);
 
   const selectedIds = Array.from(selectedByRole.values());
   const selectedCount = selectedIds.length;

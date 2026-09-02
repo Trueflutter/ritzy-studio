@@ -23,6 +23,7 @@ import {
 } from "@/app/actions";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
+import { awaitingChoiceCaveat, rolesAwaitingChoice } from "../shopping-list/completeness";
 import { MissingRolesSection, missingRolesCaveat } from "../shopping-list/missing-roles";
 
 export const dynamic = "force-dynamic";
@@ -281,15 +282,7 @@ export default async function ProductMatchingPage({
   // match the design), so the count of those is stated beside the estimate
   // rather than left to look like a complete list.
   const chosenItems = shoppingItemsList.filter((item) => item.status === "selected");
-  const rolesAwaitingChoice = groupShoppingItemsByRole(shoppingItemsList).filter(
-    (group) => !group.options.some((option) => option.status === "selected")
-  ).length;
-  const awaitingChoiceCaveat =
-    rolesAwaitingChoice === 0
-      ? null
-      : rolesAwaitingChoice === 1
-        ? "1 piece needs your choice."
-        : `${rolesAwaitingChoice} pieces need your choice.`;
+  const awaitingChoice = awaitingChoiceCaveat(rolesAwaitingChoice(groupShoppingItemsByRole(shoppingItemsList)));
   const latestRender = finalRenders[0] ?? null;
   const heroSrc = latestRender?.signedUrl ?? signedConceptImage?.signedUrl ?? null;
   const heroLabel = latestRender ? "Final render" : "Selected concept";
@@ -362,8 +355,8 @@ export default async function ProductMatchingPage({
             <span className="font-body text-caption font-medium uppercase tracking-[0.32em] text-ink-muted">
               estimated · {chosenItems.length} {chosenItems.length === 1 ? "piece" : "pieces"} chosen
             </span>
-            {awaitingChoiceCaveat ? (
-              <span className="font-display text-body-s italic text-warning">{awaitingChoiceCaveat}</span>
+            {awaitingChoice ? (
+              <span className="font-display text-body-s italic text-warning">{awaitingChoice}</span>
             ) : null}
             {missingCaveat ? (
               <span className="font-display text-body-s italic text-warning">{missingCaveat}</span>
@@ -595,7 +588,10 @@ export default async function ProductMatchingPage({
       ) : null}
 
       {/* ink CTA band — ground the concept with the sourced pieces */}
-      {shoppingList && shoppingItemsList.length > 0 ? (
+      {/* The render is built from CHOSEN pieces, so the band follows the same
+          rule the shopping list enforces: every role chosen, or nothing to
+          press. Rows existing is not the same as anything being chosen. */}
+      {shoppingList && chosenItems.length > 0 && rolesAwaitingChoice(groupShoppingItemsByRole(shoppingItemsList)) === 0 ? (
         <div className="flex flex-col gap-8 bg-[var(--rs-surface-ink)] px-5 py-9 md:px-8 lg:flex-row lg:items-center lg:justify-between lg:px-12">
           <div className="max-w-[640px]">
             <p className="font-body text-caption font-medium uppercase tracking-[0.32em] text-ink-on-dark-muted">

@@ -1703,6 +1703,14 @@ export async function substituteProductAction(formData: FormData) {
     redirect(`${redirectPath}?message=${encodeURIComponent("No suitable replacement found for that line yet.")}`);
   }
 
+  if (result.status === "not_verified") {
+    redirect(
+      `${redirectPath}?message=${encodeURIComponent(
+        "The closest replacement did not match the design closely enough, so your current piece was kept. Pick another option from the shopping list if you want to change it."
+      )}`
+    );
+  }
+
   const impactText =
     result.priceImpactAed === 0
       ? "no price change"

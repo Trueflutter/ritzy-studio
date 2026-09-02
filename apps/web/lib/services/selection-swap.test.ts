@@ -34,6 +34,33 @@ function productRow(overrides: Record<string, unknown>) {
   };
 }
 
+
+// The design check on a swap, stubbed. The real one runs on the production
+// vision model against the concept render; a swap is the app choosing, so
+// nothing reaches the list as "selected" without a verdict.
+const verifySwap = (similarity = 0.9, categoryMatches = true) =>
+  async ({ products }: { products: Array<{ productId: string }> }) => ({
+    promptKey: "sourcing.product_design_verification",
+    promptVersion: "test",
+    model: "gpt-5.1-stub",
+    textCostUsd: 0.005,
+    verdicts: products.map((product) => ({
+      productId: product.productId,
+      categoryMatches,
+      similarity,
+      matchedObject: "the piece in the render",
+      notes: "stub verdict"
+    }))
+  });
+const swapImages = async (candidates: Array<{ id: string }>) =>
+  Object.fromEntries(candidates.map((candidate) => [candidate.id, `data:image/jpeg;base64,${candidate.id.slice(-3)}`]));
+const swapDeps = (overrides: Record<string, unknown> = {}) => ({
+  ensureEntitled: async () => {},
+  verifyProducts: verifySwap(),
+  fetchProductImages: swapImages,
+  ...overrides
+});
+
 async function main() {
   // --- selectShoppingItem: one pick per role, total recalculated from selected rows only
   {
@@ -118,7 +145,7 @@ async function main() {
     const { client: service, calls: serviceCalls } = fakeSupabase((call) => {
       events.push(`${call.op}:${call.table}`);
       return { data: null };
-    });
+    }, (storageCall) => (storageCall.op === "download" ? { data: new Blob([Buffer.from([1, 2, 3])]) } : { data: null }));
     const result = await substituteProduct(
       { supabase: client, serviceSupabase: service },
       { projectId: "p", roomId: "r", shoppingListId: "l", itemId: "i", mode: "cheaper" },
@@ -154,7 +181,7 @@ async function main() {
         return { data: { id: "l", concept_id: "c" } };
       }
       if (call.table === "concepts") {
-        return { data: { id: "c", title: "Warm modern living room", description: "Soft neutral boucle sofa and walnut accents." } };
+        return { data: { id: "c", title: "Warm modern living room", description: "Soft neutral boucle sofa and walnut accents.", primary_image_asset: { storage_path: "u/r/c.png", mime_type: "image/png" } } };
       }
       if (call.table === "room_measurements") {
         return { data: { wall_length_cm: 500, room_depth_cm: 400 } };
@@ -185,12 +212,12 @@ async function main() {
         return { data: [currentProduct, cheaper] };
       }
       return { data: null };
-    });
+    }, (storageCall) => (storageCall.op === "download" ? { data: new Blob([Buffer.from([1, 2, 3])]) } : { data: null }));
 
     const result = await substituteProduct(
       { supabase: client, serviceSupabase: service },
       { projectId: "p", roomId: "r", shoppingListId: "l", itemId: "item-1", mode: "cheaper" },
-      { ensureEntitled: async () => {} }
+      swapDeps()
     );
 
     assert.equal(result.status, "swapped");
@@ -221,7 +248,7 @@ async function main() {
       if (call.table === "projects") return { data: { id: "p", budget_max_aed: null } };
       if (call.table === "rooms") return { data: { id: "r", room_type: "Living Room" } };
       if (call.table === "shopping_lists") return { data: { id: "l", concept_id: "c" } };
-      if (call.table === "concepts") return { data: { id: "c", title: "T", description: null } };
+      if (call.table === "concepts") return { data: { id: "c", title: "T", description: null, primary_image_asset: { storage_path: "u/r/c.png", mime_type: "image/png" } } };
       if (call.table === "room_measurements") return { data: null };
       if (call.table === "shopping_list_items") return { data: [] };
       return { data: null };
@@ -234,12 +261,12 @@ async function main() {
         return { data: [] };
       }
       return { data: null };
-    });
+    }, (storageCall) => (storageCall.op === "download" ? { data: new Blob([Buffer.from([1, 2, 3])]) } : { data: null }));
 
     const result = await substituteProduct(
       { supabase: client, serviceSupabase: service },
       { projectId: "p", roomId: "r", shoppingListId: "l", itemId: "item-1", mode: "cheaper" },
-      { ensureEntitled: async () => {} }
+      swapDeps()
     );
     assert.deepEqual(result, { status: "no_replacement" });
     assert.equal(userUpdates.length, 0);
@@ -259,7 +286,7 @@ async function main() {
       if (call.table === "projects") return { data: { id: "p", budget_max_aed: null } };
       if (call.table === "rooms") return { data: { id: "r", room_type: "Living Room" } };
       if (call.table === "shopping_lists") return { data: { id: "l", concept_id: "c" } };
-      if (call.table === "concepts") return { data: { id: "c", title: "T", description: null } };
+      if (call.table === "concepts") return { data: { id: "c", title: "T", description: null, primary_image_asset: { storage_path: "u/r/c.png", mime_type: "image/png" } } };
       if (call.table === "room_measurements") return { data: null };
       if (call.table === "shopping_list_items") return { data: [] };
       return { data: null };
@@ -295,11 +322,11 @@ async function main() {
         };
       }
       return { data: null };
-    });
+    }, (storageCall) => (storageCall.op === "download" ? { data: new Blob([Buffer.from([1, 2, 3])]) } : { data: null }));
     const result = await substituteProduct(
       { supabase: client, serviceSupabase: service },
       { projectId: "p", roomId: "r", shoppingListId: "l", itemId: "item-1", mode: "cheaper" },
-      { ensureEntitled: async () => {} }
+      swapDeps()
     );
     assert.deepEqual(result, { status: "stale_spec" });
     assert.equal(userUpdates.length, 0);
@@ -319,7 +346,7 @@ async function main() {
       if (call.table === "projects") return { data: { id: "p", budget_max_aed: null } };
       if (call.table === "rooms") return { data: { id: "r", room_type: "Living Room" } };
       if (call.table === "shopping_lists") return { data: { id: "l", concept_id: "c", spec_source: "blueprint_fallback" } };
-      if (call.table === "concepts") return { data: { id: "c", title: "T", description: null } };
+      if (call.table === "concepts") return { data: { id: "c", title: "T", description: null, primary_image_asset: { storage_path: "u/r/c.png", mime_type: "image/png" } } };
       if (call.table === "room_measurements") return { data: null };
       if (call.table === "shopping_list_items") return { data: [{ status: "selected", unit_price_aed: 2000, quantity: 1 }] };
       return { data: null };
@@ -345,11 +372,11 @@ async function main() {
       // A malformed spec row: unreadable, never a reason to refuse the swap.
       if (call.table === "room_design_specs") return { data: { id: "spec-x", room_id: "r", concept_id: "c", status: "extracted", must_preserve: [], objects: "not-a-list" } };
       return { data: null };
-    });
+    }, (storageCall) => (storageCall.op === "download" ? { data: new Blob([Buffer.from([1, 2, 3])]) } : { data: null }));
     const result = await substituteProduct(
       { supabase: client, serviceSupabase: service },
       { projectId: "p", roomId: "r", shoppingListId: "l", itemId: "item-1", mode: "cheaper" },
-      { ensureEntitled: async () => {} }
+      swapDeps()
     );
     assert.equal(result.status, "swapped");
     assert.ok(serviceCalls.some((call) => call.table === "room_design_specs"), "the spec is consulted; it is simply unreadable");
@@ -371,7 +398,7 @@ async function main() {
       if (call.table === "projects") return { data: { id: "p", budget_max_aed: null } };
       if (call.table === "rooms") return { data: { id: "r", room_type: "Living Room" } };
       if (call.table === "shopping_lists") return { data: { id: "l", concept_id: "c", spec_source: "blueprint_fallback" } };
-      if (call.table === "concepts") return { data: { id: "c", title: "T", description: null } };
+      if (call.table === "concepts") return { data: { id: "c", title: "T", description: null, primary_image_asset: { storage_path: "u/r/c.png", mime_type: "image/png" } } };
       if (call.table === "room_measurements") return { data: null };
       if (call.table === "shopping_list_items") return { data: [] };
       return { data: null };
@@ -407,14 +434,175 @@ async function main() {
         };
       }
       return { data: null };
-    });
+    }, (storageCall) => (storageCall.op === "download" ? { data: new Blob([Buffer.from([1, 2, 3])]) } : { data: null }));
     const result = await substituteProduct(
       { supabase: client, serviceSupabase: service },
       { projectId: "p", roomId: "r", shoppingListId: "l", itemId: "item-1", mode: "cheaper" },
-      { ensureEntitled: async () => {} }
+      swapDeps()
     );
     assert.deepEqual(result, { status: "stale_spec" });
     assert.equal(userUpdates.length, 0);
+  }
+
+  // --- the spec contract holds on a swap: the Phase 0 chandelier can never
+  // come back for a floor-lamp role, however cheap it is
+  {
+    const currentLamp = productRow({
+      id: "00000000-0000-4000-8000-000000000031",
+      name: "Arc Floor Lamp with Linen Shade",
+      category_normalized: "lighting",
+      price_aed: 900
+    });
+    const cheapChandelier = productRow({
+      id: "00000000-0000-4000-8000-000000000032",
+      name: "Emis 12-Lights Faux Alabaster Chandelier",
+      category_normalized: "lighting",
+      price_aed: 200,
+      description: "Buy Emis 12-Lights Faux Alabaster Chandelier online."
+    });
+    const cheaperFloorLamp = productRow({
+      id: "00000000-0000-4000-8000-000000000033",
+      name: "The Oslo Floor Lamp",
+      category_normalized: "lighting",
+      price_aed: 400
+    });
+    const userUpdates: RecordedCall[] = [];
+    const { client } = fakeSupabase((call) => {
+      if (call.op === "update") {
+        userUpdates.push(call);
+        return { data: null };
+      }
+      if (call.table === "projects") return { data: { id: "p", budget_max_aed: null } };
+      if (call.table === "rooms") return { data: { id: "r", room_type: "Living Room" } };
+      if (call.table === "shopping_lists") return { data: { id: "l", concept_id: "c" } };
+      if (call.table === "concepts") return { data: { id: "c", title: "T", description: null, primary_image_asset: { storage_path: "u/r/c.png", mime_type: "image/png" } } };
+      if (call.table === "room_measurements") return { data: null };
+      if (call.table === "shopping_list_items") return { data: [] };
+      return { data: null };
+    }, (storageCall) => (storageCall.op === "download" ? { data: new Blob([Buffer.from([1, 2, 3])]) } : { data: null }));
+    const { client: service } = fakeSupabase((call) => {
+      if (call.table === "shopping_list_items" && call.single) {
+        return {
+          data: {
+            id: "item-1",
+            category: "lighting",
+            quantity: 1,
+            unit_price_aed: 900,
+            line_total_aed: 900,
+            role_label: "tall tripod floor lamp",
+            spec_key: "0:floor_lamp",
+            role_priority: "required",
+            role_quantity: 1,
+            product: currentLamp
+          }
+        };
+      }
+      if (call.table === "products") return { data: [currentLamp, cheapChandelier, cheaperFloorLamp] };
+      if (call.table === "room_design_specs") {
+        return {
+          data: {
+            id: "spec-1",
+            room_id: "r",
+            concept_id: "c",
+            status: "confirmed",
+            must_preserve: [],
+            objects: [{ role: "floor_lamp", label: "tall tripod floor lamp", quantity: 1, sizeDescriptor: null, capacity: null, paletteMaterials: [] }]
+          }
+        };
+      }
+      return { data: null };
+    }, (storageCall) => (storageCall.op === "download" ? { data: new Blob([Buffer.from([1, 2, 3])]) } : { data: null }));
+
+    const result = await substituteProduct(
+      { supabase: client, serviceSupabase: service },
+      { projectId: "p", roomId: "r", shoppingListId: "l", itemId: "item-1", mode: "cheaper" },
+      swapDeps()
+    );
+    assert.equal(result.status, "swapped");
+    const itemUpdate = userUpdates.find((call) => call.table === "shopping_list_items");
+    assert.equal(
+      itemUpdate?.payload?.product_id,
+      cheaperFloorLamp.id,
+      "the cheapest CONTRACT-CLEAN piece wins; the cheaper chandelier is not a floor lamp"
+    );
+  }
+
+  // --- a swap the design check does not pass is refused, and the shopper
+  // keeps the piece they had: the app never writes an unjudged selected row
+  {
+    const currentProduct = productRow({ id: "00000000-0000-4000-8000-000000000001", price_aed: 3000 });
+    const cheaper = productRow({ id: "00000000-0000-4000-8000-000000000002", price_aed: 2000 });
+    const userUpdates: RecordedCall[] = [];
+    const { client } = fakeSupabase((call) => {
+      if (call.op === "update") {
+        userUpdates.push(call);
+        return { data: null };
+      }
+      if (call.table === "projects") return { data: { id: "p", budget_max_aed: null } };
+      if (call.table === "rooms") return { data: { id: "r", room_type: "Living Room" } };
+      if (call.table === "shopping_lists") return { data: { id: "l", concept_id: "c" } };
+      if (call.table === "concepts") return { data: { id: "c", title: "T", description: null, primary_image_asset: { storage_path: "u/r/c.png", mime_type: "image/png" } } };
+      if (call.table === "room_measurements") return { data: null };
+      if (call.table === "shopping_list_items") return { data: [] };
+      return { data: null };
+    }, (storageCall) => (storageCall.op === "download" ? { data: new Blob([Buffer.from([1, 2, 3])]) } : { data: null }));
+    const { client: service } = fakeSupabase((call) => {
+      if (call.table === "shopping_list_items" && call.single) {
+        return {
+          data: {
+            id: "item-1",
+            category: "sofas",
+            quantity: 1,
+            unit_price_aed: 3000,
+            line_total_aed: 3000,
+            role_label: "sofa",
+            role_priority: "required",
+            role_quantity: 1,
+            product: currentProduct
+          }
+        };
+      }
+      if (call.table === "products") return { data: [currentProduct, cheaper] };
+      return { data: null };
+    }, (storageCall) => (storageCall.op === "download" ? { data: new Blob([Buffer.from([1, 2, 3])]) } : { data: null }));
+
+    // Below the bar.
+    assert.deepEqual(
+      await substituteProduct(
+        { supabase: client, serviceSupabase: service },
+        { projectId: "p", roomId: "r", shoppingListId: "l", itemId: "item-1", mode: "cheaper" },
+        swapDeps({ verifyProducts: verifySwap(0.3) })
+      ),
+      { status: "not_verified" }
+    );
+    // The wrong kind of object, however similar it looks.
+    assert.deepEqual(
+      await substituteProduct(
+        { supabase: client, serviceSupabase: service },
+        { projectId: "p", roomId: "r", shoppingListId: "l", itemId: "item-1", mode: "cheaper" },
+        swapDeps({ verifyProducts: verifySwap(0.95, false) })
+      ),
+      { status: "not_verified" }
+    );
+    // The check itself unavailable.
+    assert.deepEqual(
+      await substituteProduct(
+        { supabase: client, serviceSupabase: service },
+        { projectId: "p", roomId: "r", shoppingListId: "l", itemId: "item-1", mode: "cheaper" },
+        swapDeps({ verifyProducts: async () => { throw new Error("judge unavailable"); } })
+      ),
+      { status: "not_verified" }
+    );
+    // No image to judge it by.
+    assert.deepEqual(
+      await substituteProduct(
+        { supabase: client, serviceSupabase: service },
+        { projectId: "p", roomId: "r", shoppingListId: "l", itemId: "item-1", mode: "cheaper" },
+        swapDeps({ fetchProductImages: async () => ({}) })
+      ),
+      { status: "not_verified" }
+    );
+    assert.equal(userUpdates.length, 0, "nothing is written on any of those paths");
   }
 
   console.log("selection-swap service tests passed");
