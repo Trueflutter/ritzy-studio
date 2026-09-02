@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import path from "node:path";
 
 import {
   SPEC_EXTRACTION_OVERHEAD_MS,
@@ -20,6 +22,24 @@ assert.equal(specExtractionLeaseMs({ RITZY_TEXT_TIMEOUT_MS: "garbage" }), 90_000
 // outlast the lease at the default deadline, or the function would be torn
 // down before the provider deadline it is waiting on.
 assert.ok(specExtractionLeaseMs({}) < routeBudgetMs, "default lease must fit inside the route budget");
+
+// Segment config cannot be imported, so the routes that schedule the after()
+// runner carry a literal that MUST mirror the constant the lease is derived
+// from: a lowered or dropped maxDuration would tear the runner down before the
+// provider deadline while the lease still promised the run was alive.
+for (const route of [
+  "../app/projects/[projectId]/rooms/[roomId]/spec/page.tsx",
+  "../app/projects/[projectId]/rooms/[roomId]/concepts/page.tsx"
+]) {
+  const source = readFileSync(path.resolve(__dirname, route), "utf8");
+  const declared = source.match(/^export const maxDuration = (\d+);$/m);
+  assert.ok(declared, `${route} must export a literal maxDuration`);
+  assert.equal(
+    Number(declared[1]),
+    SPEC_EXTRACTION_ROUTE_MAX_DURATION_S,
+    `${route} maxDuration must mirror SPEC_EXTRACTION_ROUTE_MAX_DURATION_S`
+  );
+}
 
 // A deadline configured past the route budget is clamped: the function dies at
 // the budget, so the lease cannot honestly extend beyond it.

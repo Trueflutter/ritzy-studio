@@ -7,6 +7,8 @@ import {
   runRoomDesignSpecExtraction,
   startRoomDesignSpecExtraction
 } from "./design-spec";
+import type { ExtractRoomDesignSpecInput } from "@ritzy-studio/ai";
+
 import { fakeSupabase, type RecordedCall, type Responder, type StorageResponder } from "./supabase-test-double";
 
 // State-gate tests for the design-spec service (PR #332 review fix). The paid
@@ -272,6 +274,30 @@ async function main() {
     assert.equal(serviceCalls.length, 0);
   }
 
+  // --- A malformed EXTRACTED row (never confirmed) falls through to the
+  // attempt record: with a terminal job it is failed AND retryable, so the
+  // runner's guarded repair stays reachable from the UI; nothing is written
+  {
+    const { client } = userClient((call) => {
+      if (call.table === "room_design_specs") {
+        return { data: { ...VALID_SPEC_ROW, status: "extracted", objects: [{ bad: true }] } };
+      }
+      return { data: null };
+    });
+    const { client: service, calls: serviceCalls } = fakeSupabase((call) => {
+      if (call.table === "ai_jobs" && call.op === "select") {
+        return { data: { id: "job-done", status: "succeeded", created_at: iso(60_000) } };
+      }
+      return { data: null };
+    });
+    const result = await readRoomDesignSpec({ supabase: client, serviceSupabase: service }, INPUT, {
+      now: NOW,
+      leaseMs: LEASE_MS
+    });
+    assert.deepEqual(result, { status: "extraction_failed", conceptId: "concept-1", retryable: true });
+    assert.equal(writes(serviceCalls).length, 0);
+  }
+
   // --------------------------------------------------------------- starters
 
   // --- First touch (ensure): the lease row is opened, the runner is deferred
@@ -388,6 +414,33 @@ async function main() {
     assert.equal(tasks.length, 1);
   }
 
+  // --- Retry on a malformed EXTRACTED row opens a fresh lease and schedules
+  // exactly one runner (the path that reaches the guarded repair)
+  {
+    const { client } = userClient((call) => {
+      if (call.table === "room_design_specs") {
+        return { data: { ...VALID_SPEC_ROW, status: "extracted", objects: [{ bad: true }] } };
+      }
+      return { data: null };
+    });
+    const { client: service, calls: serviceCalls } = fakeSupabase((call) => {
+      if (call.table === "ai_jobs" && call.op === "select") {
+        return { data: { id: "job-done", status: "succeeded", created_at: iso(60_000) } };
+      }
+      if (call.table === "ai_jobs" && call.op === "insert") return { data: { id: "job-4" } };
+      return { data: null };
+    });
+    const { tasks, defer } = recorder();
+    const result = await startRoomDesignSpecExtraction(
+      { supabase: client, serviceSupabase: service },
+      INPUT,
+      { defer, run: async () => {}, now: NOW, leaseMs: LEASE_MS }
+    );
+    assert.deepEqual(result, { status: "started", jobId: "job-4" });
+    assert.equal(serviceCalls.filter((call) => call.op === "insert").length, 1);
+    assert.equal(tasks.length, 1);
+  }
+
   // --- ... but never doubles a live lease, re-extracts a stored spec, or
   // spends on a confirmed row that can never be repaired
   {
@@ -475,23 +528,44 @@ async function main() {
     assert.equal(writes(calls).length, 0);
   }
 
-  // --- Success: the paid call runs once, the spec is stored first-write-wins,
-  // and the job row closes succeeded with its cost and model (AC 4)
+  // --- Success: the paid call runs once with inputs re-derived from the job
+  // row (room type, render bytes, brief, measurements), the spec is stored
+  // first-write-wins, and the job row closes succeeded with its cost and model
+  // (AC 4)
   {
     const { client: service, calls } = runnerService((call) => {
       if (call.table === "room_design_specs" && call.op === "upsert") {
         return { data: { ...VALID_SPEC_ROW, status: "extracted", extraction_job_id: "job-1" } };
       }
+      if (call.table === "design_briefs") {
+        return { data: { style_notes: "warm", color_notes: "ivory", functional_requirements: "tv wall", avoid_notes: "no red" } };
+      }
+      if (call.table === "room_measurements") {
+        return { data: { wall_length_cm: 520, room_depth_cm: 410, ceiling_height_cm: 300 } };
+      }
       return { data: null };
     });
     let paidCalls = 0;
+    let extractInput: ExtractRoomDesignSpecInput | null = null;
     await runRoomDesignSpecExtraction(service, { jobId: "job-1" }, {
-      extract: async () => {
+      extract: async (input) => {
         paidCalls += 1;
+        extractInput = input;
         return EXTRACTION;
       }
     });
     assert.equal(paidCalls, 1);
+    const seen = extractInput as ExtractRoomDesignSpecInput | null;
+    assert.equal(seen?.roomType, "Living Room");
+    assert.equal(seen?.conceptImage.mimeType, "image/png");
+    assert.ok((seen?.conceptImage.bytes.length ?? 0) > 0, "the render bytes must reach the provider");
+    assert.deepEqual(seen?.brief, {
+      styleNotes: "warm",
+      colorNotes: "ivory",
+      functionalRequirements: "tv wall",
+      avoidNotes: "no red"
+    });
+    assert.deepEqual(seen?.measurements, { wallLengthCm: 520, roomDepthCm: 410, ceilingHeightCm: 300 });
     const upsert = calls.find((call) => call.op === "upsert");
     assert.equal(upsert?.table, "room_design_specs");
     assert.equal(upsert?.upsertOptions?.onConflict, "room_id,concept_id");

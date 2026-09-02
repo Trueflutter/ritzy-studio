@@ -12,7 +12,8 @@ import { textTimeoutMs } from "@ritzy-studio/ai";
 // SPEC_EXTRACTION_ROUTE_MAX_DURATION_S mirrors the literal `maxDuration`
 // exported by every route that schedules an extraction (/spec, /concepts).
 // Segment config must be a literal, so the number lives in two places; the
-// test beside this file pins the lease inside that budget.
+// test beside this file reads both routes and pins their literal to this
+// number, and pins the default lease inside it.
 export const SPEC_EXTRACTION_ROUTE_MAX_DURATION_S = 300;
 
 // Storage download, schema parse, the persistence writes, and the gap between
