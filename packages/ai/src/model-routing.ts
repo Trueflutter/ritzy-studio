@@ -45,10 +45,20 @@ export function resolveStageTextModel(stage: TextStage, env: EnvRecord, baseMode
   return stageEnvValue(env, "RITZY_TEXT_MODEL_", stage) ?? STAGE_MODEL_DEFAULTS[stage] ?? baseModel;
 }
 
+// A stage whose default effort is not the provider's. The sourcing pass only
+// PROPOSES a product per role now; the design check that follows judges those
+// proposals on the production vision model. A proposal that never arrives
+// (the pass ran past its deadline) costs the shopper every pre-selected piece
+// on the list, while a hasty proposal costs nothing, because the check
+// rejects it. So the pass buys speed and the check buys care.
+const STAGE_EFFORT_DEFAULTS: Partial<Record<TextStage, TextEffort>> = {
+  product_sourcing: "low"
+};
+
 export function resolveStageTextEffort(stage: TextStage, env: EnvRecord): TextEffort | null {
   const value = stageEnvValue(env, "RITZY_TEXT_EFFORT_", stage);
   if (value && (EFFORT_VALUES as readonly string[]).includes(value)) {
     return value as TextEffort;
   }
-  return null;
+  return STAGE_EFFORT_DEFAULTS[stage] ?? null;
 }

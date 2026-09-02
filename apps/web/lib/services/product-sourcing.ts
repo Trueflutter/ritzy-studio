@@ -39,7 +39,7 @@ import {
   PRODUCT_CONSISTENCY_THRESHOLD
 } from "@ritzy-studio/domain";
 
-import { providerTimeoutMs, visualPassTimeoutMs } from "@/lib/sourcing-run-budget";
+import { designCheckTimeoutMs, providerTimeoutMs, sourcingPassTimeoutMs } from "@/lib/sourcing-run-budget";
 
 import { readRoomDesignSpec } from "./design-spec";
 import {
@@ -461,10 +461,11 @@ export async function groundProductsForRoom(
       const candidateImageDataUrls = imageDataUrls;
       visualPass.imageCount = Object.keys(candidateImageDataUrls).length;
 
-      // The pass gets what is left of the request after palette extraction,
-      // the catalogue read and the image fetch; too little, and ranking is
-      // more honest than a timeout that could kill the request mid-write.
-      const passTimeoutMs = visualPassTimeoutMs({ startedAt, now: now() });
+      // What is left of the request after palette extraction, the catalogue
+      // read and the image fetch, minus what the design check and the
+      // persistence still need. Too little, and skipping beats a timeout that
+      // could kill the request mid-write.
+      const passTimeoutMs = sourcingPassTimeoutMs({ startedAt, now: now() });
       try {
         if (passTimeoutMs === null) {
           throw new Error("The request had no time left for the visual pass after the steps before it.");
@@ -544,7 +545,7 @@ export async function groundProductsForRoom(
         // Two checks, both needed: nothing may START without budget left, and
         // the provider's deadline is taken again after the fetch so the
         // fetch's own time is inside the budget rather than added to it.
-        if (visualPassTimeoutMs({ startedAt, now: now() }) === null) {
+        if (designCheckTimeoutMs({ startedAt, now: now() }) === null) {
           throw new Error("The request had no time left for the design check.");
         }
         const byId = new Map(proposals.map((outcome) => [outcome.selectedProductId, outcome]));
@@ -577,7 +578,7 @@ export async function groundProductsForRoom(
         if (judged.length === 0) {
           throw new Error("No proposed product had a usable image for the design check.");
         }
-        const verifyTimeoutMs = visualPassTimeoutMs({ startedAt, now: now() });
+        const verifyTimeoutMs = designCheckTimeoutMs({ startedAt, now: now() });
         if (verifyTimeoutMs === null) {
           throw new Error("The request had no time left for the design check.");
         }
@@ -591,13 +592,22 @@ export async function groundProductsForRoom(
           verifyTimeoutMs,
           "The design check timed out."
         );
-        // A judge that answered for some of the proposals has not done the
-        // job: trusting the ones it did answer would let the rest through as
-        // "could not run" while the run looks successful. Fail the whole
-        // check, which opens every role.
-        if (checked.verdicts.length !== judged.length) {
+        // The call is paid the moment it returns: its spend and provenance go
+        // on the record before anything below can throw.
+        verification = {
+          ...verification,
+          textCostUsd: checked.textCostUsd ?? null,
+          promptKey: checked.promptKey,
+          promptVersion: checked.promptVersion,
+          model: checked.model
+        };
+        // finding 3: identity, not count. A judge that answered twice for one
+        // product and never for another has not judged the other.
+        const judgedIds = new Set(judged.map((product) => product.productId));
+        const answeredIds = new Set(checked.verdicts.map((verdict) => verdict.productId));
+        if (answeredIds.size !== judgedIds.size) {
           throw new Error(
-            `The design check returned ${checked.verdicts.length} verdicts for ${judged.length} products.`
+            `The design check answered for ${answeredIds.size} of ${judgedIds.size} products.`
           );
         }
         verification = {
