@@ -506,6 +506,63 @@ export const conceptProductSourcingPrompt = {
   ].join("\n")
 } as const;
 
+export type DesignSpecSourcingRoleLanguageInput = {
+  category: string;
+  label: string;
+  quantity: number;
+  sizeDescriptor?: string | null;
+  capacity?: string | null;
+  paletteMaterials?: readonly string[];
+};
+
+// The confirmed design spec rendered as the roles the visual pass must fill
+// (S3). One line per role; the label is the exact roleLabel the model echoes
+// back, so its results map onto the role pools without guessing.
+export function designSpecSourcingLanguage(input: {
+  roles: DesignSpecSourcingRoleLanguageInput[];
+  mustPreserve?: readonly string[];
+}): string {
+  const lines = input.roles.map((role, index) =>
+    [
+      `${index + 1}. roleLabel: ${role.label}`,
+      `category: ${role.category}`,
+      `quantity: ${role.quantity}`,
+      role.sizeDescriptor ? `size: ${role.sizeDescriptor}` : null,
+      role.capacity ? `capacity: ${role.capacity}` : null,
+      role.paletteMaterials?.length ? `palette/materials: ${role.paletteMaterials.join(", ")}` : null
+    ]
+      .filter(Boolean)
+      .join("; ")
+  );
+  const preserve = input.mustPreserve?.length
+    ? `Architecture the design keeps as it is (never source these): ${input.mustPreserve.join("; ")}.`
+    : null;
+  return [
+    "Confirmed design spec, the roles to fill (one result per role; echo each roleLabel exactly):",
+    ...lines,
+    preserve
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+// S3: sourcing against the confirmed spec. Roles are given, pools are
+// contract-clean, and an honest gap beats a wrong piece.
+export const specProductSourcingPrompt = {
+  key: "sourcing.spec_visual_product_match",
+  version: "2026-09-02.1",
+  system: [
+    "You are Ritzy Studio's visual product sourcing assistant.",
+    "The approved concept image is the visual source of truth, and the confirmed design spec supplied by the app is the list of roles you must fill: one result per role, no roles invented, none skipped.",
+    "Each role comes with a pool of candidate catalog products that already satisfy the role's hard contract (category, fixture type, seat count, size). Choose only from that role's pool; never move a product between roles and never select an ID that is not listed.",
+    "Judge each candidate against the concept image and the role's spec line: silhouette, color family, material, scale, and distinctive features. For anchor furniture (sofas, chairs, beds, dining tables, major lighting) color family and material are commerce-critical, not mood cues. Where candidate images are supplied, judge from the images; the text is secondary.",
+    "Use strong_match when the product visibly belongs in the render as it is; acceptable_match when it fits with minor styling differences; closest_available only when it does not contradict the design. If nothing in the pool visibly matches the design, return missing_required or missing_supporting for that role with a concrete reason and do not force a product: an honest gap is better than a wrong piece.",
+    "Return exactly one roleResults entry per supplied role, echoing the role's category and roleLabel exactly as given. List every role you declared missing in missingRoles by its roleLabel.",
+    "needs restates the supplied roles (one entry each, same category and roleLabel, the visual brief from the spec line); it is not a new list.",
+    "Do not invent products, prices, retailer facts, dimensions, or URLs."
+  ].join("\n")
+} as const;
+
 export const conceptProductNeedSchema = z.object({
   category: z.string().min(2).max(80),
   roleLabel: z.string().min(2).max(80),
@@ -540,11 +597,13 @@ export const conceptProductRoleResultSchema = z.object({
   reason: z.string().min(8).max(260)
 });
 
+// Caps follow the design spec (up to 30 objects): a spec-driven pass may fill
+// more roles than the old room blueprint, and may honestly select nothing.
 export const conceptProductSourcingResponseSchema = z.object({
-  needs: z.array(conceptProductNeedSchema).min(1).max(12),
-  selectedProducts: z.array(conceptProductSelectionSchema).min(1).max(12),
-  roleResults: z.array(conceptProductRoleResultSchema).min(1).max(12),
-  missingRoles: z.array(z.string().min(2).max(140)).max(8)
+  needs: z.array(conceptProductNeedSchema).min(1).max(30),
+  selectedProducts: z.array(conceptProductSelectionSchema).max(30),
+  roleResults: z.array(conceptProductRoleResultSchema).min(1).max(30),
+  missingRoles: z.array(z.string().min(2).max(140)).max(30)
 });
 
 export const conceptProductSourcingJsonSchema = {
@@ -554,7 +613,7 @@ export const conceptProductSourcingJsonSchema = {
     needs: {
       type: "array",
       minItems: 1,
-      maxItems: 12,
+      maxItems: 30,
       items: {
         type: "object",
         additionalProperties: false,
@@ -570,8 +629,8 @@ export const conceptProductSourcingJsonSchema = {
     },
     selectedProducts: {
       type: "array",
-      minItems: 1,
-      maxItems: 12,
+      minItems: 0,
+      maxItems: 30,
       items: {
         type: "object",
         additionalProperties: false,
@@ -603,7 +662,7 @@ export const conceptProductSourcingJsonSchema = {
     roleResults: {
       type: "array",
       minItems: 1,
-      maxItems: 12,
+      maxItems: 30,
       items: {
         type: "object",
         additionalProperties: false,
@@ -630,7 +689,7 @@ export const conceptProductSourcingJsonSchema = {
     },
     missingRoles: {
       type: "array",
-      maxItems: 8,
+      maxItems: 30,
       items: { type: "string", minLength: 2, maxLength: 140 }
     }
   },
