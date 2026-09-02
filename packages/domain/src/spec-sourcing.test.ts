@@ -923,7 +923,7 @@ console.log("spec-sourcing tests passed");
 // name below is from the walk room's sourced list, and every one passed
 // category, class tags, room scope and size.
 {
-  const { buildSpecSourcingPlan } = await import("./spec-sourcing");
+  const { buildSpecSourcingPlan, sourcingRolesFromBlueprint } = await import("./spec-sourcing");
   const object = (role: string, label: string) => ({ role, label, quantity: 1, sizeDescriptor: null, capacity: null, paletteMaterials: [] });
   const kindRoles = sourcingRolesFromDesignSpec(
     {
@@ -932,21 +932,24 @@ console.log("spec-sourcing tests passed");
         object("coffee_table_sculpture", "Decorative ceramic sculpture"),
         object("media_console_bowl", "Small bowl / candle on media console"),
         object("floor_lamp", "Arc floor lamp with globe shade"),
-        object("cushions", "Scatter pillows")
+        object("cushions", "Scatter pillows"),
+        object("media_console_candle", "pillar candle")
       ]
     },
     "Living Room"
   ).roles;
+  // The ROLE's own noun decides, as the fixture class does: a kind named only
+  // in the label ("small bowl / candle" under a bowl role) never widens it.
   assert.deepEqual(
     kindRoles.map((role) => [role.category, role.contract.objectKinds]),
     [
-      ["decor", ["tray", "bowl"]],
+      ["decor", ["tray"]],
       ["decor", ["sculpture"]],
-      ["decor", ["bowl", "candle"]],
+      ["decor", ["bowl"]],
       ["lighting", ["floor lamp"]],
-      ["decor", ["cushion"]]
-    ],
-    "a spec line naming two kinds accepts either"
+      ["decor", ["cushion"]],
+      ["decor", ["candle"]]
+    ]
   );
 
   const decor = (name: string): ProductMatchCandidate => ({ ...base, categoryNormalized: "decor", name });
@@ -985,7 +988,71 @@ console.log("spec-sourcing tests passed");
     conceptText: "warm lounge"
   });
   assert.equal(kindPlan.pools.length, 0, "no contract-clean candidate means no pool");
-  assert.match(kindPlan.missing[0].reason, /different kind of object.*a tray or a bowl/);
+  assert.equal(
+    kindPlan.missing[0].reason,
+    "Every decor piece in the catalogue is a different kind of object from the one the design asks for (tray).",
+    "the honest reason is rendered to the shopper verbatim, so it has to read as English"
+  );
+
+  // --- 22b0d3e review: the kind contract must not fire where the spec is
+  // open-ended, must read a product's whole name, and must take the ROLE's
+  // noun over one mentioned in passing in the label.
+  //
+  // 1. An open-ended styling line names examples, not a closed list.
+  const openEnded = sourcingRolesFromBlueprint(
+    [
+      { category: "decor", label: "cushions, tray, ceramics, and decor", quantity: 1, required: false },
+      { category: "decor", label: "books, ceramics, and restrained decor", quantity: 1, required: false }
+    ],
+    "Living Room"
+  );
+  assert.deepEqual(
+    openEnded.map((role) => role.contract.objectKinds),
+    [undefined, undefined],
+    "a line with an open tail carries no kind contract"
+  );
+  for (const role of openEnded) {
+    assert.deepEqual(checkCandidateAgainstSpecRole(decor("Kilnworks Ceramic Vase Trio"), role), { ok: true });
+    assert.deepEqual(checkCandidateAgainstSpecRole(decor("Monolith Sculpture"), role), { ok: true });
+  }
+  // The adjective still reads as a closed enumeration.
+  assert.deepEqual(kindRoles[0].contract.objectKinds, ["tray"]);
+
+  // 2. A product naming two kinds is judged on all of them, not on whichever
+  // rule sorts first: one shared kind is enough.
+  assert.deepEqual(checkCandidateAgainstSpecRole(decor("Marble Bowl and Tray Set"), kindRoles[2]), { ok: true });
+  assert.deepEqual(checkCandidateAgainstSpecRole(decor("Scented Candle in Glass Vessel"), kindRoles[5]), { ok: true });
+  assert.deepEqual(checkCandidateAgainstSpecRole(decor("Reed Diffuser in Ceramic Vessel"), kindRoles[5]), { ok: true });
+  assert.deepEqual(checkCandidateAgainstSpecRole(decor("Marble Bowl and Tray Set"), kindRoles[1]), {
+    ok: false,
+    reason: "object_kind_mismatch"
+  });
+
+  // 3. The role's own noun decides; a kind mentioned in passing in the label
+  // never widens it, and a placement clause in the role key never claims it.
+  const passing = sourcingRolesFromDesignSpec(
+    {
+      objects: [
+        object("floor_lamp", "Arc floor lamp echoing the table lamp opposite"),
+        object("vase_on_tray", "ceramic vase"),
+        object("styling_objects", "Decorative tray and small bowl")
+      ]
+    },
+    "Living Room"
+  ).roles;
+  assert.deepEqual(
+    passing.map((role) => role.contract.objectKinds),
+    [["floor lamp"], ["vase"], ["tray", "bowl"]],
+    "role noun first, label only when the role names no kind, and a line naming two kinds accepts either"
+  );
+  assert.deepEqual(checkCandidateAgainstSpecRole(liveTableLamp, passing[0]), {
+    ok: false,
+    reason: "object_kind_mismatch"
+  });
+  assert.deepEqual(checkCandidateAgainstSpecRole(decor("Ottava Marble Serving Tray"), passing[1]), {
+    ok: false,
+    reason: "object_kind_mismatch"
+  });
   console.log("spec-sourcing object-kind tests passed");
 }
 

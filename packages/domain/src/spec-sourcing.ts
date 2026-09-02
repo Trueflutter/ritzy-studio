@@ -489,7 +489,7 @@ const OBJECT_KIND_RULES: Array<{ kind: string; phrases: string[] }> = [
   { kind: "vase", phrases: ["vase", "vessel", "urn", "jug", "carafe"] },
   { kind: "sculpture", phrases: ["sculpture", "figurine", "statue", "statuette", "bust", "objet"] },
   { kind: "candle", phrases: ["candle", "candleholder", "candle holder", "candlestick", "tealight", "tea light", "diffuser"] },
-  { kind: "books", phrases: ["book", "coffee table book"] },
+  { kind: "book", phrases: ["book", "coffee table book"] },
   { kind: "plant", phrases: ["plant", "planter", "greenery", "fern", "palm", "fig", "olive tree", "succulent", "orchid", "bouquet", "stems"] },
   { kind: "basket", phrases: ["basket", "hamper"] },
   { kind: "clock", phrases: ["clock"] }
@@ -500,20 +500,36 @@ const OBJECT_KIND_RULES: Array<{ kind: string; phrases: string[] }> = [
 // would over-reject on wording alone ("canvas" against "painting").
 const KIND_CONSTRAINED_CATEGORIES = new Set<string>(["decor", "lighting"]);
 
-// Every kind the text names: a spec line may ask for two ("decorative tray and
-// small bowl"), and either one fills the role.
-function objectKindsForText(text: string): string[] | undefined {
-  const kinds = OBJECT_KIND_RULES.filter((rule) => rule.phrases.some((phrase) => hasPhrase(text, phrase))).map(
-    (rule) => rule.kind
-  );
-  return kinds.length > 0 ? kinds : undefined;
+// Catch-all nouns that make a line open-ended: "cushions, tray, ceramics and
+// decor" names EXAMPLES, not a closed list, so pinning it to the two nouns
+// that happen to be in the rules would reject everything else it invites.
+// These are nouns, so an adjective ("decorative tray", "ceramic sculpture")
+// still reads as a closed enumeration.
+const OPEN_KIND_TAIL_PHRASES = [
+  "decor", "accessory", "accessories", "object", "objects", "ceramics", "styling", "accent", "accents",
+  "furnishings", "soft furnishings", "ornaments", "pieces", "items", "props"
+];
+
+// Every kind a text names. Both sides use this: a role line may ask for two
+// ("decorative tray and small bowl") and a product may name two ("Marble Bowl
+// and Tray Set"); the contract holds when the two sets intersect.
+function objectKindsIn(text: string): string[] {
+  return OBJECT_KIND_RULES.filter((rule) => rule.phrases.some((phrase) => hasPhrase(text, phrase))).map((rule) => rule.kind);
 }
 
-// A candidate's kind is read from its NAME and style tags only, never its
-// marketing copy, and the most specific rule wins. A product whose name names
-// no kind at all is left to the scorer rather than rejected.
-function objectKindForText(text: string): string | undefined {
-  return OBJECT_KIND_RULES.find((rule) => rule.phrases.some((phrase) => hasPhrase(text, phrase)))?.kind;
+// The role's kinds: its own noun decides, exactly as the fixture class does,
+// and the label speaks only when the role names no kind at all. Anything else
+// lets a kind mentioned in passing ("arc floor lamp echoing the table lamp
+// opposite") silently widen the contract.
+function objectKindsForRole(roleText: string, labelText: string): string[] | undefined {
+  for (const text of [placementStrippedText(roleText), labelText]) {
+    const kinds = objectKindsIn(text);
+    if (kinds.length === 0) {
+      continue;
+    }
+    return OPEN_KIND_TAIL_PHRASES.some((phrase) => hasPhrase(text, phrase)) ? undefined : kinds;
+  }
+  return undefined;
 }
 
 const SEATING_CATEGORIES = new Set<string>(["sofas", "armchairs", "chairs", "stools"]);
@@ -721,7 +737,7 @@ function specSourcingRole({
     roomType,
     fixtureClass:
       category === "lighting" ? (fixtureClassForRoleText(roleText) ?? fixtureClassForRoleText(labelText)) : undefined,
-    objectKinds: KIND_CONSTRAINED_CATEGORIES.has(category) ? objectKindsForText(combined) : undefined,
+    objectKinds: KIND_CONSTRAINED_CATEGORIES.has(category) ? objectKindsForRole(roleText, labelText) : undefined,
     minSeats: seats?.min,
     maxSeats: seats?.max,
     excludedSilhouettes: SEATING_CATEGORIES.has(category) ? excludedSilhouettesFor(combined) : []
@@ -848,8 +864,12 @@ export function checkCandidateAgainstSpecRole(
   }
 
   if (role.contract.objectKinds && role.contract.objectKinds.length > 0) {
-    const candidateKind = objectKindForText(nameText);
-    if (candidateKind && !role.contract.objectKinds.includes(candidateKind)) {
+    // A product's kinds come from its NAME and style tags only, never its
+    // marketing copy, and one shared kind is enough: a bowl-and-tray set fills
+    // a bowl role. A product naming no kind cannot be proven wrong.
+    const candidateKinds = objectKindsIn(nameText);
+    const kinds = role.contract.objectKinds;
+    if (candidateKinds.length > 0 && !candidateKinds.some((kind) => kinds.includes(kind))) {
       return { ok: false, reason: "object_kind_mismatch" };
     }
   }
@@ -922,13 +942,13 @@ export function humanizeCategory(category: string): string {
 export const MISSING_ROLE_GUIDANCE =
   "Try Refresh matches after the nightly catalogue update, or source this piece directly from a retailer.";
 
-// "a tray", "a tray or a bowl", "a tray, a bowl or a candle".
+// "tray", "tray or bowl", "tray, bowl or candle". No articles: the kinds are
+// dropped into a sentence and some are already plural in the reader's head.
 function listPhrase(values: string[]): string {
-  const items = values.map((value) => `a ${value}`);
-  if (items.length <= 1) {
-    return items[0] ?? "a different piece";
+  if (values.length <= 1) {
+    return values[0] ?? "a different piece";
   }
-  return `${items.slice(0, -1).join(", ")} or ${items[items.length - 1]}`;
+  return `${values.slice(0, -1).join(", ")} or ${values[values.length - 1]}`;
 }
 
 function fixtureNoun(fixtureClass: SpecRoleFixtureClass | undefined) {
@@ -975,7 +995,7 @@ export function missingRoleReason(
     case "lighting_fixture_class_mismatch":
       return `Every lighting piece in the catalogue is the wrong kind of fixture for this role; the design asks for ${fixtureNoun(role.contract.fixtureClass)}.`;
     case "object_kind_mismatch":
-      return `The catalogue's ${noun} pieces are all a different kind of object from the one the design asks for (${listPhrase(role.contract.objectKinds ?? [])}).`;
+      return `Every ${noun} in the catalogue is a different kind of object from the one the design asks for (${listPhrase(role.contract.objectKinds ?? [])}).`;
     case "silhouette_excluded":
       return `The only ${noun} pieces left were swing, rocking or outdoor silhouettes, which the design does not ask for.`;
     case "capacity_mismatch": {
