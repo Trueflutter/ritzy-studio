@@ -185,7 +185,13 @@ assert.deepEqual(checkCandidateAgainstSpecRole(sconce, byRole("floor_lamp")), {
   reason: "lighting_fixture_class_mismatch"
 });
 assert.deepEqual(checkCandidateAgainstSpecRole(floorLamp, byRole("floor_lamp")), { ok: true });
-assert.deepEqual(checkCandidateAgainstSpecRole(tableLamp, byRole("floor_lamp")), { ok: true });
+// A table lamp and a floor lamp are the same FIXTURE class, so only the object
+// kind separates them. AC 8 asks for a floor lamp in a floor-lamp role, and a
+// live swap put a battery table lamp into one; the kind contract rejects it.
+assert.deepEqual(checkCandidateAgainstSpecRole(tableLamp, byRole("floor_lamp")), {
+  ok: false,
+  reason: "object_kind_mismatch"
+});
 assert.deepEqual(checkCandidateAgainstSpecRole(chandelier, byRole("pendant")), { ok: true });
 assert.deepEqual(checkCandidateAgainstSpecRole(floorLamp, byRole("pendant")), {
   ok: false,
@@ -517,18 +523,20 @@ assert.deepEqual(checkCandidateAgainstSpecRole(sixSeatTable, byRole("dining_tabl
   assert.deepEqual(checkCandidateAgainstSpecRole(glider, leak[4]), { ok: true }, "a spec naming a rocking chair accepts a rocker");
   assert.deepEqual(parseSeatRange("Seats 2 to 3 adults. Delivered in 6-8 weeks."), { min: 2, max: 3 });
 
-  // one product fills one role, in the pass and in the ranking fallback
+  // one product fills one role, in the pass and in the ranking fallback. Both
+  // roles ask for the same KIND, so their contract-clean pools overlap: that
+  // overlap is what the duplicate resolution has to handle.
   const twoDecorRoles = sourcingRolesFromDesignSpec(
     {
       objects: [
-        { role: "coffee_table_tray", label: "decorative tray", quantity: 1, sizeDescriptor: null, capacity: null, paletteMaterials: [] },
-        { role: "media_console_bowl", label: "small bowl", quantity: 1, sizeDescriptor: null, capacity: null, paletteMaterials: [] }
+        { role: "coffee_table_vase", label: "small ceramic vase", quantity: 1, sizeDescriptor: null, capacity: null, paletteMaterials: [] },
+        { role: "media_console_vase", label: "tall stoneware vase", quantity: 1, sizeDescriptor: null, capacity: null, paletteMaterials: [] }
       ]
     },
     "Living Room"
   ).roles;
   const vase: ProductMatchCandidate = { ...base, id: "00000000-0000-4000-8000-000000000051", name: "Aveline Ceramic Vase", categoryNormalized: "decor" };
-  const bowl: ProductMatchCandidate = { ...base, id: "00000000-0000-4000-8000-000000000052", name: "Stone Bowl", categoryNormalized: "decor" };
+  const bowl: ProductMatchCandidate = { ...base, id: "00000000-0000-4000-8000-000000000052", name: "Lexie Stoneware Vase", categoryNormalized: "decor" };
   const decorPlan = buildSpecSourcingPlan({ roles: twoDecorRoles, unsourceable: [], candidates: [vase, bowl], roomType: "Living Room", conceptText: "calm" });
   assert.equal(decorPlan.pools.length, 2);
   const ranked = resolveSpecRoleOutcomesByRanking(decorPlan.pools, "ranking only");
@@ -893,6 +901,78 @@ console.log("spec-sourcing tests passed");
   assert.equal(placementStrippedText("wrap-around sectional sofa"), "wrap-around sectional sofa");
   assert.equal(placementStrippedText("slim under-bed storage drawers"), "slim under-bed storage drawers");
   console.log("spec-sourcing review-fix tests passed");
+}
+
+// --- live-run failure class: a grab-bag category filled with the wrong KIND
+// of object. Decor holds vases, trays, bowls, sculptures and candles, and
+// lighting holds floor and table lamps under one fixture class; every product
+// name below is from the walk room's sourced list, and every one passed
+// category, class tags, room scope and size.
+{
+  const { buildSpecSourcingPlan } = await import("./spec-sourcing");
+  const object = (role: string, label: string) => ({ role, label, quantity: 1, sizeDescriptor: null, capacity: null, paletteMaterials: [] });
+  const kindRoles = sourcingRolesFromDesignSpec(
+    {
+      objects: [
+        object("coffee_table_tray", "Decorative tray and small bowl (coffee table)"),
+        object("coffee_table_sculpture", "Decorative ceramic sculpture"),
+        object("media_console_bowl", "Small bowl / candle on media console"),
+        object("floor_lamp", "Arc floor lamp with globe shade"),
+        object("cushions", "Scatter pillows")
+      ]
+    },
+    "Living Room"
+  ).roles;
+  assert.deepEqual(
+    kindRoles.map((role) => [role.category, role.contract.objectKinds]),
+    [
+      ["decor", ["tray", "bowl"]],
+      ["decor", ["sculpture"]],
+      ["decor", ["bowl", "candle"]],
+      ["lighting", ["floor lamp"]],
+      ["decor", ["cushion"]]
+    ],
+    "a spec line naming two kinds accepts either"
+  );
+
+  const decor = (name: string): ProductMatchCandidate => ({ ...base, categoryNormalized: "decor", name });
+  const vase = decor("Travertine Marble Flower Vase");
+  for (const role of kindRoles.slice(0, 3)) {
+    assert.deepEqual(
+      checkCandidateAgainstSpecRole(vase, role),
+      { ok: false, reason: "object_kind_mismatch" },
+      `a vase cannot fill "${role.label}"`
+    );
+  }
+  assert.deepEqual(checkCandidateAgainstSpecRole(decor("Lexie Caramel Ceramic Abstract Vase Rust"), kindRoles[4]), {
+    ok: false,
+    reason: "object_kind_mismatch"
+  });
+  assert.deepEqual(checkCandidateAgainstSpecRole(decor("Ottava Marble Serving Tray"), kindRoles[0]), { ok: true });
+  assert.deepEqual(checkCandidateAgainstSpecRole(decor("Aveline Ceramic Bowl Beige"), kindRoles[2]), { ok: true });
+  // A product whose own name names no kind cannot be proven wrong; it stays
+  // eligible and the scorer ranks it.
+  assert.deepEqual(checkCandidateAgainstSpecRole(decor("Sculptural Decorative Accent"), kindRoles[1]), { ok: true });
+
+  const liveTableLamp: ProductMatchCandidate = { ...base, name: "Touch Sensor Table Lamp 6000Mah Battery Operated Rose Gold" };
+  assert.deepEqual(
+    checkCandidateAgainstSpecRole(liveTableLamp, kindRoles[3]),
+    { ok: false, reason: "object_kind_mismatch" },
+    "the live swap defect: a battery table lamp swapped into an arc floor-lamp role"
+  );
+  assert.deepEqual(checkCandidateAgainstSpecRole({ ...base, name: "The Oslo Floor Lamp" }, kindRoles[3]), { ok: true });
+
+  // A role no catalogue kind can fill is reported honestly, naming the kinds.
+  const kindPlan = buildSpecSourcingPlan({
+    roles: [kindRoles[0]],
+    unsourceable: [],
+    candidates: [vase],
+    roomType: "Living Room",
+    conceptText: "warm lounge"
+  });
+  assert.equal(kindPlan.pools.length, 0, "no contract-clean candidate means no pool");
+  assert.match(kindPlan.missing[0].reason, /different kind of object.*a tray or a bowl/);
+  console.log("spec-sourcing object-kind tests passed");
 }
 
 // --- blueprint fallback roles carry the same contracts
