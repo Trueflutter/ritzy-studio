@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
-import { PRODUCT_CONSISTENCY_THRESHOLD } from "@ritzy-studio/domain";
+import { PRODUCT_CONSISTENCY_THRESHOLD, PRODUCT_SELECTION_THRESHOLD } from "@ritzy-studio/domain";
 import { productDesignVerificationPrompt } from "@ritzy-studio/prompts";
 
 // The app pre-selects a product for the shopper only at or above the committed
@@ -23,6 +23,18 @@ assert.equal(
   "the harness checklist and the sourcing bar must be the same number"
 );
 assert.ok(PRODUCT_CONSISTENCY_THRESHOLD > 0 && PRODUCT_CONSISTENCY_THRESHOLD <= 1);
+
+// The app selects ABOVE the gate's bar, not at it. Both numbers come from a
+// model judging an image, and the same pair judged twice does not return the
+// same number twice; selecting at exactly the gate's bar means selecting
+// pieces the gate will sometimes score just under it. Measured on the five
+// harness rooms, three products the app passed at the shared bar were scored
+// 0.40, 0.45 and 0.55 by the gate, which is what this margin exists to absorb.
+assert.ok(
+  PRODUCT_SELECTION_THRESHOLD >= PRODUCT_CONSISTENCY_THRESHOLD + 0.1,
+  "the app's selection bar keeps real margin above the gate's bar"
+);
+assert.ok(PRODUCT_SELECTION_THRESHOLD <= 1);
 
 // The app's design check and the gate's judge must be anchored to the same
 // rule, not only the same number: two judges given different pass rules are

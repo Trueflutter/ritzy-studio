@@ -1197,11 +1197,21 @@ function poolMatches(pool: SpecRolePool, category: string, roleLabel: string) {
   );
 }
 
-// The committed product-to-design bar. The critique harness's
-// product_consistency check reads the same number from its checklist, and a
-// test pins the two together: what the app chooses FOR a shopper has to be
-// what the gate would call a match.
+// The design GATE's bar: the score at or above which the critique harness
+// calls a product a match. Read from its checklist by test so the two cannot
+// drift.
 export const PRODUCT_CONSISTENCY_THRESHOLD = 0.6;
+
+// The bar the APP selects at, which is deliberately higher. Both numbers come
+// from a model judging an image, and a model judging the same pair twice does
+// not return the same number twice. Selecting at exactly the gate's bar means
+// selecting pieces the gate will sometimes score just below it: measured on
+// the five harness rooms, three products the app passed at the shared bar
+// were scored 0.40, 0.45 and 0.55 by the gate. The margin is what makes "the
+// app never chooses something the gate would fail" hold in the presence of
+// that variance, and it costs only the borderline pieces, which are the ones
+// least worth presenting as matches.
+export const PRODUCT_SELECTION_THRESHOLD = 0.75;
 
 export const NO_VERDICT_OPEN_REASON =
   "The visual pass returned no verdict for this piece, so nothing was chosen for you; these are the closest catalogue options.";
@@ -1326,7 +1336,7 @@ export function resolveSpecRoleOutcomes({
 export function applyProductVerification({
   outcomes,
   verdicts,
-  threshold = PRODUCT_CONSISTENCY_THRESHOLD
+  threshold = PRODUCT_SELECTION_THRESHOLD
 }: {
   outcomes: SpecRoleOutcome[];
   // By product id. A product absent from the map was not judged.

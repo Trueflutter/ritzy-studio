@@ -9,7 +9,7 @@ import {
   selectedItemsTotalAed,
   type ProductMatchCandidate,
   type SubstitutionMode,
-  PRODUCT_CONSISTENCY_THRESHOLD
+  PRODUCT_SELECTION_THRESHOLD
 } from "@ritzy-studio/domain";
 
 import { alternateProse, specRoleForListRow } from "./product-sourcing";
@@ -280,10 +280,10 @@ export async function substituteProduct(
           imageDataUrl: replacementImage
         }
       ],
-      threshold: PRODUCT_CONSISTENCY_THRESHOLD
+      threshold: PRODUCT_SELECTION_THRESHOLD
     });
     const verdict = checked.verdicts.find((entry) => entry.productId === replacement.id);
-    const passed = Boolean(verdict && verdict.categoryMatches && verdict.similarity >= PRODUCT_CONSISTENCY_THRESHOLD);
+    const passed = Boolean(verdict && verdict.categoryMatches && verdict.similarity >= PRODUCT_SELECTION_THRESHOLD);
     await closeCheckJob({
       status: "succeeded",
       model: checked.model,

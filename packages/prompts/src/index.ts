@@ -441,7 +441,7 @@ export const productDesignVerificationPrompt = {
     // the app and the design gate have to be anchored to the same sentence and
     // the same number, or their scores are not comparable and the committed
     // threshold means nothing.
-    "A product passes only when the category matches AND similarity is at or above the threshold given. Notes name concrete evidence.",
+    "A product passes only when the category matches AND similarity is at or above the threshold given. Notes name concrete evidence. The threshold you are given is the bar for this decision; do not soften it because a piece is close, and do not round a score up to reach it.",
     "Return exactly one verdict per product you are shown, echoing its productId."
   ].join("\n")
 } as const;

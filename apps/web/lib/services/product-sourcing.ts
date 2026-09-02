@@ -35,7 +35,7 @@ import {
   BUDGET_OPEN_REASON,
   applyProductVerification,
   type SpecRolePool,
-  PRODUCT_CONSISTENCY_THRESHOLD
+  PRODUCT_SELECTION_THRESHOLD
 } from "@ritzy-studio/domain";
 
 import {
@@ -637,7 +637,7 @@ export async function groundProductsForRoom(
           verifyProducts({
             conceptImageUrl,
             products: judged,
-            threshold: PRODUCT_CONSISTENCY_THRESHOLD,
+            threshold: PRODUCT_SELECTION_THRESHOLD,
             timeoutMs: providerTimeoutMs(verifyTimeoutMs)
           }),
           verifyTimeoutMs,

@@ -599,7 +599,7 @@ console.log("spec-sourcing tests passed");
     resolveSpecRoleOutcomes,
     openSpecRoleOutcomes,
     roleOptionsFromOutcomes,
-    PRODUCT_CONSISTENCY_THRESHOLD,
+    PRODUCT_SELECTION_THRESHOLD,
     NO_VERDICT_OPEN_REASON,
     OUTSIDE_POOL_OPEN_REASON,
     VERIFICATION_FAILED_OPEN_REASON,
@@ -753,13 +753,13 @@ console.log("spec-sourcing tests passed");
       outcomes: proposal(0.9),
       verdicts: new Map([[X.id, { categoryMatches, similarity }]])
     })[0];
-  const verified = verdict(true, PRODUCT_CONSISTENCY_THRESHOLD);
+  const verified = verdict(true, PRODUCT_SELECTION_THRESHOLD);
   assert.equal(verified.kind, "selected", "at the bar the piece is chosen");
-  assert.equal(verified.kind === "selected" && verified.verifiedSimilarity, PRODUCT_CONSISTENCY_THRESHOLD);
-  const failed = verdict(true, PRODUCT_CONSISTENCY_THRESHOLD - 0.01);
+  assert.equal(verified.kind === "selected" && verified.verifiedSimilarity, PRODUCT_SELECTION_THRESHOLD);
+  const failed = verdict(true, PRODUCT_SELECTION_THRESHOLD - 0.01);
   assert.equal(failed.kind, "open", "a hair under the bar it is not");
   assert.equal(failed.kind === "open" && failed.reason, VERIFICATION_FAILED_OPEN_REASON);
-  assert.equal(failed.kind === "open" && failed.checkSimilarity, PRODUCT_CONSISTENCY_THRESHOLD - 0.01, "the judge's score is kept");
+  assert.equal(failed.kind === "open" && failed.checkSimilarity, PRODUCT_SELECTION_THRESHOLD - 0.01, "the judge's score is kept");
   assert.equal(failed.kind === "open" && failed.passSimilarity, 0.9, "beside the pass's own claim, so the drift is legible");
   assert.equal(verdict(false, 0.95).kind, "open", "a wrong kind of object fails however similar it looks");
   assert.equal(
