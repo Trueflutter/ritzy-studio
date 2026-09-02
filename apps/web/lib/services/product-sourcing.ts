@@ -31,7 +31,8 @@ import {
   type RoomProductRoleSpec,
   type SpecRoleOutcome,
   type SpecSourcingRole,
-  type UnsourceableSpecObject
+  type UnsourceableSpecObject,
+  BUDGET_OPEN_REASON
 } from "@ritzy-studio/domain";
 
 import { providerTimeoutMs, visualPassTimeoutMs } from "@/lib/sourcing-run-budget";
@@ -488,38 +489,46 @@ export async function groundProductsForRoom(
 
     const resolved = roleOptionsFromOutcomes(outcomes);
     missingRoles = [...plan.missing, ...resolved.missing];
-    const openRoles = resolved.openRoles;
 
     // Aggregate budget adherence: per-role picks have no view of the running
-    // total, so downgrade to cheaper in-pool alternates before persisting.
+    // total. The pass scores only the piece it proposes, so there is no
+    // cheaper piece that anything confirmed against the design; swapping the
+    // pick for one would put an unverified product on the list as the app's
+    // choice, which is the whole failure this slice exists to stop. A role
+    // the budget cannot afford is OPENED instead: its options are there and
+    // the shopper chooses, knowing why.
     const budgetFit = fitSelectionToBudget({
       roleOptions: resolved.roleOptions,
       selectedProductIdByRole: resolved.selectedProductIdByRole,
       budgetMaxAed: project.budget_max_aed ?? null
     });
-    const selection = budgetFit.selectedProductIdByRole;
+    const openedForBudget = new Set(budgetFit.downgrades.map((downgrade) => downgrade.roleKey));
+    const selection = new Map(resolved.selectedProductIdByRole);
+    for (const roleKey of openedForBudget) {
+      selection.delete(roleKey);
+    }
+    const openRoles = [
+      ...resolved.openRoles,
+      ...resolved.roleOptions
+        .filter((role) => openedForBudget.has(roleOptionKey(role)))
+        .map((role) => ({
+          specKey: role.specKey ?? roleOptionKey(role),
+          label: role.label,
+          reason: BUDGET_OPEN_REASON,
+          similarity: null
+        }))
+    ];
     const roleOptions = selectedFirst(resolved.roleOptions, selection);
     // Reasons are keyed by role AND product: a product that sits in two
-    // roles' pools carries each role's own story, and a downgrade in one role
-    // never rewrites the other's.
+    // roles' pools carries each role's own story.
     const reasonKey = (roleKey: string, productId: string) => `${roleKey}\u0000${productId}`;
     const reasonByRoleProduct = new Map<string, string>(
       outcomes
         .filter((outcome): outcome is Extract<SpecRoleOutcome, { kind: "selected" }> => outcome.kind === "selected")
+        .filter((outcome) => !openedForBudget.has(roleOptionKey(outcome.role)))
         .map((outcome) => [reasonKey(roleOptionKey(outcome.role), outcome.selectedProductId), whyThisPiece(outcome)])
     );
-    // A budget downgrade replaces the pick with a cheaper in-pool alternate:
-    // both rows then say what happened, the pass's first choice included.
-    for (const downgrade of budgetFit.downgrades) {
-      reasonByRoleProduct.set(
-        reasonKey(downgrade.roleKey, downgrade.toProductId),
-        "Chosen as the closest piece within the room's budget; the first choice for this role was above it."
-      );
-      reasonByRoleProduct.set(
-        reasonKey(downgrade.roleKey, downgrade.fromProductId),
-        "The visual pass's first choice for this role; above the room's budget, so a cheaper piece was chosen instead."
-      );
-    }
+
     const itemRows = buildShoppingListItemRows({
       roleOptions,
       selectedProductIdByRole: selection,
@@ -607,9 +616,11 @@ export async function groundProductsForRoom(
           contractRejections,
           visualPass,
           budgetFit: {
-            adjusted: budgetFit.adjusted,
+            adjusted: openedForBudget.size > 0,
             withinBudget: budgetFit.withinBudget,
-            downgrades: budgetFit.downgrades.length
+            // Roles opened because the piece that matched the design costs
+            // more than the room's budget allows.
+            openedForBudget: openedForBudget.size
           },
           shoppingListId,
           estimatedTotalAed: estimatedTotal

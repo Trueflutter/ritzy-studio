@@ -403,6 +403,83 @@ async function main() {
     assert.match(summary.openRoles[0].reason, /close enough visual match/);
   }
 
+  // --- a room whose budget cannot afford the piece that matched the design:
+  // the role is OPENED, never swapped for a cheaper piece nothing verified
+  {
+    const CHEAP_SOFA_ID = "00000000-0000-4000-8000-000000000105";
+    const CHEAP_CHAIR_ID = "00000000-0000-4000-8000-000000000106";
+    const { client, calls } = fakeSupabase((call) => {
+      if (call.table === "projects") return { data: { id: "proj-1", budget_max_aed: 3500 } };
+      if (call.table === "rooms" && call.op === "select") return { data: { id: "room-1", room_type: "Living Room" } };
+      if (call.table === "concepts" && call.op === "select") return { data: CONCEPT };
+      if (call.table === "shopping_lists" && call.op === "insert") return { data: { id: "list-1" } };
+      return { data: null };
+    }, (storageCall) => (storageCall.op === "download" ? { data: new Blob([Buffer.from([1, 2, 3])]) } : { data: null }));
+    // The sofa role holds a cheaper piece the pass never scored: exactly the
+    // product a budget downgrade used to swap in as the app's own choice.
+    const { client: service, calls: serviceCalls } = fakeSupabase((call) => {
+      if (call.table === "products") {
+        return {
+          data: [
+            CATALOGUE[0],
+            productRow({ id: CHEAP_SOFA_ID, name: "Kova 3 Seater Sofa", category_normalized: "sofas", price_aed: 900 }),
+            productRow({
+              id: CHEAP_CHAIR_ID,
+              name: "Stilo Armchair in Savoy Cognac Brown Leather",
+              category_normalized: "armchairs",
+              price_aed: 1200,
+              description: "Casual comfort in cognac leather.",
+              color: "brown",
+              material: "leather",
+              dimensions: [{ width_cm: 80, depth_cm: 88, height_cm: 89, source_text: "80x88x89" }]
+            })
+          ]
+        };
+      }
+      if (call.table === "ai_jobs" && call.op === "insert") return { data: { id: "job-1" } };
+      return { data: null };
+    }, (storageCall) => (storageCall.op === "download" ? { data: new Blob([Buffer.from([1, 2, 3])]) } : { data: null }));
+    const result = await groundProductsForRoom(
+      { supabase: client, serviceSupabase: service },
+      GROUND_INPUT,
+      {
+        readSpec: async () => CONFIRMED_SPEC,
+        extractPalette: noPalette,
+        fetchCandidateImages: async () => ({}),
+        sourceProducts: async () => ({
+          promptKey: "k",
+          promptVersion: "v",
+          model: "stub",
+          textCostUsd: 0.01,
+          needs: [],
+          selectedProducts: [],
+          roleResults: [
+            { category: "sofas", roleLabel: "role-1", status: "strong_match", productId: SOFA_ID, similarity: 0.9, reason: "Matches." },
+            { category: "armchairs", roleLabel: "role-2", status: "strong_match", productId: CHEAP_CHAIR_ID, similarity: 0.9, reason: "Matches." }
+          ],
+          missingRoles: []
+        })
+      }
+    );
+    // Sofa 3000 plus chair 1200 is over 3500, and the only cheaper piece is
+    // the unscored sofa, so the sofa role opens instead of taking it.
+    assert.deepEqual(result, { status: "sourced", selectedCount: 1, missingRoleCount: 1, openRoleCount: 1 });
+    const insert = calls.find((call: RecordedCall) => call.table === "shopping_list_items" && call.op === "insert");
+    const rows = (insert?.payload as unknown as Array<Record<string, unknown>>) ?? [];
+    assert.deepEqual(
+      rows.filter((row) => row.status === "selected").map((row) => row.product_id),
+      [CHEAP_CHAIR_ID],
+      "the unscored cheaper sofa is never chosen for the shopper"
+    );
+    const jobUpdate = serviceCalls.find((call: RecordedCall) => call.table === "ai_jobs" && call.op === "update");
+    const summary = jobUpdate?.payload?.output_summary as {
+      budgetFit: { adjusted: boolean; openedForBudget: number };
+      openRoles: Array<{ label: string; reason: string }>;
+    };
+    assert.equal(summary.budgetFit.openedForBudget, 1);
+    assert.match(summary.openRoles[0].reason, /above the room's budget/);
+  }
+
   // --- the pass failing (timeout, provider) means nothing was judged against
   // the design: every role is open, and the job records the failure
   {

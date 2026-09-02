@@ -1193,6 +1193,10 @@ export const NO_VERDICT_OPEN_REASON =
   "The visual pass returned no verdict for this piece, so nothing was chosen for you; these are the closest catalogue options.";
 export const BELOW_BAR_OPEN_REASON =
   "No catalogue piece was a close enough visual match to the design to choose for you; these are the closest options.";
+export const OUTSIDE_POOL_OPEN_REASON =
+  "The visual pass named a piece that is not in this role's contract-clean pool, so its verdict could not be used; these are the closest options.";
+export const BUDGET_OPEN_REASON =
+  "The piece that matched the design here is above the room's budget, and no cheaper piece was confirmed to match; these are the closest options.";
 export const CONTESTED_OPEN_REASON =
   "The visual pass proposed the same piece it chose for another role, so nothing was chosen for this one; these are the closest options.";
 
@@ -1233,6 +1237,10 @@ export function resolveSpecRoleOutcomes({
       declaredMissing,
       similarity,
       noVerdict: !result && !selection,
+      // The pass named something outside this role's contract-clean pool: a
+      // contract violation, not a low score, and its score belongs to a piece
+      // this role could never have.
+      outsidePool: Boolean(result?.productId ?? selection?.productId) && !declaredMissing && !picked,
       confident: Boolean(picked) && similarity !== null && similarity >= threshold
     };
   });
@@ -1278,6 +1286,9 @@ export function resolveSpecRoleOutcomes({
           `The visual pass found no catalogue piece that matches the design: ${result.reason}`
         )
       };
+    }
+    if (verdict.outsidePool) {
+      return { kind: "open", role: pool.role, pool, reason: OUTSIDE_POOL_OPEN_REASON, similarity: null };
     }
     return {
       kind: "open",

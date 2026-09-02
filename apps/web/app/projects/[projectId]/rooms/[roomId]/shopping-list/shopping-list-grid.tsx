@@ -1,7 +1,7 @@
 "use client";
 
 import { SubmitButton } from "@ritzy-studio/ui";
-import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { useCallback, useMemo, useState, useTransition } from "react";
 
 import {
   findMoreShoppingOptionsAction,
@@ -69,15 +69,16 @@ export function ShoppingListGrid({
   missingCaveat = null
 }: ShoppingListGridProps) {
   // Optimistic picks for instant feedback; every change persists in the
-  // background, so the server stays the source of truth on reload.
+  // background, so the server stays the source of truth on reload. A role the
+  // app did not choose for the shopper starts UNCHOSEN and stays that way
+  // until they click: seeding it with the top-ranked option would present a
+  // piece nothing verified against the design as their choice, and would
+  // count it towards "N of N roles chosen".
   const [selectedByRole, setSelectedByRole] = useState<Map<string, string>>(
     () =>
       new Map(
         groups
-          .map((group) => {
-            const defaultId = group.selectedId ?? group.items[0]?.id ?? null;
-            return defaultId ? ([group.roleKey, defaultId] as const) : null;
-          })
+          .map((group) => (group.selectedId ? ([group.roleKey, group.selectedId] as const) : null))
           .filter((entry): entry is readonly [string, string] => entry !== null)
       )
   );
@@ -87,28 +88,6 @@ export function ShoppingListGrid({
   const [detailItem, setDetailItem] = useState<ProductCardItem | null>(null);
   const [pendingCategory, setPendingCategory] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
-  const persistedDefaultsRef = useRef(false);
-
-  useEffect(() => {
-    if (persistedDefaultsRef.current) {
-      return;
-    }
-
-    const defaultItemIds = groups
-      .filter((group) => !group.selectedId && group.items[0])
-      .map((group) => group.items[0].id);
-
-    if (defaultItemIds.length === 0) {
-      return;
-    }
-
-    persistedDefaultsRef.current = true;
-    startTransition(async () => {
-      for (const itemId of defaultItemIds) {
-        await selectShoppingItemAction({ projectId, roomId, shoppingListId, itemId });
-      }
-    });
-  }, [groups, projectId, roomId, shoppingListId, startTransition]);
 
   const idToRoleKey = useMemo(() => {
     const map = new Map<string, string>();

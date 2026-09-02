@@ -601,6 +601,7 @@ console.log("spec-sourcing tests passed");
     roleOptionsFromOutcomes,
     PRODUCT_CONSISTENCY_THRESHOLD,
     NO_VERDICT_OPEN_REASON,
+    OUTSIDE_POOL_OPEN_REASON,
     BELOW_BAR_OPEN_REASON,
     CONTESTED_OPEN_REASON
   } = await import("./spec-sourcing");
@@ -698,6 +699,10 @@ console.log("spec-sourcing tests passed");
     selections: []
   });
   assert.equal(outsidePool[0].kind, "open", "a pick outside the contract-clean pool is never accepted, and nothing else was judged");
+  // Its reason names the contract violation, not the bar, and it carries no
+  // score: the pass's number belongs to a piece this role could never have.
+  assert.equal(outsidePool[0].kind === "open" && outsidePool[0].reason, OUTSIDE_POOL_OPEN_REASON);
+  assert.equal(outsidePool[0].kind === "open" && outsidePool[0].similarity, null);
 
   // --- a validator-synthesized "missing" entry is no verdict at all: the
   // role is left OPEN with its options, never marked missing on the pass's
