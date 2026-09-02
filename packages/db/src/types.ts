@@ -1206,6 +1206,7 @@ export type Database = {
           created_at: string
           estimated_total_aed: number
           id: string
+          missing_roles: Json
           room_id: string
           status: Database["public"]["Enums"]["shopping_list_status"]
           updated_at: string
@@ -1215,6 +1216,7 @@ export type Database = {
           created_at?: string
           estimated_total_aed?: number
           id?: string
+          missing_roles?: Json
           room_id: string
           status?: Database["public"]["Enums"]["shopping_list_status"]
           updated_at?: string
@@ -1224,6 +1226,7 @@ export type Database = {
           created_at?: string
           estimated_total_aed?: number
           id?: string
+          missing_roles?: Json
           room_id?: string
           status?: Database["public"]["Enums"]["shopping_list_status"]
           updated_at?: string

@@ -149,6 +149,7 @@ export * from "./product-matching";
 export * from "./product-matching-confidence";
 export * from "./product-matching-dimensions";
 export * from "./design-spec";
+export * from "./spec-sourcing";
 export * from "./measurement-confidence";
 export * from "./spatial-design-rules";
 export * from "./product-matching-evidence";

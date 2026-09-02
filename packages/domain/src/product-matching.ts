@@ -2014,12 +2014,12 @@ function inferredRoleSizeClass(role: RoomProductRoleSpec): RoleSizeClass | undef
   return "standard";
 }
 
-function classTagsConflictWithRole(candidate: ProductMatchCandidate, contract: RoleClassContract) {
+export function classTagsConflictWithRole(candidate: ProductMatchCandidate, contract: RoleClassContract) {
   const classTags = deriveClassTags(candidate);
   return contract.disallowedClasses.some((classTag) => classTags.includes(classTag));
 }
 
-function roomScopeConflictsWithRole(candidate: ProductMatchCandidate, contract: RoleClassContract) {
+export function roomScopeConflictsWithRole(candidate: ProductMatchCandidate, contract: RoleClassContract) {
   if (!contract.roomScope) {
     return false;
   }
@@ -2032,7 +2032,7 @@ function roomScopeConflictsWithRole(candidate: ProductMatchCandidate, contract: 
   return candidateScope !== "general" && candidateScope !== contract.roomScope;
 }
 
-function sizeClassConflictsWithRole(candidate: ProductMatchCandidate, contract: RoleClassContract) {
+export function sizeClassConflictsWithRole(candidate: ProductMatchCandidate, contract: RoleClassContract) {
   if (!contract.sizeClass || contract.sizeClass === "any" || candidate.categoryNormalized !== "sofas") {
     return false;
   }
