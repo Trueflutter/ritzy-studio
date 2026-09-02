@@ -264,12 +264,23 @@ const ROOM_OBJECT_PHRASES = [
     "media console", "media unit", "console", "counter", "worktop", "vanity", "bath", "shower"
   ])
 ];
-const ROOM_OBJECT_PATTERN = ROOM_OBJECT_PHRASES.map((phrase) => phrase.replace(/\s+/g, "\\s+")).join("|");
+// Inside a phrase, and after a link, a word boundary may be written as a space
+// OR a hyphen: labels say "dining table", "dining-table", "8-seat dining-table".
+// The seat-parsing copy of the label keeps its hyphens, so a space-only pattern
+// would leave the placement clause uncut there and let the OTHER object's seat
+// count become this role's capacity. The boundary BEFORE a link stays a space,
+// so compounds ("wrap-around sectional", "built-in storage") are never read as
+// placement.
+const WORD_BREAK = "[\\s-]+";
+function phrasePattern(phrase: string) {
+  return phrase.replace(/\s+/g, WORD_BREAK);
+}
+const ROOM_OBJECT_PATTERN = ROOM_OBJECT_PHRASES.map(phrasePattern).join("|");
 
 export function placementStrippedText(text: string): string {
   let head = text;
   for (const link of PLACEMENT_LINKS) {
-    const pattern = new RegExp(`(?:^|\\s)${link.replace(/\s+/g, "\\s+")}\\s+${ARTICLES}(?:\\s|$)`);
+    const pattern = new RegExp(`(?:^|\\s)${phrasePattern(link)}${WORD_BREAK}${ARTICLES}(?:${WORD_BREAK}|$)`);
     const match = pattern.exec(head);
     if (match && match.index > 0) {
       head = head.slice(0, match.index).trim();
@@ -277,7 +288,7 @@ export function placementStrippedText(text: string): string {
   }
   for (const link of OBJECT_PLACEMENT_LINKS) {
     const pattern = new RegExp(
-      `(?:^|\\s)${link.replace(/\s+/g, "\\s+")}(?:\\s+[a-z0-9-]+){0,3}?\\s+(?:${ROOM_OBJECT_PATTERN})(?:s|es)?$`
+      `(?:^|\\s)${phrasePattern(link)}(?:${WORD_BREAK}[a-z0-9-]+){0,3}?${WORD_BREAK}(?:${ROOM_OBJECT_PATTERN})(?:s|es)?$`
     );
     const match = pattern.exec(head);
     if (match && match.index > 0) {

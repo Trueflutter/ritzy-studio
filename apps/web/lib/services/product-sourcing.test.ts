@@ -438,34 +438,45 @@ async function main() {
     assert.equal(jobUpdates, 2, "the failed close is retried once");
   }
 
-  // --- a blueprint-built list refills without a spec contract and is never
-  // stale, whatever the concept's spec row looks like
+  // --- a blueprint-built list has no contract while the concept has no
+  // confirmed spec (re-sourcing would rebuild the same list), but once one IS
+  // confirmed the list no longer reflects the design and must be re-sourced
   {
     const freshId = "00000000-0000-4000-8000-00000000bbbb";
-    const { client, calls } = fakeSupabase((call) => {
-      if (call.table === "shopping_lists") return { data: { id: "list-1", concept_id: "concept-1", spec_source: "blueprint_fallback" } };
-      if (call.table === "rooms") return { data: { id: "room-1", room_type: "Living Room" } };
-      if (call.table === "projects") return { data: { id: "proj-1", budget_max_aed: null } };
-      if (call.table === "concepts") return { data: { title: "T", description: null } };
-      if (call.table === "shopping_list_items" && call.op === "select") {
-        return {
-          data: [
-            { id: "i1", product_id: "p1", status: "selected", ...ITEM_TEMPLATE, spec_key: "blueprint:0:sofas", role_label: "living-zone sofa", option_rank: 0 },
-            { id: "i2", product_id: "p2", status: "option", ...ITEM_TEMPLATE, spec_key: "blueprint:0:sofas", role_label: "living-zone sofa", option_rank: 1 }
-          ]
-        };
-      }
-      return { data: null };
-    });
-    const { client: service, calls: serviceCalls } = fakeSupabase((call) => {
-      if (call.table === "products") return { data: [productRow({ id: freshId })] };
-      if (call.table === "room_design_specs") return { data: { id: "spec-1", objects: "malformed" } };
-      return { data: null };
-    });
-    assert.deepEqual(await refreshShoppingOptions({ supabase: client, serviceSupabase: service }, REFILL_INPUT), { status: "refreshed" });
-    assert.equal(serviceCalls.filter((call: RecordedCall) => call.table === "room_design_specs").length, 0);
-    const insert = calls.find((call: RecordedCall) => call.table === "shopping_list_items" && call.op === "insert");
+    const blueprintClients = (specRow: unknown) => {
+      const { client, calls } = fakeSupabase((call) => {
+        if (call.table === "shopping_lists") return { data: { id: "list-1", concept_id: "concept-1", spec_source: "blueprint_fallback" } };
+        if (call.table === "rooms") return { data: { id: "room-1", room_type: "Living Room" } };
+        if (call.table === "projects") return { data: { id: "proj-1", budget_max_aed: null } };
+        if (call.table === "concepts") return { data: { title: "T", description: null } };
+        if (call.table === "shopping_list_items" && call.op === "select") {
+          return {
+            data: [
+              { id: "i1", product_id: "p1", status: "selected", ...ITEM_TEMPLATE, spec_key: "blueprint:0:sofas", role_label: "living-zone sofa", option_rank: 0 },
+              { id: "i2", product_id: "p2", status: "option", ...ITEM_TEMPLATE, spec_key: "blueprint:0:sofas", role_label: "living-zone sofa", option_rank: 1 }
+            ]
+          };
+        }
+        return { data: null };
+      });
+      const { client: service } = fakeSupabase((call) => {
+        if (call.table === "products") return { data: [productRow({ id: freshId })] };
+        if (call.table === "room_design_specs") return { data: specRow };
+        return { data: null };
+      });
+      return { client, calls, service };
+    };
+
+    // Unreadable spec row: no contract, and the refill still runs.
+    const unreadable = blueprintClients({ id: "spec-1", room_id: "room-1", concept_id: "concept-1", status: "extracted", must_preserve: [], objects: "malformed" });
+    assert.deepEqual(await refreshShoppingOptions({ supabase: unreadable.client, serviceSupabase: unreadable.service }, REFILL_INPUT), { status: "refreshed" });
+    const insert = unreadable.calls.find((call: RecordedCall) => call.table === "shopping_list_items" && call.op === "insert");
     assert.equal(((insert?.payload as unknown as Array<Record<string, unknown>>) ?? [])[0]?.product_id, freshId);
+
+    // Confirmed spec: the blueprint list is stale, and nothing is written.
+    const confirmed = blueprintClients({ id: "spec-1", room_id: "room-1", concept_id: "concept-1", status: "confirmed", must_preserve: [], objects: CONFIRMED_SPEC.spec.objects });
+    assert.deepEqual(await refreshShoppingOptions({ supabase: confirmed.client, serviceSupabase: confirmed.service }, REFILL_INPUT), { status: "stale_spec" });
+    assert.equal(confirmed.calls.filter((call: RecordedCall) => call.op !== "select").length, 0);
   }
 
   // --- the paid pass succeeded but the list could not be written: the job

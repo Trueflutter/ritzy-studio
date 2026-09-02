@@ -5,6 +5,7 @@ import {
   checkCandidateAgainstSpecRole,
   missingRolesSchema,
   parseMissingRoles,
+  placementStrippedText,
   sourcingRolesFromDesignSpec,
   type SpecSourcingRole,
   NO_VERDICT_REASON
@@ -864,6 +865,33 @@ console.log("spec-sourcing tests passed");
     ["decor", "decor", "rugs", "mirrors", "lighting", "wall_art", "lighting", "lighting", "decor", "sofas"],
     "a role key is read for its object clause, never for the furniture it sits on"
   );
+  // Hyphenated spellings of the same clauses: the seat-parsing copy keeps its
+  // hyphens, so its placement cut has to be hyphen-tolerant too, or the OTHER
+  // object's seat count becomes this role's capacity contract.
+  const hyphenated = sourcingRolesFromDesignSpec(
+    {
+      objects: [
+        object("sofa", "curved sofa opposite 8-seat dining-table"),
+        object("sofa", "curved sofa opposite 8-seat dining-chairs"),
+        object("armchair", "pair of armchairs beside 6-seat dining-table"),
+        object("dining_table", "8-seat dining-table")
+      ]
+    },
+    "Living Room"
+  );
+  assert.deepEqual(
+    hyphenated.roles.slice(0, 3).map((role) => role.contract.minSeats),
+    [undefined, undefined, undefined],
+    "a hyphenated seat count inside a placement clause never becomes the seating role's capacity"
+  );
+  assert.deepEqual(
+    [hyphenated.roles[3].contract.minSeats, hyphenated.roles[3].contract.maxSeats],
+    [8, 8],
+    "the dining table's OWN hyphenated seat count still counts"
+  );
+  // Compounds keep their hyphens: the boundary before a link is a space.
+  assert.equal(placementStrippedText("wrap-around sectional sofa"), "wrap-around sectional sofa");
+  assert.equal(placementStrippedText("slim under-bed storage drawers"), "slim under-bed storage drawers");
   console.log("spec-sourcing review-fix tests passed");
 }
 

@@ -684,9 +684,8 @@ export type ListRowSpecRole =
   // The row's role under the concept's current spec: swaps and refills re-run
   // this contract.
   | { status: "role"; role: SpecSourcingRole }
-  // No contract to apply: the list was built from the room type (blueprint
-  // fallback, by its own provenance or its keys), or the concept has no
-  // readable spec.
+  // No contract to apply: the concept has no readable spec, or the list was
+  // built from the room type while none existed.
   | { status: "no_spec" }
   // The concept has a readable spec but this row's identity is not in it (the
   // spec was re-extracted or re-numbered since the list was built): the list
@@ -697,8 +696,7 @@ export type ListRowSpecRole =
 // rows carry the spec object's stable key), else by label for rows that
 // predate keys. Resolution is by identity, so a label the user edited on
 // /spec after sourcing never silently drops the contract. Staleness is only
-// ever declared against a readable spec: a blueprint-built list has no spec
-// to be stale against, and re-sourcing it would build the same list.
+// ever declared against a readable spec.
 export async function specRoleForListRow(
   serviceSupabase: ServiceSupabaseClient,
   {
@@ -717,7 +715,7 @@ export async function specRoleForListRow(
     roleLabel?: string | null;
   }
 ): Promise<ListRowSpecRole> {
-  if (!conceptId || specSource === "blueprint_fallback" || specKey?.startsWith("blueprint:")) {
+  if (!conceptId) {
     return { status: "no_spec" };
   }
   const { data: specRow } = await serviceSupabase
@@ -732,6 +730,14 @@ export async function specRoleForListRow(
   const spec = parseRoomDesignSpecRow(specRow);
   if (!spec) {
     return { status: "no_spec" };
+  }
+  // A list built from the room type carries no spec identity. While the
+  // concept has no confirmed design it is not stale either, and re-sourcing
+  // would rebuild the same list, so its rows change under no contract. Once a
+  // spec IS confirmed the list no longer reflects the design: it must be
+  // re-sourced rather than swapped or refilled unconstrained.
+  if (specSource === "blueprint_fallback" || specKey?.startsWith("blueprint:")) {
+    return spec.status === "confirmed" ? { status: "stale" } : { status: "no_spec" };
   }
   const roles = sourcingRolesFromDesignSpec(spec, roomType).roles;
   if (specKey) {

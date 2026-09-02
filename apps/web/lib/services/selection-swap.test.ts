@@ -352,8 +352,69 @@ async function main() {
       { ensureEntitled: async () => {} }
     );
     assert.equal(result.status, "swapped");
-    assert.equal(serviceCalls.filter((call) => call.table === "room_design_specs").length, 0, "a blueprint list never consults the spec");
+    assert.ok(serviceCalls.some((call) => call.table === "room_design_specs"), "the spec is consulted; it is simply unreadable");
     assert.equal(userUpdates.find((call) => call.table === "shopping_list_items")?.payload?.product_id, "00000000-0000-4000-8000-000000000002");
+  }
+
+  // --- substituteProduct: a blueprint-built list whose concept has SINCE
+  // gained a confirmed spec is stale; the list must be re-sourced, never
+  // swapped under no contract
+  {
+    const currentProduct = productRow({ id: "00000000-0000-4000-8000-000000000001", price_aed: 3000 });
+    const cheaper = productRow({ id: "00000000-0000-4000-8000-000000000002", price_aed: 2000 });
+    const userUpdates: RecordedCall[] = [];
+    const { client } = fakeSupabase((call) => {
+      if (call.op === "update") {
+        userUpdates.push(call);
+        return { data: null };
+      }
+      if (call.table === "projects") return { data: { id: "p", budget_max_aed: null } };
+      if (call.table === "rooms") return { data: { id: "r", room_type: "Living Room" } };
+      if (call.table === "shopping_lists") return { data: { id: "l", concept_id: "c", spec_source: "blueprint_fallback" } };
+      if (call.table === "concepts") return { data: { id: "c", title: "T", description: null } };
+      if (call.table === "room_measurements") return { data: null };
+      if (call.table === "shopping_list_items") return { data: [] };
+      return { data: null };
+    });
+    const { client: service } = fakeSupabase((call) => {
+      if (call.table === "shopping_list_items" && call.single) {
+        return {
+          data: {
+            id: "item-1",
+            category: "sofas",
+            quantity: 1,
+            unit_price_aed: 3000,
+            line_total_aed: 3000,
+            role_label: "living-zone sofa",
+            spec_key: "blueprint:0:sofas",
+            role_priority: "required",
+            role_quantity: 1,
+            product: currentProduct
+          }
+        };
+      }
+      if (call.table === "products") return { data: [currentProduct, cheaper] };
+      if (call.table === "room_design_specs") {
+        return {
+          data: {
+            id: "spec-y",
+            room_id: "r",
+            concept_id: "c",
+            status: "confirmed",
+            must_preserve: [],
+            objects: [{ role: "sofa", label: "curved sofa", quantity: 1, sizeDescriptor: null, capacity: null, paletteMaterials: [] }]
+          }
+        };
+      }
+      return { data: null };
+    });
+    const result = await substituteProduct(
+      { supabase: client, serviceSupabase: service },
+      { projectId: "p", roomId: "r", shoppingListId: "l", itemId: "item-1", mode: "cheaper" },
+      { ensureEntitled: async () => {} }
+    );
+    assert.deepEqual(result, { status: "stale_spec" });
+    assert.equal(userUpdates.length, 0);
   }
 
   console.log("selection-swap service tests passed");
