@@ -66,6 +66,9 @@ export async function substituteProduct(
     .from("shopping_lists")
     .select("id, concept_id, spec_source")
     .eq("id", shoppingListId)
+    // Already bound to the room in the request: row-level security lets a
+    // shopper read both of their own lists, so an id alone would let one
+    // room's spec, measurements and budget govern another room's swap.
     .eq("room_id", roomId)
     .single();
 

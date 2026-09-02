@@ -180,6 +180,12 @@ type PaletteResult = Awaited<ReturnType<typeof extractConceptImagePalette>>;
 const noPalette = async () =>
   ({ promptKey: "k", promptVersion: "v", model: "stub", textCostUsd: 0, palette: CONCEPT.palette_json }) as unknown as PaletteResult;
 
+// A run first closes any sourcing job an earlier run for this room left
+// running, so the TERMINAL write is the last ai_jobs update, not the first.
+function terminalJobUpdate(calls: RecordedCall[]) {
+  return calls.filter((call) => call.table === "ai_jobs" && call.op === "update").at(-1);
+}
+
 async function main() {
   // --- missing room/project/concept resolves not_found, no writes
   {
@@ -327,7 +333,7 @@ async function main() {
     const jobInsert = serviceCalls.find((call: RecordedCall) => call.table === "ai_jobs" && call.op === "insert");
     assert.equal(jobInsert?.payload?.status, "running");
     assert.equal((jobInsert?.payload?.input_summary as { specSource?: string })?.specSource, "confirmed_spec");
-    const jobUpdate = serviceCalls.find((call: RecordedCall) => call.table === "ai_jobs" && call.op === "update");
+    const jobUpdate = terminalJobUpdate(serviceCalls);
     assert.equal(jobUpdate?.payload?.status, "succeeded");
     // The pass's spend and the design check's spend land on one job row.
     assert.equal(jobUpdate?.payload?.cost_estimate_usd, 0.025);
@@ -428,7 +434,7 @@ async function main() {
       !rows.some((row) => String(row.selection_reason).includes("closely matches")),
       "the pass's prose for a piece the check rejected is never presented as the reason it was chosen"
     );
-    const jobUpdate = serviceCalls.find((call: RecordedCall) => call.table === "ai_jobs" && call.op === "update");
+    const jobUpdate = terminalJobUpdate(serviceCalls);
     const summary = jobUpdate?.payload?.output_summary as {
       openRoleCount: number;
       openRoles: Array<{ label: string; passSimilarity: number | null; checkSimilarity: number | null; reason: string }>;
@@ -520,13 +526,137 @@ async function main() {
       [CHEAP_CHAIR_ID],
       "the unscored cheaper sofa is never chosen for the shopper"
     );
-    const jobUpdate = serviceCalls.find((call: RecordedCall) => call.table === "ai_jobs" && call.op === "update");
+    const jobUpdate = terminalJobUpdate(serviceCalls);
     const summary = jobUpdate?.payload?.output_summary as {
       budgetFit: { adjusted: boolean; openedForBudget: number };
       openRoles: Array<{ label: string; reason: string }>;
     };
     assert.equal(summary.budgetFit.openedForBudget, 1);
     assert.match(summary.openRoles[0].reason, /above the room's budget/);
+  }
+
+  // --- the design check FAILING is the safety net: every proposal it did not
+  // pass must be opened, never left selected on the pass's word alone
+  for (const [label, deps] of [
+    [
+      "the judge is unreachable",
+      {
+        fetchCandidateImages: imagesForAll,
+        verifyProducts: async () => {
+          throw new Error("the design check is unavailable");
+        }
+      }
+    ],
+    [
+      "no proposal has an image to judge",
+      { fetchCandidateImages: async () => ({}), verifyProducts: verifyAll() }
+    ],
+    [
+      "the judge answers for only some of the proposals",
+      {
+        fetchCandidateImages: imagesForAll,
+        verifyProducts: async ({ products }: { products: Array<{ productId: string }> }) => ({
+          promptKey: "k",
+          promptVersion: "v",
+          model: "gpt-5.1-stub",
+          textCostUsd: 0.005,
+          verdicts: products.slice(0, 1).map((product) => ({
+            productId: product.productId,
+            categoryMatches: true,
+            similarity: 0.9,
+            matchedObject: "the piece in the render",
+            notes: "stub"
+          }))
+        })
+      }
+    ]
+  ] as const) {
+    const { client, calls } = userClient();
+    const { client: service, calls: serviceCalls } = serviceClient();
+    const result = await groundProductsForRoom(
+      { supabase: client, serviceSupabase: service },
+      GROUND_INPUT,
+      {
+        readSpec: async () => CONFIRMED_SPEC,
+        extractPalette: noPalette,
+        sourceProducts: async () => ({
+          promptKey: "k",
+          promptVersion: "v",
+          model: "stub",
+          textCostUsd: 0.01,
+          needs: [],
+          selectedProducts: [],
+          roleResults: [
+            { category: "sofas", roleLabel: "role-1", status: "strong_match", productId: SOFA_ID, similarity: 0.95, reason: "Confident." },
+            { category: "armchairs", roleLabel: "role-2", status: "strong_match", productId: CHAIR_ID, similarity: 0.95, reason: "Confident." }
+          ],
+          missingRoles: []
+        }),
+        ...(deps as Record<string, unknown>)
+      }
+    );
+    assert.deepEqual(
+      result,
+      { status: "sourced", selectedCount: 0, missingRoleCount: 1, openRoleCount: 2 },
+      `${label}: nothing is chosen for the shopper`
+    );
+    const insert = calls.find((call: RecordedCall) => call.table === "shopping_list_items" && call.op === "insert");
+    const rows = (insert?.payload as unknown as Array<Record<string, unknown>>) ?? [];
+    assert.ok(rows.length > 0 && rows.every((row) => row.status === "option"), `${label}: every row is an option`);
+    const summary = terminalJobUpdate(serviceCalls)?.payload?.output_summary as {
+      verification: { used: boolean; error: string | null };
+    };
+    assert.equal(summary.verification.used, false, `${label}: the job says the check did not stand behind this run`);
+    assert.ok(String(summary.verification.error).length > 0, `${label}: with the reason`);
+  }
+
+  // --- a room whose budget cannot afford the verified pieces opens the most
+  // expensive roles until the estimate fits, whether or not the pool holds
+  // anything cheaper
+  {
+    const { client, calls } = fakeSupabase((call) => {
+      if (call.table === "projects") return { data: { id: "proj-1", budget_max_aed: 8000 } };
+      if (call.table === "rooms" && call.op === "select") return { data: { id: "room-1", room_type: "Living Room" } };
+      if (call.table === "concepts" && call.op === "select") return { data: CONCEPT };
+      if (call.table === "shopping_lists" && call.op === "insert") return { data: { id: "list-1" } };
+      return { data: null };
+    }, (storageCall) => (storageCall.op === "download" ? { data: new Blob([Buffer.from([1, 2, 3])]) } : { data: null }));
+    const { client: service, calls: serviceCalls } = serviceClient();
+    const result = await groundProductsForRoom(
+      { supabase: client, serviceSupabase: service },
+      GROUND_INPUT,
+      {
+        readSpec: async () => CONFIRMED_SPEC,
+        extractPalette: noPalette,
+        fetchCandidateImages: imagesForAll,
+        verifyProducts: verifyAll(),
+        sourceProducts: async () => ({
+          promptKey: "k",
+          promptVersion: "v",
+          model: "stub",
+          textCostUsd: 0.01,
+          needs: [],
+          selectedProducts: [],
+          roleResults: [
+            { category: "sofas", roleLabel: "role-1", status: "strong_match", productId: SOFA_ID, similarity: 0.9, reason: "Matches." },
+            { category: "armchairs", roleLabel: "role-2", status: "strong_match", productId: CHAIR_ID, similarity: 0.9, reason: "Matches." }
+          ],
+          missingRoles: []
+        })
+      }
+    );
+    // Sofa 3000 and chair 5670 both verify; neither pool holds a cheaper
+    // piece, so the old planner found no swap and left both selected at 8670
+    // against an 8000 budget. The chair (dearest) opens; the sofa fits.
+    assert.deepEqual(result, { status: "sourced", selectedCount: 1, missingRoleCount: 1, openRoleCount: 1 });
+    const listUpdate = calls.find((call: RecordedCall) => call.table === "shopping_lists" && call.op === "update");
+    assert.equal(listUpdate?.payload?.estimated_total_aed, 3000, "the estimate is what the shopper is actually shown as chosen");
+    const summary = terminalJobUpdate(serviceCalls)?.payload?.output_summary as {
+      budgetFit: { adjusted: boolean; withinBudget: boolean; openedForBudget: number };
+      openRoles: Array<{ label: string; reason: string }>;
+    };
+    assert.deepEqual(summary.budgetFit, { adjusted: true, budgetMaxAed: 8000, withinBudget: true, openedForBudget: 1 } as never);
+    assert.match(summary.openRoles.find((entry) => entry.label.includes("lounge chair"))?.reason ?? "", /above the room's budget/);
   }
 
   // --- the pass failing (timeout, provider) means nothing was judged against
@@ -550,7 +680,7 @@ async function main() {
     const insert = calls.find((call: RecordedCall) => call.table === "shopping_list_items" && call.op === "insert");
     const rows = (insert?.payload as unknown as Array<Record<string, unknown>>) ?? [];
     assert.ok(rows.length > 0 && rows.every((row) => row.status === "option"), "nothing is chosen without a pass to judge it");
-    const jobUpdate = serviceCalls.find((call: RecordedCall) => call.table === "ai_jobs" && call.op === "update");
+    const jobUpdate = terminalJobUpdate(serviceCalls);
     assert.equal(jobUpdate?.payload?.status, "succeeded");
     const pass = (jobUpdate?.payload?.output_summary as { visualPass: { used: boolean; error: string | null } }).visualPass;
     assert.equal(pass.used, false);
@@ -584,10 +714,78 @@ async function main() {
     const insert = calls.find((call: RecordedCall) => call.table === "shopping_list_items" && call.op === "insert");
     const rows = (insert?.payload as unknown as Array<Record<string, unknown>>) ?? [];
     assert.ok(rows.length > 0 && rows.every((row) => row.status === "option"), "nothing is chosen when the pass never ran");
-    const jobUpdate = serviceCalls.find((call: RecordedCall) => call.table === "ai_jobs" && call.op === "update");
+    const jobUpdate = terminalJobUpdate(serviceCalls);
     const pass = (jobUpdate?.payload?.output_summary as { visualPass: { used: boolean; error: string | null } }).visualPass;
     assert.equal(pass.used, false);
     assert.match(String(pass.error), /no time left/);
+  }
+
+  // --- a run closes any sourcing job an earlier run for this room left
+  // running, so a terminal write that failed twice cannot orphan it forever
+  {
+    const { client } = userClient();
+    const { client: service, calls: serviceCalls } = serviceClient();
+    await groundProductsForRoom(
+      { supabase: client, serviceSupabase: service },
+      GROUND_INPUT,
+      { readSpec: async () => CONFIRMED_SPEC, extractPalette: noPalette, fetchCandidateImages: async () => ({}), sourceProducts: async () => { throw new Error("no pass"); } }
+    );
+    const jobUpdates = serviceCalls.filter((call: RecordedCall) => call.table === "ai_jobs" && call.op === "update");
+    const reclaim = jobUpdates[0];
+    assert.equal(reclaim.payload?.status, "failed");
+    assert.match(String(reclaim.payload?.error_message), /Abandoned/);
+    assert.deepEqual(reclaim.filters, [
+      ["room_id", "room-1"],
+      ["job_type", "product_visual_sourcing"],
+      ["status", "running"]
+    ]);
+    const insertIndex = serviceCalls.findIndex((call: RecordedCall) => call.table === "ai_jobs" && call.op === "insert");
+    const reclaimIndex = serviceCalls.indexOf(reclaim);
+    assert.ok(reclaimIndex < insertIndex, "the reclaim runs before this run's own row exists, so it never closes itself");
+  }
+
+  // --- the audit row exists before the run's FIRST paid call (the palette),
+  // and that call is bounded by the request budget like the other two
+  {
+    const order: string[] = [];
+    // A concept with no cached palette, so the paid extractor really runs.
+    const { client } = fakeSupabase(
+      (call) => {
+        if (call.table === "projects") return { data: { id: "proj-1", budget_max_aed: null } };
+        if (call.table === "rooms" && call.op === "select") return { data: { id: "room-1", room_type: "Living Room" } };
+        if (call.table === "concepts" && call.op === "select") return { data: { ...CONCEPT, palette_json: null } };
+        if (call.table === "shopping_lists" && call.op === "insert") return { data: { id: "list-1" } };
+        return { data: null };
+      },
+      (storageCall) => (storageCall.op === "download" ? { data: new Blob([Buffer.from([1, 2, 3])]) } : { data: null })
+    );
+    const { client: service } = fakeSupabase(
+      (call) => {
+        if (call.table === "products") return { data: CATALOGUE };
+        if (call.table === "ai_jobs" && call.op === "insert") {
+          order.push("job");
+          return { data: { id: "job-1" } };
+        }
+        return { data: null };
+      },
+      (storageCall) => (storageCall.op === "download" ? { data: new Blob([Buffer.from([1, 2, 3])]) } : { data: null })
+    );
+    await groundProductsForRoom(
+      { supabase: client, serviceSupabase: service },
+      GROUND_INPUT,
+      {
+        readSpec: async () => CONFIRMED_SPEC,
+        // Recording the order is the whole point; the extraction then fails,
+        // which the service degrades from (text tokens only).
+        extractPalette: async () => {
+          order.push("palette");
+          throw new Error("palette unavailable");
+        },
+        fetchCandidateImages: async () => ({}),
+        sourceProducts: async () => { throw new Error("no pass"); }
+      }
+    );
+    assert.deepEqual(order, ["job", "palette"], "spend never precedes its audit row");
   }
 
   // --- the terminal job write is retried once and its failure is logged,
@@ -687,7 +885,7 @@ async function main() {
       ),
       /shopping_list_items is unavailable/
     );
-    const jobUpdate = serviceCalls.find((call: RecordedCall) => call.table === "ai_jobs" && call.op === "update");
+    const jobUpdate = terminalJobUpdate(serviceCalls);
     assert.equal(jobUpdate?.payload?.status, "failed", "a paid pass never leaves the job running");
     assert.equal(jobUpdate?.payload?.cost_estimate_usd, 0.035, "the pass's and the check's spend are real even though the list was not written");
     assert.match(String(jobUpdate?.payload?.error_message), /shopping_list_items is unavailable/);

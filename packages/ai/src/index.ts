@@ -1477,18 +1477,18 @@ export async function sourceProductsFromConcept(
   const client = createTextClient(env);
   const { model: stageModel, requestParams: stageRequestParams } = stageTextConfig("product_sourcing", env.OPENAI_TEXT_MODEL);
   const prompt = specProductSourcingPrompt;
-  // The candidates are already the per-role pools, so every one of them is listed.
-  const candidateLimit = Math.max(1, input.candidates.length);
+  // The candidates are already the per-role pools, so every one of them is
+  // listed. Names and descriptions are scraped from retailer HTML into a
+  // shared catalogue: they are data, fenced and capped, never instruction.
   const allowedProductIds = new Set(input.candidates.map((candidate) => candidate.id));
   const candidateSummary = input.candidates
-    .slice(0, candidateLimit)
     .map((candidate, index) =>
       [
         `${index + 1}. id: ${candidate.id}`,
-        `name: ${candidate.name}`,
-        `retailer: ${candidate.retailerName}`,
-        `category: ${candidate.category ?? "unknown"}`,
-        candidate.description ? `description: ${candidate.description}` : null,
+        `name: ${fenceUntrustedText(candidate.name)}`,
+        `retailer: ${fenceUntrustedText(candidate.retailerName, 60)}`,
+        `category: ${fenceUntrustedText(candidate.category ?? "unknown", 60)}`,
+        candidate.description ? `description: ${fenceUntrustedText(candidate.description, 220)}` : null,
         candidate.salePriceAed ?? candidate.priceAed
           ? `price: AED ${candidate.salePriceAed ?? candidate.priceAed}`
           : null,
@@ -1598,6 +1598,25 @@ export async function sourceProductsFromConcept(
 // request budget. The web app's budget reserves the same 90 s for it.
 export const PRODUCT_VERIFICATION_TIMEOUT_MS = 90_000;
 
+// Text that reaches a model but did not come from us: a spec label the user
+// typed on /spec, a product name scraped from a retailer's HTML. It is DATA,
+// never instruction. Quotes, newlines, braces and control characters are
+// stripped so it cannot close a field or open a new one, and it is hard
+// capped so one poisoned catalogue row cannot flood the context. The design
+// check's boolean is the only thing standing between an unverified product
+// and the shopper's list, so this matters most there.
+export const UNTRUSTED_TEXT_MAX = 140;
+
+export function fenceUntrustedText(value: string | null | undefined, max = UNTRUSTED_TEXT_MAX): string {
+  const flattened = (value ?? "")
+    // eslint-disable-next-line no-control-regex
+    .replace(/[\u0000-\u001f\u007f]+/g, " ")
+    .replace(/["'`{}<>\\]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  return flattened.length > max ? `${flattened.slice(0, max)}...` : flattened;
+}
+
 export type ProductDesignVerificationCandidate = {
   productId: string;
   productName: string;
@@ -1635,16 +1654,22 @@ export async function verifyProductsAgainstConcept(input: {
   const client = createTextClient(env);
   const { model: stageModel, requestParams: stageRequestParams } = stageTextConfig("product_verification", env.OPENAI_TEXT_MODEL);
 
+  // Names and role labels are user- and retailer-supplied. They appear only
+  // inside a block the system prompt declares to be data; the instruction text
+  // around each image refers to products by index and id alone, so nothing a
+  // shopper typed on /spec or a retailer put in a product title can read as an
+  // instruction to this judge.
   const content: Array<Record<string, unknown>> = [
     {
       type: "input_text",
       text: JSON.stringify({
         threshold: input.threshold,
-        products: input.products.map((product) => ({
+        products: input.products.map((product, index) => ({
+          index: index + 1,
           productId: product.productId,
-          productName: product.productName,
-          roleLabel: product.roleLabel,
-          category: product.category
+          untrustedProductName: fenceUntrustedText(product.productName),
+          untrustedRoleLabel: fenceUntrustedText(product.roleLabel),
+          category: fenceUntrustedText(product.category, 60)
         }))
       })
     },
@@ -1653,10 +1678,7 @@ export async function verifyProductsAgainstConcept(input: {
   ];
   input.products.forEach((product, index) => {
     content.push(
-      {
-        type: "input_text",
-        text: `Product ${index + 1} (id ${product.productId}): ${product.productName}, chosen for the role "${product.roleLabel}" (${product.category}).`
-      },
+      { type: "input_text", text: `Product ${index + 1} (id ${product.productId}).` },
       { type: "input_image", image_url: product.imageDataUrl, detail: "low" }
     );
   });

@@ -8,10 +8,12 @@ import {
   PRODUCT_SOURCING_CHECK_FLOOR_MS,
   PRODUCT_SOURCING_CHECK_MAX_MS,
   PRODUCT_SOURCING_PASS_FLOOR_MS,
+  PRODUCT_SOURCING_PALETTE_MAX_MS,
   PRODUCT_SOURCING_PASS_MAX_MS,
   PRODUCT_SOURCING_PERSIST_RESERVE_MS,
   PRODUCT_SOURCING_RUN_BUDGET_MS,
   designCheckTimeoutMs,
+  palettePassTimeoutMs,
   providerTimeoutMs,
   sourcingPassTimeoutMs
 } from "./sourcing-run-budget";
@@ -20,10 +22,17 @@ import {
 // arithmetic that keeps a run inside the route's maxDuration; past it a
 // platform kill runs no catch path and the paid job is left running.
 assert.ok(
-  PRODUCT_SOURCING_PASS_MAX_MS + PRODUCT_SOURCING_CHECK_MAX_MS + PRODUCT_SOURCING_PERSIST_RESERVE_MS <=
+  PRODUCT_SOURCING_PALETTE_MAX_MS +
+    PRODUCT_SOURCING_PASS_MAX_MS +
+    PRODUCT_SOURCING_CHECK_MAX_MS +
+    PRODUCT_SOURCING_PERSIST_RESERVE_MS <=
     PRODUCT_SOURCING_RUN_BUDGET_MS,
-  "a full pass, a full design check and persistence fit the run budget"
+  "all three paid calls at their ceilings plus persistence fit the run budget"
 );
+// Palette extraction improves ranking; the pass and the check decide what the
+// shopper is shown. A slow palette call must never be why they cannot run.
+assert.equal(palettePassTimeoutMs({ startedAt: 0, now: 0 }), PRODUCT_SOURCING_PALETTE_MAX_MS);
+assert.equal(palettePassTimeoutMs({ startedAt: 0, now: 60_000 }), null, "late in the run the palette is skipped, not the pass");
 
 // A fresh run gives the pass its ceiling, and the pass can never take the
 // check's reserve with it.

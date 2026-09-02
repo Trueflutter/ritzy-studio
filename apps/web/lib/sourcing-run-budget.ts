@@ -11,6 +11,12 @@
 export const PRODUCT_SOURCING_RUN_BUDGET_MS = 285_000;
 // Writing the list, closing the job, and the redirect.
 export const PRODUCT_SOURCING_PERSIST_RESERVE_MS = 20_000;
+// Palette extraction is the run's first paid call and happens once per
+// concept (the result is cached on the concept row). It gets what the run can
+// spare once both later calls and the persistence have their reserves.
+export const PRODUCT_SOURCING_PALETTE_MAX_MS = 45_000;
+export const PRODUCT_SOURCING_PALETTE_FLOOR_MS = 15_000;
+
 // The sourcing pass's own ceiling when the whole budget is available. Sized
 // so the check still gets its full deadline after up to 45 s of pre-work
 // (palette extraction, the catalogue read, the candidate image fetch), and at
@@ -32,6 +38,28 @@ export const PRODUCT_SOURCING_PROVIDER_HEADROOM_MS = 10_000;
 
 function remainingMs(startedAt: number, now: number, runBudgetMs: number) {
   return runBudgetMs - Math.max(0, now - startedAt);
+}
+
+// The service guard for palette extraction. It reserves both later paid calls
+// as well as persistence: a slow palette call must never be the reason the
+// pass or the design check cannot run, because a cached palette only improves
+// ranking while those two decide what the shopper is shown.
+export function palettePassTimeoutMs({
+  startedAt,
+  now,
+  runBudgetMs = PRODUCT_SOURCING_RUN_BUDGET_MS
+}: {
+  startedAt: number;
+  now: number;
+  runBudgetMs?: number;
+}): number | null {
+  const available =
+    remainingMs(startedAt, now, runBudgetMs) -
+    PRODUCT_SOURCING_PERSIST_RESERVE_MS -
+    PRODUCT_SOURCING_CHECK_MAX_MS -
+    PRODUCT_SOURCING_PASS_MAX_MS;
+  const timeout = Math.min(PRODUCT_SOURCING_PALETTE_MAX_MS, available);
+  return timeout >= PRODUCT_SOURCING_PALETTE_FLOOR_MS ? timeout : null;
 }
 
 // The service guard for the sourcing pass. It reserves the design check's

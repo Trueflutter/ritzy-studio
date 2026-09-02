@@ -13,7 +13,6 @@ import {
   checkCandidateAgainstSpecRole,
   conceptPaletteMatchingText,
   enhancedProductRolesForRoom,
-  fitSelectionToBudget,
   imageCandidateIdsForPools,
   parseConceptImagePalette,
   parseRoomDesignSpecRow,
@@ -39,7 +38,7 @@ import {
   PRODUCT_CONSISTENCY_THRESHOLD
 } from "@ritzy-studio/domain";
 
-import { designCheckTimeoutMs, providerTimeoutMs, sourcingPassTimeoutMs } from "@/lib/sourcing-run-budget";
+import { designCheckTimeoutMs, palettePassTimeoutMs, providerTimeoutMs, sourcingPassTimeoutMs } from "@/lib/sourcing-run-budget";
 
 import { readRoomDesignSpec } from "./design-spec";
 import {
@@ -311,15 +310,62 @@ export async function groundProductsForRoom(
     return { status: "blocked", message: catalogUnavailableMessage(products ?? []) };
   }
 
+  // Spend never precedes its audit row, and the palette extraction below is
+  // the run's FIRST paid call, so the row is opened before it. What the plan
+  // and the pools turn out to be is written on the terminal update.
+  //
+  // A new run for this room also closes any sourcing job an earlier run left
+  // running: a terminal write that failed twice has no other reader, and this
+  // is the path every re-source takes. (A reconciler for a room that is never
+  // re-sourced belongs with S7's credit reservations.)
+  await serviceSupabase
+    .from("ai_jobs")
+    .update({
+      status: "failed",
+      completed_at: new Date().toISOString(),
+      error_message: "Abandoned: a later sourcing run for this room replaced it."
+    })
+    .eq("room_id", roomId)
+    .eq("job_type", "product_visual_sourcing")
+    .eq("status", "running");
+
+  const { data: sourcingJob, error: sourcingJobError } = await serviceSupabase
+    .from("ai_jobs")
+    .insert({
+      user_id: userId,
+      room_id: roomId,
+      job_type: "product_visual_sourcing",
+      status: "running",
+      provider: "openai",
+      model: stageTextConfig("product_sourcing", configuredTextModel()).model,
+      prompt_version: null,
+      input_summary: { roomId, conceptId: concept.id, specSource, roleCount: roles.length, unsourceableCount: unsourceable.length, candidateCount: candidates.length }
+    })
+    .select("id")
+    .single();
+
+  if (sourcingJobError || !sourcingJob) {
+    throw new Error(sourcingJobError?.message ?? "Could not open the sourcing job.");
+  }
+
   // Aesthetic coherence is scored against the palette of the concept image as
   // rendered (extracted once, cached on the concept row), not only against the
-  // concept's text tokens. Extraction failure degrades to text-only matching.
+  // concept's text tokens. Extraction failure degrades to text-only matching,
+  // and it is bounded by what the run can spare after both later calls.
   const baseConceptText = `${concept.title}\n${concept.description ?? ""}`;
   let conceptPalette = parseConceptImagePalette(concept.palette_json);
   let paletteTextCostUsd: number | null = null;
   if (!conceptPalette) {
     try {
-      const paletteResult = await extractPalette({ imageUrl: conceptImageUrl });
+      const paletteBudgetMs = palettePassTimeoutMs({ startedAt, now: now() });
+      if (paletteBudgetMs === null) {
+        throw new Error("The request had no time left for palette extraction.");
+      }
+      const paletteResult = await withTimeout(
+        extractPalette({ imageUrl: conceptImageUrl }),
+        paletteBudgetMs,
+        "Concept palette extraction timed out."
+      );
       paletteTextCostUsd = paletteResult.textCostUsd ?? null;
       conceptPalette = paletteResult.palette;
       await serviceSupabase.from("concepts").update({ palette_json: conceptPalette }).eq("id", concept.id);
@@ -364,36 +410,11 @@ export async function groundProductsForRoom(
     return totals;
   }, {});
   const imageBudget = productSourcingImageBudget();
-
-  // Spend never precedes its audit row.
-  const { data: sourcingJob, error: sourcingJobError } = await serviceSupabase
-    .from("ai_jobs")
-    .insert({
-      user_id: userId,
-      room_id: roomId,
-      job_type: "product_visual_sourcing",
-      status: "running",
-      provider: "openai",
-      model: stageTextConfig("product_sourcing", configuredTextModel()).model,
-      prompt_version: null,
-      input_summary: {
-        roomId,
-        conceptId: concept.id,
-        specSource,
-        roleCount: roles.length,
-        poolCount: plan.pools.length,
-        unsourceableCount: unsourceable.length,
-        missingBeforeVisualPass: plan.missing.filter((entry) => entry.kind === "missing").map((entry) => entry.label),
-        candidateCount: candidates.length,
-        imageBudget
-      }
-    })
-    .select("id")
-    .single();
-
-  if (sourcingJobError || !sourcingJob) {
-    throw new Error(sourcingJobError?.message ?? "Could not open the sourcing job.");
-  }
+  const planSummary = {
+    poolCount: plan.pools.length,
+    missingBeforeVisualPass: plan.missing.filter((entry) => entry.kind === "missing").map((entry) => entry.label),
+    imageBudget
+  };
 
   // The visual pass: concept image plus the top candidates' images per role.
   // From here every exit closes the job: a persistence failure after a paid
@@ -645,21 +666,35 @@ export async function groundProductsForRoom(
     missingRoles = [...plan.missing, ...resolved.missing];
 
     // Aggregate budget adherence: per-role picks have no view of the running
-    // total. The pass scores only the piece it proposes, so there is no
-    // cheaper piece that anything confirmed against the design; swapping the
-    // pick for one would put an unverified product on the list as the app's
-    // choice, which is the whole failure this slice exists to stop. A role
-    // the budget cannot afford is OPENED instead: its options are there and
-    // the shopper chooses, knowing why.
-    const budgetFit = fitSelectionToBudget({
-      roleOptions: resolved.roleOptions,
-      selectedProductIdByRole: resolved.selectedProductIdByRole,
-      budgetMaxAed: project.budget_max_aed ?? null
-    });
-    const openedForBudget = new Set(budgetFit.downgrades.map((downgrade) => downgrade.roleKey));
+    // total. The design check scores only the piece proposed for a role, so a
+    // cheaper VERIFIED alternate does not exist, and swapping in an unverified
+    // one would reintroduce exactly the failure this slice removes. A role the
+    // budget cannot afford is OPENED instead: its options are on the list and
+    // the shopper chooses, knowing why. Roles are opened most expensive first,
+    // and an unaffordable role opens whether or not its pool holds anything
+    // cheaper, because "no cheaper option exists" is not a reason to present
+    // an over-budget list as if it were within budget.
+    const budgetMaxAed = project.budget_max_aed ?? null;
+    const lineTotalAed = (role: RoleProductOptions, productId: string | undefined) => {
+      const option = productId ? role.options.find((candidate) => candidate.id === productId) : undefined;
+      return option ? (option.salePriceAed ?? option.priceAed ?? 0) * Math.max(1, role.quantity || 1) : 0;
+    };
     const selection = new Map(resolved.selectedProductIdByRole);
-    for (const roleKey of openedForBudget) {
-      selection.delete(roleKey);
+    const openedForBudget = new Set<string>();
+    if (budgetMaxAed !== null && budgetMaxAed > 0) {
+      const byCost = resolved.roleOptions
+        .map((role) => ({ role, key: roleOptionKey(role), total: lineTotalAed(role, resolved.selectedProductIdByRole.get(roleOptionKey(role))) }))
+        .filter((entry) => entry.total > 0)
+        .sort((left, right) => right.total - left.total);
+      let running = byCost.reduce((total, entry) => total + entry.total, 0);
+      for (const entry of byCost) {
+        if (running <= budgetMaxAed) {
+          break;
+        }
+        selection.delete(entry.key);
+        openedForBudget.add(entry.key);
+        running -= entry.total;
+      }
     }
     const openRoles = [
       ...resolved.openRoles,
@@ -760,7 +795,7 @@ export async function groundProductsForRoom(
         output_summary: {
           specSource,
           roleCount: roles.length,
-          poolCount: plan.pools.length,
+          ...planSummary,
           selectedCount,
           openRoleCount,
           // Why each open role was left to the shopper, with both scores kept
@@ -779,7 +814,8 @@ export async function groundProductsForRoom(
           verification,
           budgetFit: {
             adjusted: openedForBudget.size > 0,
-            withinBudget: budgetFit.withinBudget,
+            budgetMaxAed,
+            withinBudget: budgetMaxAed === null || budgetMaxAed <= 0 || estimatedTotal <= budgetMaxAed,
             // Roles opened because the piece that matched the design costs
             // more than the room's budget allows.
             openedForBudget: openedForBudget.size
@@ -940,6 +976,10 @@ async function loadRefillContext(
     .from("shopping_lists")
     .select("id, concept_id, spec_source")
     .eq("id", shoppingListId)
+    // Bound to the room in the request: row-level security lets a shopper read
+    // both of their own lists, so an id alone would let one room's spec,
+    // measurements and budget rewrite another room's options.
+    .eq("room_id", roomId)
     .single();
 
   const { data: room } = await supabase
