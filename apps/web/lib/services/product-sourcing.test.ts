@@ -308,6 +308,13 @@ async function main() {
       ]
     );
     assert.equal(rows[0].selection_reason, "Selected for its curved ivory boucle silhouette, matching the sofa in the concept.");
+    // The list insert is conflict-safe on the unique index M2d creates, and
+    // the conflict target must name exactly its columns: Postgres cannot infer
+    // one that does not match, and the failure would land AFTER both paid
+    // calls on the first run for every room.
+    const listWrite = calls.find((call: RecordedCall) => call.table === "shopping_lists" && call.op === "upsert");
+    assert.equal(listWrite?.upsertOptions?.onConflict, "room_id,concept_id");
+
     // Rows carry the spec object's key; the list carries its provenance.
     assert.equal(rows[0].spec_key, SOFA_SPEC_KEY);
     assert.ok(rows.every((row) => typeof row.spec_key === "string"));
@@ -542,25 +549,6 @@ async function main() {
       "no proposal has an image to judge",
       { fetchCandidateImages: async () => ({}), verifyProducts: verifyAll() }
     ],
-    [
-      "the judge answers for only some of the proposals",
-      {
-        fetchCandidateImages: imagesForAll,
-        verifyProducts: async ({ products }: { products: Array<{ productId: string }> }) => ({
-          promptKey: "k",
-          promptVersion: "v",
-          model: "gpt-5.1-stub",
-          textCostUsd: 0.005,
-          verdicts: products.slice(0, 1).map((product) => ({
-            productId: product.productId,
-            categoryMatches: true,
-            similarity: 0.9,
-            matchedObject: "the piece in the render",
-            notes: "stub"
-          }))
-        })
-      }
-    ]
   ] as const) {
     const { client, calls } = userClient();
     const { client: service, calls: serviceCalls } = serviceClient();
@@ -597,6 +585,63 @@ async function main() {
     };
     assert.equal(summary.verification.used, false, `${label}: the job says the check did not stand behind this run`);
     assert.ok(String(summary.verification.error).length > 0, `${label}: with the reason`);
+  }
+
+  // --- a judge that abstains on one product does not cost the others their
+  // verdicts: the unanswered role opens on its own, and the shortfall is on
+  // the record rather than silent
+  {
+    const { client, calls } = userClient();
+    const { client: service, calls: serviceCalls } = serviceClient();
+    const result = await groundProductsForRoom(
+      { supabase: client, serviceSupabase: service },
+      GROUND_INPUT,
+      {
+        readSpec: async () => CONFIRMED_SPEC,
+        extractPalette: noPalette,
+        fetchCandidateImages: imagesForAll,
+        verifyProducts: async ({ products }) => ({
+          promptKey: "k",
+          promptVersion: "v",
+          model: "gpt-5.1-stub",
+          textCostUsd: 0.005,
+          // Answers for the sofa, abstains on the chair.
+          verdicts: products
+            .filter((product) => product.productId === SOFA_ID)
+            .map((product) => ({
+              productId: product.productId,
+              categoryMatches: true,
+              similarity: 0.9,
+              matchedObject: "the sofa in the render",
+              notes: "stub"
+            }))
+        }),
+        sourceProducts: async () => ({
+          promptKey: "k",
+          promptVersion: "v",
+          model: "stub",
+          textCostUsd: 0.01,
+          selectedProducts: [],
+          roleResults: [
+            { category: "sofas", roleLabel: "role-1", status: "strong_match", productId: SOFA_ID, similarity: 0.95, reason: "Confident." },
+            { category: "armchairs", roleLabel: "role-2", status: "strong_match", productId: CHAIR_ID, similarity: 0.95, reason: "Confident." }
+          ]
+        })
+      }
+    );
+    assert.deepEqual(result, { status: "sourced", selectedCount: 1, missingRoleCount: 1, openRoleCount: 1 });
+    const insert = calls.find((call: RecordedCall) => call.table === "shopping_list_items" && call.op === "insert");
+    const rows = (insert?.payload as unknown as Array<Record<string, unknown>>) ?? [];
+    assert.deepEqual(
+      rows.filter((row) => row.status === "selected").map((row) => row.product_id),
+      [SOFA_ID],
+      "the answered product keeps its verdict; the unanswered one opens"
+    );
+    const summary = terminalJobUpdate(serviceCalls)?.payload?.output_summary as {
+      verification: { used: boolean; judgedCount: number; unansweredCount: number };
+    };
+    assert.equal(summary.verification.used, true);
+    assert.deepEqual([summary.verification.judgedCount, summary.verification.unansweredCount], [2, 1]);
   }
 
   // --- a room whose budget cannot afford the verified pieces opens the most

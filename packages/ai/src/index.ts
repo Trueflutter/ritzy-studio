@@ -1484,12 +1484,14 @@ export async function sourceProductsFromConcept(
         candidate.salePriceAed ?? candidate.priceAed
           ? `price: AED ${candidate.salePriceAed ?? candidate.priceAed}`
           : null,
-        candidate.availability ? `availability: ${candidate.availability}` : null,
-        candidate.color ? `color: ${candidate.color}` : null,
-        candidate.material ? `material: ${candidate.material}` : null,
-        candidate.dimensions ? `dimensions: ${candidate.dimensions}` : null,
-        candidate.searchTags?.length ? `tags: ${candidate.searchTags.join(", ")}` : null,
-        candidate.primaryImageUrl ? `image: ${candidate.primaryImageUrl}` : null
+        candidate.availability ? `availability: ${fenceUntrustedText(candidate.availability, 40)}` : null,
+        candidate.color ? `color: ${fenceUntrustedText(candidate.color, 40)}` : null,
+        candidate.material ? `material: ${fenceUntrustedText(candidate.material, 60)}` : null,
+        // product_dimensions.source_text is raw scraped page text.
+        candidate.dimensions ? `dimensions: ${fenceUntrustedText(candidate.dimensions, 80)}` : null,
+        candidate.searchTags?.length
+          ? `tags: ${candidate.searchTags.map((tag) => fenceUntrustedText(tag, 30)).filter(Boolean).join(", ")}`
+          : null
       ]
         .filter(Boolean)
         .join("; ")
@@ -1602,7 +1604,10 @@ export function fenceUntrustedText(value: string | null | undefined, max = UNTRU
   const flattened = (value ?? "")
     // eslint-disable-next-line no-control-regex
     .replace(/[\u0000-\u001f\u007f]+/g, " ")
-    .replace(/["'`{}<>\\]/g, " ")
+    // Quotes and brackets so a value cannot close the structure it sits in;
+    // semicolons and colons because the candidate summary joins fields with
+    // them, so a scraped value could otherwise forge the fields beside it.
+    .replace(/["'`{}<>\\;:]/g, " ")
     .replace(/\s+/g, " ")
     .trim();
   return flattened.length > max ? `${flattened.slice(0, max)}...` : flattened;
@@ -1630,6 +1635,49 @@ export type ProductDesignVerificationResult = {
   }>;
 };
 
+// One poisoned product image, on a retailer host we allow, could otherwise
+// carry a verdict for every other piece sharing its call. Judging in small
+// groups bounds that blast radius; the prompt tells the judge that text inside
+// an image is data and speaks only for its own product.
+export const PRODUCT_VERIFICATION_BATCH = 4;
+
+// Names and role labels are user- and retailer-supplied. They appear only
+// inside a block the system prompt declares to be data; the instruction text
+// around each image refers to products by index and id alone, so nothing a
+// shopper typed on /spec or a retailer put in a product title can read as an
+// instruction to this judge. Exported so the fencing is pinned where it is
+// applied, not only as a unit.
+export function productDesignVerificationContent(
+  products: ProductDesignVerificationCandidate[],
+  conceptImageUrl: string,
+  threshold: number
+): Array<Record<string, unknown>> {
+  const content: Array<Record<string, unknown>> = [
+    {
+      type: "input_text",
+      text: JSON.stringify({
+        threshold,
+        products: products.map((product, index) => ({
+          index: index + 1,
+          productId: product.productId,
+          untrustedProductName: fenceUntrustedText(product.productName),
+          untrustedRoleLabel: fenceUntrustedText(product.roleLabel),
+          category: fenceUntrustedText(product.category, 60)
+        }))
+      })
+    },
+    { type: "input_text", text: "Image 1: the approved concept render every product must belong to." },
+    { type: "input_image", image_url: conceptImageUrl, detail: "high" }
+  ];
+  products.forEach((product, index) => {
+    content.push(
+      { type: "input_text", text: `Product ${index + 1} (id ${product.productId}).` },
+      { type: "input_image", image_url: product.imageDataUrl, detail: "low" }
+    );
+  });
+  return content;
+}
+
 export async function verifyProductsAgainstConcept(input: {
   conceptImageUrl: string;
   products: ProductDesignVerificationCandidate[];
@@ -1641,38 +1689,28 @@ export async function verifyProductsAgainstConcept(input: {
   if (input.products.length === 0) {
     throw new Error("The design check needs at least one product to judge.");
   }
+  if (input.products.length > PRODUCT_VERIFICATION_BATCH) {
+    const groups: ProductDesignVerificationCandidate[][] = [];
+    for (let index = 0; index < input.products.length; index += PRODUCT_VERIFICATION_BATCH) {
+      groups.push(input.products.slice(index, index + PRODUCT_VERIFICATION_BATCH));
+    }
+    const results = await Promise.all(groups.map((products) => verifyProductsAgainstConcept({ ...input, products })));
+    return {
+      promptKey: results[0].promptKey,
+      promptVersion: results[0].promptVersion,
+      model: results[0].model,
+      textCostUsd: results.reduce<number | null>(
+        (total, result) => (result.textCostUsd === null ? total : (total ?? 0) + result.textCostUsd),
+        null
+      ),
+      verdicts: results.flatMap((result) => result.verdicts)
+    };
+  }
   const env = parseServerEnv(process.env);
   const client = createTextClient(env);
   const { model: stageModel, requestParams: stageRequestParams } = stageTextConfig("product_verification", env.OPENAI_TEXT_MODEL);
 
-  // Names and role labels are user- and retailer-supplied. They appear only
-  // inside a block the system prompt declares to be data; the instruction text
-  // around each image refers to products by index and id alone, so nothing a
-  // shopper typed on /spec or a retailer put in a product title can read as an
-  // instruction to this judge.
-  const content: Array<Record<string, unknown>> = [
-    {
-      type: "input_text",
-      text: JSON.stringify({
-        threshold: input.threshold,
-        products: input.products.map((product, index) => ({
-          index: index + 1,
-          productId: product.productId,
-          untrustedProductName: fenceUntrustedText(product.productName),
-          untrustedRoleLabel: fenceUntrustedText(product.roleLabel),
-          category: fenceUntrustedText(product.category, 60)
-        }))
-      })
-    },
-    { type: "input_text", text: "Image 1: the approved concept render every product must belong to." },
-    { type: "input_image", image_url: input.conceptImageUrl, detail: "high" }
-  ];
-  input.products.forEach((product, index) => {
-    content.push(
-      { type: "input_text", text: `Product ${index + 1} (id ${product.productId}).` },
-      { type: "input_image", image_url: product.imageDataUrl, detail: "low" }
-    );
-  });
+  const content = productDesignVerificationContent(input.products, input.conceptImageUrl, input.threshold);
 
   const response = await client.responses.create(
     {
@@ -1719,7 +1757,7 @@ export function productSourcingProvidedImageContent(
     .flatMap((candidate) => [
       {
         type: "input_text" as const,
-        text: `Candidate product image for id ${candidate.id}: ${candidate.name}`
+        text: `Candidate product image for id ${candidate.id}: ${fenceUntrustedText(candidate.name)}`
       },
       {
         type: "input_image" as const,

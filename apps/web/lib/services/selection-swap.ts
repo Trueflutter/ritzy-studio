@@ -1,4 +1,8 @@
-import { verifyProductsAgainstConcept } from "@ritzy-studio/ai";
+import type { Database } from "@ritzy-studio/db";
+import { configuredTextModel } from "@ritzy-studio/config";
+import { verifyProductsAgainstConcept,
+  stageTextConfig
+} from "@ritzy-studio/ai";
 import {
   checkCandidateAgainstSpecRole,
   filterSubstitutionCandidates,
@@ -72,7 +76,7 @@ export async function substituteProduct(
 
   const { data: room } = await supabase
     .from("rooms")
-    .select("id, room_type")
+    .select("id, room_type, project:projects(owner_user_id)")
     .eq("id", roomId)
     .eq("project_id", projectId)
     .single();
@@ -220,6 +224,34 @@ export async function substituteProduct(
   if (!conceptImageUrl || !replacementImage) {
     return { status: "not_verified" };
   }
+  // Spend never precedes its audit row, here as in sourcing: this is a paid
+  // vision call on every swap, and the ai_jobs ledger is the only place the
+  // per-room cost aggregation can see it.
+  const { data: checkJob } = await serviceSupabase
+    .from("ai_jobs")
+    .insert({
+      user_id: room.project?.owner_user_id ?? null,
+      room_id: roomId,
+      job_type: "product_design_check",
+      status: "running",
+      provider: "openai",
+      model: stageTextConfig("product_verification", configuredTextModel()).model,
+      prompt_version: null,
+      input_summary: { roomId, shoppingListId, itemId, mode, productId: replacement.id }
+    })
+    .select("id")
+    .single();
+
+  const closeCheckJob = async (payload: Database["public"]["Tables"]["ai_jobs"]["Update"]) => {
+    if (!checkJob) {
+      return;
+    }
+    await serviceSupabase
+      .from("ai_jobs")
+      .update({ completed_at: new Date().toISOString(), ...payload })
+      .eq("id", checkJob.id);
+  };
+
   try {
     const checked = await verifyProducts({
       conceptImageUrl,
@@ -235,11 +267,27 @@ export async function substituteProduct(
       threshold: PRODUCT_CONSISTENCY_THRESHOLD
     });
     const verdict = checked.verdicts.find((entry) => entry.productId === replacement.id);
-    if (!verdict || !verdict.categoryMatches || verdict.similarity < PRODUCT_CONSISTENCY_THRESHOLD) {
+    const passed = Boolean(verdict && verdict.categoryMatches && verdict.similarity >= PRODUCT_CONSISTENCY_THRESHOLD);
+    await closeCheckJob({
+      status: "succeeded",
+      model: checked.model,
+      prompt_version: checked.promptVersion,
+      cost_estimate_usd: checked.textCostUsd ?? null,
+      output_summary: {
+        promptKey: checked.promptKey,
+        productId: replacement.id,
+        passed,
+        similarity: verdict?.similarity ?? null,
+        categoryMatches: verdict?.categoryMatches ?? null
+      }
+    });
+    if (!passed) {
       return { status: "not_verified" };
     }
   } catch (error) {
+    const message = error instanceof Error ? error.message : "The design check failed.";
     console.error("The design check failed for a swap; the shopper keeps the piece they had.", error);
+    await closeCheckJob({ status: "failed", error_message: message });
     return { status: "not_verified" };
   }
 

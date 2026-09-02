@@ -211,6 +211,7 @@ async function main() {
       if (call.table === "products") {
         return { data: [currentProduct, cheaper] };
       }
+      if (call.table === "ai_jobs" && call.op === "insert") return { data: { id: "check-job" } };
       return { data: null };
     }, (storageCall) => (storageCall.op === "download" ? { data: new Blob([Buffer.from([1, 2, 3])]) } : { data: null }));
 
@@ -246,7 +247,7 @@ async function main() {
         return { data: null };
       }
       if (call.table === "projects") return { data: { id: "p", budget_max_aed: null } };
-      if (call.table === "rooms") return { data: { id: "r", room_type: "Living Room" } };
+      if (call.table === "rooms") return { data: { id: "r", room_type: "Living Room", project: { owner_user_id: "user-1" } } };
       if (call.table === "shopping_lists") return { data: { id: "l", concept_id: "c" } };
       if (call.table === "concepts") return { data: { id: "c", title: "T", description: null, primary_image_asset: { storage_path: "u/r/c.png", mime_type: "image/png" } } };
       if (call.table === "room_measurements") return { data: null };
@@ -284,7 +285,7 @@ async function main() {
         return { data: null };
       }
       if (call.table === "projects") return { data: { id: "p", budget_max_aed: null } };
-      if (call.table === "rooms") return { data: { id: "r", room_type: "Living Room" } };
+      if (call.table === "rooms") return { data: { id: "r", room_type: "Living Room", project: { owner_user_id: "user-1" } } };
       if (call.table === "shopping_lists") return { data: { id: "l", concept_id: "c" } };
       if (call.table === "concepts") return { data: { id: "c", title: "T", description: null, primary_image_asset: { storage_path: "u/r/c.png", mime_type: "image/png" } } };
       if (call.table === "room_measurements") return { data: null };
@@ -309,6 +310,7 @@ async function main() {
         };
       }
       if (call.table === "products") return { data: [currentProduct, cheaper] };
+      if (call.table === "ai_jobs" && call.op === "insert") return { data: { id: "check-job" } };
       if (call.table === "room_design_specs") {
         return {
           data: {
@@ -344,7 +346,7 @@ async function main() {
         return { data: null };
       }
       if (call.table === "projects") return { data: { id: "p", budget_max_aed: null } };
-      if (call.table === "rooms") return { data: { id: "r", room_type: "Living Room" } };
+      if (call.table === "rooms") return { data: { id: "r", room_type: "Living Room", project: { owner_user_id: "user-1" } } };
       if (call.table === "shopping_lists") return { data: { id: "l", concept_id: "c", spec_source: "blueprint_fallback" } };
       if (call.table === "concepts") return { data: { id: "c", title: "T", description: null, primary_image_asset: { storage_path: "u/r/c.png", mime_type: "image/png" } } };
       if (call.table === "room_measurements") return { data: null };
@@ -369,6 +371,7 @@ async function main() {
         };
       }
       if (call.table === "products") return { data: [currentProduct, cheaper] };
+      if (call.table === "ai_jobs" && call.op === "insert") return { data: { id: "check-job" } };
       // A malformed spec row: unreadable, never a reason to refuse the swap.
       if (call.table === "room_design_specs") return { data: { id: "spec-x", room_id: "r", concept_id: "c", status: "extracted", must_preserve: [], objects: "not-a-list" } };
       return { data: null };
@@ -396,7 +399,7 @@ async function main() {
         return { data: null };
       }
       if (call.table === "projects") return { data: { id: "p", budget_max_aed: null } };
-      if (call.table === "rooms") return { data: { id: "r", room_type: "Living Room" } };
+      if (call.table === "rooms") return { data: { id: "r", room_type: "Living Room", project: { owner_user_id: "user-1" } } };
       if (call.table === "shopping_lists") return { data: { id: "l", concept_id: "c", spec_source: "blueprint_fallback" } };
       if (call.table === "concepts") return { data: { id: "c", title: "T", description: null, primary_image_asset: { storage_path: "u/r/c.png", mime_type: "image/png" } } };
       if (call.table === "room_measurements") return { data: null };
@@ -421,6 +424,7 @@ async function main() {
         };
       }
       if (call.table === "products") return { data: [currentProduct, cheaper] };
+      if (call.table === "ai_jobs" && call.op === "insert") return { data: { id: "check-job" } };
       if (call.table === "room_design_specs") {
         return {
           data: {
@@ -473,7 +477,7 @@ async function main() {
         return { data: null };
       }
       if (call.table === "projects") return { data: { id: "p", budget_max_aed: null } };
-      if (call.table === "rooms") return { data: { id: "r", room_type: "Living Room" } };
+      if (call.table === "rooms") return { data: { id: "r", room_type: "Living Room", project: { owner_user_id: "user-1" } } };
       if (call.table === "shopping_lists") return { data: { id: "l", concept_id: "c" } };
       if (call.table === "concepts") return { data: { id: "c", title: "T", description: null, primary_image_asset: { storage_path: "u/r/c.png", mime_type: "image/png" } } };
       if (call.table === "room_measurements") return { data: null };
@@ -498,6 +502,7 @@ async function main() {
         };
       }
       if (call.table === "products") return { data: [currentLamp, cheapChandelier, cheaperFloorLamp] };
+      if (call.table === "ai_jobs" && call.op === "insert") return { data: { id: "check-job" } };
       if (call.table === "room_design_specs") {
         return {
           data: {
@@ -539,7 +544,7 @@ async function main() {
         return { data: null };
       }
       if (call.table === "projects") return { data: { id: "p", budget_max_aed: null } };
-      if (call.table === "rooms") return { data: { id: "r", room_type: "Living Room" } };
+      if (call.table === "rooms") return { data: { id: "r", room_type: "Living Room", project: { owner_user_id: "user-1" } } };
       if (call.table === "shopping_lists") return { data: { id: "l", concept_id: "c" } };
       if (call.table === "concepts") return { data: { id: "c", title: "T", description: null, primary_image_asset: { storage_path: "u/r/c.png", mime_type: "image/png" } } };
       if (call.table === "room_measurements") return { data: null };
@@ -563,6 +568,7 @@ async function main() {
         };
       }
       if (call.table === "products") return { data: [currentProduct, cheaper] };
+      if (call.table === "ai_jobs" && call.op === "insert") return { data: { id: "check-job" } };
       return { data: null };
     }, (storageCall) => (storageCall.op === "download" ? { data: new Blob([Buffer.from([1, 2, 3])]) } : { data: null }));
 

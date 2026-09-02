@@ -59,8 +59,10 @@ model (`--model`).
    carries no regions, so there is no crop). Roles the list honestly reports
    as missing are not failures; a wrong product is.
    PASS: every selected product was judged and passes. FAIL: any selected
-   product fails, or could not be judged (no usable image).
-   NOT_APPLICABLE when the concept has no shopping list yet.
+   product fails, could not be judged (no usable image), or the list exists
+   with nothing selected at all (a design check that chooses nothing is a
+   regression, not a pass).
+   NOT_APPLICABLE only when the concept has no shopping list yet.
 
 ## Room matrix
 

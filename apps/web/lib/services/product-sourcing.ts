@@ -464,6 +464,9 @@ export async function groundProductsForRoom(
     model: string | null;
     textCostUsd: number | null;
     judgedCount: number;
+    // Products the judge was shown but did not answer for. Each of those roles
+    // is opened; a number above zero means the check saw more than it judged.
+    unansweredCount: number;
     verdicts: Array<{
       role: string | null;
       productId: string;
@@ -472,7 +475,7 @@ export async function groundProductsForRoom(
       matchedObject: string;
       passSimilarity: number | null;
     }>;
-  } = { used: false, error: null, promptKey: null, promptVersion: null, model: null, textCostUsd: null, judgedCount: 0, verdicts: [] };
+  } = { used: false, error: null, promptKey: null, promptVersion: null, model: null, textCostUsd: null, judgedCount: 0, unansweredCount: 0, verdicts: [] };
   const sourcingModel = stageTextConfig("product_sourcing", configuredTextModel()).model;
   // Product images fetched once for this run: the visual pass sees a budgeted
   // top-of-pool set, and the design check reuses whatever of its proposals is
@@ -647,17 +650,17 @@ export async function groundProductsForRoom(
           promptVersion: checked.promptVersion,
           model: checked.model
         };
-        // finding 3: identity, not count. A judge that answered twice for one
-        // product and never for another has not judged the other.
+        // Abstaining is allowed, and a partial answer is not a reason to throw
+        // the good verdicts away: applyProductVerification already opens any
+        // role whose product has no verdict, so an unanswered product fails
+        // safe on its own. Throwing here would have opened every role on a run
+        // that had just paid for both calls and judged most of them. The
+        // shortfall is recorded instead, so it is visible rather than silent.
         const judgedIds = new Set(judged.map((product) => product.productId));
         const answeredIds = new Set(checked.verdicts.map((verdict) => verdict.productId));
-        if (answeredIds.size !== judgedIds.size) {
-          throw new Error(
-            `The design check answered for ${answeredIds.size} of ${judgedIds.size} products.`
-          );
-        }
         verification = {
           ...verification,
+          unansweredCount: judgedIds.size - answeredIds.size,
           used: true,
           promptKey: checked.promptKey,
           promptVersion: checked.promptVersion,

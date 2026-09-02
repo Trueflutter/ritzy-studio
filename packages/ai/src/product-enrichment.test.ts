@@ -486,4 +486,50 @@ const searchText = buildProductSearchText(input, enrichment);
 assert.ok(searchText.includes("model color tags: ivory"));
 assert.equal(searchText.includes("stock"), false);
 
+
+// The validator marks entries it INVENTED. The domain layer reads that flag to
+// leave a role open with its options rather than telling the shopper the
+// catalogue holds nothing for it, so it is a cross-package contract: losing it
+// turns every role the model omitted into a false "could not be sourced".
+{
+  const { validateProductSourcingRoleContract } = await import("./index");
+  const pool = {
+    category: "sofas",
+    roleLabel: "role-1",
+    visualBrief: null,
+    quantity: 1,
+    priority: "required" as const,
+    candidateIds: ["30000000-0000-4000-8000-000000000010"]
+  };
+  const omitted = validateProductSourcingRoleContract(
+    { selectedProducts: [], roleResults: [] } as never,
+    [pool],
+    new Set(["30000000-0000-4000-8000-000000000010"])
+  );
+  assert.equal(omitted.roleResults.length, 1, "a role the model skipped still gets an entry");
+  assert.equal(omitted.roleResults[0].synthesized, true, "flagged as the validator's, not the model's");
+  assert.equal(omitted.roleResults[0].similarity, 0, "and unscored, so it can never clear the bar");
+
+  const outsidePool = validateProductSourcingRoleContract(
+    {
+      selectedProducts: [],
+      roleResults: [
+        {
+          category: "sofas",
+          roleLabel: "role-1",
+          status: "strong_match",
+          productId: "30000000-0000-4000-8000-000000000099",
+          similarity: 0.95,
+          reason: "a product from another pool"
+        }
+      ]
+    } as never,
+    [pool],
+    new Set(["30000000-0000-4000-8000-000000000010"])
+  );
+  assert.equal(outsidePool.roleResults[0].synthesized, true, "a pick outside the pool is replaced by the validator's own entry");
+
+  console.log("validator synthesized-flag tests passed");
+}
+
 console.log("product enrichment ai tests passed");
