@@ -98,7 +98,7 @@ export function stageTextConfig(
 ): { model: string; requestParams: { model: string; reasoning?: { effort: "minimal" | "low" | "medium" | "high" } } } {
   const resolvedBase = baseModel ?? serverEnvTextModel();
   const model = resolveStageTextModel(stage, env, resolvedBase);
-  const effort = resolveStageTextEffort(stage, env);
+  const effort = resolveStageTextEffort(stage, env, model);
   return { model, requestParams: { model, ...(effort ? { reasoning: { effort } } : {}) } };
 }
 
@@ -1594,6 +1594,8 @@ export async function sourceProductsFromConcept(
 // judged against the approved render by a pass with no roles to fill. Runs on
 // the production vision model by default (model-routing), because the gate
 // that asks the same question does.
+// The check's own deadline when the caller does not derive one from the
+// request budget. The web app's budget reserves the same 90 s for it.
 export const PRODUCT_VERIFICATION_TIMEOUT_MS = 90_000;
 
 export type ProductDesignVerificationCandidate = {

@@ -55,10 +55,25 @@ const STAGE_EFFORT_DEFAULTS: Partial<Record<TextStage, TextEffort>> = {
   product_sourcing: "low"
 };
 
-export function resolveStageTextEffort(stage: TextStage, env: EnvRecord): TextEffort | null {
+// Only a reasoning model accepts the parameter at all. A stage default that
+// ignored this would 400 every call the moment someone pointed the stage at a
+// non-reasoning model through the documented per-stage model override.
+function acceptsReasoningEffort(model: string) {
+  return /^(gpt-5|o[0-9])/.test(model.trim());
+}
+
+export function resolveStageTextEffort(stage: TextStage, env: EnvRecord, model?: string): TextEffort | null {
   const value = stageEnvValue(env, "RITZY_TEXT_EFFORT_", stage);
+  // An explicit "none" turns the stage default off; anything unrecognised is
+  // ignored rather than sent to the provider.
+  if (value === "none") {
+    return null;
+  }
   if (value && (EFFORT_VALUES as readonly string[]).includes(value)) {
     return value as TextEffort;
+  }
+  if (model !== undefined && !acceptsReasoningEffort(model)) {
+    return null;
   }
   return STAGE_EFFORT_DEFAULTS[stage] ?? null;
 }

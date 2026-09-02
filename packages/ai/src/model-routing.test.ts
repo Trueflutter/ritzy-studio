@@ -34,6 +34,12 @@ assert.equal(resolveStageTextModel("product_verification", { RITZY_TEXT_MODEL_PR
 assert.equal(resolveStageTextEffort("product_sourcing", {}), "low");
 assert.equal(resolveStageTextEffort("product_sourcing", { RITZY_TEXT_EFFORT_PRODUCT_SOURCING: "high" }), "high");
 assert.equal(resolveStageTextEffort("product_verification", {}), null, "the check keeps the provider default");
+// The parameter only exists on reasoning models. Pointing a stage at another
+// model through the documented override must not 400 every call.
+assert.equal(resolveStageTextEffort("product_sourcing", {}, "gpt-5-mini"), "low");
+assert.equal(resolveStageTextEffort("product_sourcing", {}, "gpt-4.1"), null);
+// And an explicit "none" turns the stage default off.
+assert.equal(resolveStageTextEffort("product_sourcing", { RITZY_TEXT_EFFORT_PRODUCT_SOURCING: "none" }), null);
 assert.ok(TEXT_STAGES.includes("product_sourcing"));
 assert.ok(TEXT_STAGES.includes("product_verification"));
 assert.ok(TEXT_STAGES.includes("revision_direction"));

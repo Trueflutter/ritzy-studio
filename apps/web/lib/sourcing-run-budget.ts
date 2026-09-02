@@ -11,16 +11,21 @@
 export const PRODUCT_SOURCING_RUN_BUDGET_MS = 285_000;
 // Writing the list, closing the job, and the redirect.
 export const PRODUCT_SOURCING_PERSIST_RESERVE_MS = 20_000;
-// The sourcing pass's own ceiling when the whole budget is available.
-export const PRODUCT_SOURCING_PASS_MAX_MS = 150_000;
-// The design check's ceiling, and what the pass must leave behind for it. The
-// check judges only the proposals (at most one per role) against one render,
-// so it is the smaller of the two calls.
-export const PRODUCT_SOURCING_CHECK_MAX_MS = 60_000;
-// Below these, the call cannot finish; skipping it beats a timeout that could
-// kill the request mid-write.
+// The sourcing pass's own ceiling when the whole budget is available. Sized
+// so the check still gets its full deadline after up to 45 s of pre-work
+// (palette extraction, the catalogue read, the candidate image fetch), and at
+// least its floor after up to 90 s of it.
+export const PRODUCT_SOURCING_PASS_MAX_MS = 130_000;
+// The design check's ceiling, and what the pass must leave behind for it. It
+// matches the deadline the check declares for itself in the ai package: the
+// budget must be sized by what the call needs, not by whatever is left after
+// the pass. Measured on the five harness rooms the check returns in well
+// under this for 3 to 16 proposals; the headroom is for a slow provider.
+export const PRODUCT_SOURCING_CHECK_MAX_MS = 90_000;
+// Below these, the call cannot finish; skipping it beats starting something
+// that will time out, which costs the tokens and records no usage.
 export const PRODUCT_SOURCING_PASS_FLOOR_MS = 30_000;
-export const PRODUCT_SOURCING_CHECK_FLOOR_MS = 20_000;
+export const PRODUCT_SOURCING_CHECK_FLOOR_MS = 45_000;
 // The provider deadline sits under the service guard so the SDK aborts first
 // and the guard is only a backstop.
 export const PRODUCT_SOURCING_PROVIDER_HEADROOM_MS = 10_000;
