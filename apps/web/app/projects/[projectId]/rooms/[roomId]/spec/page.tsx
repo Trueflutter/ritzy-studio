@@ -1,19 +1,40 @@
-import { DecorativeRule, JourneyNav, SectionEyebrow, StudioHeader } from "@ritzy-studio/ui";
+import { DecorativeRule, JourneyNav, SectionEyebrow, StudioHeader, SubmitButton } from "@ritzy-studio/ui";
 import Image from "next/image";
 import { notFound, redirect } from "next/navigation";
+import { after } from "next/server";
 import { Suspense } from "react";
 
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
-import { confirmDesignSpecAction } from "@/app/actions";
+import { confirmDesignSpecAction, retryDesignSpecExtractionAction } from "@/app/actions";
 import { ensureRoomDesignSpec } from "@/lib/services/design-spec";
+import { SpecExtractionRefresh } from "./spec-extraction-refresh";
 import { SpecLedgerForm } from "./spec-ledger-form";
 
 export const dynamic = "force-dynamic";
+// The first touch of this screen schedules the paid spec extraction as an
+// after() task on THIS route's function (and Retry's action runs here too), so
+// the function budget must outlast the provider deadline: 90s text timeout plus
+// overhead, see lib/spec-extraction, whose SPEC_EXTRACTION_ROUTE_MAX_DURATION_S
+// mirrors this literal (segment config cannot be imported).
+export const maxDuration = 300;
 
-// The spec confirmation screen (S2): the design, as editable truth. Extraction
-// runs on first open (Suspense-streamed), so every room that predates specs
-// backfills itself the first time this screen or sourcing is reached.
+// The spec confirmation screen (S2): the design, as editable truth. The page only
+// READS persisted state (PR #332 review fix): approval starts the extraction, a
+// room that predates specs starts its one first-touch attempt here, and the
+// running state polls until the detached runner has stored the spec.
+
+// The detached runner is scheduled on this request's after() so it outlives the
+// response and cannot be aborted by the browser leaving. Its own failures are
+// recorded on the job row; anything escaping that is logged, never rethrown
+// into the render.
+function deferSpecExtraction(task: () => Promise<void>) {
+  after(() =>
+    task().catch((error) => {
+      console.error("Deferred spec extraction failed to run.", error);
+    })
+  );
+}
 
 export default async function SpecPage({
   params,
@@ -77,9 +98,7 @@ export default async function SpecPage({
               <p aria-live="polite" className="font-display text-display-xs font-light italic text-ink">
                 reading the approved concept…
               </p>
-              <p className="mt-3 font-body text-body-s text-ink-muted">
-                First visit extracts the spec from the render. This takes a moment.
-              </p>
+              <p className="mt-3 font-body text-body-s text-ink-muted">Checking what the design contains.</p>
             </div>
           }
         >
@@ -101,8 +120,13 @@ async function SpecLedgerSection({
 }) {
   const supabase = await createClient();
   const serviceSupabase = createServiceClient();
+  const specPath = `/projects/${projectId}/rooms/${roomId}/spec`;
 
-  const result = await ensureRoomDesignSpec({ supabase, serviceSupabase }, { userId, roomId });
+  const result = await ensureRoomDesignSpec(
+    { supabase, serviceSupabase },
+    { userId, roomId },
+    { defer: deferSpecExtraction }
+  );
 
   if (result.status === "no_selected_concept") {
     redirect(
@@ -115,15 +139,16 @@ async function SpecLedgerSection({
   if (result.status === "extraction_running") {
     return (
       <div className="mt-10 border border-line bg-surface px-8 py-14 text-center">
+        <SpecExtractionRefresh staleAtMs={Date.parse(result.staleAt)} />
         <p aria-live="polite" className="font-display text-display-xs font-light italic text-ink">
           reading the approved concept…
         </p>
         <p className="mt-3 font-body text-body-s text-ink-muted">
-          An extraction is already running for this room. Refresh in a moment.
+          Listing every piece in the render. This page updates on its own.
         </p>
         <a
-          className="mt-6 inline-block border border-ink px-6 py-3 font-body text-caption font-medium uppercase tracking-[0.32em] text-ink"
-          href={`/projects/${projectId}/rooms/${roomId}/spec`}
+          className="mt-6 inline-block font-display text-body-m italic text-ink-secondary underline-offset-4 hover:underline"
+          href={specPath}
         >
           Refresh
         </a>
@@ -132,6 +157,7 @@ async function SpecLedgerSection({
   }
 
   if (result.status === "concept_image_unprepared" || result.status === "extraction_failed") {
+    const retryable = result.status === "extraction_failed" && result.retryable;
     return (
       <div className="mt-10 border border-error bg-surface px-8 py-12 text-center">
         <p className="font-display text-display-xs font-light italic text-ink">
@@ -139,16 +165,19 @@ async function SpecLedgerSection({
         </p>
         <p className="mx-auto mt-3 max-w-[440px] font-body text-body-s text-ink-secondary">
           {result.status === "extraction_failed"
-            ? "Reading the approved concept failed. Your concept and brief are untouched."
+            ? retryable
+              ? "Reading the approved concept did not finish. Your concept and brief are untouched."
+              : "The confirmed spec could not be read back. Your concept and brief are untouched."
             : "The approved concept image is not ready to read. Your concept and brief are untouched."}
         </p>
-        <div className="mt-6 flex flex-wrap justify-center gap-3">
-          <a
-            className="inline-block border border-ink bg-ink px-6 py-3 font-body text-caption font-medium uppercase tracking-[0.32em] text-paper"
-            href={`/projects/${projectId}/rooms/${roomId}/spec`}
-          >
-            Retry
-          </a>
+        <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
+          {retryable ? (
+            <form action={retryDesignSpecExtractionAction}>
+              <input name="projectId" type="hidden" value={projectId} />
+              <input name="roomId" type="hidden" value={roomId} />
+              <SubmitButton pendingLabel="Starting...">Retry</SubmitButton>
+            </form>
+          ) : null}
           <a
             className="inline-block border border-ink px-6 py-3 font-body text-caption font-medium uppercase tracking-[0.32em] text-ink"
             href={`/projects/${projectId}/rooms/${roomId}/concepts`}

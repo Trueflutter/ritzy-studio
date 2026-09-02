@@ -16,6 +16,11 @@ import { createServiceClient } from "@/lib/supabase/service";
 import { ConceptGenerationPanel } from "./concept-generation-panel";
 
 export const dynamic = "force-dynamic";
+// Approving a concept schedules the paid spec extraction as an after() task on
+// this route's function; the budget must outlast the provider deadline (see
+// lib/spec-extraction, whose SPEC_EXTRACTION_ROUTE_MAX_DURATION_S mirrors this
+// literal because segment config cannot be imported).
+export const maxDuration = 300;
 
 function splitDescription(description: string | null) {
   if (!description) {

@@ -95,7 +95,7 @@ async function main() {
     assert.equal(serviceCalls.filter((call: RecordedCall) => call.op !== "select").length, 0);
   }
 
-  // --- A running spec extraction blocks sourcing briefly (step 8 backfill gate)
+  // --- A running spec extraction sends sourcing to /spec (step 8 backfill gate)
   {
     const { client, calls } = fakeSupabase((call) => {
       if (call.table === "projects") return { data: { id: "proj-1", budget_max_aed: null } };
@@ -105,24 +105,78 @@ async function main() {
       }
       return { data: null };
     });
-    const { client: service } = fakeSupabase(() => ({ data: null }));
+    const { client: service, calls: serviceCalls } = fakeSupabase(() => ({ data: null }));
     const result = await groundProductsForRoom(
       { supabase: client, serviceSupabase: service },
       GROUND_INPUT,
-      { ensureSpec: async () => ({ status: "extraction_running" as const }) }
+      {
+        readSpec: async () => ({
+          status: "extraction_running" as const,
+          jobId: "job-1",
+          startedAt: "2026-09-02T10:00:00.000Z",
+          staleAt: "2026-09-02T10:02:00.000Z"
+        })
+      }
     );
-    assert.deepEqual(result, {
-      status: "blocked",
-      message: "The design spec is still being read from your approved concept. Try again in a moment."
-    });
+    assert.deepEqual(result, { status: "spec_pending" });
     assert.equal(
       calls.filter((call: RecordedCall) => call.table === "room_measurements").length,
       0,
-      "a running extraction must block before further sourcing reads"
+      "a running extraction must gate before further sourcing reads"
+    );
+    assert.equal(
+      serviceCalls.filter((call: RecordedCall) => call.op !== "select").length,
+      0,
+      "sourcing never opens an extraction job itself"
     );
   }
 
-  // --- With the spec ensured, sourcing proceeds past the gate
+  // --- A room with no extraction attempt yet is sent to /spec too: sourcing
+  // never runs the paid call, the spec screen owns that lifecycle
+  {
+    const { client, calls } = fakeSupabase((call) => {
+      if (call.table === "projects") return { data: { id: "proj-1", budget_max_aed: null } };
+      if (call.table === "rooms") return { data: { id: "room-1", room_type: "Living Room" } };
+      if (call.table === "concepts") {
+        return { data: { id: "concept-1", title: "T", description: null, status: "selected", generation_job_id: null, palette_json: null, primary_image_asset: null } };
+      }
+      return { data: null };
+    });
+    const { client: service, calls: serviceCalls } = fakeSupabase(() => ({ data: null }));
+    const result = await groundProductsForRoom(
+      { supabase: client, serviceSupabase: service },
+      GROUND_INPUT,
+      { readSpec: async () => ({ status: "extraction_needed" as const, conceptId: "concept-1" }) }
+    );
+    assert.deepEqual(result, { status: "spec_pending" });
+    assert.equal(calls.filter((call: RecordedCall) => call.table === "room_measurements").length, 0);
+    assert.equal(serviceCalls.filter((call: RecordedCall) => call.op === "insert").length, 0);
+  }
+
+  // --- A recorded failed extraction does NOT block sourcing (no dead end that
+  // never existed); S3 makes the spec load-bearing
+  {
+    const { client, calls } = fakeSupabase((call) => {
+      if (call.table === "projects") return { data: { id: "proj-1", budget_max_aed: null } };
+      if (call.table === "rooms") return { data: { id: "room-1", room_type: "Living Room" } };
+      if (call.table === "concepts") {
+        return { data: { id: "concept-1", title: "T", description: null, status: "selected", generation_job_id: null, palette_json: null, primary_image_asset: null } };
+      }
+      return { data: null };
+    });
+    const { client: service } = fakeSupabase(() => ({ data: [] }));
+    await groundProductsForRoom(
+      { supabase: client, serviceSupabase: service },
+      GROUND_INPUT,
+      { readSpec: async () => ({ status: "extraction_failed" as const, conceptId: "concept-1", retryable: true }) }
+    );
+    assert.ok(
+      calls.some((call: RecordedCall) => call.table === "room_measurements"),
+      "a failed extraction must let sourcing proceed past the gate"
+    );
+  }
+
+  // --- With the spec stored, sourcing proceeds past the gate
   {
     const { client, calls } = fakeSupabase((call) => {
       if (call.table === "projects") return { data: { id: "proj-1", budget_max_aed: null } };
@@ -137,7 +191,7 @@ async function main() {
       { supabase: client, serviceSupabase: service },
       GROUND_INPUT,
       {
-        ensureSpec: async () => ({
+        readSpec: async () => ({
           status: "ready" as const,
           spec: {
             id: "spec-1",
@@ -150,14 +204,13 @@ async function main() {
             status: "extracted" as const
           },
           conceptTitle: "T",
-          extractedNow: false,
           renderSignedUrl: null
         })
       }
     );
     assert.ok(
       calls.some((call: RecordedCall) => call.table === "room_measurements"),
-      "an ensured spec must let sourcing proceed past the gate"
+      "a stored spec must let sourcing proceed past the gate"
     );
   }
 

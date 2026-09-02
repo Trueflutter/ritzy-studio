@@ -7,43 +7,66 @@ import {
   type RoomDesignSpec
 } from "@ritzy-studio/domain";
 
+import { isSpecExtractionStalled, specExtractionLeaseMs } from "@/lib/spec-extraction";
+
 import { conceptPrimaryRender, signedConceptRenderUrl } from "./room-images";
 import type { ServiceSupabaseClient, UserSupabaseClient } from "./supabase-clients";
 
-
 // The design-spec service (S2 step 8): spec-at-approval with on-demand backfill.
-// ensureRoomDesignSpec returns the stored spec for a room's selected concept,
-// extracting one on first touch so every room that predates specs (all existing
-// rooms) keeps working with no dead end. confirmRoomDesignSpec persists the
-// user's edits and flips the row to confirmed truth.
+//
+// Lifecycle (PR #332 review fix). The paid vision call never runs inside a
+// request a user is waiting on:
+//   - READERS (`readRoomDesignSpec`: the /spec page, sourcing) only read
+//     persisted state. A `running` ai_jobs row is a LEASE bounded by the
+//     provider deadline (lib/spec-extraction); past it the run is provably dead
+//     and the reader reclaims the row with a compare-and-swap instead of
+//     reporting "already running".
+//   - STARTERS (`ensureRoomDesignSpec` on the screen's first touch,
+//     `startRoomDesignSpecExtraction` from approval and Retry) open the lease
+//     row and hand ONLY the job id to the detached runner through the injected
+//     `defer` (after() in production, so a closed tab cannot abort it).
+//   - The RUNNER (`runRoomDesignSpecExtraction`) re-derives everything from the
+//     job row and always ends with a terminal write, recording the cost even
+//     when the spec write fails after a paid call.
+// A paid extraction therefore can never sit in `running` past its lease, the
+// user is never locked out behind a dead job, and a GET starts at most ONE
+// attempt per concept: after any recorded attempt only an explicit Retry
+// (POST) spends again. confirmRoomDesignSpec persists the user's edits and
+// flips the row to confirmed truth.
 
-export type EnsureRoomDesignSpecInput = {
-  userId: string;
-  roomId: string;
-};
+type Clients = { supabase: UserSupabaseClient; serviceSupabase: ServiceSupabaseClient };
 
-export type EnsureRoomDesignSpecResult =
+export const SPEC_EXTRACTION_JOB_TYPE = "spec_extraction";
+
+export type RoomDesignSpecState =
   | { status: "no_selected_concept" }
   | { status: "concept_image_unprepared" }
-  | { status: "extraction_running" }
-  | { status: "extraction_failed" }
+  | { status: "extraction_needed"; conceptId: string }
+  | { status: "extraction_running"; jobId: string; startedAt: string; staleAt: string }
+  | { status: "extraction_failed"; conceptId: string; retryable: boolean }
   | {
       status: "ready";
       spec: RoomDesignSpec;
       conceptTitle: string;
-      extractedNow: boolean;
       renderSignedUrl: string | null;
     };
 
-export async function ensureRoomDesignSpec(
-  { supabase, serviceSupabase }: { supabase: UserSupabaseClient; serviceSupabase: ServiceSupabaseClient },
-  { userId, roomId }: EnsureRoomDesignSpecInput,
-  {
-    // Injectable so the extraction-path state transitions are testable without a
-    // live provider.
-    extract = extractRoomDesignSpec
-  }: { extract?: typeof extractRoomDesignSpec } = {}
-): Promise<EnsureRoomDesignSpecResult> {
+type ReadOptions = { now?: number; leaseMs?: number };
+
+export async function readRoomDesignSpec(
+  clients: Clients,
+  { roomId }: { roomId: string },
+  options: ReadOptions = {}
+): Promise<RoomDesignSpecState> {
+  return readState(clients, roomId, options, false);
+}
+
+async function readState(
+  { supabase, serviceSupabase }: Clients,
+  roomId: string,
+  { now = Date.now(), leaseMs = specExtractionLeaseMs() }: ReadOptions,
+  afterReclaimMiss: boolean
+): Promise<RoomDesignSpecState> {
   const { data: room } = await supabase
     .from("rooms")
     .select("id, room_type")
@@ -77,18 +100,17 @@ export async function ensureRoomDesignSpec(
         status: "ready",
         spec: parsed,
         conceptTitle: concept.title,
-        extractedNow: false,
         renderSignedUrl: await signedConceptRenderUrl({ supabase, serviceSupabase }, concept.primary_image_asset_id)
       };
     }
-    // A stored EXTRACTED spec that no longer validates is re-extracted and
-    // repaired. A malformed CONFIRMED row (only reachable by direct PostgREST
-    // writes to one's own row) is NOT worth a paid call per visit: the guarded
-    // repair below never touches confirmed rows, so extracting would fail every
-    // time. Surface the honest failed state at zero spend instead; the RPC-only
-    // write consolidation lands with S7's money-table hardening.
+    // A malformed CONFIRMED row (only reachable by direct PostgREST writes to
+    // one's own row) is never worth a paid call: the runner's guarded repair
+    // never touches confirmed rows, so extracting would fail every time.
+    // Surface the honest failed state at zero spend, with Retry withheld; the
+    // RPC-only write consolidation lands with S7's money-table hardening. A
+    // malformed EXTRACTED row falls through: a Retry's runner repairs it.
     if (existing.status === "confirmed") {
-      return { status: "extraction_failed" };
+      return { status: "extraction_failed", conceptId: concept.id, retryable: false };
     }
   }
 
@@ -96,79 +118,287 @@ export async function ensureRoomDesignSpec(
     return { status: "concept_image_unprepared" };
   }
 
-  // In-flight guard (mirrors concept generation's running-job dedupe): a GET
-  // triggers a paid vision call, so parallel opens or Retry storms must not fan
-  // out extra provider spend. The audit row is inserted IMMEDIATELY after this
-  // check, before any storage or provider work, so the check-then-act window is
-  // milliseconds; the residual race costs at most one duplicate $0.007 vision
-  // call, and DB-level single-flight arrives with S7's credit reservations.
-  const runningSince = new Date(Date.now() - 15 * 60 * 1000).toISOString();
-  const { data: runningExtraction } = await serviceSupabase
+  const { data: latestJob } = await serviceSupabase
     .from("ai_jobs")
-    .select("id")
+    .select("id, status, created_at")
     .eq("room_id", roomId)
-    .eq("job_type", "spec_extraction")
-    .eq("status", "running")
-    .gte("created_at", runningSince)
+    .eq("job_type", SPEC_EXTRACTION_JOB_TYPE)
+    .contains("input_summary", { conceptId: concept.id })
+    .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();
 
-  if (runningExtraction) {
-    return { status: "extraction_running" };
+  if (!latestJob) {
+    return { status: "extraction_needed", conceptId: concept.id };
   }
 
-  // Spend never precedes its audit row: a failed insert aborts before any
-  // provider call (the sibling services keep the same invariant).
+  if (latestJob.status === "running" || latestJob.status === "queued") {
+    if (!isSpecExtractionStalled(latestJob.status, latestJob.created_at, now, leaseMs)) {
+      return {
+        status: "extraction_running",
+        jobId: latestJob.id,
+        startedAt: latestJob.created_at,
+        staleAt: new Date(Date.parse(latestJob.created_at) + leaseMs).toISOString()
+      };
+    }
+    if (afterReclaimMiss) {
+      // Unreachable in practice (a job only moves to a terminal status), kept so
+      // the recursion below is provably bounded.
+      return {
+        status: "extraction_running",
+        jobId: latestJob.id,
+        startedAt: latestJob.created_at,
+        staleAt: new Date(now).toISOString()
+      };
+    }
+    // Reclaim the expired lease. Compare-and-swap on the status so a run that
+    // reported in between our read and this write is never flipped back to
+    // failed; a DB error is surfaced, never read as "another process won".
+    const { data: reclaimed, error: reclaimError } = await serviceSupabase
+      .from("ai_jobs")
+      .update({
+        status: "failed",
+        completed_at: new Date(now).toISOString(),
+        error_message: `Spec extraction reported no result within its ${Math.round(
+          leaseMs / 1000
+        )}s lease; the run was abandoned.`
+      })
+      .eq("id", latestJob.id)
+      .in("status", ["running", "queued"])
+      .select("id");
+    if (reclaimError) {
+      throw new Error(reclaimError.message);
+    }
+    if ((reclaimed ?? []).length > 0) {
+      return { status: "extraction_failed", conceptId: concept.id, retryable: true };
+    }
+    // CAS miss: the run reported in after our read. Read the outcome it left.
+    return readState({ supabase, serviceSupabase }, roomId, { now, leaseMs }, true);
+  }
+
+  // A recorded attempt that left no readable spec (failed, cancelled, or a
+  // succeeded run whose row was since lost or mangled): only an explicit Retry
+  // spends again.
+  return { status: "extraction_failed", conceptId: concept.id, retryable: true };
+}
+
+export type SpecExtractionDefer = (task: () => Promise<void>) => void;
+
+type StartOptions = ReadOptions & {
+  // Required: the caller decides how the paid run outlives its request
+  // (after() in production, a recorder in tests).
+  defer: SpecExtractionDefer;
+  // Injectable so the scheduling contract is testable without a live provider.
+  run?: (input: { jobId: string }) => Promise<void>;
+};
+
+// Opens the lease row and schedules the detached runner. Spend never precedes
+// its audit row: a failed insert schedules nothing.
+async function beginExtraction(
+  { serviceSupabase }: Clients,
+  { userId, roomId, conceptId }: { userId: string; roomId: string; conceptId: string },
+  { defer, run }: { defer: SpecExtractionDefer; run: (input: { jobId: string }) => Promise<void> }
+): Promise<{ jobId: string } | null> {
   const { data: job, error: jobError } = await serviceSupabase
     .from("ai_jobs")
     .insert({
       user_id: userId,
       room_id: roomId,
-      job_type: "spec_extraction",
+      job_type: SPEC_EXTRACTION_JOB_TYPE,
       status: "running",
       provider: "openai",
       model: stageTextConfig("spec_extraction", configuredTextModel()).model,
-      input_summary: { roomId, conceptId: concept.id }
+      input_summary: { roomId, conceptId }
     })
     .select("id")
     .single();
 
   if (jobError || !job) {
-    return { status: "extraction_failed" };
+    return null;
   }
 
-  const render = await conceptPrimaryRender({ supabase, serviceSupabase }, concept.primary_image_asset_id);
+  defer(() => run({ jobId: job.id }));
+  return { jobId: job.id };
+}
 
-  if (!render) {
+function defaultRunner(clients: Clients) {
+  return ({ jobId }: { jobId: string }) => runRoomDesignSpecExtraction(clients.serviceSupabase, { jobId });
+}
+
+export type EnsureRoomDesignSpecInput = {
+  userId: string;
+  roomId: string;
+};
+
+export type EnsureRoomDesignSpecResult = Exclude<RoomDesignSpecState, { status: "extraction_needed" }>;
+
+// The /spec screen's entry point: persisted state, plus the on-demand backfill
+// for rooms that predate specs. The one paid side effect a GET may have is the
+// FIRST attempt for a concept; every later attempt needs an explicit Retry.
+export async function ensureRoomDesignSpec(
+  clients: Clients,
+  { userId, roomId }: EnsureRoomDesignSpecInput,
+  { defer, run = defaultRunner(clients), now = Date.now(), leaseMs = specExtractionLeaseMs() }: StartOptions
+): Promise<EnsureRoomDesignSpecResult> {
+  const state = await readRoomDesignSpec(clients, { roomId }, { now, leaseMs });
+  if (state.status !== "extraction_needed") {
+    return state;
+  }
+
+  const begun = await beginExtraction(clients, { userId, roomId, conceptId: state.conceptId }, { defer, run });
+  if (!begun) {
+    return { status: "extraction_failed", conceptId: state.conceptId, retryable: true };
+  }
+  return {
+    status: "extraction_running",
+    jobId: begun.jobId,
+    startedAt: new Date(now).toISOString(),
+    staleAt: new Date(now + leaseMs).toISOString()
+  };
+}
+
+export type StartRoomDesignSpecExtractionResult =
+  | { status: "started"; jobId: string }
+  | { status: "already_running"; jobId: string }
+  | { status: "already_ready" }
+  | {
+      status: "cannot_start";
+      reason: "no_selected_concept" | "concept_image_unprepared" | "not_retryable" | "job_insert_failed";
+    };
+
+// The explicit starters (approval, Retry): both are POSTs, so a fresh attempt
+// after a recorded failure is always a deliberate user action.
+export async function startRoomDesignSpecExtraction(
+  clients: Clients,
+  { userId, roomId }: EnsureRoomDesignSpecInput,
+  { defer, run = defaultRunner(clients), now = Date.now(), leaseMs = specExtractionLeaseMs() }: StartOptions
+): Promise<StartRoomDesignSpecExtractionResult> {
+  const state = await readRoomDesignSpec(clients, { roomId }, { now, leaseMs });
+  switch (state.status) {
+    case "ready":
+      return { status: "already_ready" };
+    case "extraction_running":
+      return { status: "already_running", jobId: state.jobId };
+    case "no_selected_concept":
+      return { status: "cannot_start", reason: "no_selected_concept" };
+    case "concept_image_unprepared":
+      return { status: "cannot_start", reason: "concept_image_unprepared" };
+    case "extraction_failed":
+      if (!state.retryable) {
+        return { status: "cannot_start", reason: "not_retryable" };
+      }
+      break;
+    case "extraction_needed":
+      break;
+  }
+
+  const begun = await beginExtraction(clients, { userId, roomId, conceptId: state.conceptId }, { defer, run });
+  return begun ? { status: "started", jobId: begun.jobId } : { status: "cannot_start", reason: "job_insert_failed" };
+}
+
+type SpecExtractionJobSummary = { conceptId?: unknown };
+
+// The detached runner. Re-derives everything from the job row (like the final
+// render runner), so it is safe to invoke for any job id at any time: a row that
+// is no longer a live lease never spends again. Every exit is a terminal write.
+export async function runRoomDesignSpecExtraction(
+  serviceSupabase: ServiceSupabaseClient,
+  { jobId }: { jobId: string },
+  {
+    // Injectable so the persisted transitions are testable without a live provider.
+    extract = extractRoomDesignSpec
+  }: { extract?: typeof extractRoomDesignSpec } = {}
+): Promise<void> {
+  const { data: job, error: jobError } = await serviceSupabase
+    .from("ai_jobs")
+    .select("id, status, room_id, input_summary")
+    .eq("id", jobId)
+    .maybeSingle();
+
+  if (jobError) {
+    throw new Error(jobError.message);
+  }
+  if (!job) {
+    console.error(`Spec extraction runner: job ${jobId} not found; dropping.`);
+    return;
+  }
+  if (job.status !== "running" && job.status !== "queued") {
+    // Reclaimed as abandoned, or already reported: at-least-once safety.
+    return;
+  }
+
+  const summary = ((job.input_summary ?? {}) as SpecExtractionJobSummary) ?? {};
+  const conceptId = typeof summary.conceptId === "string" ? summary.conceptId : null;
+  const roomId = job.room_id;
+
+  let extraction: Awaited<ReturnType<typeof extract>> | null = null;
+
+  const fail = async (message: string) => {
     await serviceSupabase
       .from("ai_jobs")
       .update({
         status: "failed",
         completed_at: new Date().toISOString(),
-        error_message: "Concept render unavailable for extraction."
+        error_message: message,
+        // Honest cost: a paid call that succeeded before persistence failed is
+        // still spend, and the row says so.
+        ...(extraction
+          ? {
+              model: extraction.model,
+              prompt_version: extraction.promptVersion,
+              cost_estimate_usd: extraction.textCostUsd ?? null
+            }
+          : {})
       })
-      .eq("id", job.id);
-    return { status: "concept_image_unprepared" };
+      .eq("id", jobId);
+  };
+
+  if (!conceptId || !roomId) {
+    await fail("Spec extraction job is missing its room or concept.");
+    return;
   }
 
-  const { data: designBrief } = await supabase
-    .from("design_briefs")
-    .select("style_notes, color_notes, functional_requirements, avoid_notes")
-    .eq("room_id", roomId)
-    .order("updated_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  const { data: measurements } = await supabase
-    .from("room_measurements")
-    .select("wall_length_cm, room_depth_cm, ceiling_height_cm")
-    .eq("room_id", roomId)
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
   try {
-    const extraction = await extract({
+    const { data: room } = await serviceSupabase
+      .from("rooms")
+      .select("id, room_type")
+      .eq("id", roomId)
+      .maybeSingle();
+    const { data: concept } = await serviceSupabase
+      .from("concepts")
+      .select("id, primary_image_asset_id")
+      .eq("id", conceptId)
+      .eq("room_id", roomId)
+      .maybeSingle();
+    if (!room || !concept) {
+      throw new Error("Spec extraction job's room or concept no longer exists.");
+    }
+
+    const render = await conceptPrimaryRender(
+      { supabase: serviceSupabase, serviceSupabase },
+      concept.primary_image_asset_id
+    );
+    if (!render) {
+      throw new Error("Concept render unavailable for extraction.");
+    }
+
+    const { data: designBrief } = await serviceSupabase
+      .from("design_briefs")
+      .select("style_notes, color_notes, functional_requirements, avoid_notes")
+      .eq("room_id", roomId)
+      .order("updated_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    const { data: measurements } = await serviceSupabase
+      .from("room_measurements")
+      .select("wall_length_cm, room_depth_cm, ceiling_height_cm")
+      .eq("room_id", roomId)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    extraction = await extract({
       roomType: room.room_type,
       conceptImage: {
         bytes: render.bytes,
@@ -189,118 +419,90 @@ export async function ensureRoomDesignSpec(
         : null
     });
 
-    // First write wins (codex finding): ignoreDuplicates means a slower duplicate
-    // extraction can never overwrite a row another request stored, and above all
+    // First write wins (codex finding): ignoreDuplicates means a slower
+    // duplicate run can never overwrite a row another run stored, and above all
     // can never reset a spec the user has already CONFIRMED. A stored malformed
-    // row is repaired through the explicit guarded transition below instead.
-    const { data: inserted, error: insertError } = await supabase
+    // row is repaired only through the explicit guarded transition below.
+    const { data: inserted, error: insertError } = await serviceSupabase
       .from("room_design_specs")
       .upsert(
         {
           room_id: roomId,
-          concept_id: concept.id,
+          concept_id: conceptId,
           objects: extraction.objects,
           must_preserve: extraction.mustPreserve,
           status: "extracted",
-          extraction_job_id: job?.id ?? null
+          extraction_job_id: jobId
         },
         { onConflict: "room_id,concept_id", ignoreDuplicates: true }
       )
       .select("*")
       .maybeSingle();
 
-    if (job) {
-      await serviceSupabase
-        .from("ai_jobs")
-        .update({
-          status: "succeeded",
-          completed_at: new Date().toISOString(),
-          model: extraction.model,
-          prompt_version: extraction.promptVersion,
-          cost_estimate_usd: extraction.textCostUsd ?? null,
-          output_summary: {
-            conceptId: concept.id,
-            objectCount: extraction.objects.length,
-            mustPreserveCount: extraction.mustPreserve.length
-          }
-        })
-        .eq("id", job.id);
-    }
-
     if (insertError) {
       throw new Error(insertError.message);
     }
 
-    if (!inserted) {
-      // Duplicate: another request (or a previously stored row) holds the slot.
-      const { data: existingRow } = await supabase
+    let storedByAnotherRun = false;
+    let repairedStoredRow = false;
+
+    if (inserted) {
+      if (!parseRoomDesignSpecRow(inserted)) {
+        throw new Error("Extracted spec did not validate after insert.");
+      }
+    } else {
+      // Duplicate: another run (or a previously stored row) holds the slot.
+      const { data: existingRow } = await serviceSupabase
         .from("room_design_specs")
         .select("*")
         .eq("room_id", roomId)
-        .eq("concept_id", concept.id)
+        .eq("concept_id", conceptId)
         .maybeSingle();
-      const parsedExisting = existingRow ? parseRoomDesignSpecRow(existingRow) : null;
-      if (parsedExisting) {
-        return {
-          status: "ready",
-          spec: parsedExisting,
-          conceptTitle: concept.title,
-          extractedNow: false,
-          renderSignedUrl: render.signedUrl
-        };
+      if (existingRow && parseRoomDesignSpecRow(existingRow)) {
+        storedByAnotherRun = true;
+      } else {
+        // Explicit guarded repair: only a still-EXTRACTED malformed row may be
+        // replaced; a confirmed row is never touched by this path.
+        const { data: repaired } = existingRow
+          ? await serviceSupabase
+              .from("room_design_specs")
+              .update({
+                objects: extraction.objects,
+                must_preserve: extraction.mustPreserve,
+                status: "extracted",
+                extraction_job_id: jobId
+              })
+              .eq("id", existingRow.id)
+              .eq("status", "extracted")
+              .select("*")
+              .maybeSingle()
+          : { data: null };
+        if (!repaired || !parseRoomDesignSpecRow(repaired)) {
+          throw new Error("Stored spec could not be read or repaired after extraction.");
+        }
+        repairedStoredRow = true;
       }
-      // Explicit guarded repair: only a still-EXTRACTED malformed row may be
-      // replaced; a confirmed row is never touched by this path.
-      const { data: repaired } = existingRow
-        ? await supabase
-            .from("room_design_specs")
-            .update({
-              objects: extraction.objects,
-              must_preserve: extraction.mustPreserve,
-              status: "extracted",
-              extraction_job_id: job?.id ?? null
-            })
-            .eq("id", existingRow.id)
-            .eq("status", "extracted")
-            .select("*")
-            .maybeSingle()
-        : { data: null };
-      const parsedRepaired = repaired ? parseRoomDesignSpecRow(repaired) : null;
-      if (parsedRepaired) {
-        return {
-          status: "ready",
-          spec: parsedRepaired,
-          conceptTitle: concept.title,
-          extractedNow: true,
-          renderSignedUrl: render.signedUrl
-        };
-      }
-      throw new Error("Stored spec could not be read or repaired after extraction.");
     }
 
-    const parsed = parseRoomDesignSpecRow(inserted);
-    if (!parsed) {
-      throw new Error("Extracted spec did not validate after insert.");
-    }
-    return {
-      status: "ready",
-      spec: parsed,
-      conceptTitle: concept.title,
-      extractedNow: true,
-      renderSignedUrl: render.signedUrl
-    };
+    await serviceSupabase
+      .from("ai_jobs")
+      .update({
+        status: "succeeded",
+        completed_at: new Date().toISOString(),
+        model: extraction.model,
+        prompt_version: extraction.promptVersion,
+        cost_estimate_usd: extraction.textCostUsd ?? null,
+        output_summary: {
+          conceptId,
+          objectCount: extraction.objects.length,
+          mustPreserveCount: extraction.mustPreserve.length,
+          storedByAnotherRun,
+          repairedStoredRow
+        }
+      })
+      .eq("id", jobId);
   } catch (error) {
-    if (job) {
-      await serviceSupabase
-        .from("ai_jobs")
-        .update({
-          status: "failed",
-          completed_at: new Date().toISOString(),
-          error_message: error instanceof Error ? error.message : "Spec extraction failed."
-        })
-        .eq("id", job.id);
-    }
-    return { status: "extraction_failed" };
+    await fail(error instanceof Error ? error.message : "Spec extraction failed.");
   }
 }
 

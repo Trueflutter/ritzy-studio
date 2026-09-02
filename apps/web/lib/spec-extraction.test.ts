@@ -1,0 +1,52 @@
+import assert from "node:assert/strict";
+
+import {
+  SPEC_EXTRACTION_OVERHEAD_MS,
+  SPEC_EXTRACTION_ROUTE_MAX_DURATION_S,
+  isSpecExtractionStalled,
+  specExtractionLeaseMs
+} from "./spec-extraction";
+
+const now = 1_000_000_000_000;
+const iso = (msAgo: number) => new Date(now - msAgo).toISOString();
+const routeBudgetMs = SPEC_EXTRACTION_ROUTE_MAX_DURATION_S * 1000;
+
+// The lease follows the configured provider deadline plus the fixed overhead.
+assert.equal(specExtractionLeaseMs({}), 90_000 + SPEC_EXTRACTION_OVERHEAD_MS, "default text deadline is 90s");
+assert.equal(specExtractionLeaseMs({ RITZY_TEXT_TIMEOUT_MS: "3000" }), 3_000 + SPEC_EXTRACTION_OVERHEAD_MS);
+assert.equal(specExtractionLeaseMs({ RITZY_TEXT_TIMEOUT_MS: "garbage" }), 90_000 + SPEC_EXTRACTION_OVERHEAD_MS);
+
+// The route budget (the literal maxDuration on /spec and /concepts) must
+// outlast the lease at the default deadline, or the function would be torn
+// down before the provider deadline it is waiting on.
+assert.ok(specExtractionLeaseMs({}) < routeBudgetMs, "default lease must fit inside the route budget");
+
+// A deadline configured past the route budget is clamped: the function dies at
+// the budget, so the lease cannot honestly extend beyond it.
+assert.equal(
+  specExtractionLeaseMs({ RITZY_TEXT_TIMEOUT_MS: String(routeBudgetMs * 10) }),
+  routeBudgetMs + SPEC_EXTRACTION_OVERHEAD_MS
+);
+
+const lease = 120_000;
+
+// Terminal or absent states are never stalled.
+assert.equal(isSpecExtractionStalled("succeeded", iso(lease * 2), now, lease), false);
+assert.equal(isSpecExtractionStalled("failed", iso(lease * 2), now, lease), false);
+assert.equal(isSpecExtractionStalled("cancelled", iso(lease * 2), now, lease), false);
+assert.equal(isSpecExtractionStalled(null, iso(lease * 2), now, lease), false);
+
+// Live within the lease.
+assert.equal(isSpecExtractionStalled("running", iso(lease - 1), now, lease), false);
+assert.equal(isSpecExtractionStalled("queued", iso(1_000), now, lease), false);
+assert.equal(isSpecExtractionStalled("running", iso(lease), now, lease), false, "the boundary is still live");
+
+// Past the lease: stalled and reclaimable.
+assert.equal(isSpecExtractionStalled("running", iso(lease + 1), now, lease), true);
+assert.equal(isSpecExtractionStalled("queued", iso(lease + 1), now, lease), true);
+
+// An unreadable start time cannot prove liveness, so it never locks the user out.
+assert.equal(isSpecExtractionStalled("running", null, now, lease), true);
+assert.equal(isSpecExtractionStalled("running", "not-a-date", now, lease), true);
+
+console.log("spec-extraction.test.ts: all assertions passed");

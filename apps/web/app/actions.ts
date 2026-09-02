@@ -30,7 +30,7 @@ import {
 } from "@/lib/services/concept-generation";
 import { storageImageDataUrl } from "@/lib/services/storage-images";
 import { reviseConceptForRoom } from "@/lib/services/concept-revision";
-import { confirmRoomDesignSpec } from "@/lib/services/design-spec";
+import { confirmRoomDesignSpec, startRoomDesignSpecExtraction } from "@/lib/services/design-spec";
 import { parseSpecLedgerForm } from "@/lib/spec-ledger-form-data";
 import {
   findMoreShoppingOptions,
@@ -1518,10 +1518,57 @@ export async function selectConceptAction(formData: FormData) {
   await selectConcept(supabase, { roomId, conceptId });
 
   // Spec-at-approval (S2): approval flows through the spec confirmation ledger
-  // before sourcing.
+  // before sourcing. The paid extraction is scheduled HERE as a detached task
+  // (PR #332 review fix), so it starts the moment the user approves, outlives
+  // this request, and /spec only ever reads its persisted state.
   const redirectPath = `/projects/${projectId}/rooms/${roomId}/spec`;
+  await startRoomDesignSpecExtraction(
+    { supabase, serviceSupabase: createServiceClient() },
+    { userId: user.id, roomId },
+    { defer: deferSpecExtraction(redirectPath) }
+  );
   revalidatePath(redirectPath);
   redirect(redirectPath);
+}
+
+// The detached spec extraction runs on the action's after() so a closed tab
+// cannot abort it; the runner records its own failures on the job row, and
+// anything escaping that is logged rather than thrown into a finished response.
+function deferSpecExtraction(specPath: string) {
+  return (task: () => Promise<void>) =>
+    after(async () => {
+      try {
+        await task();
+      } catch (error) {
+        console.error(`Deferred spec extraction failed to run (${specPath}).`, error);
+      }
+      revalidatePath(specPath);
+    });
+}
+
+// Retry after a recorded failure is the only way to spend on a concept twice
+// (a page load never re-extracts), so it is a deliberate POST.
+export async function retryDesignSpecExtractionAction(formData: FormData) {
+  const projectId = String(formData.get("projectId") ?? "");
+  const roomId = String(formData.get("roomId") ?? "");
+  const specPath = `/projects/${projectId}/rooms/${roomId}/spec`;
+  const supabase = await createClient();
+  const {
+    data: { user },
+    error: userError
+  } = await supabase.auth.getUser();
+
+  if (userError || !user) {
+    redirect("/login");
+  }
+
+  await startRoomDesignSpecExtraction(
+    { supabase, serviceSupabase: createServiceClient() },
+    { userId: user.id, roomId },
+    { defer: deferSpecExtraction(specPath) }
+  );
+  revalidatePath(specPath);
+  redirect(specPath);
 }
 
 export async function confirmDesignSpecAction(formData: FormData) {
@@ -1592,6 +1639,12 @@ export async function groundProductsAction(formData: FormData) {
 
   if (result.status === "blocked") {
     redirect(`${redirectPath}?message=${encodeURIComponent(result.message)}`);
+  }
+
+  // The spec is not yet read (or still being read): /spec starts or shows the
+  // extraction and lands back here on confirm.
+  if (result.status === "spec_pending") {
+    redirect(`/projects/${projectId}/rooms/${roomId}/spec`);
   }
 
   revalidatePath(redirectPath);
