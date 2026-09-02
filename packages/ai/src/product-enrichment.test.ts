@@ -74,6 +74,7 @@ const validatedSourcing = validateProductSourcingRoleContract(
         roleLabel: "dining chairs",
         status: "acceptable_match",
         productId: "00000000-0000-4000-8000-000000000010",
+        similarity: 0.8,
         reason: "Incorrectly selected a globally valid sofa for dining chairs."
       }
     ],
@@ -128,6 +129,7 @@ const repairedBedroomSourcing = validateProductSourcingRoleContract(
         roleLabel: "bedside tables",
         status: "strong_match",
         productId: "10000000-0000-4000-8000-000000000020",
+        similarity: 0.8,
         reason: "Correct product, malformed category."
       }
     ],
@@ -184,6 +186,7 @@ const repairedMissingBedsideRoleResult = validateProductSourcingRoleContract(
         roleLabel: "bedside tables",
         status: "missing_required",
         productId: null,
+        similarity: 0.8,
         reason: "The model marked the required bedside table role missing."
       }
     ],
@@ -227,6 +230,7 @@ const trueMissingBedsideRole = validateProductSourcingRoleContract(
         roleLabel: "bedside tables",
         status: "missing_required",
         productId: null,
+        similarity: 0.8,
         reason: "No bedside table was suitable."
       }
     ],
@@ -272,6 +276,7 @@ const ambiguousRoleProduct = validateProductSourcingRoleContract(
         roleLabel: "storage piece",
         status: "acceptable_match",
         productId: "20000000-0000-4000-8000-000000000030",
+        similarity: 0.8,
         reason: "Product appears in multiple role pools."
       }
     ],
@@ -329,6 +334,7 @@ const exactRoleAmbiguousProduct = validateProductSourcingRoleContract(
         roleLabel: "media console",
         status: "acceptable_match",
         productId: "20000000-0000-4000-8000-000000000030",
+        similarity: 0.8,
         reason: "Exact role label should not rescue an ambiguous product."
       }
     ],
@@ -408,6 +414,7 @@ const homeOfficeContractFixture = validateProductSourcingRoleContract(
         roleLabel: "work surface",
         status: "strong_match",
         productId: "30000000-0000-4000-8000-000000000010",
+        similarity: 0.8,
         reason: "Desk product is correct."
       },
       {
@@ -415,6 +422,7 @@ const homeOfficeContractFixture = validateProductSourcingRoleContract(
         roleLabel: "task seating",
         status: "acceptable_match",
         productId: "30000000-0000-4000-8000-000000000020",
+        similarity: 0.8,
         reason: "Office chair product is correct."
       },
       {
@@ -422,6 +430,7 @@ const homeOfficeContractFixture = validateProductSourcingRoleContract(
         roleLabel: "office storage",
         status: "acceptable_match",
         productId: "30000000-0000-4000-8000-000000000030",
+        similarity: 0.8,
         reason: "Storage product is correct."
       },
       {
@@ -429,6 +438,7 @@ const homeOfficeContractFixture = validateProductSourcingRoleContract(
         roleLabel: "desk lamp",
         status: "strong_match",
         productId: "30000000-0000-4000-8000-000000000040",
+        similarity: 0.8,
         reason: "Task lamp product is correct."
       }
     ],

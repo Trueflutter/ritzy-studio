@@ -12,7 +12,9 @@ import {
 import Image from "next/image";
 import { notFound, redirect } from "next/navigation";
 
-import { parseMissingRoles } from "@ritzy-studio/domain";
+import { parseMissingRoles,
+  groupShoppingItemsByRole
+} from "@ritzy-studio/domain";
 
 import {
   generateFinalRenderAction,
@@ -273,6 +275,21 @@ export default async function ProductMatchingPage({
   const missingRoles = parseMissingRoles(shoppingList.missing_roles);
   const missingCaveat = missingRolesCaveat(missingRoles);
   const builtFromConfirmedSpec = shoppingList.spec_source === "confirmed_spec";
+  // The ledger is the CHOSEN pieces; the rest of the rows are that role's
+  // other options and belong to the shopping list. A role with no chosen row
+  // is one the app would not choose for the shopper (nothing was confirmed to
+  // match the design), so the count of those is stated beside the estimate
+  // rather than left to look like a complete list.
+  const chosenItems = shoppingItemsList.filter((item) => item.status === "selected");
+  const rolesAwaitingChoice = groupShoppingItemsByRole(shoppingItemsList).filter(
+    (group) => !group.options.some((option) => option.status === "selected")
+  ).length;
+  const awaitingChoiceCaveat =
+    rolesAwaitingChoice === 0
+      ? null
+      : rolesAwaitingChoice === 1
+        ? "1 piece needs your choice."
+        : `${rolesAwaitingChoice} pieces need your choice.`;
   const latestRender = finalRenders[0] ?? null;
   const heroSrc = latestRender?.signedUrl ?? signedConceptImage?.signedUrl ?? null;
   const heroLabel = latestRender ? "Final render" : "Selected concept";
@@ -343,8 +360,11 @@ export default async function ProductMatchingPage({
               {estimatedTotalDisplay}
             </span>
             <span className="font-body text-caption font-medium uppercase tracking-[0.32em] text-ink-muted">
-              estimated · {shoppingItemsList.length} {shoppingItemsList.length === 1 ? "piece" : "pieces"}
+              estimated · {chosenItems.length} {chosenItems.length === 1 ? "piece" : "pieces"} chosen
             </span>
+            {awaitingChoiceCaveat ? (
+              <span className="font-display text-body-s italic text-warning">{awaitingChoiceCaveat}</span>
+            ) : null}
             {missingCaveat ? (
               <span className="font-display text-body-s italic text-warning">{missingCaveat}</span>
             ) : null}
@@ -398,9 +418,9 @@ export default async function ProductMatchingPage({
           </p>
         ) : null}
 
-        {shoppingItemsList.length > 0 ? (
+        {chosenItems.length > 0 ? (
           <div className="mt-[18px] flex flex-col">
-            {shoppingItemsList.map((item) => {
+            {chosenItems.map((item) => {
               const product = item.product;
               const dimensions = product?.dimensions?.[0];
               // Warnings stay warnings; the reason a piece was chosen is prose
@@ -547,11 +567,22 @@ export default async function ProductMatchingPage({
         ) : (
           <div className="border-t border-line px-5 py-12 md:px-8 lg:px-12">
             <p className="font-display text-display-xs font-light italic text-ink">
-              No pieces sourced yet.
+              {shoppingItemsList.length > 0 ? "Nothing chosen yet." : "No pieces sourced yet."}
             </p>
             <p className="mt-3 max-w-[560px] font-body text-body-s text-ink-secondary">
-              Press <span className="italic">Refresh matches</span> above to match catalog products
-              with prices, dimensions, and retailer links.
+              {shoppingItemsList.length > 0 ? (
+                <>
+                  Nothing in the catalogue was a close enough visual match to choose for you. The
+                  options for every piece are on the{" "}
+                  <span className="italic">shopping list</span>; pick the closest and they appear
+                  here.
+                </>
+              ) : (
+                <>
+                  Press <span className="italic">Refresh matches</span> above to match catalog
+                  products with prices, dimensions, and retailer links.
+                </>
+              )}
             </p>
           </div>
         )}

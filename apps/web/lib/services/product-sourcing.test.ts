@@ -233,15 +233,15 @@ async function main() {
               { productId: SOFA_ID, category: "sofas", roleLabel: "role-1", quantity: 1, matchStatus: "strong_match", visualMatchReason: "Selected for its curved ivory boucle silhouette, matching the sofa in the concept.", mismatchNote: null }
             ],
             roleResults: [
-              { category: "sofas", roleLabel: "role-1", status: "strong_match", productId: SOFA_ID, reason: "Curved ivory boucle." },
-              { category: "armchairs", roleLabel: "role-2", status: "acceptable_match", productId: CHAIR_ID, reason: "Cognac leather, close silhouette." }
+              { category: "sofas", roleLabel: "role-1", status: "strong_match", productId: SOFA_ID, similarity: 0.85, reason: "Curved ivory boucle." },
+              { category: "armchairs", roleLabel: "role-2", status: "acceptable_match", productId: CHAIR_ID, similarity: 0.7, reason: "Cognac leather, close silhouette." }
             ],
             missingRoles: []
           };
         }
       }
     );
-    assert.deepEqual(result, { status: "sourced", selectedCount: 2, missingRoleCount: 1 });
+    assert.deepEqual(result, { status: "sourced", selectedCount: 2, missingRoleCount: 1, openRoleCount: 0 });
 
     // The pass saw only contract-clean pools: the swing chair never reached the
     // lounge-chair pool, the chandelier never reached the floor-lamp role (which
@@ -337,22 +337,74 @@ async function main() {
           needs: [],
           selectedProducts: [],
           roleResults: [
-            { category: "sofas", roleLabel: "role-1", status: "missing_required", productId: null, reason: "The only sofa is a straight three-seater; the design is curved." },
-            { category: "armchairs", roleLabel: "role-2", status: "strong_match", productId: CHAIR_ID, reason: "Matches." }
+            { category: "sofas", roleLabel: "role-1", status: "missing_required", productId: null, similarity: 0, reason: "The only sofa is a straight three-seater; the design is curved." },
+            { category: "armchairs", roleLabel: "role-2", status: "strong_match", productId: CHAIR_ID, similarity: 0.8, reason: "Matches." }
           ],
           missingRoles: ["role-1"]
         })
       }
     );
-    assert.deepEqual(result, { status: "sourced", selectedCount: 1, missingRoleCount: 2 });
+    assert.deepEqual(result, { status: "sourced", selectedCount: 1, missingRoleCount: 2, openRoleCount: 0 });
     const listUpdate = calls.find((call: RecordedCall) => call.table === "shopping_lists" && call.op === "update");
     const missing = listUpdate?.payload?.missing_roles as Array<Record<string, unknown>>;
     const sofa = missing.find((entry) => entry.label === "curved three-seat sofa");
     assert.match(String(sofa?.reason), /visual pass found no catalogue piece.*straight three-seater/);
   }
 
-  // --- the pass failing (timeout, provider) degrades to honest ranking: rows
-  // say so, the job records the failure and no visual claim
+  // --- a role the pass scored UNDER the bar is left open: its options are on
+  // the list, nothing is chosen for the shopper, and the job records the score
+  {
+    const { client, calls } = userClient();
+    const { client: service, calls: serviceCalls } = serviceClient();
+    const result = await groundProductsForRoom(
+      { supabase: client, serviceSupabase: service },
+      GROUND_INPUT,
+      {
+        readSpec: async () => CONFIRMED_SPEC,
+        extractPalette: noPalette,
+        fetchCandidateImages: async () => ({}),
+        sourceProducts: async () => ({
+          promptKey: "k",
+          promptVersion: "v",
+          model: "stub",
+          textCostUsd: 0.01,
+          needs: [],
+          selectedProducts: [],
+          roleResults: [
+            { category: "sofas", roleLabel: "role-1", status: "strong_match", productId: SOFA_ID, similarity: 0.9, reason: "Curved ivory boucle." },
+            { category: "armchairs", roleLabel: "role-2", status: "acceptable_match", productId: CHAIR_ID, similarity: 0.35, reason: "Cognac, but a different silhouette." }
+          ],
+          missingRoles: []
+        })
+      }
+    );
+    assert.deepEqual(result, { status: "sourced", selectedCount: 1, missingRoleCount: 1, openRoleCount: 1 });
+    const insert = calls.find((call: RecordedCall) => call.table === "shopping_list_items" && call.op === "insert");
+    const rows = (insert?.payload as unknown as Array<Record<string, unknown>>) ?? [];
+    assert.deepEqual(
+      rows.filter((row) => row.status === "selected").map((row) => row.product_id),
+      [SOFA_ID],
+      "the under-the-bar piece is an option, never the app's choice"
+    );
+    assert.ok(rows.some((row) => row.product_id === CHAIR_ID && row.status === "option"));
+    assert.ok(
+      !rows.some((row) => String(row.selection_reason).includes("different silhouette")),
+      "the pass's prose for a piece it did not sell is never presented as the reason it was chosen"
+    );
+    const jobUpdate = serviceCalls.find((call: RecordedCall) => call.table === "ai_jobs" && call.op === "update");
+    const summary = jobUpdate?.payload?.output_summary as {
+      openRoleCount: number;
+      openRoles: Array<{ label: string; similarity: number | null; reason: string }>;
+    };
+    assert.equal(summary.openRoleCount, 1);
+    assert.equal(summary.openRoles.length, 1);
+    assert.equal(summary.openRoles[0].label, "cognac leather lounge chair");
+    assert.equal(summary.openRoles[0].similarity, 0.35, "the score that kept it open is on the record");
+    assert.match(summary.openRoles[0].reason, /close enough visual match/);
+  }
+
+  // --- the pass failing (timeout, provider) means nothing was judged against
+  // the design: every role is open, and the job records the failure
   {
     const { client, calls } = userClient();
     const { client: service, calls: serviceCalls } = serviceClient();
@@ -368,10 +420,10 @@ async function main() {
         }
       }
     );
-    assert.deepEqual(result, { status: "sourced", selectedCount: 2, missingRoleCount: 1 });
+    assert.deepEqual(result, { status: "sourced", selectedCount: 0, missingRoleCount: 1, openRoleCount: 2 });
     const insert = calls.find((call: RecordedCall) => call.table === "shopping_list_items" && call.op === "insert");
     const rows = (insert?.payload as unknown as Array<Record<string, unknown>>) ?? [];
-    assert.ok(rows.every((row) => String(row.selection_reason).includes("catalogue ranking")));
+    assert.ok(rows.length > 0 && rows.every((row) => row.status === "option"), "nothing is chosen without a pass to judge it");
     const jobUpdate = serviceCalls.find((call: RecordedCall) => call.table === "ai_jobs" && call.op === "update");
     assert.equal(jobUpdate?.payload?.status, "succeeded");
     const pass = (jobUpdate?.payload?.output_summary as { visualPass: { used: boolean; error: string | null } }).visualPass;
@@ -405,7 +457,7 @@ async function main() {
     assert.equal(passCalled, false, "no provider call without time to finish it");
     const insert = calls.find((call: RecordedCall) => call.table === "shopping_list_items" && call.op === "insert");
     const rows = (insert?.payload as unknown as Array<Record<string, unknown>>) ?? [];
-    assert.ok(rows.length > 0 && rows.every((row) => String(row.selection_reason).includes("catalogue ranking")));
+    assert.ok(rows.length > 0 && rows.every((row) => row.status === "option"), "nothing is chosen when the pass never ran");
     const jobUpdate = serviceCalls.find((call: RecordedCall) => call.table === "ai_jobs" && call.op === "update");
     const pass = (jobUpdate?.payload?.output_summary as { visualPass: { used: boolean; error: string | null } }).visualPass;
     assert.equal(pass.used, false);
@@ -501,7 +553,7 @@ async function main() {
             textCostUsd: 0.03,
             needs: [],
             selectedProducts: [],
-            roleResults: [{ category: "sofas", roleLabel: "role-1", status: "strong_match", productId: SOFA_ID, reason: "Matches." }],
+            roleResults: [{ category: "sofas", roleLabel: "role-1", status: "strong_match", productId: SOFA_ID, similarity: 0.9, reason: "Matches." }],
             missingRoles: []
           })
         }

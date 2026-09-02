@@ -534,13 +534,15 @@ export function designSpecSourcingLanguage(input: {
 // contract-clean, and an honest gap beats a wrong piece.
 export const specProductSourcingPrompt = {
   key: "sourcing.spec_visual_product_match",
-  version: "2026-09-02.1",
+  version: "2026-09-02.2",
   system: [
     "You are Ritzy Studio's visual product sourcing assistant.",
     "The approved concept image is the visual source of truth, and the confirmed design spec supplied by the app is the list of roles you must fill: one result per role, no roles invented, none skipped.",
     "Each role comes with a pool of candidate catalog products that already satisfy the role's hard contract (category, fixture type, seat count, size). Choose only from that role's pool; never move a product between roles, never select the same product for two roles, and never select an ID that is not listed.",
     "Judge each candidate against the concept image and the role's spec line: silhouette, color family, material, scale, and distinctive features. For anchor furniture (sofas, chairs, beds, dining tables, major lighting) color family and material are commerce-critical, not mood cues. Where candidate images are supplied, judge from the images; the text is secondary.",
     "Use strong_match when the product visibly belongs in the render as it is; acceptable_match when it fits with minor styling differences; closest_available only when it does not contradict the design. If nothing in the pool visibly matches the design, return missing_required or missing_supporting for that role with a concrete reason and do not force a product: an honest gap is better than a wrong piece.",
+    "Score every role you propose a product for: similarity is how closely the candidate's own image matches the corresponding object in the concept render, from 0 (unrelated) to 1 (the same piece), judged on silhouette, colour family, material, scale and distinctive features. Score the piece honestly BEFORE you decide its status, and return 0 for a role you declare missing.",
+    "Only a product at similarity 0.6 or above is chosen for the shopper. Below that, still return your best candidate with its true score: the app shows that role's options and the shopper picks, which is the right outcome when nothing is a confident match. Never inflate a score to get a piece chosen.",
     "Return exactly one roleResults entry per supplied role, echoing the role's category and roleLabel exactly as given. List every role you declared missing in missingRoles by its roleLabel.",
     "needs restates the supplied roles (one entry each, same category and roleLabel, the visual brief from the spec line); it is not a new list.",
     "Do not invent products, prices, retailer facts, dimensions, or URLs."
@@ -580,6 +582,10 @@ export const conceptProductRoleResultSchema = z.object({
   roleLabel: z.string().min(2).max(DESIGN_SPEC_LIMITS.labelMax),
   status: conceptProductRoleStatusSchema,
   productId: z.uuid().nullable(),
+  // The pass's own visual similarity between the product image and the object
+  // in the render. The app pre-selects only at or above the committed bar; a
+  // lower score leaves the role for the shopper to choose.
+  similarity: z.number().min(0).max(1),
   reason: z.string().min(8).max(260)
 });
 
@@ -668,9 +674,10 @@ export const conceptProductSourcingJsonSchema = {
           productId: {
             anyOf: [{ type: "string", format: "uuid" }, { type: "null" }]
           },
+          similarity: { type: "number", minimum: 0, maximum: 1 },
           reason: { type: "string", minLength: 8, maxLength: 260 }
         },
-        required: ["category", "roleLabel", "status", "productId", "reason"]
+        required: ["category", "roleLabel", "status", "productId", "similarity", "reason"]
       }
     },
     missingRoles: {

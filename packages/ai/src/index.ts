@@ -434,6 +434,9 @@ export type SourceProductsFromConceptResult = {
     roleLabel: string;
     status: ProductVisualMatchStatus;
     productId: string | null;
+    // The pass's own visual similarity (0 to 1) for the product it proposes.
+    // The app pre-selects only at or above the committed bar.
+    similarity: number;
     reason: string;
     // Set when the validator synthesized this entry (no valid verdict, or a
     // pick outside the pool): not the pass's own judgement, so callers must
@@ -1775,6 +1778,11 @@ function repairRoleResultsForSelectedProducts({
       roleLabel: role.roleLabel,
       status: selection.matchStatus,
       productId: selection.productId,
+      // A score belongs to the piece it was given for: keep it only when the
+      // repaired entry names the same product, else leave the pick unscored
+      // so it can never clear the bar and be chosen for the shopper.
+      similarity:
+        existing?.productId === selection.productId && typeof existing.similarity === "number" ? existing.similarity : 0,
       reason:
         existing?.productId === selection.productId &&
         existing.status !== "missing_required" &&
@@ -1881,6 +1889,7 @@ function missingRoleResult(role: ConceptProductSourcingRolePool, reason: string)
     roleLabel: role.roleLabel,
     status: role.priority === "required" ? ("missing_required" as const) : ("missing_supporting" as const),
     productId: null,
+    similarity: 0,
     reason,
     synthesized: true as const
   };

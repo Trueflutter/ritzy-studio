@@ -1118,14 +1118,13 @@ export type SpecVisualRoleResult = {
   roleLabel: string;
   status: "strong_match" | "acceptable_match" | "closest_available" | "missing_required" | "missing_supporting";
   productId: string | null;
+  // The pass's own visual similarity for the product it proposes (0 to 1).
+  similarity?: number | null;
   reason: string;
   // A validator-synthesized entry (no valid verdict came back for the role):
   // not the pass's judgement, so it never becomes a user-facing reason.
   synthesized?: boolean;
 };
-
-export const NO_VERDICT_REASON =
-  "The visual pass returned no verdict for this piece; chosen by catalogue ranking against the design spec.";
 
 export type SpecVisualSelection = {
   productId: string;
@@ -1145,7 +1144,12 @@ export type SpecRoleOutcome =
       matchStatus: SpecVisualSelection["matchStatus"];
       reason: string;
       mismatchNote: string | null;
+      // The pass's own score for the chosen piece, recorded on the job.
+      similarity: number | null;
     }
+  // Sourced, but nothing was chosen FOR the shopper: the role's ranked,
+  // contract-clean options are on the list and the shopper picks.
+  | { kind: "open"; role: SpecSourcingRole; pool: SpecRolePool; reason: string; similarity: number | null }
   | { kind: "missing"; role: SpecSourcingRole; entry: MissingRoleEntry };
 
 // The pass echoes the role's short key (or, failing that, its label); either
@@ -1159,199 +1163,144 @@ function poolMatches(pool: SpecRolePool, category: string, roleLabel: string) {
   );
 }
 
-// Distinct products for a set of roles. Each role lists its candidates
-// best-first; the assignment fills as many roles as possible and gives each
-// role the best-ranked candidate the others can spare (augmenting-path
-// matching, deterministic in role order), never a first-come pass that
-// strands a later role whose only candidate an earlier one took.
-function assignDistinctCandidates(
-  wants: Array<{ key: string; candidateIds: string[] }>,
-  reserved: ReadonlySet<string>
-): Map<string, string> {
-  const holderIndex = new Map<string, number>();
-  const assigned = new Map<string, string>();
-  const tryAssign = (index: number, visited: Set<string>): boolean => {
-    for (const id of wants[index].candidateIds) {
-      if (reserved.has(id) || visited.has(id)) {
-        continue;
-      }
-      visited.add(id);
-      const holder = holderIndex.get(id);
-      if (holder === undefined || tryAssign(holder, visited)) {
-        holderIndex.set(id, index);
-        assigned.set(wants[index].key, id);
-        return true;
-      }
-    }
-    return false;
-  };
-  wants.forEach((_, index) => {
-    tryAssign(index, new Set());
-  });
-  return assigned;
-}
+// The committed product-to-design bar. The critique harness's
+// product_consistency check reads the same number from its checklist, and a
+// test pins the two together: what the app chooses FOR a shopper has to be
+// what the gate would call a match.
+export const PRODUCT_CONSISTENCY_THRESHOLD = 0.6;
 
-const VERDICT_STRENGTH: Record<SpecVisualSelection["matchStatus"], number> = {
-  strong_match: 3,
-  acceptable_match: 2,
-  closest_available: 1
-};
-const SAME_PIECE_ALTERNATE_REASON =
-  "The visual pass proposed the same piece it chose for another role; this is the next closest catalogue piece for this one.";
-const SAME_PIECE_MISSING_REASON =
-  "The visual pass proposed a piece already chosen for another role, and no other catalogue piece fits this one.";
-const TAKEN_MISSING_REASON = "Every catalogue piece that fits this role was already chosen for another one.";
-const OUTSIDE_POOL_REASON =
-  "The visual pass named a piece that is not in this role's contract-clean pool, so its verdict could not be used.";
+export const NO_VERDICT_OPEN_REASON =
+  "The visual pass returned no verdict for this piece, so nothing was chosen for you; these are the closest catalogue options.";
+export const BELOW_BAR_OPEN_REASON =
+  "No catalogue piece was a close enough visual match to the design to choose for you; these are the closest options.";
+export const CONTESTED_OPEN_REASON =
+  "The visual pass proposed the same piece it chose for another role, so nothing was chosen for this one; these are the closest options.";
 
-// The visual pass's verdict per role, held to the contract: a pick outside the
-// role's contract-clean pool is never accepted, and a role the pass judged
-// unmatched stays missing with the pass's own reason. The product that
-// visibly belongs to the design wins; a wrong-looking product never does.
-// One product fills one role: a product the pass named for two roles goes to
-// the stronger verdict (pool order on a tie); the other role, like a role
-// with no verdict, takes an alternate that avoids every product the pass
-// named, with as many roles filled as the pools allow.
+// The visual pass's verdict per role, held to the contract AND to the bar.
+// A product is chosen FOR the shopper only when the pass named it inside the
+// role's contract-clean pool and scored it at or above the bar. Everything
+// else leaves the role OPEN: its ranked, contract-clean options are on the
+// list and the shopper picks. A role the pass looked at and rejected outright
+// stays an honest missing entry.
 export function resolveSpecRoleOutcomes({
   pools,
   roleResults,
-  selections
+  selections,
+  threshold = PRODUCT_CONSISTENCY_THRESHOLD
 }: {
   pools: SpecRolePool[];
   roleResults: SpecVisualRoleResult[];
   selections: SpecVisualSelection[];
+  threshold?: number;
 }): SpecRoleOutcome[] {
   const verdicts = pools.map((pool) => {
     const found = roleResults.find((entry) => poolMatches(pool, entry.category, entry.roleLabel)) ?? null;
-    // A synthesized entry means the pass gave no usable verdict for this
-    // role: neither a pick nor an honest "nothing fits". It is treated like an
-    // unavailable pass for this one role (ranking, labelled), never as the
-    // pass's own missing verdict, and its internal text never reaches a user.
+    // A synthesized entry means the pass gave no usable verdict for this role:
+    // neither a pick nor an honest "nothing fits". It is no verdict at all,
+    // never the pass's own missing verdict, and its internal text never
+    // reaches a user.
     const result = found?.synthesized ? null : found;
     const selection = selections.find((entry) => poolMatches(pool, entry.category, entry.roleLabel)) ?? null;
-    const pickedId = result?.productId ?? selection?.productId ?? null;
     const declaredMissing = result?.status === "missing_required" || result?.status === "missing_supporting";
-    const picked = pickedId && !declaredMissing ? pool.candidates.find((candidate) => candidate.id === pickedId) : undefined;
-    const matchStatus: SpecVisualSelection["matchStatus"] =
-      selection?.matchStatus ??
-      (result?.status === "strong_match" || result?.status === "acceptable_match" ? result.status : "closest_available");
+    const pickedId = declaredMissing ? null : (result?.productId ?? selection?.productId ?? null);
+    const picked = pickedId ? pool.candidates.find((candidate) => candidate.id === pickedId) : undefined;
+    const similarity = typeof result?.similarity === "number" ? result.similarity : null;
     return {
       pool,
       result,
       selection,
       picked,
       declaredMissing,
-      matchStatus,
+      similarity,
       noVerdict: !result && !selection,
-      outsidePool: Boolean(pickedId) && !declaredMissing && !picked
+      confident: Boolean(picked) && similarity !== null && similarity >= threshold
     };
   });
 
-  // Phase 1: every product the pass named goes to exactly one role.
+  // One product fills one role. Two roles scored above the bar on the same
+  // product: the closer match keeps it (pool order breaks a tie) and the other
+  // role is left open rather than handed a piece nobody judged for it.
   const winnerByProduct = new Map<string, number>();
   verdicts.forEach((verdict, index) => {
-    if (!verdict.picked) {
+    if (!verdict.confident || !verdict.picked) {
       return;
     }
     const current = winnerByProduct.get(verdict.picked.id);
-    if (current === undefined || VERDICT_STRENGTH[verdict.matchStatus] > VERDICT_STRENGTH[verdicts[current].matchStatus]) {
+    if (current === undefined || (verdict.similarity ?? 0) > (verdicts[current].similarity ?? 0)) {
       winnerByProduct.set(verdict.picked.id, index);
     }
   });
-  const wonPick = (index: number) => {
-    const picked = verdicts[index].picked;
-    return Boolean(picked) && winnerByProduct.get(picked!.id) === index;
-  };
-
-  // Phase 2: roles that lost a collision or got no verdict take alternates
-  // that avoid every product the pass named for any role.
-  const alternates = assignDistinctCandidates(
-    verdicts.flatMap((verdict, index) =>
-      wonPick(index) || verdict.declaredMissing || verdict.outsidePool
-        ? []
-        : [{ key: String(index), candidateIds: verdict.pool.candidates.map((candidate) => candidate.id) }]
-    ),
-    new Set(winnerByProduct.keys())
-  );
 
   return verdicts.map((verdict, index) => {
     const { pool, result, selection, picked } = verdict;
-    if (picked && wonPick(index)) {
+    if (verdict.confident && picked && winnerByProduct.get(picked.id) === index) {
       return {
         kind: "selected",
         role: pool.role,
         pool,
         selectedProductId: picked.id,
-        matchStatus: verdict.matchStatus,
+        matchStatus:
+          selection?.matchStatus ??
+          (result?.status === "strong_match" || result?.status === "acceptable_match" ? result.status : "closest_available"),
         reason: selection?.visualMatchReason ?? result?.reason ?? "Chosen by the visual pass.",
-        mismatchNote: selection?.mismatchNote ?? null
+        mismatchNote: selection?.mismatchNote ?? null,
+        similarity: verdict.similarity
       };
     }
-    const alternate = alternates.get(String(index));
-    if (alternate) {
-      return {
-        kind: "selected",
-        role: pool.role,
-        pool,
-        selectedProductId: alternate,
-        matchStatus: "closest_available",
-        reason: verdict.noVerdict ? NO_VERDICT_REASON : SAME_PIECE_ALTERNATE_REASON,
-        mismatchNote: null
-      };
-    }
-    const reason =
-      verdict.declaredMissing && result
-        ? `The visual pass found no catalogue piece that matches the design: ${result.reason}`
-        : verdict.outsidePool
-          ? OUTSIDE_POOL_REASON
-          : picked
-            ? SAME_PIECE_MISSING_REASON
-            : TAKEN_MISSING_REASON;
-    return { kind: "missing", role: pool.role, entry: missingRoleEntryForRole(pool.role, pool.rejectionReasons, pool.candidates.length, reason) };
-  });
-}
-
-// Deterministic outcomes for when the visual pass is unavailable (timeout or
-// provider failure): distinct top contract-clean candidates across the roles,
-// as many roles filled as the pools allow, labelled honestly as chosen by
-// ranking, never presented as a visual match.
-export function resolveSpecRoleOutcomesByRanking(pools: SpecRolePool[], note: string): SpecRoleOutcome[] {
-  const assigned = assignDistinctCandidates(
-    pools.map((pool, index) => ({ key: String(index), candidateIds: pool.candidates.map((candidate) => candidate.id) })),
-    new Set()
-  );
-  return pools.map((pool, index) => {
-    const pick = assigned.get(String(index));
-    if (!pick) {
+    if (verdict.declaredMissing && result) {
       return {
         kind: "missing",
         role: pool.role,
-        entry: missingRoleEntryForRole(pool.role, pool.rejectionReasons, pool.candidates.length, TAKEN_MISSING_REASON)
+        entry: missingRoleEntryForRole(
+          pool.role,
+          pool.rejectionReasons,
+          pool.candidates.length,
+          `The visual pass found no catalogue piece that matches the design: ${result.reason}`
+        )
       };
     }
     return {
-      kind: "selected",
+      kind: "open",
       role: pool.role,
       pool,
-      selectedProductId: pick,
-      matchStatus: "closest_available",
-      reason: note,
-      mismatchNote: null
+      reason: verdict.confident ? CONTESTED_OPEN_REASON : verdict.noVerdict ? NO_VERDICT_OPEN_REASON : BELOW_BAR_OPEN_REASON,
+      similarity: verdict.similarity
     };
   });
 }
+
+// When the visual pass is unavailable (timeout, provider failure, or no time
+// left in the request), nothing has been judged against the design, so nothing
+// is chosen for the shopper: every role is open with its ranked options.
+export function openSpecRoleOutcomes(pools: SpecRolePool[], reason: string): SpecRoleOutcome[] {
+  return pools.map((pool) => ({ kind: "open", role: pool.role, pool, reason, similarity: null }));
+}
+
+export type OpenRoleEntry = { specKey: string; label: string; reason: string; similarity: number | null };
 
 export function roleOptionsFromOutcomes(outcomes: SpecRoleOutcome[]): {
   roleOptions: RoleProductOptions[];
   selectedProductIdByRole: Map<string, string>;
   missing: MissingRoleEntry[];
+  openRoles: OpenRoleEntry[];
 } {
   const roleOptions: RoleProductOptions[] = [];
   const selectedProductIdByRole = new Map<string, string>();
   const missing: MissingRoleEntry[] = [];
+  const openRoles: OpenRoleEntry[] = [];
   for (const outcome of outcomes) {
     if (outcome.kind === "missing") {
       missing.push(outcome.entry);
+      continue;
+    }
+    if (outcome.kind === "open") {
+      roleOptions.push({ ...outcome.role, options: outcome.pool.candidates });
+      openRoles.push({
+        specKey: outcome.role.specKey,
+        label: outcome.role.label,
+        reason: outcome.reason,
+        similarity: outcome.similarity
+      });
       continue;
     }
     const selected = outcome.pool.candidates.find((candidate) => candidate.id === outcome.selectedProductId);
@@ -1362,5 +1311,5 @@ export function roleOptionsFromOutcomes(outcomes: SpecRoleOutcome[]): {
     roleOptions.push({ ...outcome.role, options });
     selectedProductIdByRole.set(key, outcome.selectedProductId);
   }
-  return { roleOptions, selectedProductIdByRole, missing };
+  return { roleOptions, selectedProductIdByRole, missing, openRoles };
 }

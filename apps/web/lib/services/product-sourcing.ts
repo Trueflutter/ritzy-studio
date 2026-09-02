@@ -17,7 +17,7 @@ import {
   parseConceptImagePalette,
   parseRoomDesignSpecRow,
   resolveSpecRoleOutcomes,
-  resolveSpecRoleOutcomesByRanking,
+  openSpecRoleOutcomes,
   roleOptionKey,
   roleOptionsFromOutcomes,
   selectedItemsTotalAed,
@@ -116,7 +116,10 @@ export type GroundProductsResult =
   | { status: "not_found" }
   | { status: "blocked"; message: string }
   | { status: "spec_pending" }
-  | { status: "sourced"; selectedCount: number; missingRoleCount: number };
+  // openRoleCount: roles that were sourced but not chosen FOR the shopper,
+  // because nothing was confirmed to match the design. Their options are on
+  // the list; the shopper picks.
+  | { status: "sourced"; selectedCount: number; missingRoleCount: number; openRoleCount: number };
 
 export type SpecSource = "confirmed_spec" | "blueprint_fallback";
 
@@ -392,7 +395,7 @@ export async function groundProductsForRoom(
   try {
     let outcomes: SpecRoleOutcome[];
     if (plan.pools.length === 0) {
-      outcomes = [];
+      outcomes = openSpecRoleOutcomes(plan.pools, "No visual pass ran for this list.");
     } else {
       const poolCandidatesById = new Map<string, RoleScopedRankedProductMatch>();
       for (const pool of plan.pools) {
@@ -475,9 +478,9 @@ export async function groundProductsForRoom(
         // such on every row, never presented as a visual match.
         const message = error instanceof Error ? error.message : "Product visual sourcing failed.";
         console.error("Product visual sourcing failed; falling back to ranking.", error);
-        outcomes = resolveSpecRoleOutcomesByRanking(
+        outcomes = openSpecRoleOutcomes(
           plan.pools,
-          "Chosen by catalogue ranking because the visual pass was unavailable; check it against the concept."
+          "The visual pass was unavailable, so nothing was checked against the design and nothing was chosen for you; these are the closest catalogue options."
         );
         visualPass = { ...visualPass, used: false, error: message };
       }
@@ -485,6 +488,7 @@ export async function groundProductsForRoom(
 
     const resolved = roleOptionsFromOutcomes(outcomes);
     missingRoles = [...plan.missing, ...resolved.missing];
+    const openRoles = resolved.openRoles;
 
     // Aggregate budget adherence: per-role picks have no view of the running
     // total, so downgrade to cheaper in-pool alternates before persisting.
@@ -581,6 +585,7 @@ export async function groundProductsForRoom(
 
     const selectedCount = itemRows.filter((row) => row.status === "selected").length;
     const missingRoleCount = missingRoles.filter((entry) => entry.kind === "missing").length;
+    const openRoleCount = openRoles.length;
 
     await closeSourcingJob(serviceSupabase, sourcingJob.id, {
         status: "succeeded",
@@ -593,6 +598,10 @@ export async function groundProductsForRoom(
           roleCount: roles.length,
           poolCount: plan.pools.length,
           selectedCount,
+          openRoleCount,
+          // Why each open role was left to the shopper, and the pass's own
+          // score where it gave one: the audit trail for the bar.
+          openRoles: openRoles.map((entry) => ({ label: entry.label, similarity: entry.similarity, reason: entry.reason })),
           missingRoles: missingRoles.filter((entry) => entry.kind === "missing").map((entry) => entry.label),
           unsourceable: missingRoles.filter((entry) => entry.kind !== "missing").map((entry) => entry.label),
           contractRejections,
@@ -607,7 +616,7 @@ export async function groundProductsForRoom(
         }
       });
 
-    return { status: "sourced", selectedCount, missingRoleCount };
+    return { status: "sourced", selectedCount, missingRoleCount, openRoleCount };
   } catch (error) {
     await closeSourcingJob(serviceSupabase, sourcingJob.id, {
         status: "failed",

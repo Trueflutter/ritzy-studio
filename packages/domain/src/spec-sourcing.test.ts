@@ -7,8 +7,7 @@ import {
   parseMissingRoles,
   placementStrippedText,
   sourcingRolesFromDesignSpec,
-  type SpecSourcingRole,
-  NO_VERDICT_REASON
+  type SpecSourcingRole
 } from "./spec-sourcing";
 
 // S3: the confirmed design spec is the sourcing contract. These pin the
@@ -343,8 +342,8 @@ assert.deepEqual(checkCandidateAgainstSpecRole(sixSeatTable, byRole("dining_tabl
   const echoed = resolveSpecRoleOutcomes({
     pools: lampPlan.pools,
     roleResults: [
-      { category: "Lighting", roleLabel: "role-1", status: "acceptable_match", productId: "00000000-0000-4000-8000-000000000041", reason: "Ceramic lamp fits." },
-      { category: "lighting", roleLabel: "ROLE-2", status: "strong_match", productId: "00000000-0000-4000-8000-000000000042", reason: "Arc lamp matches." }
+      { category: "Lighting", roleLabel: "role-1", status: "acceptable_match", productId: "00000000-0000-4000-8000-000000000041", similarity: 0.7, reason: "Ceramic lamp fits." },
+      { category: "lighting", roleLabel: "ROLE-2", status: "strong_match", productId: "00000000-0000-4000-8000-000000000042", similarity: 0.9, reason: "Arc lamp matches." }
     ],
     selections: []
   });
@@ -450,7 +449,7 @@ assert.deepEqual(checkCandidateAgainstSpecRole(sixSeatTable, byRole("dining_tabl
 // article-less placement, raw-label ranges, ceiling-proved size, silhouette
 // groups, one product per role
 {
-  const { parseSeatRange, placementStrippedText, resolveSpecRoleOutcomes, resolveSpecRoleOutcomesByRanking, buildSpecSourcingPlan } = await import("./spec-sourcing");
+  const { parseSeatRange, placementStrippedText, resolveSpecRoleOutcomes, openSpecRoleOutcomes, CONTESTED_OPEN_REASON, buildSpecSourcingPlan } = await import("./spec-sourcing");
   const walk = sourcingRolesFromDesignSpec(
     {
       objects: [
@@ -539,21 +538,29 @@ assert.deepEqual(checkCandidateAgainstSpecRole(sixSeatTable, byRole("dining_tabl
   const bowl: ProductMatchCandidate = { ...base, id: "00000000-0000-4000-8000-000000000052", name: "Lexie Stoneware Vase", categoryNormalized: "decor" };
   const decorPlan = buildSpecSourcingPlan({ roles: twoDecorRoles, unsourceable: [], candidates: [vase, bowl], roomType: "Living Room", conceptText: "calm" });
   assert.equal(decorPlan.pools.length, 2);
-  const ranked = resolveSpecRoleOutcomesByRanking(decorPlan.pools, "ranking only");
-  const rankedIds = ranked.map((outcome) => (outcome.kind === "selected" ? outcome.selectedProductId : null));
-  assert.equal(new Set(rankedIds).size, 2, "the ranking fallback never gives two roles the same product");
+  // Without a pass, nothing has been judged against the design, so nothing is
+  // chosen FOR the shopper: every role is open with its ranked options.
+  const unjudged = openSpecRoleOutcomes(decorPlan.pools, "ranking only");
+  assert.deepEqual(unjudged.map((outcome) => outcome.kind), ["open", "open"]);
+  assert.equal(unjudged[0].kind === "open" && unjudged[0].reason, "ranking only");
+  assert.deepEqual(
+    unjudged.map((outcome) => (outcome.kind === "open" ? outcome.pool.candidates.length : 0)),
+    [2, 2],
+    "an open role keeps every contract-clean option"
+  );
+  // Two roles scored above the bar on the same product: the closer match keeps
+  // it and the other role is left open, never handed a piece nobody judged.
   const doublePick = resolveSpecRoleOutcomes({
     pools: decorPlan.pools,
     roleResults: [
-      { category: "decor", roleLabel: "role-1", status: "strong_match", productId: vase.id, reason: "vase" },
-      { category: "decor", roleLabel: "role-2", status: "acceptable_match", productId: vase.id, reason: "vase again" }
+      { category: "decor", roleLabel: "role-1", status: "strong_match", productId: vase.id, similarity: 0.7, reason: "vase" },
+      { category: "decor", roleLabel: "role-2", status: "acceptable_match", productId: vase.id, similarity: 0.9, reason: "vase again" }
     ],
     selections: []
   });
-  assert.equal(doublePick[0].kind === "selected" && doublePick[0].selectedProductId, vase.id);
-  assert.equal(doublePick[1].kind === "selected" && doublePick[1].selectedProductId, bowl.id, "the second role takes the next clean candidate");
-  assert.equal(doublePick[1].kind === "selected" && doublePick[1].matchStatus, "closest_available");
-  assert.equal(ranked[0].kind === "selected" && ranked[0].reason, "ranking only", "the ranking reason is the note, once");
+  assert.equal(doublePick[0].kind, "open", "the weaker score loses the contested product");
+  assert.equal(doublePick[0].kind === "open" && doublePick[0].reason, CONTESTED_OPEN_REASON);
+  assert.equal(doublePick[1].kind === "selected" && doublePick[1].selectedProductId, vase.id);
 }
 
 // --- the missing-roles column contract
@@ -590,8 +597,12 @@ console.log("spec-sourcing tests passed");
     buildSpecSourcingPlan,
     imageCandidateIdsForPools,
     resolveSpecRoleOutcomes,
-    resolveSpecRoleOutcomesByRanking,
-    roleOptionsFromOutcomes
+    openSpecRoleOutcomes,
+    roleOptionsFromOutcomes,
+    PRODUCT_CONSISTENCY_THRESHOLD,
+    NO_VERDICT_OPEN_REASON,
+    BELOW_BAR_OPEN_REASON,
+    CONTESTED_OPEN_REASON
   } = await import("./spec-sourcing");
   const { groupShoppingItemsByRole, buildShoppingListItemRows, fitSelectionToBudget, roleOptionKey } = await import(
     "./product-matching"
@@ -666,8 +677,8 @@ console.log("spec-sourcing tests passed");
   const outcomes = resolveSpecRoleOutcomes({
     pools: plan.pools,
     roleResults: [
-      { category: "sofas", roleLabel: "curved three-seat sofa", status: "strong_match", productId: "00000000-0000-4000-8000-000000000012", reason: "Curved ivory boucle three-seater matches the render." },
-      { category: "armchairs", roleLabel: "sculptural cognac leather lounge chair", status: "missing_required", productId: null, reason: "No cognac leather lounge chair with a sculptural shell in the pool." }
+      { category: "sofas", roleLabel: "curved three-seat sofa", status: "strong_match", productId: "00000000-0000-4000-8000-000000000012", similarity: 0.85, reason: "Curved ivory boucle three-seater matches the render." },
+      { category: "armchairs", roleLabel: "sculptural cognac leather lounge chair", status: "missing_required", productId: null, similarity: 0, reason: "No cognac leather lounge chair with a sculptural shell in the pool." }
     ],
     selections: [
       { productId: "00000000-0000-4000-8000-000000000012", category: "sofas", roleLabel: "curved three-seat sofa", matchStatus: "strong_match", visualMatchReason: "Curved ivory boucle three-seater matches the render.", mismatchNote: null }
@@ -682,89 +693,92 @@ console.log("spec-sourcing tests passed");
   const outsidePool = resolveSpecRoleOutcomes({
     pools: plan.pools,
     roleResults: [
-      { category: "sofas", roleLabel: "curved three-seat sofa", status: "strong_match", productId: "00000000-0000-4000-8000-000000000011", reason: "two seater" }
+      { category: "sofas", roleLabel: "curved three-seat sofa", status: "strong_match", productId: "00000000-0000-4000-8000-000000000011", similarity: 0.9, reason: "two seater" }
     ],
     selections: []
   });
-  assert.equal(outsidePool[0].kind, "missing", "a pick outside the contract-clean pool is never accepted");
+  assert.equal(outsidePool[0].kind, "open", "a pick outside the contract-clean pool is never accepted, and nothing else was judged");
 
-  // --- a validator-synthesized "missing" entry is no verdict at all: the role
-  // falls back to ranking with the fixed no-verdict reason, and the
-  // validator's internal text never becomes a user-facing reason
+  // --- a validator-synthesized "missing" entry is no verdict at all: the
+  // role is left OPEN with its options, never marked missing on the pass's
+  // behalf, and the validator's internal text never reaches a user
   const synthesized = resolveSpecRoleOutcomes({
     pools: plan.pools,
     roleResults: [
-      { category: "sofas", roleLabel: "curved three-seat sofa", status: "missing_required", productId: null, reason: "No roleResults entry was returned for this role.", synthesized: true }
+      { category: "sofas", roleLabel: "curved three-seat sofa", status: "missing_required", productId: null, similarity: 0, reason: "No roleResults entry was returned for this role.", synthesized: true }
     ],
     selections: []
   });
-  assert.equal(synthesized[0].kind, "selected", "a synthesized entry never marks the role missing");
-  assert.equal(synthesized[0].kind === "selected" && synthesized[0].matchStatus, "closest_available");
-  assert.equal(synthesized[0].kind === "selected" && synthesized[0].reason, NO_VERDICT_REASON);
+  assert.equal(synthesized[0].kind, "open", "a synthesized entry never marks the role missing");
+  assert.equal(synthesized[0].kind === "open" && synthesized[0].reason, NO_VERDICT_OPEN_REASON);
   assert.ok(!JSON.stringify(synthesized).includes("No roleResults entry"), "validator text must not leak");
 
-  // --- ranking fallback: honest closest-available, never a visual claim
-  const ranked = resolveSpecRoleOutcomesByRanking(plan.pools, "The visual pass timed out.");
-  assert.ok(ranked.every((outcome) => outcome.kind === "selected" && outcome.matchStatus === "closest_available"));
-
-  // --- one product, one role: a product the pass named for two roles goes
-  // to the stronger verdict; the other role, and any role with no verdict,
-  // takes an alternate that avoids EVERY product the pass named; the
-  // assignment fills as many roles as the pools allow, never a greedy pass
-  // Resolution reads ids and prices only: four products cloned from one
-  // ranked candidate keep the scenarios exact.
+  // --- the bar: only a product the pass scored at or above it is chosen FOR
+  // the shopper. Below it the role is open with the same options, so a piece
+  // the design gate would fail is never presented as the app's choice.
   const seed = plan.pools[0].candidates[0];
-  const [X, Y, Z, W] = ["a1", "a2", "a3", "a4"].map((suffix) => ({ ...seed, id: `00000000-0000-4000-8000-0000000000${suffix}` }));
+  const [X, Y, Z] = ["a1", "a2", "a3"].map((suffix) => ({ ...seed, id: `00000000-0000-4000-8000-0000000000${suffix}` }));
   const roleA = plan.pools[0].role;
   const roleB = plan.pools[1].role;
-  const roleC = { ...roleA, echoKey: "role-99", label: "third role", specKey: "99:third" };
   const pool = (role: typeof roleA, candidates: Array<typeof seed>) => ({ role, candidates, rejectionReasons: {} });
-  const collided = resolveSpecRoleOutcomes({
-    pools: [pool(roleA, [X, Y, Z]), pool(roleB, [X, Y, Z]), pool(roleC, [Y, W])],
-    roleResults: [
-      { category: roleA.category, roleLabel: roleA.echoKey, status: "closest_available", productId: X.id, reason: "a" },
-      { category: roleB.category, roleLabel: roleB.echoKey, status: "closest_available", productId: X.id, reason: "b" },
-      { category: roleC.category, roleLabel: roleC.echoKey, status: "strong_match", productId: Y.id, reason: "c" }
-    ],
+  const scored = (similarity: number) =>
+    resolveSpecRoleOutcomes({
+      pools: [pool(roleA, [X, Y])],
+      roleResults: [{ category: roleA.category, roleLabel: roleA.echoKey, status: "strong_match", productId: X.id, similarity, reason: "confident prose" }],
+      selections: []
+    })[0];
+  assert.equal(scored(PRODUCT_CONSISTENCY_THRESHOLD).kind, "selected", "at the bar the piece is chosen");
+  assert.equal(scored(PRODUCT_CONSISTENCY_THRESHOLD - 0.01).kind, "open", "a hair under the bar it is not");
+  const belowBar = scored(0.3);
+  assert.equal(belowBar.kind === "open" && belowBar.reason, BELOW_BAR_OPEN_REASON);
+  assert.equal(belowBar.kind === "open" && belowBar.pool.candidates.length, 2, "the options stay on the list");
+  assert.equal(
+    scored(0.3).kind === "open" &&
+      !JSON.stringify(scored(0.3)).includes("confident prose"),
+    true,
+    "the pass's prose for a piece it did not sell never becomes the app's claim"
+  );
+  // Confident prose with no score at all cannot clear a bar it never met.
+  const unscored = resolveSpecRoleOutcomes({
+    pools: [pool(roleA, [X, Y])],
+    roleResults: [{ category: roleA.category, roleLabel: roleA.echoKey, status: "strong_match", productId: X.id, reason: "no score" }],
     selections: []
   });
-  assert.deepEqual(
-    collided.map((outcome) => (outcome.kind === "selected" ? [outcome.selectedProductId, outcome.matchStatus] : ["missing"])),
-    [[X.id, "closest_available"], [Z.id, "closest_available"], [Y.id, "strong_match"]],
-    "the losing role's alternate skips the product the pass named for the third role"
-  );
-  const stronger = resolveSpecRoleOutcomes({
-    pools: [pool(roleA, [X, Y, Z]), pool(roleB, [X, Y, Z])],
-    roleResults: [
-      { category: roleA.category, roleLabel: roleA.echoKey, status: "closest_available", productId: X.id, reason: "a" },
-      { category: roleB.category, roleLabel: roleB.echoKey, status: "strong_match", productId: X.id, reason: "b" }
-    ],
+  assert.equal(unscored[0].kind, "open");
+
+  // A role the pass looked at and rejected outright stays an honest gap.
+  const rejected = resolveSpecRoleOutcomes({
+    pools: [pool(roleA, [X, Y])],
+    roleResults: [{ category: roleA.category, roleLabel: roleA.echoKey, status: "missing_required", productId: null, similarity: 0, reason: "nothing in the pool is curved" }],
     selections: []
   });
+  assert.equal(rejected[0].kind, "missing");
+
+  // --- roleOptionsFromOutcomes: an open role contributes options and no pick
+  const mixed = roleOptionsFromOutcomes([
+    resolveSpecRoleOutcomes({
+      pools: [pool(roleA, [X, Y])],
+      roleResults: [{ category: roleA.category, roleLabel: roleA.echoKey, status: "strong_match", productId: X.id, similarity: 0.9, reason: "yes" }],
+      selections: []
+    })[0],
+    resolveSpecRoleOutcomes({
+      pools: [pool(roleB, [Y, Z])],
+      roleResults: [{ category: roleB.category, roleLabel: roleB.echoKey, status: "acceptable_match", productId: Y.id, similarity: 0.2, reason: "not really" }],
+      selections: []
+    })[0]
+  ]);
+  assert.equal(mixed.roleOptions.length, 2, "an open role is still on the list");
+  assert.equal(mixed.selectedProductIdByRole.size, 1, "with nothing chosen for it");
   assert.deepEqual(
-    stronger.map((outcome) => (outcome.kind === "selected" ? outcome.selectedProductId : "missing")),
-    [Y.id, X.id],
-    "a later strong match beats an earlier closest-available for the same product"
+    mixed.openRoles.map((entry) => [entry.label, entry.similarity]),
+    [[roleB.label, 0.2]],
+    "the open role, its reason and the score are recorded for the job"
   );
-  // A role with no verdict never takes the product the pass named for a
-  // later role; it fills from what the verdicts leave.
-  const noVerdictFirst = resolveSpecRoleOutcomes({
-    pools: [pool(roleA, [X, Y]), pool(roleB, [X, Y])],
-    roleResults: [
-      { category: roleA.category, roleLabel: roleA.echoKey, status: "missing_required", productId: null, reason: "synth", synthesized: true },
-      { category: roleB.category, roleLabel: roleB.echoKey, status: "strong_match", productId: X.id, reason: "b" }
-    ],
-    selections: []
-  });
+  const mixedRows = buildShoppingListItemRows({ roleOptions: mixed.roleOptions, selectedProductIdByRole: mixed.selectedProductIdByRole });
   assert.deepEqual(
-    noVerdictFirst.map((outcome) => (outcome.kind === "selected" ? [outcome.selectedProductId, outcome.reason] : ["missing"])),
-    [[Y.id, NO_VERDICT_REASON], [X.id, "b"]]
-  );
-  const rankedFill = resolveSpecRoleOutcomesByRanking([pool(roleA, [X, Y]), pool(roleB, [X])], "note");
-  assert.deepEqual(
-    rankedFill.map((outcome) => (outcome.kind === "selected" ? outcome.selectedProductId : "missing")),
-    [Y.id, X.id],
-    "ranking gives the single-candidate role its only product and moves the other role along"
+    mixedRows.filter((row) => row.status === "selected").map((row) => row.product_id),
+    [X.id],
+    "the open role writes options only, never a selected row"
   );
 
   // --- budget fitting never downgrades onto a product another role holds,
@@ -775,8 +789,8 @@ console.log("spec-sourcing tests passed");
     resolveSpecRoleOutcomes({
       pools: [pool(roleA, [x900, y100]), pool(roleB, [y100, x900])],
       roleResults: [
-        { category: roleA.category, roleLabel: roleA.echoKey, status: "strong_match", productId: X.id, reason: "a" },
-        { category: roleB.category, roleLabel: roleB.echoKey, status: "strong_match", productId: Y.id, reason: "b" }
+        { category: roleA.category, roleLabel: roleA.echoKey, status: "strong_match", productId: X.id, similarity: 0.9, reason: "a" },
+        { category: roleB.category, roleLabel: roleB.echoKey, status: "strong_match", productId: Y.id, similarity: 0.9, reason: "b" }
       ],
       selections: []
     })
@@ -788,8 +802,8 @@ console.log("spec-sourcing tests passed");
     resolveSpecRoleOutcomes({
       pools: [pool(roleA, [x900, y100, z50]), pool(roleB, [y100, x900])],
       roleResults: [
-        { category: roleA.category, roleLabel: roleA.echoKey, status: "strong_match", productId: X.id, reason: "a" },
-        { category: roleB.category, roleLabel: roleB.echoKey, status: "strong_match", productId: Y.id, reason: "b" }
+        { category: roleA.category, roleLabel: roleA.echoKey, status: "strong_match", productId: X.id, similarity: 0.9, reason: "a" },
+        { category: roleB.category, roleLabel: roleB.echoKey, status: "strong_match", productId: Y.id, similarity: 0.9, reason: "b" }
       ],
       selections: []
     })
