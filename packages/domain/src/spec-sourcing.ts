@@ -197,6 +197,7 @@ const CATEGORY_RULES: CategoryRule[] = [
   { category: "bedding", phrases: ["bed runner", "bed linen", "bedsheet", "bed sheet", "bed pillow"] },
   { category: "office_chairs", phrases: ["office chair", "task chair", "desk chair"] },
   { category: "stools", phrases: ["bar stool", "counter stool", "bar chair", "counter chair"] },
+  { category: "chairs", phrases: ["dining chair", "dining chairs", "dining seat"] },
   {
     category: "side_tables",
     phrases: ["bedside", "nightstand", "night stand", "side table", "end table", "accent table", "occasional table", "console table", "lamp table", "hall table"]
@@ -204,7 +205,6 @@ const CATEGORY_RULES: CategoryRule[] = [
   { category: "coffee_tables", phrases: ["coffee table", "cocktail table", "centre table", "center table"] },
   { category: "dining_tables", phrases: ["dining table"] },
   { category: "desks", phrases: ["desk", "workstation", "writing table"] },
-  { category: "chairs", phrases: ["dining chair", "dining chairs", "dining seat"] },
   { category: "stools", phrases: ["stool", "ottoman", "pouf", "pouffe", "footstool", "bench"] },
   {
     category: "armchairs",
@@ -246,10 +246,38 @@ const PLACEMENT_LINKS = [
 ];
 const ARTICLES = "(?:the|a|an|its|your|this|that|our|their|each|either|both|my|his|her)";
 
+// Links that also cut when followed (within three modifier words) by a room
+// object at the END of the text: "light over dining table", "sofa opposite six
+// seater dining table", "rug under coffee table". "around" never joins this
+// list ("wrap around sectional"), and a link whose object is followed by more
+// words ("under bed storage drawers") is a compound modifier, not a placement.
+const OBJECT_PLACEMENT_LINKS = [
+  "above", "over", "beside", "flanking", "facing", "near", "at", "under", "beneath", "below", "behind",
+  "next to", "by", "opposite", "against", "along", "alongside", "between", "in front of", "on", "atop", "toward", "towards"
+];
+const ROOM_OBJECT_PHRASES = [
+  ...new Set([
+    ...CATEGORY_RULES.flatMap((rule) => rule.phrases),
+    "wall", "ceiling", "window", "windows", "door", "doors", "fireplace", "floor", "corner", "island", "tv", "television",
+    "terrace", "balcony", "hallway", "entrance", "stairs", "column", "columns", "niche", "alcove", "mantel", "mantelpiece",
+    "media console", "media unit", "console", "counter", "worktop", "vanity", "bath", "shower"
+  ])
+];
+const ROOM_OBJECT_PATTERN = ROOM_OBJECT_PHRASES.map((phrase) => phrase.replace(/\s+/g, "\\s+")).join("|");
+
 export function placementStrippedText(text: string): string {
   let head = text;
   for (const link of PLACEMENT_LINKS) {
     const pattern = new RegExp(`(?:^|\\s)${link.replace(/\s+/g, "\\s+")}\\s+${ARTICLES}(?:\\s|$)`);
+    const match = pattern.exec(head);
+    if (match && match.index > 0) {
+      head = head.slice(0, match.index).trim();
+    }
+  }
+  for (const link of OBJECT_PLACEMENT_LINKS) {
+    const pattern = new RegExp(
+      `(?:^|\\s)${link.replace(/\s+/g, "\\s+")}(?:\\s+[a-z0-9]+){0,3}?\\s+(?:${ROOM_OBJECT_PATTERN})(?:s|es)?$`
+    );
     const match = pattern.exec(head);
     if (match && match.index > 0) {
       head = head.slice(0, match.index).trim();
@@ -273,6 +301,30 @@ function categoryForText(text: string): SourcingCategory | null {
     }
   }
   return null;
+}
+
+// Compound phrases whose head noun rides on a furniture modifier: claimed on
+// the whole text before the head-noun step, so "dining chair" is a dining
+// chair (chairs), not a chair (armchairs), and "floor lamp" a floor lamp.
+const LEADING_COMPOUND_RULES: CategoryRule[] = CATEGORY_RULES.slice(0, 6);
+
+// The extractor's role keys and most labels end in their head noun
+// ("coffee_table_sculpture", "media_console_books", "stack of coffee table
+// books"): the head noun decides before the whole text can be swallowed by an
+// earlier rule naming the furniture the object sits on.
+function categoryForObjectText(text: string): SourcingCategory | null {
+  for (const rule of LEADING_COMPOUND_RULES) {
+    if (rule.phrases.some((phrase) => hasPhrase(text, phrase))) {
+      return rule.category;
+    }
+  }
+  const tokens = text.split(" ").filter(Boolean);
+  const head = tokens[tokens.length - 1] ?? "";
+  return (head ? categoryForText(head) : null) ?? categoryForText(text);
+}
+
+function withoutParentheticals(value: string) {
+  return value.replace(/\([^)]*\)/g, " ");
 }
 
 function isBuiltIn(text: string) {
@@ -351,9 +403,10 @@ function sofaSizeClassForSpec(text: string, seats: { min: number; max: number } 
   if (hasPhrase(text, "loveseat") || (seats && seats.max <= 2)) {
     return "compact";
   }
-  // Five seats and up with no shape word: the spec proved capacity, not a
-  // straight silhouette, so a sectional may fill it and capacity constrains.
-  if (seats && seats.min >= 5) {
+  // Five seats and up (as a floor, a ceiling or a range) with no shape word:
+  // the spec proved capacity, not a straight silhouette, so a sectional may
+  // fill it and capacity constrains.
+  if (seats && seats.max >= 5) {
     return "any";
   }
   return "standard";
@@ -417,6 +470,28 @@ const SEATING_SILHOUETTE_EXCLUSIONS = [
   "bean bag",
   "beanbag"
 ];
+// A spec that names a silhouette ("oak rocking chair") opts out of its whole
+// synonym group, so a "rocker" can fill a rocking-chair role.
+const SILHOUETTE_GROUPS: string[][] = [
+  ["rocking", "rocker"],
+  ["swing", "hanging chair", "hanging egg", "egg chair", "hammock"],
+  ["bean bag", "beanbag"],
+  ["outdoor", "garden", "patio"],
+  ["gaming"],
+  ["massage"],
+  ["inflatable"]
+];
+
+function excludedSilhouettesFor(specText: string): string[] {
+  const requested = new Set<string>();
+  for (const group of SILHOUETTE_GROUPS) {
+    if (group.some((phrase) => hasPhrase(specText, phrase))) {
+      group.forEach((phrase) => requested.add(phrase));
+    }
+  }
+  return SEATING_SILHOUETTE_EXCLUSIONS.filter((phrase) => !requested.has(phrase));
+}
+
 const UNAMBIGUOUS_SILHOUETTES = new Set([
   "rocking",
   "rocker",
@@ -469,9 +544,13 @@ export function sourcingRolesFromDesignSpec(
 
   merged.forEach((object, index) => {
     const roleText = normalizeText(object.role);
-    // The label's object clause only: placement phrases ("above the
-    // fireplace", "over the dining table") name other things in the room.
-    const labelText = placementStrippedText(normalizeText(object.label));
+    // The label's object clause only: parentheticals ("(coffee table)") and
+    // placement phrases ("above the fireplace", "on media console") name the
+    // things the object sits on or near, not the object.
+    const labelText = placementStrippedText(normalizeText(withoutParentheticals(object.label)));
+    // Seat parsing needs the raw hyphens ("6-8 seater"), so it reads a
+    // placement-stripped copy of the raw label rather than the normalized one.
+    const rawLabelForSeats = placementStrippedText(withoutParentheticals(object.label).toLowerCase());
     const combined = `${roleText} ${labelText}`;
     const specKey = `${index}:${roleText.replace(/\s+/g, "_") || "object"}`;
 
@@ -487,10 +566,11 @@ export function sourcingRolesFromDesignSpec(
       return;
     }
 
-    // The role field is the extractor's clean noun ("pendant", "dining_table");
-    // it decides first, so a label like "pendant over the dining table" can
-    // never be read as a table. The label only decides when the role is vague.
-    const category = categoryForText(roleText) ?? categoryForText(labelText);
+    // The role field is the extractor's clean noun ("pendant", "dining_table",
+    // "coffee_table_sculpture"); it decides first, head noun before whole
+    // text, so neither the furniture an object sits on nor a placement phrase
+    // in the label can claim it. The label only decides when the role is vague.
+    const category = categoryForObjectText(roleText) ?? categoryForObjectText(labelText);
     if (!category) {
       unsourceable.push({
         specKey,
@@ -515,7 +595,7 @@ export function sourcingRolesFromDesignSpec(
         label: object.label,
         visualBrief: visualBriefFor(object),
         quantity: object.quantity,
-        seats: parseSeatRange(object.capacity) ?? parseSeatRange(labelText),
+        seats: parseSeatRange(object.capacity) ?? parseSeatRange(rawLabelForSeats),
         specSizeDescriptor: object.sizeDescriptor,
         specCapacity: object.capacity,
         specPaletteMaterials: object.paletteMaterials
@@ -570,9 +650,7 @@ function specSourcingRole({
       category === "lighting" ? (fixtureClassForRoleText(roleText) ?? fixtureClassForRoleText(labelText)) : undefined,
     minSeats: seats?.min,
     maxSeats: seats?.max,
-    excludedSilhouettes: SEATING_CATEGORIES.has(category)
-      ? SEATING_SILHOUETTE_EXCLUSIONS.filter((phrase) => !hasPhrase(combined, phrase))
-      : []
+    excludedSilhouettes: SEATING_CATEGORIES.has(category) ? excludedSilhouettesFor(combined) : []
   };
   const baseRole: RoomProductRoleSpec = {
     category,
@@ -996,49 +1074,87 @@ export function resolveSpecRoleOutcomes({
   roleResults: SpecVisualRoleResult[];
   selections: SpecVisualSelection[];
 }): SpecRoleOutcome[] {
+  // One product fills one role: a product the pass named for two roles keeps
+  // the first, and the second role takes its next contract-clean candidate,
+  // labelled closest-available, or goes missing when none is left.
+  const taken = new Set<string>();
   return pools.map((pool) => {
     const result = roleResults.find((entry) => poolMatches(pool, entry.category, entry.roleLabel)) ?? null;
     const selection = selections.find((entry) => poolMatches(pool, entry.category, entry.roleLabel)) ?? null;
     const pickedId = result?.productId ?? selection?.productId ?? null;
     const picked = pickedId ? pool.candidates.find((candidate) => candidate.id === pickedId) : undefined;
+    const declaredMissing = result?.status === "missing_required" || result?.status === "missing_supporting";
 
-    if (picked && result && (result.status === "missing_required" || result.status === "missing_supporting")) {
-      // Contradictory verdict: a product named on a role declared missing.
-      // The missing verdict is the honest one.
-    } else if (picked) {
-      return {
-        kind: "selected",
-        role: pool.role,
-        pool,
-        selectedProductId: picked.id,
-        matchStatus:
-          selection?.matchStatus ??
-          (result?.status === "strong_match" || result?.status === "acceptable_match" ? result.status : "closest_available"),
-        reason: selection?.visualMatchReason ?? result?.reason ?? "Chosen by the visual pass.",
-        mismatchNote: selection?.mismatchNote ?? null
-      };
+    if (picked && !declaredMissing) {
+      if (!taken.has(picked.id)) {
+        taken.add(picked.id);
+        return {
+          kind: "selected",
+          role: pool.role,
+          pool,
+          selectedProductId: picked.id,
+          matchStatus:
+            selection?.matchStatus ??
+            (result?.status === "strong_match" || result?.status === "acceptable_match" ? result.status : "closest_available"),
+          reason: selection?.visualMatchReason ?? result?.reason ?? "Chosen by the visual pass.",
+          mismatchNote: selection?.mismatchNote ?? null
+        };
+      }
+      const alternate = pool.candidates.find((candidate) => !taken.has(candidate.id));
+      if (alternate) {
+        taken.add(alternate.id);
+        return {
+          kind: "selected",
+          role: pool.role,
+          pool,
+          selectedProductId: alternate.id,
+          matchStatus: "closest_available",
+          reason: "The visual pass proposed the same piece it chose for another role; this is the next closest catalogue piece for this one.",
+          mismatchNote: null
+        };
+      }
     }
 
-    const reason = result
+    const reason = declaredMissing && result
       ? `The visual pass found no catalogue piece that matches the design: ${result.reason}`
-      : "The visual pass returned no verdict for this piece.";
+      : picked
+        ? "The visual pass proposed a piece already chosen for another role, and no other catalogue piece fits this one."
+        : "The visual pass returned no verdict for this piece.";
     return { kind: "missing", role: pool.role, entry: missingRoleEntryForRole(pool.role, pool.rejectionReasons, pool.candidates.length, reason) };
   });
 }
 
 // Deterministic outcomes for when the visual pass is unavailable (timeout or
-// provider failure): the top contract-clean candidate per role, labelled
-// honestly as chosen by ranking, never presented as a visual match.
+// provider failure): the top contract-clean candidate per role not already
+// chosen for another role, labelled honestly as chosen by ranking, never
+// presented as a visual match.
 export function resolveSpecRoleOutcomesByRanking(pools: SpecRolePool[], note: string): SpecRoleOutcome[] {
-  return pools.map((pool) => ({
-    kind: "selected",
-    role: pool.role,
-    pool,
-    selectedProductId: pool.candidates[0].id,
-    matchStatus: "closest_available",
-    reason: "Chosen by catalogue ranking against the design spec.",
-    mismatchNote: note
-  }));
+  const taken = new Set<string>();
+  return pools.map((pool) => {
+    const pick = pool.candidates.find((candidate) => !taken.has(candidate.id)) ?? null;
+    if (!pick) {
+      return {
+        kind: "missing",
+        role: pool.role,
+        entry: missingRoleEntryForRole(
+          pool.role,
+          pool.rejectionReasons,
+          pool.candidates.length,
+          "Every catalogue piece that fits this role was already chosen for another one."
+        )
+      };
+    }
+    taken.add(pick.id);
+    return {
+      kind: "selected",
+      role: pool.role,
+      pool,
+      selectedProductId: pick.id,
+      matchStatus: "closest_available",
+      reason: note,
+      mismatchNote: null
+    };
+  });
 }
 
 export function roleOptionsFromOutcomes(outcomes: SpecRoleOutcome[]): {

@@ -716,6 +716,12 @@ function assembleFinalGroundedRenderPrompt({
 // longer one sized to the slowest observed legitimate provider (gpt-image-2 at ~140s).
 const DEFAULT_TEXT_TIMEOUT_MS = 90_000;
 const IMAGE_CALL_TIMEOUT_MS = 240_000;
+// The spec-driven sourcing pass reads the concept image plus up to a few
+// dozen product images across every role of the design in one call; it is
+// the one text call allowed past the 90s default. The route that runs it
+// (/product-matching, 300s) must outlast it: PRODUCT_SOURCING_TIMEOUT_MS +
+// image fetch + persistence stays well inside that budget.
+export const PRODUCT_SOURCING_TIMEOUT_MS = 150_000;
 
 export function textTimeoutMs(env: { RITZY_TEXT_TIMEOUT_MS?: string }): number {
   const configured = Number(env.RITZY_TEXT_TIMEOUT_MS);
@@ -1508,7 +1514,8 @@ export async function sourceProductsFromConcept(
   );
   const roleContextLines = [designSpecSourcingLanguage(input.designSpec)];
 
-  const response = await client.responses.create({
+  const response = await client.responses.create(
+    {
     max_output_tokens: 32000,
     ...stageRequestParams,
     input: [
@@ -1553,7 +1560,9 @@ export async function sourceProductsFromConcept(
         strict: true
       }
     }
-  });
+    },
+    { timeout: PRODUCT_SOURCING_TIMEOUT_MS }
+  );
 
   const parsed = conceptProductSourcingResponseSchema.parse(JSON.parse(response.output_text));
   const validated = validateProductSourcingRoleContract(parsed, roleCandidatePools, allowedProductIds);

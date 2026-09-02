@@ -438,6 +438,114 @@ assert.deepEqual(checkCandidateAgainstSpecRole(sixSeatTable, byRole("dining_tabl
   assert.deepEqual(checkCandidateAgainstSpecRole(gardenPalette, byRole("lounge_chair")), { ok: true });
 }
 
+// --- live-run findings and the 7b50050 review: head nouns, parentheticals,
+// article-less placement, raw-label ranges, ceiling-proved size, silhouette
+// groups, one product per role
+{
+  const { parseSeatRange, placementStrippedText, resolveSpecRoleOutcomes, resolveSpecRoleOutcomesByRanking, buildSpecSourcingPlan } = await import("./spec-sourcing");
+  const walk = sourcingRolesFromDesignSpec(
+    {
+      objects: [
+        { role: "coffee_table_sculpture", label: "Decorative ceramic sculpture (coffee table)", quantity: 1, sizeDescriptor: null, capacity: null, paletteMaterials: [] },
+        { role: "coffee_table_tray", label: "Decorative tray and small bowl (coffee table)", quantity: 1, sizeDescriptor: null, capacity: null, paletteMaterials: [] },
+        { role: "media_console_sculpture", label: "Small sculptural decor on media console", quantity: 1, sizeDescriptor: null, capacity: null, paletteMaterials: [] },
+        { role: "media_console_books", label: "Stack of books on media console", quantity: 1, sizeDescriptor: null, capacity: null, paletteMaterials: [] },
+        { role: "media_console_small_bowl", label: "Small bowl / candle on media console", quantity: 1, sizeDescriptor: null, capacity: null, paletteMaterials: [] },
+        { role: "floating_media_console", label: "Wall-mounted walnut media unit", quantity: 1, sizeDescriptor: null, capacity: null, paletteMaterials: [] },
+        { role: "potted_plant", label: "Large potted fiddle-leaf fig", quantity: 1, sizeDescriptor: null, capacity: null, paletteMaterials: [] },
+        { role: "sofa_pillows", label: "Scatter pillows", quantity: 4, sizeDescriptor: null, capacity: null, paletteMaterials: [] },
+        { role: "throw_blanket", label: "Sofa throw blanket", quantity: 1, sizeDescriptor: null, capacity: null, paletteMaterials: [] },
+        { role: "sheer_curtains", label: "Sheer sliding drapery panels", quantity: 1, sizeDescriptor: null, capacity: null, paletteMaterials: [] },
+        { role: "cove_led_under_console", label: "Under-console LED strip", quantity: 1, sizeDescriptor: null, capacity: null, paletteMaterials: [] },
+        { role: "wall_tv", label: "Wall-mounted flat-screen TV", quantity: 1, sizeDescriptor: null, capacity: null, paletteMaterials: [] },
+        { role: "dining_chair", label: "Upholstered dining chairs", quantity: 6, sizeDescriptor: null, capacity: null, paletteMaterials: [] },
+        { role: "desk_chair", label: "Leather desk chair", quantity: 1, sizeDescriptor: null, capacity: null, paletteMaterials: [] }
+      ]
+    },
+    "Living Room"
+  );
+  assert.deepEqual(
+    walk.roles.map((role) => [role.specRole, role.category]),
+    [
+      ["coffee_table_sculpture", "decor"],
+      ["coffee_table_tray", "decor"],
+      ["media_console_sculpture", "decor"],
+      ["media_console_books", "decor"],
+      ["media_console_small_bowl", "decor"],
+      ["floating_media_console", "storage"],
+      ["potted_plant", "decor"],
+      ["sofa_pillows", "decor"],
+      ["throw_blanket", "decor"],
+      ["sheer_curtains", "curtains"],
+      ["dining_chair", "chairs"],
+      ["desk_chair", "office_chairs"]
+    ],
+    "the walk room's decor objects are decor, whatever furniture they sit on"
+  );
+  assert.deepEqual(walk.unsourceable.map((entry) => [entry.label, entry.kind]), [
+    ["Under-console LED strip", "built_in"],
+    ["Wall-mounted flat-screen TV", "no_catalogue_category"]
+  ]);
+
+  // article-less placement with a known room object at the end
+  assert.equal(placementStrippedText("curved sofa opposite six seater dining table"), "curved sofa");
+  assert.equal(placementStrippedText("statement light over dining table"), "statement light");
+  assert.equal(placementStrippedText("rug under coffee table"), "rug");
+  assert.equal(placementStrippedText("small sculptural decor on media console"), "small sculptural decor");
+  assert.equal(placementStrippedText("slim under bed storage drawers"), "slim under bed storage drawers");
+  assert.equal(placementStrippedText("wrap around sectional sofa"), "wrap around sectional sofa");
+  const leak = sourcingRolesFromDesignSpec(
+    {
+      objects: [
+        { role: "sofa", label: "curved sofa opposite six seater dining table", quantity: 1, sizeDescriptor: null, capacity: null, paletteMaterials: [] },
+        { role: "lighting", label: "statement light over dining table", quantity: 1, sizeDescriptor: null, capacity: null, paletteMaterials: [] },
+        { role: "dining_table", label: "6-8 seater dining table", quantity: 1, sizeDescriptor: null, capacity: null, paletteMaterials: [] },
+        { role: "sofa", label: "generous sofa", quantity: 1, sizeDescriptor: null, capacity: "seats up to 8", paletteMaterials: [] },
+        { role: "rocking_chair", label: "oak rocking chair in the nursery corner", quantity: 1, sizeDescriptor: null, capacity: null, paletteMaterials: [] }
+      ]
+    },
+    "Living Room"
+  ).roles;
+  assert.equal(leak[0].contract.minSeats, undefined, "the dining table's seats never leak into the sofa");
+  assert.equal(leak[1].contract.fixtureClass, undefined, "\"over dining table\" proves nothing about the fixture");
+  assert.deepEqual([leak[2].contract.minSeats, leak[2].contract.maxSeats], [6, 8], "a hyphenated range in the label survives");
+  assert.equal(leak[3].sizeClass, "any", "a ceiling of eight proves a large sofa");
+  assert.deepEqual(checkCandidateAgainstSpecRole(sectional, leak[3]), { ok: true });
+  const glider: ProductMatchCandidate = { ...base, name: "Glider Rocker Chair", categoryNormalized: "armchairs" };
+  assert.deepEqual(checkCandidateAgainstSpecRole(glider, leak[4]), { ok: true }, "a spec naming a rocking chair accepts a rocker");
+  assert.deepEqual(parseSeatRange("Seats 2 to 3 adults. Delivered in 6-8 weeks."), { min: 2, max: 3 });
+
+  // one product fills one role, in the pass and in the ranking fallback
+  const twoDecorRoles = sourcingRolesFromDesignSpec(
+    {
+      objects: [
+        { role: "coffee_table_tray", label: "decorative tray", quantity: 1, sizeDescriptor: null, capacity: null, paletteMaterials: [] },
+        { role: "media_console_bowl", label: "small bowl", quantity: 1, sizeDescriptor: null, capacity: null, paletteMaterials: [] }
+      ]
+    },
+    "Living Room"
+  ).roles;
+  const vase: ProductMatchCandidate = { ...base, id: "00000000-0000-4000-8000-000000000051", name: "Aveline Ceramic Vase", categoryNormalized: "decor" };
+  const bowl: ProductMatchCandidate = { ...base, id: "00000000-0000-4000-8000-000000000052", name: "Stone Bowl", categoryNormalized: "decor" };
+  const decorPlan = buildSpecSourcingPlan({ roles: twoDecorRoles, unsourceable: [], candidates: [vase, bowl], roomType: "Living Room", conceptText: "calm" });
+  assert.equal(decorPlan.pools.length, 2);
+  const ranked = resolveSpecRoleOutcomesByRanking(decorPlan.pools, "ranking only");
+  const rankedIds = ranked.map((outcome) => (outcome.kind === "selected" ? outcome.selectedProductId : null));
+  assert.equal(new Set(rankedIds).size, 2, "the ranking fallback never gives two roles the same product");
+  const doublePick = resolveSpecRoleOutcomes({
+    pools: decorPlan.pools,
+    roleResults: [
+      { category: "decor", roleLabel: "role-1", status: "strong_match", productId: vase.id, reason: "vase" },
+      { category: "decor", roleLabel: "role-2", status: "acceptable_match", productId: vase.id, reason: "vase again" }
+    ],
+    selections: []
+  });
+  assert.equal(doublePick[0].kind === "selected" && doublePick[0].selectedProductId, vase.id);
+  assert.equal(doublePick[1].kind === "selected" && doublePick[1].selectedProductId, bowl.id, "the second role takes the next clean candidate");
+  assert.equal(doublePick[1].kind === "selected" && doublePick[1].matchStatus, "closest_available");
+  assert.equal(ranked[0].kind === "selected" && ranked[0].reason, "ranking only", "the ranking reason is the note, once");
+}
+
 // --- the missing-roles column contract
 const entries = missingRolesSchema.parse([
   {

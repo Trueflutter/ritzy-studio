@@ -25,6 +25,10 @@ import { createServiceClient } from "@/lib/supabase/service";
 import { MissingRolesSection, missingRolesCaveat } from "../shopping-list/missing-roles";
 
 export const dynamic = "force-dynamic";
+// Sourcing runs inside this route's server action: catalogue read, candidate
+// image fetch, the visual pass (PRODUCT_SOURCING_TIMEOUT_MS, 150s) and the
+// list writes must all fit the function budget.
+export const maxDuration = 300;
 
 function possessiveClientFirstName(clientName: string | null | undefined) {
   const firstName = clientName?.trim().split(/\s+/)[0];

@@ -99,7 +99,9 @@ export type GroundProductsResult =
 
 export type SpecSource = "confirmed_spec" | "blueprint_fallback";
 
-const CANDIDATES_PER_ROLE = 8;
+// Six contract-clean candidates per role keep a sixteen-role design's pass
+// inside its deadline while still giving the picker alternates.
+const CANDIDATES_PER_ROLE = 6;
 
 // One sentence a person can read (design system 12.7): the visual pass's own
 // reason for the chosen piece, the ranking's reason for the alternates.
@@ -459,6 +461,14 @@ export async function groundProductsForRoom(
       .filter((outcome): outcome is Extract<SpecRoleOutcome, { kind: "selected" }> => outcome.kind === "selected")
       .map((outcome) => [outcome.selectedProductId, whyThisPiece(outcome)])
   );
+  // A budget downgrade replaces the pick with a cheaper in-pool alternate; the
+  // row then says so instead of borrowing the alternate's ranking prose.
+  for (const downgrade of budgetFit.downgrades) {
+    reasonBySelectedId.set(
+      downgrade.toProductId,
+      `Chosen as the closest piece within the room's budget; the first choice for this role was above it.`
+    );
+  }
   const roleByProductId = new Map<string, RoomProductRoleSpec>();
   for (const role of roleOptions) {
     for (const option of role.options) {
