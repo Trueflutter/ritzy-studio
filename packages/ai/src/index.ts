@@ -2322,9 +2322,17 @@ export async function generateFinalRenderView(
   };
 }
 
+// The palette call's own deadline when the caller does not derive one from a
+// request budget.
+export const CONCEPT_PALETTE_TIMEOUT_MS = 45_000;
+
 export type ExtractConceptImagePaletteInput = {
   // Data URL or fetchable URL of the generated concept image.
   imageUrl: string;
+  // Provider deadline for this call, derived by the caller from the time its
+  // request has left. Without one, a slow call keeps running and keeps
+  // spending after a local race has discarded its result.
+  timeoutMs?: number;
 };
 
 export type ExtractConceptImagePaletteResult = {
@@ -2347,7 +2355,11 @@ export async function extractConceptImagePalette(
   const client = createTextClient(env);
   const { model: stageModel, requestParams: stageRequestParams } = stageTextConfig("concept_palette", env.OPENAI_TEXT_MODEL);
 
-  const response = await client.responses.create({
+  // A caller-derived deadline the SDK actually enforces. Racing a promise
+  // locally would let the request keep running and keep spending after its
+  // result was discarded, and carry the run past the route's budget.
+  const response = await client.responses.create(
+    {
     max_output_tokens: 4000,
     ...stageRequestParams,
     input: [
@@ -2378,7 +2390,9 @@ export async function extractConceptImagePalette(
         strict: true
       }
     }
-  });
+    },
+    { timeout: input.timeoutMs ?? CONCEPT_PALETTE_TIMEOUT_MS }
+  );
 
   const palette = conceptPaletteResponseSchema.parse(JSON.parse(response.output_text));
 

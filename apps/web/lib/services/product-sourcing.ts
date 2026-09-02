@@ -387,7 +387,9 @@ export async function groundProductsForRoom(
         throw new Error("The request had no time left for palette extraction.");
       }
       const paletteResult = await withTimeout(
-        extractPalette({ imageUrl: conceptImageUrl }),
+        // The provider deadline is what actually stops the call; the wrapper
+        // is only a backstop, so it sits above it.
+        extractPalette({ imageUrl: conceptImageUrl, timeoutMs: providerTimeoutMs(paletteBudgetMs) }),
         paletteBudgetMs,
         "Concept palette extraction timed out."
       );

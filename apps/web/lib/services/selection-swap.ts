@@ -227,7 +227,7 @@ export async function substituteProduct(
   // Spend never precedes its audit row, here as in sourcing: this is a paid
   // vision call on every swap, and the ai_jobs ledger is the only place the
   // per-room cost aggregation can see it.
-  const { data: checkJob } = await serviceSupabase
+  const { data: checkJob, error: checkJobError } = await serviceSupabase
     .from("ai_jobs")
     .insert({
       user_id: room.project?.owner_user_id ?? null,
@@ -242,14 +242,30 @@ export async function substituteProduct(
     .select("id")
     .single();
 
+  // Spend never precedes its audit row: without a row to record the charge
+  // against, the call does not happen at all and the shopper keeps the piece
+  // they had. Failing closed costs a swap; failing open costs money nothing
+  // can account for.
+  if (checkJobError || !checkJob) {
+    console.error(`Could not open the design-check job for room ${roomId}: ${checkJobError?.message ?? "no row"}`);
+    return { status: "not_verified" };
+  }
+
   const closeCheckJob = async (payload: Database["public"]["Tables"]["ai_jobs"]["Update"]) => {
-    if (!checkJob) {
-      return;
+    // Checked and retried, like the sourcing service's terminal write: a paid
+    // call must not be left recorded as still running.
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const { error } = await serviceSupabase
+        .from("ai_jobs")
+        .update({ completed_at: new Date().toISOString(), ...payload })
+        .eq("id", checkJob.id);
+      if (!error) {
+        return;
+      }
+      if (attempt === 1) {
+        console.error(`Could not close design-check job ${checkJob.id} (${payload.status}): ${error.message}`);
+      }
     }
-    await serviceSupabase
-      .from("ai_jobs")
-      .update({ completed_at: new Date().toISOString(), ...payload })
-      .eq("id", checkJob.id);
   };
 
   try {

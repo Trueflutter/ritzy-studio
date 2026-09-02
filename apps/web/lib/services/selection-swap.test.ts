@@ -611,6 +611,63 @@ async function main() {
     assert.equal(userUpdates.length, 0, "nothing is written on any of those paths");
   }
 
+  // --- without an audit row the paid design check does not run at all: a
+  // charge nothing can account for is worse than a swap that does not happen
+  {
+    const currentProduct = productRow({ id: "00000000-0000-4000-8000-000000000001", price_aed: 3000 });
+    const cheaper = productRow({ id: "00000000-0000-4000-8000-000000000002", price_aed: 2000 });
+    let paid = false;
+    const userUpdates: RecordedCall[] = [];
+    const { client } = fakeSupabase((call) => {
+      if (call.op === "update") {
+        userUpdates.push(call);
+        return { data: null };
+      }
+      if (call.table === "projects") return { data: { id: "p", budget_max_aed: null } };
+      if (call.table === "rooms") return { data: { id: "r", room_type: "Living Room", project: { owner_user_id: "user-1" } } };
+      if (call.table === "shopping_lists") return { data: { id: "l", concept_id: "c" } };
+      if (call.table === "concepts") return { data: { id: "c", title: "T", description: null, primary_image_asset: { storage_path: "u/r/c.png", mime_type: "image/png" } } };
+      if (call.table === "room_measurements") return { data: null };
+      if (call.table === "shopping_list_items") return { data: [] };
+      return { data: null };
+    }, (storageCall) => (storageCall.op === "download" ? { data: new Blob([Buffer.from([1, 2, 3])]) } : { data: null }));
+    const { client: service } = fakeSupabase((call) => {
+      if (call.table === "shopping_list_items" && call.single) {
+        return {
+          data: {
+            id: "item-1",
+            category: "sofas",
+            quantity: 1,
+            unit_price_aed: 3000,
+            line_total_aed: 3000,
+            role_label: "sofa",
+            role_priority: "required",
+            role_quantity: 1,
+            product: currentProduct
+          }
+        };
+      }
+      if (call.table === "products") return { data: [currentProduct, cheaper] };
+      // The audit row cannot be opened.
+      if (call.table === "ai_jobs" && call.op === "insert") return { error: { message: "ai_jobs is unavailable" } };
+      return { data: null };
+    }, (storageCall) => (storageCall.op === "download" ? { data: new Blob([Buffer.from([1, 2, 3])]) } : { data: null }));
+
+    const result = await substituteProduct(
+      { supabase: client, serviceSupabase: service },
+      { projectId: "p", roomId: "r", shoppingListId: "l", itemId: "item-1", mode: "cheaper" },
+      swapDeps({
+        verifyProducts: async () => {
+          paid = true;
+          throw new Error("must not be called");
+        }
+      })
+    );
+    assert.deepEqual(result, { status: "not_verified" });
+    assert.equal(paid, false, "no provider call without a row to record its cost against");
+    assert.equal(userUpdates.length, 0);
+  }
+
   console.log("selection-swap service tests passed");
 }
 
