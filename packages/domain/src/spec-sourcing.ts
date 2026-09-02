@@ -182,22 +182,21 @@ type CategoryRule = { category: SourcingCategory; phrases: string[] };
 // generic furniture nouns (desk, bedside, bed, coffee table, chair) can
 // swallow them; specific phrases (dining chair, bedding) precede the generic
 // nouns they contain for the same reason.
+// Compound head nouns that ride on a furniture modifier are claimed first
+// (desk lamp is a lamp, bed throw a throw, desk chair an office chair); then
+// the furniture rules, most specific first (bedside table before bed, dining
+// chair before chair); lighting and decor's generic tokens ("light", "lamp",
+// "tray", "bowl") come after every furniture rule so "light oak dining table"
+// and "bowl chair" keep their furniture.
 const CATEGORY_RULES: CategoryRule[] = [
   {
     category: "lighting",
-    phrases: ["lamp", "pendant", "chandelier", "sconce", "lighting", "light", "lantern", "luminaire"]
+    phrases: ["desk lamp", "bedside lamp", "table lamp", "floor lamp", "wall lamp", "reading lamp", "task lamp", "standing lamp", "tripod lamp", "arc lamp", "pendant lamp", "ceiling lamp"]
   },
-  {
-    category: "decor",
-    phrases: ["cushion", "throw", "pillow", "vase", "plant", "planter", "tray", "candle", "sculpture", "decor", "accessory", "accessories", "basket", "bowl", "books", "greenery", "clock", "figurine", "ornament", "object"]
-  },
-  {
-    category: "bedding",
-    phrases: ["bedding", "duvet", "bed linen", "bedsheet", "bed sheet", "quilt", "coverlet", "comforter", "bedspread", "pillowcase", "bed runner"]
-  },
+  { category: "decor", phrases: ["bed throw", "sofa throw", "coffee table book", "bed cushion", "sofa cushion", "throw pillow", "scatter cushion"] },
+  { category: "bedding", phrases: ["bed runner", "bed linen", "bedsheet", "bed sheet", "bed pillow"] },
   { category: "office_chairs", phrases: ["office chair", "task chair", "desk chair"] },
-  { category: "chairs", phrases: ["dining chair", "dining chairs", "dining seat"] },
-  { category: "stools", phrases: ["bar stool", "counter stool", "bar chair", "counter chair", "stool", "ottoman", "pouf", "pouffe", "footstool", "bench"] },
+  { category: "stools", phrases: ["bar stool", "counter stool", "bar chair", "counter chair"] },
   {
     category: "side_tables",
     phrases: ["bedside", "nightstand", "night stand", "side table", "end table", "accent table", "occasional table", "console table", "lamp table", "hall table"]
@@ -205,20 +204,31 @@ const CATEGORY_RULES: CategoryRule[] = [
   { category: "coffee_tables", phrases: ["coffee table", "cocktail table", "centre table", "center table"] },
   { category: "dining_tables", phrases: ["dining table"] },
   { category: "desks", phrases: ["desk", "workstation", "writing table"] },
+  { category: "chairs", phrases: ["dining chair", "dining chairs", "dining seat"] },
+  { category: "stools", phrases: ["stool", "ottoman", "pouf", "pouffe", "footstool", "bench"] },
   {
     category: "armchairs",
     phrases: ["armchair", "arm chair", "lounge chair", "accent chair", "occasional chair", "club chair", "wingback", "slipper chair", "reading chair", "swivel chair", "rocking chair", "chair"]
   },
   { category: "sofas", phrases: ["sofa", "sectional", "loveseat", "couch", "chaise", "settee", "daybed", "modular seating"] },
   { category: "headboards", phrases: ["headboard"] },
+  { category: "bedding", phrases: ["bedding", "duvet", "quilt", "coverlet", "comforter", "bedspread", "pillowcase"] },
   { category: "beds", phrases: ["bed frame", "bed"] },
   { category: "rugs", phrases: ["rug", "carpet", "runner"] },
   { category: "curtains", phrases: ["curtain", "drape", "drapery", "sheer", "blind", "blinds"] },
   { category: "mirrors", phrases: ["mirror"] },
   { category: "wall_art", phrases: ["wall art", "artwork", "art print", "painting", "canvas", "poster", "framed print", "gallery wall", "art"] },
   {
+    category: "lighting",
+    phrases: ["lamp", "pendant", "chandelier", "sconce", "lighting", "light", "lantern", "luminaire"]
+  },
+  {
     category: "storage",
     phrases: ["media console", "tv unit", "tv console", "tv stand", "media unit", "entertainment unit", "sideboard", "credenza", "buffet", "bookcase", "bookshelf", "shelving", "shelves", "shelf", "cabinet", "dresser", "chest of drawers", "chest", "wardrobe", "armoire", "display unit", "storage", "console", "bar cart", "trolley"]
+  },
+  {
+    category: "decor",
+    phrases: ["cushion", "throw", "pillow", "vase", "plant", "planter", "tray", "candle", "sculpture", "decor", "accessory", "accessories", "basket", "bowl", "books", "greenery", "clock", "figurine", "ornament", "object"]
   },
   { category: "towels", phrases: ["towel"] }
 ];
@@ -226,12 +236,21 @@ const CATEGORY_RULES: CategoryRule[] = [
 // A label often places the object ("artwork above the fireplace", "pendant
 // over the dining table"). Only the clause before the placement preposition
 // describes the object itself; the rest names other things in the room.
-const PLACEMENT_PREPOSITIONS = ["above", "over", "beside", "flanking", "under", "beneath", "below", "behind", "next to", "by the", "around", "opposite", "against", "along", "between", "in front of", "on the", "on top of", "either side of"];
+// A placement clause is a linking word FOLLOWED BY AN ARTICLE ("above the
+// fireplace", "near a window", "to the left of the bed"); "wrap around
+// sectional" and "under bed storage" have no article and stay whole.
+const PLACEMENT_LINKS = [
+  "above", "over", "beside", "flanking", "facing", "near", "at", "in", "under", "beneath", "below", "behind",
+  "next to", "by", "around", "opposite", "against", "along", "alongside", "between", "in front of", "on",
+  "on top of", "either side of", "to the left of", "to the right of", "across from", "toward", "towards"
+];
+const ARTICLES = "(?:the|a|an|its|your|this|that|our|their|each|either|both|my|his|her)";
 
 export function placementStrippedText(text: string): string {
   let head = text;
-  for (const preposition of PLACEMENT_PREPOSITIONS) {
-    const match = new RegExp(`(?:^|\\s)${preposition.replace(/\s+/g, "\\s+")}(?:\\s|$)`).exec(head);
+  for (const link of PLACEMENT_LINKS) {
+    const pattern = new RegExp(`(?:^|\\s)${link.replace(/\s+/g, "\\s+")}\\s+${ARTICLES}(?:\\s|$)`);
+    const match = pattern.exec(head);
     if (match && match.index > 0) {
       head = head.slice(0, match.index).trim();
     }
@@ -290,28 +309,33 @@ export function parseSeatRange(value: string | null | undefined): { min: number;
   if (!value) {
     return null;
   }
-  const text = normalizeText(value);
-  const seatsForm = text.match(new RegExp(`\\bseats?\\s+(up\\s+to\\s+)?${NUMBER_TOKEN}(?:\\s+(?:to\\s+)?${NUMBER_TOKEN})?\\b`));
-  if (seatsForm) {
-    const first = numberFromToken(seatsForm[2]);
-    const second = seatsForm[3] ? numberFromToken(seatsForm[3]) : null;
-    if (first !== null && first > 0) {
-      if (seatsForm[1]) {
-        return { min: 1, max: first };
-      }
-      return second !== null && second >= first ? { min: first, max: second } : { min: first, max: first };
-    }
-  }
-  const rangeForm = text.match(new RegExp(`\\b${NUMBER_TOKEN}\\s+(?:to\\s+)?${NUMBER_TOKEN}\\s*seat(?:er|s)?\\b`));
-  if (rangeForm) {
-    const min = numberFromToken(rangeForm[1]);
-    const max = numberFromToken(rangeForm[2]);
+  // Ranges need an explicit separator on the RAW text (hyphen, en dash, "to"):
+  // "seats 6-8", "seats 6 to 8", "2-3 seater". A number that merely follows
+  // ("Seats 4. 10 year guarantee.") is noise, never the top of a range.
+  const raw = value.toLowerCase();
+  const separator = "\\s*(?:-|\u2013|to)\\s*";
+  const rawSeatsRange = raw.match(new RegExp(`\\bseats?\\s+(?:up\\s+to\\s+)?${NUMBER_TOKEN}${separator}${NUMBER_TOKEN}\\b`));
+  const rawSeaterRange = raw.match(new RegExp(`\\b${NUMBER_TOKEN}${separator}${NUMBER_TOKEN}\\s*-?\\s*seat(?:er|s)?\\b`));
+  const range = rawSeatsRange ?? rawSeaterRange;
+  if (range) {
+    const min = numberFromToken(range[1]);
+    const max = numberFromToken(range[2]);
     if (min !== null && max !== null && min > 0 && min <= max) {
       return { min, max };
     }
   }
+  const text = normalizeText(value);
+  const upTo = text.match(new RegExp(`\\bseats?\\s+up\\s+to\\s+${NUMBER_TOKEN}\\b`));
+  if (upTo) {
+    const max = numberFromToken(upTo[1]);
+    if (max !== null && max > 0) {
+      return { min: 1, max };
+    }
+  }
+  const seatsForm = text.match(new RegExp(`\\bseats?\\s+${NUMBER_TOKEN}\\b`));
   const nSeater = text.match(new RegExp(`\\b${NUMBER_TOKEN}\\s*seat(?:er|s)?\\b`));
-  const seats = nSeater ? numberFromToken(nSeater[1]) : null;
+  const token = seatsForm?.[1] ?? nSeater?.[1];
+  const seats = token ? numberFromToken(token) : null;
   return seats !== null && seats > 0 ? { min: seats, max: seats } : null;
 }
 
@@ -326,6 +350,11 @@ function sofaSizeClassForSpec(text: string, seats: { min: number; max: number } 
   }
   if (hasPhrase(text, "loveseat") || (seats && seats.max <= 2)) {
     return "compact";
+  }
+  // Five seats and up with no shape word: the spec proved capacity, not a
+  // straight silhouette, so a sectional may fill it and capacity constrains.
+  if (seats && seats.min >= 5) {
+    return "any";
   }
   return "standard";
 }
@@ -348,22 +377,29 @@ function fixtureClassForRoleText(text: string): SpecRoleFixtureClass | undefined
   return FLOOR_OR_TABLE_ROLE_TOKENS.some((token) => tokens.has(token)) ? "floor_or_table" : undefined;
 }
 
+// An explicit floor/table lamp phrase names the fixture outright and wins
+// over incidental ceiling words ("uplighter washes light across the
+// ceiling"); wall before ceiling because "wall light" and "sconce" are as
+// explicit; ceiling words last.
 function fixtureClassForText(text: string): SpecRoleFixtureClass | undefined {
+  if (FLOOR_OR_TABLE_PHRASES.some((phrase) => hasPhrase(text, phrase))) {
+    return "floor_or_table";
+  }
   if (WALL_FIXTURE_PHRASES.some((phrase) => hasPhrase(text, phrase))) {
     return "wall";
   }
   if (CEILING_FIXTURE_PHRASES.some((phrase) => hasPhrase(text, phrase))) {
     return "ceiling";
   }
-  if (FLOOR_OR_TABLE_PHRASES.some((phrase) => hasPhrase(text, phrase))) {
-    return "floor_or_table";
-  }
   return undefined;
 }
 
 const SEATING_CATEGORIES = new Set<string>(["sofas", "armchairs", "chairs", "stools"]);
-// Matched against the candidate's NAME and style tags only: marketing copy
-// ("perfect for hanging out") must never reject a fitting piece.
+// Silhouettes a lounge/dining seating role can never accept. The unambiguous
+// ones are proof wherever they appear, description included ("this rocking
+// chair"); the ambiguous ones are matched against the name and style tags
+// only, so marketing copy ("perfect for hanging out", "garden-inspired
+// palette") never rejects a fitting piece.
 const SEATING_SILHOUETTE_EXCLUSIONS = [
   "swing",
   "rocking",
@@ -381,6 +417,18 @@ const SEATING_SILHOUETTE_EXCLUSIONS = [
   "bean bag",
   "beanbag"
 ];
+const UNAMBIGUOUS_SILHOUETTES = new Set([
+  "rocking",
+  "rocker",
+  "hanging chair",
+  "hanging egg",
+  "hammock",
+  "egg chair",
+  "massage",
+  "inflatable",
+  "bean bag",
+  "beanbag"
+]);
 
 function visualBriefFor(object: DesignSpecObject) {
   return [object.label, object.sizeDescriptor, object.capacity, object.paletteMaterials.join(", ")]
@@ -467,7 +515,7 @@ export function sourcingRolesFromDesignSpec(
         label: object.label,
         visualBrief: visualBriefFor(object),
         quantity: object.quantity,
-        seats: parseSeatRange(object.capacity) ?? parseSeatRange(object.label),
+        seats: parseSeatRange(object.capacity) ?? parseSeatRange(labelText),
         specSizeDescriptor: object.sizeDescriptor,
         specCapacity: object.capacity,
         specPaletteMaterials: object.paletteMaterials
@@ -635,17 +683,24 @@ export function checkCandidateAgainstSpecRole(
     return { ok: false, reason: "room_scope_conflict" };
   }
 
-  const text = candidateText(candidate);
+  // Classification reads what the product IS (name, style tags), never its
+  // marketing copy: a floor lamp that "washes light across the ceiling" is
+  // still a floor lamp, and a sofa "for hanging out" is still a sofa.
+  const nameText = normalizeText([candidate.name, ...candidate.styleTags].join(" "));
 
   if (role.contract.fixtureClass) {
-    const candidateClass = fixtureClassForText(text);
+    const candidateClass = fixtureClassForText(nameText);
     if (candidateClass && candidateClass !== role.contract.fixtureClass) {
       return { ok: false, reason: "lighting_fixture_class_mismatch" };
     }
   }
 
-  const silhouetteText = normalizeText([candidate.name, ...candidate.styleTags].join(" "));
-  if (role.contract.excludedSilhouettes.some((phrase) => hasPhrase(silhouetteText, phrase))) {
+  const fullText = candidateText(candidate);
+  if (
+    role.contract.excludedSilhouettes.some((phrase) =>
+      hasPhrase(UNAMBIGUOUS_SILHOUETTES.has(phrase) ? fullText : nameText, phrase)
+    )
+  ) {
     return { ok: false, reason: "silhouette_excluded" };
   }
 

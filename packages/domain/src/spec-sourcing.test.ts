@@ -347,6 +347,97 @@ assert.deepEqual(checkCandidateAgainstSpecRole(sixSeatTable, byRole("dining_tabl
   );
 }
 
+// --- second review round on the contract module (1d75476)
+{
+  const { parseSeatRange, placementStrippedText } = await import("./spec-sourcing");
+  // 1 + 4: placement clauses need an article; compound descriptors survive
+  assert.equal(placementStrippedText("curved sofa facing the fireplace"), "curved sofa");
+  assert.equal(placementStrippedText("pair of armchairs near the fireplace"), "pair of armchairs");
+  assert.equal(placementStrippedText("wool rug at the fireplace"), "wool rug");
+  assert.equal(placementStrippedText("sofa in the corner"), "sofa");
+  assert.equal(placementStrippedText("wrap around sectional sofa"), "wrap around sectional sofa");
+  assert.equal(placementStrippedText("slim under bed storage drawers"), "slim under bed storage drawers");
+  const placed = sourcingRolesFromDesignSpec(
+    {
+      objects: [
+        { role: "sofa", label: "curved sofa facing the fireplace", quantity: 1, sizeDescriptor: null, capacity: null, paletteMaterials: [] },
+        { role: "sofa", label: "wrap-around sectional sofa", quantity: 1, sizeDescriptor: null, capacity: null, paletteMaterials: [] },
+        { role: "sofa", label: "curved sofa opposite the six seater dining table", quantity: 1, sizeDescriptor: null, capacity: null, paletteMaterials: [] },
+        { role: "sofa", label: "long low sofa", quantity: 1, sizeDescriptor: null, capacity: "seats 6", paletteMaterials: [] }
+      ]
+    },
+    "Living Room"
+  );
+  assert.equal(placed.unsourceable.length, 0, "a sofa facing the fireplace is still a sofa");
+  assert.equal(placed.roles[0].category, "sofas");
+  assert.equal(placed.roles[1].sizeClass, "large", "wrap-around sectional keeps its shape");
+  assert.equal(placed.roles[2].contract.minSeats, undefined, "the dining table's seats never become the sofa's");
+  assert.equal(placed.roles[3].sizeClass, "any", "six seats with no shape word constrains by capacity only");
+  assert.deepEqual(checkCandidateAgainstSpecRole(sectional, placed.roles[3]), { ok: true });
+
+  // 2: generic lighting/decor tokens never outrank furniture
+  const ordered = sourcingRolesFromDesignSpec(
+    {
+      objects: [
+        { role: "lamp_table", label: "walnut lamp table", quantity: 1, sizeDescriptor: null, capacity: null, paletteMaterials: [] },
+        { role: "seating", label: "light grey three-seat sofa", quantity: 1, sizeDescriptor: null, capacity: null, paletteMaterials: [] },
+        { role: "table", label: "light oak dining table", quantity: 1, sizeDescriptor: null, capacity: null, paletteMaterials: [] },
+        { role: "bowl_chair", label: "rattan bowl chair", quantity: 1, sizeDescriptor: null, capacity: null, paletteMaterials: [] },
+        { role: "desk_lamp", label: "brass desk lamp", quantity: 1, sizeDescriptor: null, capacity: null, paletteMaterials: [] }
+      ]
+    },
+    "Living Room"
+  );
+  assert.deepEqual(
+    ordered.roles.map((role) => [role.specRole, role.category]),
+    [
+      ["lamp_table", "side_tables"],
+      ["seating", "sofas"],
+      ["table", "dining_tables"],
+      ["bowl_chair", "armchairs"],
+      ["desk_lamp", "lighting"]
+    ]
+  );
+
+  // 5: a trailing number is noise, a real range needs its separator
+  assert.deepEqual(parseSeatRange("Seats 4. 10 year guarantee."), { min: 4, max: 4 });
+  assert.deepEqual(parseSeatRange("seats 6-8"), { min: 6, max: 8 });
+  assert.deepEqual(parseSeatRange("seats 6 \u2013 8"), { min: 6, max: 8 });
+  assert.deepEqual(parseSeatRange("seats 6 to 8"), { min: 6, max: 8 });
+  assert.deepEqual(parseSeatRange("2-3 seater"), { min: 2, max: 3 });
+  assert.deepEqual(parseSeatRange("12 seater"), { min: 12, max: 12 });
+  assert.deepEqual(parseSeatRange("seats up to 8"), { min: 1, max: 8 });
+
+  // 7: an uplighter that "washes light across the ceiling" is still a floor lamp
+  const uplighter: ProductMatchCandidate = {
+    ...base,
+    name: "Arc Floor Lamp",
+    description: "The uplighter washes light across the ceiling; ideal for rooms with high ceilings."
+  };
+  assert.deepEqual(checkCandidateAgainstSpecRole(uplighter, byRole("floor_lamp")), { ok: true });
+  const hangingLabel = sourcingRolesFromDesignSpec(
+    { objects: [{ role: "lighting", label: "arc floor lamp hanging over the sofa", quantity: 1, sizeDescriptor: null, capacity: null, paletteMaterials: [] }] },
+    "Living Room"
+  ).roles[0];
+  assert.equal(hangingLabel.contract.fixtureClass, "floor_or_table");
+
+  // 8: an unambiguous silhouette in the description is still proof
+  const rar: ProductMatchCandidate = {
+    ...base,
+    name: "Eames Style RAR Chair",
+    categoryNormalized: "armchairs",
+    description: "This rocking chair is a mid-century classic."
+  };
+  assert.deepEqual(checkCandidateAgainstSpecRole(rar, byRole("lounge_chair")), { ok: false, reason: "silhouette_excluded" });
+  const gardenPalette: ProductMatchCandidate = {
+    ...base,
+    name: "Stilo Armchair",
+    categoryNormalized: "armchairs",
+    description: "A garden-inspired palette for hanging out indoors."
+  };
+  assert.deepEqual(checkCandidateAgainstSpecRole(gardenPalette, byRole("lounge_chair")), { ok: true });
+}
+
 // --- the missing-roles column contract
 const entries = missingRolesSchema.parse([
   {
