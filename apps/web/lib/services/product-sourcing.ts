@@ -541,6 +541,12 @@ export async function groundProductsForRoom(
     );
     if (proposals.length > 0) {
       try {
+        // Two checks, both needed: nothing may START without budget left, and
+        // the provider's deadline is taken again after the fetch so the
+        // fetch's own time is inside the budget rather than added to it.
+        if (visualPassTimeoutMs({ startedAt, now: now() }) === null) {
+          throw new Error("The request had no time left for the design check.");
+        }
         const byId = new Map(proposals.map((outcome) => [outcome.selectedProductId, outcome]));
         // Any proposal the pass did not already have a picture of. Fetching
         // happens BEFORE the deadline is taken, so its time is inside the
@@ -585,6 +591,15 @@ export async function groundProductsForRoom(
           verifyTimeoutMs,
           "The design check timed out."
         );
+        // A judge that answered for some of the proposals has not done the
+        // job: trusting the ones it did answer would let the rest through as
+        // "could not run" while the run looks successful. Fail the whole
+        // check, which opens every role.
+        if (checked.verdicts.length !== judged.length) {
+          throw new Error(
+            `The design check returned ${checked.verdicts.length} verdicts for ${judged.length} products.`
+          );
+        }
         verification = {
           ...verification,
           used: true,

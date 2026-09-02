@@ -430,7 +430,7 @@ export type RevisionVisualDiffResponse = z.infer<typeof revisionVisualDiffRespon
 // harness's product_consistency check uses.
 export const productDesignVerificationPrompt = {
   key: "sourcing.product_design_verification",
-  version: "2026-09-02.1",
+  version: "2026-09-02.2",
   system: [
     "You are Ritzy Studio's design check: you decide whether a product the app is about to present as its own choice actually belongs to the approved design.",
     "You are shown the approved concept render, then each catalogue product image with the design role it was chosen for.",
@@ -460,9 +460,12 @@ export const productDesignVerificationResponseSchema = z.object({
     .max(40)
 });
 
-// Pinned to the exact number of products sent, like the harness's own schema:
-// a judge that answers for eight of ten proposals would silently open two
-// roles as "the check could not run".
+// Deliberately NOT pinned to the number of products sent. A constrained
+// decoder that cannot close the array short would make the judge invent a
+// verdict for a product it could not assess, and an invented pass is exactly
+// what this check exists to stop. Abstaining is allowed; the caller compares
+// the counts and fails the whole check loudly when they differ, which opens
+// every role rather than trusting a partial answer.
 export const productDesignVerificationJsonSchema = (productCount: number) =>
   ({
   type: "object",
@@ -470,8 +473,7 @@ export const productDesignVerificationJsonSchema = (productCount: number) =>
   properties: {
     products: {
       type: "array",
-      minItems: productCount,
-      maxItems: productCount,
+      maxItems: Math.max(productCount, 1),
       items: {
         type: "object",
         additionalProperties: false,
