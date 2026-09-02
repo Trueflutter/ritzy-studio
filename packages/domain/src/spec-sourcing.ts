@@ -198,6 +198,7 @@ const CATEGORY_RULES: CategoryRule[] = [
   { category: "office_chairs", phrases: ["office chair", "task chair", "desk chair"] },
   { category: "stools", phrases: ["bar stool", "counter stool", "bar chair", "counter chair"] },
   { category: "chairs", phrases: ["dining chair", "dining chairs", "dining seat"] },
+  { category: "sofas", phrases: ["sofa bed", "sofabed", "sleeper sofa"] },
   {
     category: "side_tables",
     phrases: ["bedside", "nightstand", "night stand", "side table", "end table", "accent table", "occasional table", "console table", "lamp table", "hall table"]
@@ -276,7 +277,7 @@ export function placementStrippedText(text: string): string {
   }
   for (const link of OBJECT_PLACEMENT_LINKS) {
     const pattern = new RegExp(
-      `(?:^|\\s)${link.replace(/\s+/g, "\\s+")}(?:\\s+[a-z0-9]+){0,3}?\\s+(?:${ROOM_OBJECT_PATTERN})(?:s|es)?$`
+      `(?:^|\\s)${link.replace(/\s+/g, "\\s+")}(?:\\s+[a-z0-9-]+){0,3}?\\s+(?:${ROOM_OBJECT_PATTERN})(?:s|es)?$`
     );
     const match = pattern.exec(head);
     if (match && match.index > 0) {
@@ -288,6 +289,12 @@ export function placementStrippedText(text: string): string {
 
 function normalizeText(value: string) {
   return value.toLowerCase().replace(/_/g, " ").replace(/[^a-z0-9]+/g, " ").replace(/\s+/g, " ").trim();
+}
+
+// Seat parsing needs the hyphens ("6-8 seater", "8-seat"): the same
+// normalization, hyphens kept, so placement stripping sees one token per word.
+function normalizeTextKeepingHyphens(value: string) {
+  return value.toLowerCase().replace(/_/g, " ").replace(/[^a-z0-9-]+/g, " ").replace(/\s+/g, " ").trim();
 }
 
 function hasPhrase(text: string, phrase: string) {
@@ -306,7 +313,7 @@ function categoryForText(text: string): SourcingCategory | null {
 // Compound phrases whose head noun rides on a furniture modifier: claimed on
 // the whole text before the head-noun step, so "dining chair" is a dining
 // chair (chairs), not a chair (armchairs), and "floor lamp" a floor lamp.
-const LEADING_COMPOUND_RULES: CategoryRule[] = CATEGORY_RULES.slice(0, 6);
+const LEADING_COMPOUND_RULES: CategoryRule[] = CATEGORY_RULES.slice(0, 7);
 
 // The extractor's role keys and most labels end in their head noun
 // ("coffee_table_sculpture", "media_console_books", "stack of coffee table
@@ -548,9 +555,10 @@ export function sourcingRolesFromDesignSpec(
     // placement phrases ("above the fireplace", "on media console") name the
     // things the object sits on or near, not the object.
     const labelText = placementStrippedText(normalizeText(withoutParentheticals(object.label)));
-    // Seat parsing needs the raw hyphens ("6-8 seater"), so it reads a
-    // placement-stripped copy of the raw label rather than the normalized one.
-    const rawLabelForSeats = placementStrippedText(withoutParentheticals(object.label).toLowerCase());
+    // Seat parsing needs the hyphens ("6-8 seater"), so it reads a
+    // placement-stripped, hyphen-keeping copy of the label: a placement clause
+    // naming an "8-seat dining table" is cut before any count is read.
+    const rawLabelForSeats = placementStrippedText(normalizeTextKeepingHyphens(withoutParentheticals(object.label)));
     const combined = `${roleText} ${labelText}`;
     const specKey = `${index}:${roleText.replace(/\s+/g, "_") || "object"}`;
 
@@ -568,9 +576,12 @@ export function sourcingRolesFromDesignSpec(
 
     // The role field is the extractor's clean noun ("pendant", "dining_table",
     // "coffee_table_sculpture"); it decides first, head noun before whole
-    // text, so neither the furniture an object sits on nor a placement phrase
-    // in the label can claim it. The label only decides when the role is vague.
-    const category = categoryForObjectText(roleText) ?? categoryForObjectText(labelText);
+    // text. A role key that carries a placement clause ("cushions_on_sofa",
+    // "rug_under_coffee_table") is read for its object clause only, so the
+    // furniture an object sits on or near never claims it. The label decides
+    // when the role is vague; a whole key is never a fallback, because the
+    // only category it could add is the placement furniture's.
+    const category = categoryForObjectText(placementStrippedText(roleText)) ?? categoryForObjectText(labelText);
     if (!category) {
       unsourceable.push({
         specKey,
@@ -1067,10 +1078,59 @@ function poolMatches(pool: SpecRolePool, category: string, roleLabel: string) {
   );
 }
 
+// Distinct products for a set of roles. Each role lists its candidates
+// best-first; the assignment fills as many roles as possible and gives each
+// role the best-ranked candidate the others can spare (augmenting-path
+// matching, deterministic in role order), never a first-come pass that
+// strands a later role whose only candidate an earlier one took.
+function assignDistinctCandidates(
+  wants: Array<{ key: string; candidateIds: string[] }>,
+  reserved: ReadonlySet<string>
+): Map<string, string> {
+  const holderIndex = new Map<string, number>();
+  const assigned = new Map<string, string>();
+  const tryAssign = (index: number, visited: Set<string>): boolean => {
+    for (const id of wants[index].candidateIds) {
+      if (reserved.has(id) || visited.has(id)) {
+        continue;
+      }
+      visited.add(id);
+      const holder = holderIndex.get(id);
+      if (holder === undefined || tryAssign(holder, visited)) {
+        holderIndex.set(id, index);
+        assigned.set(wants[index].key, id);
+        return true;
+      }
+    }
+    return false;
+  };
+  wants.forEach((_, index) => {
+    tryAssign(index, new Set());
+  });
+  return assigned;
+}
+
+const VERDICT_STRENGTH: Record<SpecVisualSelection["matchStatus"], number> = {
+  strong_match: 3,
+  acceptable_match: 2,
+  closest_available: 1
+};
+const SAME_PIECE_ALTERNATE_REASON =
+  "The visual pass proposed the same piece it chose for another role; this is the next closest catalogue piece for this one.";
+const SAME_PIECE_MISSING_REASON =
+  "The visual pass proposed a piece already chosen for another role, and no other catalogue piece fits this one.";
+const TAKEN_MISSING_REASON = "Every catalogue piece that fits this role was already chosen for another one.";
+const OUTSIDE_POOL_REASON =
+  "The visual pass named a piece that is not in this role's contract-clean pool, so its verdict could not be used.";
+
 // The visual pass's verdict per role, held to the contract: a pick outside the
 // role's contract-clean pool is never accepted, and a role the pass judged
 // unmatched stays missing with the pass's own reason. The product that
 // visibly belongs to the design wins; a wrong-looking product never does.
+// One product fills one role: a product the pass named for two roles goes to
+// the stronger verdict (pool order on a tie); the other role, like a role
+// with no verdict, takes an alternate that avoids every product the pass
+// named, with as many roles filled as the pools allow.
 export function resolveSpecRoleOutcomes({
   pools,
   roleResults,
@@ -1080,11 +1140,7 @@ export function resolveSpecRoleOutcomes({
   roleResults: SpecVisualRoleResult[];
   selections: SpecVisualSelection[];
 }): SpecRoleOutcome[] {
-  // One product fills one role: a product the pass named for two roles keeps
-  // the first, and the second role takes its next contract-clean candidate,
-  // labelled closest-available, or goes missing when none is left.
-  const taken = new Set<string>();
-  return pools.map((pool) => {
+  const verdicts = pools.map((pool) => {
     const found = roleResults.find((entry) => poolMatches(pool, entry.category, entry.roleLabel)) ?? null;
     // A synthesized entry means the pass gave no usable verdict for this
     // role: neither a pick nor an honest "nothing fits". It is treated like an
@@ -1093,90 +1149,110 @@ export function resolveSpecRoleOutcomes({
     const result = found?.synthesized ? null : found;
     const selection = selections.find((entry) => poolMatches(pool, entry.category, entry.roleLabel)) ?? null;
     const pickedId = result?.productId ?? selection?.productId ?? null;
-    const picked = pickedId ? pool.candidates.find((candidate) => candidate.id === pickedId) : undefined;
     const declaredMissing = result?.status === "missing_required" || result?.status === "missing_supporting";
+    const picked = pickedId && !declaredMissing ? pool.candidates.find((candidate) => candidate.id === pickedId) : undefined;
+    const matchStatus: SpecVisualSelection["matchStatus"] =
+      selection?.matchStatus ??
+      (result?.status === "strong_match" || result?.status === "acceptable_match" ? result.status : "closest_available");
+    return {
+      pool,
+      result,
+      selection,
+      picked,
+      declaredMissing,
+      matchStatus,
+      noVerdict: !result && !selection,
+      outsidePool: Boolean(pickedId) && !declaredMissing && !picked
+    };
+  });
 
-    if (!result && !selection) {
-      const rankedPick = pool.candidates.find((candidate) => !taken.has(candidate.id));
-      if (rankedPick) {
-        taken.add(rankedPick.id);
-        return {
-          kind: "selected",
-          role: pool.role,
-          pool,
-          selectedProductId: rankedPick.id,
-          matchStatus: "closest_available",
-          reason: NO_VERDICT_REASON,
-          mismatchNote: null
-        };
-      }
+  // Phase 1: every product the pass named goes to exactly one role.
+  const winnerByProduct = new Map<string, number>();
+  verdicts.forEach((verdict, index) => {
+    if (!verdict.picked) {
+      return;
     }
-
-    if (picked && !declaredMissing) {
-      if (!taken.has(picked.id)) {
-        taken.add(picked.id);
-        return {
-          kind: "selected",
-          role: pool.role,
-          pool,
-          selectedProductId: picked.id,
-          matchStatus:
-            selection?.matchStatus ??
-            (result?.status === "strong_match" || result?.status === "acceptable_match" ? result.status : "closest_available"),
-          reason: selection?.visualMatchReason ?? result?.reason ?? "Chosen by the visual pass.",
-          mismatchNote: selection?.mismatchNote ?? null
-        };
-      }
-      const alternate = pool.candidates.find((candidate) => !taken.has(candidate.id));
-      if (alternate) {
-        taken.add(alternate.id);
-        return {
-          kind: "selected",
-          role: pool.role,
-          pool,
-          selectedProductId: alternate.id,
-          matchStatus: "closest_available",
-          reason: "The visual pass proposed the same piece it chose for another role; this is the next closest catalogue piece for this one.",
-          mismatchNote: null
-        };
-      }
+    const current = winnerByProduct.get(verdict.picked.id);
+    if (current === undefined || VERDICT_STRENGTH[verdict.matchStatus] > VERDICT_STRENGTH[verdicts[current].matchStatus]) {
+      winnerByProduct.set(verdict.picked.id, index);
     }
+  });
+  const wonPick = (index: number) => {
+    const picked = verdicts[index].picked;
+    return Boolean(picked) && winnerByProduct.get(picked!.id) === index;
+  };
 
-    const reason = declaredMissing && result
-      ? `The visual pass found no catalogue piece that matches the design: ${result.reason}`
-      : picked
-        ? "The visual pass proposed a piece already chosen for another role, and no other catalogue piece fits this one."
-        : "Every catalogue piece that fits this role was already chosen for another one.";
+  // Phase 2: roles that lost a collision or got no verdict take alternates
+  // that avoid every product the pass named for any role.
+  const alternates = assignDistinctCandidates(
+    verdicts.flatMap((verdict, index) =>
+      wonPick(index) || verdict.declaredMissing || verdict.outsidePool
+        ? []
+        : [{ key: String(index), candidateIds: verdict.pool.candidates.map((candidate) => candidate.id) }]
+    ),
+    new Set(winnerByProduct.keys())
+  );
+
+  return verdicts.map((verdict, index) => {
+    const { pool, result, selection, picked } = verdict;
+    if (picked && wonPick(index)) {
+      return {
+        kind: "selected",
+        role: pool.role,
+        pool,
+        selectedProductId: picked.id,
+        matchStatus: verdict.matchStatus,
+        reason: selection?.visualMatchReason ?? result?.reason ?? "Chosen by the visual pass.",
+        mismatchNote: selection?.mismatchNote ?? null
+      };
+    }
+    const alternate = alternates.get(String(index));
+    if (alternate) {
+      return {
+        kind: "selected",
+        role: pool.role,
+        pool,
+        selectedProductId: alternate,
+        matchStatus: "closest_available",
+        reason: verdict.noVerdict ? NO_VERDICT_REASON : SAME_PIECE_ALTERNATE_REASON,
+        mismatchNote: null
+      };
+    }
+    const reason =
+      verdict.declaredMissing && result
+        ? `The visual pass found no catalogue piece that matches the design: ${result.reason}`
+        : verdict.outsidePool
+          ? OUTSIDE_POOL_REASON
+          : picked
+            ? SAME_PIECE_MISSING_REASON
+            : TAKEN_MISSING_REASON;
     return { kind: "missing", role: pool.role, entry: missingRoleEntryForRole(pool.role, pool.rejectionReasons, pool.candidates.length, reason) };
   });
 }
 
 // Deterministic outcomes for when the visual pass is unavailable (timeout or
-// provider failure): the top contract-clean candidate per role not already
-// chosen for another role, labelled honestly as chosen by ranking, never
-// presented as a visual match.
+// provider failure): distinct top contract-clean candidates across the roles,
+// as many roles filled as the pools allow, labelled honestly as chosen by
+// ranking, never presented as a visual match.
 export function resolveSpecRoleOutcomesByRanking(pools: SpecRolePool[], note: string): SpecRoleOutcome[] {
-  const taken = new Set<string>();
-  return pools.map((pool) => {
-    const pick = pool.candidates.find((candidate) => !taken.has(candidate.id)) ?? null;
+  const assigned = assignDistinctCandidates(
+    pools.map((pool, index) => ({ key: String(index), candidateIds: pool.candidates.map((candidate) => candidate.id) })),
+    new Set()
+  );
+  return pools.map((pool, index) => {
+    const pick = assigned.get(String(index));
     if (!pick) {
       return {
         kind: "missing",
         role: pool.role,
-        entry: missingRoleEntryForRole(
-          pool.role,
-          pool.rejectionReasons,
-          pool.candidates.length,
-          "Every catalogue piece that fits this role was already chosen for another one."
-        )
+        entry: missingRoleEntryForRole(pool.role, pool.rejectionReasons, pool.candidates.length, TAKEN_MISSING_REASON)
       };
     }
-    taken.add(pick.id);
     return {
       kind: "selected",
       role: pool.role,
       pool,
-      selectedProductId: pick.id,
+      selectedProductId: pick,
       matchStatus: "closest_available",
       reason: note,
       mismatchNote: null

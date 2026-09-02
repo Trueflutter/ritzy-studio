@@ -31,10 +31,6 @@ export function structuredBriefJson(value: unknown): StructuredBriefJson {
     : {};
 }
 
-// The service-side guard sits just above the provider call's own deadline
-// (PRODUCT_SOURCING_TIMEOUT_MS in @ritzy-studio/ai), so the SDK's timeout is
-// the one that normally fires and this only backstops a hung socket.
-export const PRODUCT_SOURCING_AI_TIMEOUT_MS = 160_000;
 export const PRODUCT_MATCHING_CATALOG_LIMIT = 1500;
 
 // Downscaled data URLs for the candidate images an AI sourcing call will see.

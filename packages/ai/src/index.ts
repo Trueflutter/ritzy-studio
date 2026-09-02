@@ -377,6 +377,9 @@ export type ConceptProductSourcingRolePool = {
 export type ProductSourcingImageDetail = "low" | "high" | "auto";
 
 export type SourceProductsFromConceptInput = {
+  // Provider deadline for this run's pass; the caller derives it from the
+  // time left in its request. Defaults to PRODUCT_SOURCING_TIMEOUT_MS.
+  timeoutMs?: number;
   roomType: string;
   conceptTitle: string;
   conceptDescription?: string | null;
@@ -1565,7 +1568,7 @@ export async function sourceProductsFromConcept(
       }
     }
     },
-    { timeout: PRODUCT_SOURCING_TIMEOUT_MS }
+    { timeout: input.timeoutMs ?? PRODUCT_SOURCING_TIMEOUT_MS }
   );
 
   const parsed = conceptProductSourcingResponseSchema.parse(JSON.parse(response.output_text));

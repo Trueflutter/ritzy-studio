@@ -698,6 +698,97 @@ console.log("spec-sourcing tests passed");
   const ranked = resolveSpecRoleOutcomesByRanking(plan.pools, "The visual pass timed out.");
   assert.ok(ranked.every((outcome) => outcome.kind === "selected" && outcome.matchStatus === "closest_available"));
 
+  // --- one product, one role: a product the pass named for two roles goes
+  // to the stronger verdict; the other role, and any role with no verdict,
+  // takes an alternate that avoids EVERY product the pass named; the
+  // assignment fills as many roles as the pools allow, never a greedy pass
+  // Resolution reads ids and prices only: four products cloned from one
+  // ranked candidate keep the scenarios exact.
+  const seed = plan.pools[0].candidates[0];
+  const [X, Y, Z, W] = ["a1", "a2", "a3", "a4"].map((suffix) => ({ ...seed, id: `00000000-0000-4000-8000-0000000000${suffix}` }));
+  const roleA = plan.pools[0].role;
+  const roleB = plan.pools[1].role;
+  const roleC = { ...roleA, echoKey: "role-99", label: "third role", specKey: "99:third" };
+  const pool = (role: typeof roleA, candidates: Array<typeof seed>) => ({ role, candidates, rejectionReasons: {} });
+  const collided = resolveSpecRoleOutcomes({
+    pools: [pool(roleA, [X, Y, Z]), pool(roleB, [X, Y, Z]), pool(roleC, [Y, W])],
+    roleResults: [
+      { category: roleA.category, roleLabel: roleA.echoKey, status: "closest_available", productId: X.id, reason: "a" },
+      { category: roleB.category, roleLabel: roleB.echoKey, status: "closest_available", productId: X.id, reason: "b" },
+      { category: roleC.category, roleLabel: roleC.echoKey, status: "strong_match", productId: Y.id, reason: "c" }
+    ],
+    selections: []
+  });
+  assert.deepEqual(
+    collided.map((outcome) => (outcome.kind === "selected" ? [outcome.selectedProductId, outcome.matchStatus] : ["missing"])),
+    [[X.id, "closest_available"], [Z.id, "closest_available"], [Y.id, "strong_match"]],
+    "the losing role's alternate skips the product the pass named for the third role"
+  );
+  const stronger = resolveSpecRoleOutcomes({
+    pools: [pool(roleA, [X, Y, Z]), pool(roleB, [X, Y, Z])],
+    roleResults: [
+      { category: roleA.category, roleLabel: roleA.echoKey, status: "closest_available", productId: X.id, reason: "a" },
+      { category: roleB.category, roleLabel: roleB.echoKey, status: "strong_match", productId: X.id, reason: "b" }
+    ],
+    selections: []
+  });
+  assert.deepEqual(
+    stronger.map((outcome) => (outcome.kind === "selected" ? outcome.selectedProductId : "missing")),
+    [Y.id, X.id],
+    "a later strong match beats an earlier closest-available for the same product"
+  );
+  // A role with no verdict never takes the product the pass named for a
+  // later role; it fills from what the verdicts leave.
+  const noVerdictFirst = resolveSpecRoleOutcomes({
+    pools: [pool(roleA, [X, Y]), pool(roleB, [X, Y])],
+    roleResults: [
+      { category: roleA.category, roleLabel: roleA.echoKey, status: "missing_required", productId: null, reason: "synth", synthesized: true },
+      { category: roleB.category, roleLabel: roleB.echoKey, status: "strong_match", productId: X.id, reason: "b" }
+    ],
+    selections: []
+  });
+  assert.deepEqual(
+    noVerdictFirst.map((outcome) => (outcome.kind === "selected" ? [outcome.selectedProductId, outcome.reason] : ["missing"])),
+    [[Y.id, NO_VERDICT_REASON], [X.id, "b"]]
+  );
+  const rankedFill = resolveSpecRoleOutcomesByRanking([pool(roleA, [X, Y]), pool(roleB, [X])], "note");
+  assert.deepEqual(
+    rankedFill.map((outcome) => (outcome.kind === "selected" ? outcome.selectedProductId : "missing")),
+    [Y.id, X.id],
+    "ranking gives the single-candidate role its only product and moves the other role along"
+  );
+
+  // --- budget fitting never downgrades onto a product another role holds,
+  // and reports the role it changed
+  const priced = (candidate: typeof X, priceAed: number) => ({ ...candidate, priceAed, salePriceAed: null });
+  const [x900, y100, z50] = [priced(X, 900), priced(Y, 100), priced(Z, 50)];
+  const shared = roleOptionsFromOutcomes(
+    resolveSpecRoleOutcomes({
+      pools: [pool(roleA, [x900, y100]), pool(roleB, [y100, x900])],
+      roleResults: [
+        { category: roleA.category, roleLabel: roleA.echoKey, status: "strong_match", productId: X.id, reason: "a" },
+        { category: roleB.category, roleLabel: roleB.echoKey, status: "strong_match", productId: Y.id, reason: "b" }
+      ],
+      selections: []
+    })
+  );
+  const sharedFit = fitSelectionToBudget({ roleOptions: shared.roleOptions, selectedProductIdByRole: shared.selectedProductIdByRole, budgetMaxAed: 500 });
+  assert.equal(new Set(sharedFit.selectedProductIdByRole.values()).size, 2, "two roles never end on the same product");
+  assert.equal(sharedFit.withinBudget, false, "the only cheaper alternate is held by the other role, so the list stays over budget honestly");
+  const withSpare = roleOptionsFromOutcomes(
+    resolveSpecRoleOutcomes({
+      pools: [pool(roleA, [x900, y100, z50]), pool(roleB, [y100, x900])],
+      roleResults: [
+        { category: roleA.category, roleLabel: roleA.echoKey, status: "strong_match", productId: X.id, reason: "a" },
+        { category: roleB.category, roleLabel: roleB.echoKey, status: "strong_match", productId: Y.id, reason: "b" }
+      ],
+      selections: []
+    })
+  );
+  const spareFit = fitSelectionToBudget({ roleOptions: withSpare.roleOptions, selectedProductIdByRole: withSpare.selectedProductIdByRole, budgetMaxAed: 500 });
+  assert.deepEqual(spareFit.downgrades.map((downgrade) => [downgrade.roleKey, downgrade.fromProductId, downgrade.toProductId]), [[roleOptionKey(roleA), X.id, Z.id]]);
+  assert.equal(spareFit.selectedProductIdByRole.get(roleOptionKey(roleB)), Y.id);
+
   // --- role options + item rows keyed by the spec role key, two roles in one
   // category stay distinct end to end
   const twoLightingRoles = sourcingRolesFromDesignSpec(
@@ -740,6 +831,40 @@ console.log("spec-sourcing tests passed");
   ]);
   assert.deepEqual(keyed[0].options.map((option) => option.id), ["a", "c"]);
   console.log("spec-sourcing plan tests passed");
+}
+
+// --- 3f1b173 review: hyphenated seat counts inside placement clauses,
+// placement clauses inside role keys, sofa beds
+{
+  const object = (role: string, label: string) => ({ role, label, quantity: 1, sizeDescriptor: null, capacity: null, paletteMaterials: [] });
+  const reviewed = sourcingRolesFromDesignSpec(
+    {
+      objects: [
+        object("sofa", "Curved sofa opposite 8-seat dining table"),
+        object("sofa", "curved sofa opposite six-seater dining table"),
+        object("cushions_on_sofa", "textured cushions on the sofa"),
+        object("throw_on_sofa", "wool throw on the sofa"),
+        object("rug_under_coffee_table", "wool rug under the coffee table"),
+        object("mirror_above_console", "round mirror above the console"),
+        object("pendant_over_dining_table", "linen pendant over the dining table"),
+        object("art_above_bed", "large canvas above the bed"),
+        object("sconces_flanking_bed", "brass sconces flanking the bed"),
+        object("lamp_on_side_table", "ceramic lamp on the side table"),
+        object("books_on_console", "stack of coffee table books on the console"),
+        object("sofa_bed", "sofa bed for guests")
+      ]
+    },
+    "Living Room"
+  );
+  assert.equal(reviewed.unsourceable.length, 0);
+  assert.equal(reviewed.roles[0].contract.minSeats, undefined, "a hyphenated seat count in a placement clause never becomes the sofa's capacity");
+  assert.equal(reviewed.roles[1].contract.minSeats, undefined);
+  assert.deepEqual(
+    reviewed.roles.slice(2).map((role) => role.category),
+    ["decor", "decor", "rugs", "mirrors", "lighting", "wall_art", "lighting", "lighting", "decor", "sofas"],
+    "a role key is read for its object clause, never for the furniture it sits on"
+  );
+  console.log("spec-sourcing review-fix tests passed");
 }
 
 // --- blueprint fallback roles carry the same contracts

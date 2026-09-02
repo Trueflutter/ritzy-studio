@@ -2966,7 +2966,7 @@ export type BudgetFitResult = {
   selectedProductIdByRole: Map<string, string>;
   adjusted: boolean;
   // Downgrades applied to bring the qty-aware line-total sum within budget.
-  downgrades: Array<{ category: string; fromProductId: string; toProductId: string; savingsAed: number }>;
+  downgrades: Array<{ roleKey: string; category: string; fromProductId: string; toProductId: string; savingsAed: number }>;
   estimatedTotalAed: number;
   budgetMaxAed: number | null;
   withinBudget: boolean;
@@ -2990,6 +2990,16 @@ export function fitSelectionToBudget({
 }): BudgetFitResult {
   const selection = new Map(selectedProductIdByRole);
   const downgrades: BudgetFitResult["downgrades"] = [];
+  // One product fills one role, on the list as in the render: a downgrade
+  // never lands on a product another role already holds.
+  const selectedByAnotherRole = (roleKey: string, productId: string) => {
+    for (const [key, id] of selection) {
+      if (key !== roleKey && id === productId) {
+        return true;
+      }
+    }
+    return false;
+  };
 
   const lineTotalFor = (role: RoleProductOptions, productId: string | undefined) => {
     const option = productId ? role.options.find((candidate) => candidate.id === productId) : undefined;
@@ -3025,7 +3035,8 @@ export function fitSelectionToBudget({
 
     for (const role of roleOptions) {
       const quantity = Math.max(1, role.quantity || 1);
-      const selectedId = selection.get(roleOptionKey(role));
+      const roleKey = roleOptionKey(role);
+      const selectedId = selection.get(roleKey);
       const selectedOption = selectedId ? role.options.find((option) => option.id === selectedId) : undefined;
       if (!selectedOption) {
         continue;
@@ -3033,7 +3044,7 @@ export function fitSelectionToBudget({
       const selectedPrice = optionUnitPriceAed(selectedOption);
       for (const option of role.options) {
         const price = optionUnitPriceAed(option);
-        if (option.id === selectedOption.id || price >= selectedPrice) {
+        if (option.id === selectedOption.id || price >= selectedPrice || selectedByAnotherRole(roleKey, option.id)) {
           continue;
         }
         const savings = (selectedPrice - price) * quantity;
@@ -3057,6 +3068,7 @@ export function fitSelectionToBudget({
     const fromId = selection.get(roleOptionKey(swap.role))!;
     selection.set(roleOptionKey(swap.role), swap.to.id);
     downgrades.push({
+      roleKey: roleOptionKey(swap.role),
       category: swap.role.category,
       fromProductId: fromId,
       toProductId: swap.to.id,
@@ -3089,7 +3101,9 @@ export function buildShoppingListItemRows({
 }: {
   roleOptions: RoleProductOptions[];
   selectedProductIdByRole: Map<string, string>;
-  reasonFor?: (match: RankedProductMatch) => string;
+  // The role is passed with the match: a product in two roles' pools carries
+  // each role's own reason.
+  reasonFor?: (match: RankedProductMatch, role: RoleProductOptions) => string;
 }): ShoppingListItemDraft[] {
   const rows: ShoppingListItemDraft[] = [];
   let sortOrder = 0;
@@ -3111,7 +3125,7 @@ export function buildShoppingListItemRows({
         quantity: role.quantity,
         unit_price_aed: unitPrice,
         line_total_aed: unitPrice * role.quantity,
-        selection_reason: reasonFor ? reasonFor(match) : match.selectionReason,
+        selection_reason: reasonFor ? reasonFor(match, role) : match.selectionReason,
         dimension_fit_note: match.dimensionFitNote,
         sort_order: sortOrder
       });

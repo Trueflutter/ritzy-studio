@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 import type { extractConceptImagePalette, SourceProductsFromConceptInput } from "@ritzy-studio/ai";
 import { sourcingRolesFromDesignSpec } from "@ritzy-studio/domain";
 
+import { PRODUCT_SOURCING_PASS_MAX_MS, providerTimeoutMs } from "@/lib/sourcing-run-budget";
+
 import type { RoomDesignSpecState } from "./design-spec";
 import { findMoreShoppingOptions, groundProductsForRoom, refreshShoppingOptions } from "./product-sourcing";
 import { fakeSupabase, type RecordedCall, type Responder } from "./supabase-test-double";
@@ -260,6 +262,8 @@ async function main() {
       ["role-2", "cognac leather lounge chair", null]
     ]);
     assert.deepEqual(seen.designSpec.mustPreserve, ["sliding doors"]);
+    // A fresh run hands the pass the full provider deadline.
+    assert.equal(seen.timeoutMs, providerTimeoutMs(PRODUCT_SOURCING_PASS_MAX_MS));
     assert.equal(seen.conceptImageDetail, "high");
     assert.equal(seen.candidateImageDetail, "low");
     assert.deepEqual(Object.keys(seen.candidateImageDataUrls ?? {}).sort(), [SOFA_ID, CHAIR_ID].sort(), "the top of every pool got an image");
@@ -373,6 +377,95 @@ async function main() {
     const pass = (jobUpdate?.payload?.output_summary as { visualPass: { used: boolean; error: string | null } }).visualPass;
     assert.equal(pass.used, false);
     assert.match(String(pass.error), /timed out/);
+  }
+
+  // --- a request with too little of its budget left skips the paid pass:
+  // honest ranking, the job says why, and the provider is never called
+  {
+    const { client, calls } = userClient();
+    const { client: service, calls: serviceCalls } = serviceClient();
+    let ticks = 0;
+    let passCalled = false;
+    const result = await groundProductsForRoom(
+      { supabase: client, serviceSupabase: service },
+      GROUND_INPUT,
+      {
+        readSpec: async () => CONFIRMED_SPEC,
+        extractPalette: noPalette,
+        fetchCandidateImages: async () => ({}),
+        sourceProducts: async () => {
+          passCalled = true;
+          throw new Error("must not be called");
+        },
+        // The clock: the run starts at 0 and the pass is reached at 270 s.
+        now: () => (ticks++ === 0 ? 0 : 270_000)
+      }
+    );
+    assert.equal(result.status, "sourced");
+    assert.equal(passCalled, false, "no provider call without time to finish it");
+    const insert = calls.find((call: RecordedCall) => call.table === "shopping_list_items" && call.op === "insert");
+    const rows = (insert?.payload as unknown as Array<Record<string, unknown>>) ?? [];
+    assert.ok(rows.length > 0 && rows.every((row) => String(row.selection_reason).includes("catalogue ranking")));
+    const jobUpdate = serviceCalls.find((call: RecordedCall) => call.table === "ai_jobs" && call.op === "update");
+    const pass = (jobUpdate?.payload?.output_summary as { visualPass: { used: boolean; error: string | null } }).visualPass;
+    assert.equal(pass.used, false);
+    assert.match(String(pass.error), /no time left/);
+  }
+
+  // --- the terminal job write is retried once and its failure is logged,
+  // never swallowed into a job left "running"
+  {
+    const { client } = userClient();
+    let jobUpdates = 0;
+    const { client: service } = fakeSupabase(
+      (call) => {
+        if (call.table === "products") return { data: CATALOGUE };
+        if (call.table === "ai_jobs" && call.op === "insert") return { data: { id: "job-1" } };
+        if (call.table === "ai_jobs" && call.op === "update") {
+          jobUpdates += 1;
+          return jobUpdates === 1 ? { error: { message: "connection reset" } } : { data: null };
+        }
+        return { data: null };
+      },
+      (storageCall) => (storageCall.op === "download" ? { data: new Blob([Buffer.from([1, 2, 3])]) } : { data: null })
+    );
+    const result = await groundProductsForRoom(
+      { supabase: client, serviceSupabase: service },
+      GROUND_INPUT,
+      { readSpec: async () => CONFIRMED_SPEC, extractPalette: noPalette, fetchCandidateImages: async () => ({}), sourceProducts: async () => { throw new Error("no pass"); } }
+    );
+    assert.equal(result.status, "sourced");
+    assert.equal(jobUpdates, 2, "the failed close is retried once");
+  }
+
+  // --- a blueprint-built list refills without a spec contract and is never
+  // stale, whatever the concept's spec row looks like
+  {
+    const freshId = "00000000-0000-4000-8000-00000000bbbb";
+    const { client, calls } = fakeSupabase((call) => {
+      if (call.table === "shopping_lists") return { data: { id: "list-1", concept_id: "concept-1", spec_source: "blueprint_fallback" } };
+      if (call.table === "rooms") return { data: { id: "room-1", room_type: "Living Room" } };
+      if (call.table === "projects") return { data: { id: "proj-1", budget_max_aed: null } };
+      if (call.table === "concepts") return { data: { title: "T", description: null } };
+      if (call.table === "shopping_list_items" && call.op === "select") {
+        return {
+          data: [
+            { id: "i1", product_id: "p1", status: "selected", ...ITEM_TEMPLATE, spec_key: "blueprint:0:sofas", role_label: "living-zone sofa", option_rank: 0 },
+            { id: "i2", product_id: "p2", status: "option", ...ITEM_TEMPLATE, spec_key: "blueprint:0:sofas", role_label: "living-zone sofa", option_rank: 1 }
+          ]
+        };
+      }
+      return { data: null };
+    });
+    const { client: service, calls: serviceCalls } = fakeSupabase((call) => {
+      if (call.table === "products") return { data: [productRow({ id: freshId })] };
+      if (call.table === "room_design_specs") return { data: { id: "spec-1", objects: "malformed" } };
+      return { data: null };
+    });
+    assert.deepEqual(await refreshShoppingOptions({ supabase: client, serviceSupabase: service }, REFILL_INPUT), { status: "refreshed" });
+    assert.equal(serviceCalls.filter((call: RecordedCall) => call.table === "room_design_specs").length, 0);
+    const insert = calls.find((call: RecordedCall) => call.table === "shopping_list_items" && call.op === "insert");
+    assert.equal(((insert?.payload as unknown as Array<Record<string, unknown>>) ?? [])[0]?.product_id, freshId);
   }
 
   // --- the paid pass succeeded but the list could not be written: the job

@@ -64,7 +64,7 @@ export async function substituteProduct(
 
   const { data: shoppingList } = await supabase
     .from("shopping_lists")
-    .select("id, concept_id")
+    .select("id, concept_id, spec_source")
     .eq("id", shoppingListId)
     .eq("room_id", roomId)
     .single();
@@ -147,6 +147,7 @@ export async function substituteProduct(
     roomId,
     conceptId: shoppingList.concept_id,
     roomType: room.room_type,
+    specSource: shoppingList.spec_source,
     specKey: item.spec_key,
     roleLabel: item.role_label
   });
@@ -260,18 +261,16 @@ export async function selectShoppingItem(
     return { status: "not_found" };
   }
 
-  // One pick per ROLE, identified by the row's spec key (its label for rows
-  // that predate keys): a floor lamp and a pendant are both lighting, and two
-  // roles the user labelled alike are still two roles.
-  const clearSelection = supabase
-    .from("shopping_list_items")
-    .update({ status: "option" })
-    .eq("shopping_list_id", shoppingListId)
-    .eq("category", item.category);
-  await (item.spec_key ? clearSelection.eq("spec_key", item.spec_key) : clearSelection.eq("role_label", item.role_label)).eq(
-    "status",
-    "selected"
-  );
+  // One pick per ROLE, identified by the row's spec key (category plus label
+  // for rows that predate keys): a floor lamp and a pendant are both
+  // lighting, and two roles the user labelled alike are still two roles. A
+  // keyed role is cleared by its key alone: a swap may have moved the pick's
+  // category inside the role's allowed classes (armchairs to chairs).
+  const clearSelection = supabase.from("shopping_list_items").update({ status: "option" }).eq("shopping_list_id", shoppingListId);
+  await (item.spec_key
+    ? clearSelection.eq("spec_key", item.spec_key)
+    : clearSelection.eq("category", item.category).eq("role_label", item.role_label)
+  ).eq("status", "selected");
   await supabase
     .from("shopping_list_items")
     .update({ status: "selected" })

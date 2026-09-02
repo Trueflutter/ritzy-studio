@@ -41,6 +41,19 @@ type ShoppingListGridProps = {
   missingCaveat?: string | null;
 };
 
+// A refill that wrote nothing, in the user's terms. A stale list points at
+// the screen that rebuilds it.
+function refillNotice(status: string): string {
+  switch (status) {
+    case "stale_spec":
+      return "The design spec changed since this list was sourced. Re-run matching from the Products screen to rebuild it.";
+    case "no_candidates":
+      return "No other catalogue piece fits this role right now.";
+    default:
+      return "No fresh options for this piece right now.";
+  }
+}
+
 const VISIBLE_PER_ROLE = 3;
 
 export function ShoppingListGrid({
@@ -69,6 +82,8 @@ export function ShoppingListGrid({
       )
   );
   const [rejectedIds, setRejectedIds] = useState<Set<string>>(new Set());
+  // What a refill that wrote nothing has to say, under the role it was for.
+  const [roleNotice, setRoleNotice] = useState<{ roleKey: string; text: string } | null>(null);
   const [detailItem, setDetailItem] = useState<ProductCardItem | null>(null);
   const [pendingCategory, setPendingCategory] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
@@ -131,8 +146,9 @@ export function ShoppingListGrid({
   const handleFindMore = useCallback(
     (group: CategoryGroup) => {
       setPendingCategory(group.roleKey);
+      setRoleNotice(null);
       startTransition(async () => {
-        await findMoreShoppingOptionsAction({
+        const result = await findMoreShoppingOptionsAction({
           projectId,
           roomId,
           shoppingListId,
@@ -140,6 +156,9 @@ export function ShoppingListGrid({
           specKey: group.specKey,
           roleLabel: group.label
         });
+        if (result.status !== "appended") {
+          setRoleNotice({ roleKey: group.roleKey, text: refillNotice(result.status) });
+        }
       });
     },
     [projectId, roomId, shoppingListId]
@@ -148,6 +167,9 @@ export function ShoppingListGrid({
   const handleRefreshOptions = useCallback(
     (group: CategoryGroup, visibleOptionIds: string[]) => {
       setPendingCategory(group.roleKey);
+      setRoleNotice(null);
+      // Hide the options being replaced right away; a refill that wrote
+      // nothing brings them back and says why.
       setRejectedIds((prev) => {
         const next = new Set(prev);
         for (const id of visibleOptionIds) {
@@ -156,7 +178,7 @@ export function ShoppingListGrid({
         return next;
       });
       startTransition(async () => {
-        await refreshShoppingOptionsAction({
+        const result = await refreshShoppingOptionsAction({
           projectId,
           roomId,
           shoppingListId,
@@ -164,6 +186,16 @@ export function ShoppingListGrid({
           specKey: group.specKey,
           roleLabel: group.label
         });
+        if (result.status !== "refreshed") {
+          setRejectedIds((prev) => {
+            const next = new Set(prev);
+            for (const id of visibleOptionIds) {
+              next.delete(id);
+            }
+            return next;
+          });
+          setRoleNotice({ roleKey: group.roleKey, text: refillNotice(result.status) });
+        }
       });
     },
     [projectId, roomId, shoppingListId]
@@ -271,6 +303,12 @@ export function ShoppingListGrid({
                   </p>
                 )}
               </div>
+
+              {roleNotice?.roleKey === group.roleKey ? (
+                <p className="mt-4 font-display text-body-m italic text-ink-muted" role="status">
+                  {roleNotice.text}
+                </p>
+              ) : null}
 
               {shown.length > 0 ? (
                 <div className="mt-6 grid gap-5 md:grid-cols-2 xl:grid-cols-3">

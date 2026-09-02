@@ -1769,6 +1769,9 @@ export async function refreshShoppingOptionsAction(input: {
   if (result.status === "refreshed") {
     revalidatePath(`/projects/${projectId}/rooms/${roomId}/shopping-list`);
   }
+  // The grid reads the status: a refill that wrote nothing (stale spec, no
+  // fresh options) is shown, never a silent no-op.
+  return { status: result.status };
 }
 
 // Rare path: every loaded option for a role was rejected. Rank the catalog for
@@ -1798,9 +1801,10 @@ export async function findMoreShoppingOptionsAction(input: {
     { projectId, roomId, shoppingListId, category, specKey: specKey ?? null, roleLabel: roleLabel ?? null }
   );
 
-  if (result.status !== "no_change") {
+  if (result.status === "appended") {
     revalidatePath(`/projects/${projectId}/rooms/${roomId}/shopping-list`);
   }
+  return { status: result.status };
 }
 
 export async function generateFinalRenderAction(formData: FormData) {

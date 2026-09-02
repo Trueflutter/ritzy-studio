@@ -5,6 +5,7 @@ import {
   sumUsdCosts
 } from "@ritzy-studio/ai";
 import { configuredTextModel, productSourcingImageBudget } from "@ritzy-studio/config";
+import type { Database } from "@ritzy-studio/db";
 import {
   buildShoppingListItemRows,
   buildSpecSourcingPlan,
@@ -33,10 +34,11 @@ import {
   type UnsourceableSpecObject
 } from "@ritzy-studio/domain";
 
+import { providerTimeoutMs, visualPassTimeoutMs } from "@/lib/sourcing-run-budget";
+
 import { readRoomDesignSpec } from "./design-spec";
 import {
   PRODUCT_MATCHING_CATALOG_LIMIT,
-  PRODUCT_SOURCING_AI_TIMEOUT_MS,
   catalogUnavailableMessage,
   matchToSourcingCandidate,
   productToMatchCandidate,
@@ -69,6 +71,24 @@ import { storageImageDataUrl } from "./storage-images";
 // and the job records that it did.
 
 type Clients = { supabase: UserSupabaseClient; serviceSupabase: ServiceSupabaseClient };
+
+// The terminal ai_jobs write is checked and retried once: a paid run must
+// never stay "running" because the write that closes it failed silently.
+async function closeSourcingJob(
+  serviceSupabase: ServiceSupabaseClient,
+  jobId: string,
+  payload: Database["public"]["Tables"]["ai_jobs"]["Update"]
+) {
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const { error } = await serviceSupabase.from("ai_jobs").update(payload).eq("id", jobId);
+    if (!error) {
+      return;
+    }
+    if (attempt === 1) {
+      console.error(`Could not close product sourcing job ${jobId} (${payload.status}): ${error.message}`);
+    }
+  }
+}
 
 async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | null = null;
@@ -138,14 +158,19 @@ export async function groundProductsForRoom(
     readSpec = readRoomDesignSpec,
     sourceProducts = sourceProductsFromConcept,
     fetchCandidateImages = sourcingCandidateImageDataUrls,
-    extractPalette = extractConceptImagePalette
+    extractPalette = extractConceptImagePalette,
+    now = Date.now
   }: {
     readSpec?: typeof readRoomDesignSpec;
     sourceProducts?: typeof sourceProductsFromConcept;
     fetchCandidateImages?: typeof sourcingCandidateImageDataUrls;
     extractPalette?: typeof extractConceptImagePalette;
+    // The clock, injectable so the run-budget path is testable.
+    now?: () => number;
   } = {}
 ): Promise<GroundProductsResult> {
+  // Everything below shares one request budget (see sourcing-run-budget.ts).
+  const startedAt = now();
   const { data: project } = await supabase
     .from("projects")
     .select("id, budget_max_aed")
@@ -389,9 +414,17 @@ export async function groundProductsForRoom(
       }
       visualPass.imageCount = Object.keys(candidateImageDataUrls).length;
 
+      // The pass gets what is left of the request after palette extraction,
+      // the catalogue read and the image fetch; too little, and ranking is
+      // more honest than a timeout that could kill the request mid-write.
+      const passTimeoutMs = visualPassTimeoutMs({ startedAt, now: now() });
       try {
+        if (passTimeoutMs === null) {
+          throw new Error("The request had no time left for the visual pass after the steps before it.");
+        }
         const result = await withTimeout(
           sourceProducts({
+            timeoutMs: providerTimeoutMs(passTimeoutMs),
             roomType: room.room_type,
             conceptTitle: concept.title,
             conceptDescription: concept.description,
@@ -421,7 +454,7 @@ export async function groundProductsForRoom(
               mustPreserve
             }
           }),
-          PRODUCT_SOURCING_AI_TIMEOUT_MS,
+          passTimeoutMs,
           "Product visual sourcing timed out."
         );
         outcomes = resolveSpecRoleOutcomes({
@@ -462,35 +495,31 @@ export async function groundProductsForRoom(
     });
     const selection = budgetFit.selectedProductIdByRole;
     const roleOptions = selectedFirst(resolved.roleOptions, selection);
-    const reasonByProductId = new Map(
+    // Reasons are keyed by role AND product: a product that sits in two
+    // roles' pools carries each role's own story, and a downgrade in one role
+    // never rewrites the other's.
+    const reasonKey = (roleKey: string, productId: string) => `${roleKey}\u0000${productId}`;
+    const reasonByRoleProduct = new Map<string, string>(
       outcomes
         .filter((outcome): outcome is Extract<SpecRoleOutcome, { kind: "selected" }> => outcome.kind === "selected")
-        .map((outcome) => [outcome.selectedProductId, whyThisPiece(outcome)])
+        .map((outcome) => [reasonKey(roleOptionKey(outcome.role), outcome.selectedProductId), whyThisPiece(outcome)])
     );
     // A budget downgrade replaces the pick with a cheaper in-pool alternate:
     // both rows then say what happened, the pass's first choice included.
     for (const downgrade of budgetFit.downgrades) {
-      reasonByProductId.set(
-        downgrade.toProductId,
+      reasonByRoleProduct.set(
+        reasonKey(downgrade.roleKey, downgrade.toProductId),
         "Chosen as the closest piece within the room's budget; the first choice for this role was above it."
       );
-      reasonByProductId.set(
-        downgrade.fromProductId,
+      reasonByRoleProduct.set(
+        reasonKey(downgrade.roleKey, downgrade.fromProductId),
         "The visual pass's first choice for this role; above the room's budget, so a cheaper piece was chosen instead."
       );
-    }
-    const roleByProductId = new Map<string, RoomProductRoleSpec>();
-    for (const role of roleOptions) {
-      for (const option of role.options) {
-        roleByProductId.set(option.id, role);
-      }
     }
     const itemRows = buildShoppingListItemRows({
       roleOptions,
       selectedProductIdByRole: selection,
-      reasonFor: (match) =>
-        reasonByProductId.get(match.id) ??
-        alternateProse(match, roleByProductId.get(match.id) ?? { category: match.categoryNormalized ?? "", label: "role", visualBrief: null, quantity: 1, priority: "supporting" })
+      reasonFor: (match, role) => reasonByRoleProduct.get(reasonKey(roleOptionKey(role), match.id)) ?? alternateProse(match, role)
     });
 
     const { data: existingList } = await supabase
@@ -553,9 +582,7 @@ export async function groundProductsForRoom(
     const selectedCount = itemRows.filter((row) => row.status === "selected").length;
     const missingRoleCount = missingRoles.filter((entry) => entry.kind === "missing").length;
 
-    await serviceSupabase
-      .from("ai_jobs")
-      .update({
+    await closeSourcingJob(serviceSupabase, sourcingJob.id, {
         status: "succeeded",
         completed_at: new Date().toISOString(),
         model: visualPass.model ?? sourcingModel,
@@ -578,14 +605,11 @@ export async function groundProductsForRoom(
           shoppingListId,
           estimatedTotalAed: estimatedTotal
         }
-      })
-      .eq("id", sourcingJob.id);
+      });
 
     return { status: "sourced", selectedCount, missingRoleCount };
   } catch (error) {
-    await serviceSupabase
-      .from("ai_jobs")
-      .update({
+    await closeSourcingJob(serviceSupabase, sourcingJob.id, {
         status: "failed",
         completed_at: new Date().toISOString(),
         error_message: error instanceof Error ? error.message : "Product sourcing failed.",
@@ -594,8 +618,7 @@ export async function groundProductsForRoom(
         // The pass's spend is real even when the list could not be written.
         cost_estimate_usd: sumUsdCosts(visualPass.textCostUsd, paletteTextCostUsd),
         output_summary: { specSource, visualPass, failedAfterVisualPass: visualPass.used }
-      })
-      .eq("id", sourcingJob.id);
+      });
     throw error;
   }
 }
@@ -661,34 +684,40 @@ export type ListRowSpecRole =
   // The row's role under the concept's current spec: swaps and refills re-run
   // this contract.
   | { status: "role"; role: SpecSourcingRole }
-  // The concept has no spec (a blueprint-built list): no contract to apply.
+  // No contract to apply: the list was built from the room type (blueprint
+  // fallback, by its own provenance or its keys), or the concept has no
+  // readable spec.
   | { status: "no_spec" }
-  // The concept has a spec but this row's identity is not in it (the spec was
-  // re-extracted or re-numbered since the list was built): the list is stale
-  // and must be re-sourced before its rows are changed.
+  // The concept has a readable spec but this row's identity is not in it (the
+  // spec was re-extracted or re-numbered since the list was built): the list
+  // is stale and must be re-sourced before its rows are changed.
   | { status: "stale" };
 
 // The spec role a persisted row belongs to: by the row's spec key first (S3
 // rows carry the spec object's stable key), else by label for rows that
 // predate keys. Resolution is by identity, so a label the user edited on
-// /spec after sourcing never silently drops the contract.
+// /spec after sourcing never silently drops the contract. Staleness is only
+// ever declared against a readable spec: a blueprint-built list has no spec
+// to be stale against, and re-sourcing it would build the same list.
 export async function specRoleForListRow(
   serviceSupabase: ServiceSupabaseClient,
   {
     roomId,
     conceptId,
     roomType,
+    specSource,
     specKey,
     roleLabel
   }: {
     roomId: string;
     conceptId: string | null;
     roomType: string;
+    specSource?: string | null;
     specKey?: string | null;
     roleLabel?: string | null;
   }
 ): Promise<ListRowSpecRole> {
-  if (!conceptId) {
+  if (!conceptId || specSource === "blueprint_fallback" || specKey?.startsWith("blueprint:")) {
     return { status: "no_spec" };
   }
   const { data: specRow } = await serviceSupabase
@@ -702,7 +731,7 @@ export async function specRoleForListRow(
   }
   const spec = parseRoomDesignSpecRow(specRow);
   if (!spec) {
-    return { status: "stale" };
+    return { status: "no_spec" };
   }
   const roles = sourcingRolesFromDesignSpec(spec, roomType).roles;
   if (specKey) {
@@ -721,7 +750,7 @@ async function loadRefillContext(
 ) {
   const { data: shoppingList } = await supabase
     .from("shopping_lists")
-    .select("id, concept_id")
+    .select("id, concept_id, spec_source")
     .eq("id", shoppingListId)
     .single();
 
@@ -748,15 +777,16 @@ async function loadRefillContext(
     .eq("id", shoppingList.concept_id)
     .single();
 
-  let rowsQuery = supabase
-    .from("shopping_list_items")
-    .select(itemColumns)
-    .eq("shopping_list_id", shoppingListId)
-    .eq("category", category);
+  // A keyed role is loaded by its key alone: a swap may have moved a row's
+  // category inside the role's allowed classes (armchairs to chairs), and
+  // that row is still the role's pick.
+  let rowsQuery = supabase.from("shopping_list_items").select(itemColumns).eq("shopping_list_id", shoppingListId);
   if (specKey) {
     rowsQuery = rowsQuery.eq("spec_key", specKey);
   } else if (roleLabel) {
-    rowsQuery = rowsQuery.eq("role_label", roleLabel);
+    rowsQuery = rowsQuery.eq("category", category).eq("role_label", roleLabel);
+  } else {
+    rowsQuery = rowsQuery.eq("category", category);
   }
   const { data: existingRowsRaw } = await rowsQuery;
   // The rows define the role. Without a caller-supplied identity, a category
@@ -797,6 +827,7 @@ async function loadRefillContext(
     roomId,
     conceptId: shoppingList.concept_id,
     roomType: room.room_type,
+    specSource: shoppingList.spec_source,
     specKey: rowSpecKey,
     roleLabel: rowLabel
   });
@@ -914,16 +945,16 @@ export async function refreshShoppingOptions(
   let rejectQuery = clients.supabase
     .from("shopping_list_items")
     .update({ status: "rejected" })
-    .eq("shopping_list_id", input.shoppingListId)
-    .eq("category", input.category)
-    .neq("status", "selected");
+    .eq("shopping_list_id", input.shoppingListId);
   const rejectSpecKey = input.specKey ?? template.spec_key ?? null;
   if (rejectSpecKey) {
     rejectQuery = rejectQuery.eq("spec_key", rejectSpecKey);
   } else if (input.roleLabel ?? template.role_label) {
-    rejectQuery = rejectQuery.eq("role_label", input.roleLabel ?? template.role_label);
+    rejectQuery = rejectQuery.eq("category", input.category).eq("role_label", input.roleLabel ?? template.role_label);
+  } else {
+    rejectQuery = rejectQuery.eq("category", input.category);
   }
-  await rejectQuery;
+  await rejectQuery.neq("status", "selected");
 
   await clients.supabase
     .from("shopping_list_items")

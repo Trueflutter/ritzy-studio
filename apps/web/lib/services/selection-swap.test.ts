@@ -91,9 +91,9 @@ async function main() {
     });
     await selectShoppingItem(client, { shoppingListId: "list-1", itemId: "item-2" });
     const clear = calls.filter((call) => call.op === "update")[0];
+    // By key alone: a swapped pick may sit in a sibling category of the role.
     assert.deepEqual(clear.filters, [
       ["shopping_list_id", "list-1"],
-      ["category", "lighting"],
       ["spec_key", "obj:3:floor_lamp"],
       ["status", "selected"]
     ]);
@@ -303,6 +303,57 @@ async function main() {
     );
     assert.deepEqual(result, { status: "stale_spec" });
     assert.equal(userUpdates.length, 0);
+  }
+
+  // --- substituteProduct: a blueprint-built list is never stale; its rows
+  // swap without a spec contract
+  {
+    const currentProduct = productRow({ id: "00000000-0000-4000-8000-000000000001", price_aed: 3000 });
+    const cheaper = productRow({ id: "00000000-0000-4000-8000-000000000002", price_aed: 2000 });
+    const userUpdates: RecordedCall[] = [];
+    const { client } = fakeSupabase((call) => {
+      if (call.op === "update") {
+        userUpdates.push(call);
+        return { data: null };
+      }
+      if (call.table === "projects") return { data: { id: "p", budget_max_aed: null } };
+      if (call.table === "rooms") return { data: { id: "r", room_type: "Living Room" } };
+      if (call.table === "shopping_lists") return { data: { id: "l", concept_id: "c", spec_source: "blueprint_fallback" } };
+      if (call.table === "concepts") return { data: { id: "c", title: "T", description: null } };
+      if (call.table === "room_measurements") return { data: null };
+      if (call.table === "shopping_list_items") return { data: [{ status: "selected", unit_price_aed: 2000, quantity: 1 }] };
+      return { data: null };
+    });
+    const { client: service, calls: serviceCalls } = fakeSupabase((call) => {
+      if (call.table === "shopping_list_items" && call.single) {
+        return {
+          data: {
+            id: "item-1",
+            category: "sofas",
+            quantity: 1,
+            unit_price_aed: 3000,
+            line_total_aed: 3000,
+            role_label: "living-zone sofa",
+            spec_key: "blueprint:0:sofas",
+            role_priority: "required",
+            role_quantity: 1,
+            product: currentProduct
+          }
+        };
+      }
+      if (call.table === "products") return { data: [currentProduct, cheaper] };
+      // A malformed spec row: unreadable, never a reason to refuse the swap.
+      if (call.table === "room_design_specs") return { data: { id: "spec-x", room_id: "r", concept_id: "c", status: "extracted", must_preserve: [], objects: "not-a-list" } };
+      return { data: null };
+    });
+    const result = await substituteProduct(
+      { supabase: client, serviceSupabase: service },
+      { projectId: "p", roomId: "r", shoppingListId: "l", itemId: "item-1", mode: "cheaper" },
+      { ensureEntitled: async () => {} }
+    );
+    assert.equal(result.status, "swapped");
+    assert.equal(serviceCalls.filter((call) => call.table === "room_design_specs").length, 0, "a blueprint list never consults the spec");
+    assert.equal(userUpdates.find((call) => call.table === "shopping_list_items")?.payload?.product_id, "00000000-0000-4000-8000-000000000002");
   }
 
   console.log("selection-swap service tests passed");
