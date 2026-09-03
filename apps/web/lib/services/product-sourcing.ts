@@ -152,10 +152,11 @@ const CANDIDATES_PER_ROLE = 6;
 // the sourcing pass is sized for. Pure ranking, no paid call, one role.
 const ANCHOR_DEEP_POOL_LIMIT = 200;
 
-// Why an anchored piece is on the list, when the aesthetic pass recorded no
-// reason of its own.
+// An anchored row is a different promise from a matched one, and the shopper
+// should read that promise rather than infer it from a badge that does not
+// exist yet. The stylist's own reason follows when it recorded one.
 const ANCHOR_SELECTION_REASON =
-  "This piece was chosen before the design was drawn, and the design was drawn around it.";
+  "This piece is in your design: it was chosen first and the room was drawn around it.";
 
 // One sentence a person can read (design system 12.7): the visual pass's own
 // reason for the chosen piece, the ranking's reason for the alternates.
@@ -747,7 +748,7 @@ export async function groundProductsForRoom(
               // The strongest status the vocabulary has, and the only honest one
               // here: the render was generated from this product's photograph.
               matchStatus: "strong_match" as const,
-              reason: claim.reason ?? ANCHOR_SELECTION_REASON,
+              reason: [ANCHOR_SELECTION_REASON, claim.reason].filter(Boolean).join(" "),
               mismatchNote: null,
               similarity: null,
               // The design check's bar, met by construction: this render was

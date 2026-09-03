@@ -99,3 +99,48 @@ Criteria 8, 8a and 8b as restated in
 ## Risk tier
 
 HIGH: a migration, and a change to the paid generation path.
+
+## Deviations
+
+- **Step 3 (anchor candidate pools) needed no new code.** S3's
+  `buildSpecSourcingPlan` already applies every contract before ranking, so the
+  anchor pools are that function run over the blueprint's anchor roles. A
+  second pool builder would have been a second place for the contracts to drift.
+- **Step 5, what an omitted role means.** The plan did not say. The prompt tells
+  the stylist that omitting a role is a real answer, and the caller honours it:
+  a role the pass declines gets NO anchor, and normal sourcing fills it on the
+  list where the shopper can see the options. Filling it with the head of the
+  shortlist the pass had just rejected would put that piece in the render and
+  make it the room, which is the opposite of what the omission asked for.
+- **Beyond step 5: the response schema enumerates role keys and product ids.**
+  A correctness review found that this repo carries two role-key conventions
+  (`rugs` and `lighting::0:floor_lamp`), so an unconstrained string let the pass
+  echo a plausible variant, have its pick dropped, and leave the room on the
+  ranked head with the call still paid for and nothing saying so. The decoder
+  now cannot name a role or a product that was not offered, and validation
+  returns what it dropped so a call whose every answer was discarded fails its
+  job row instead of looking like a stylist that liked nothing.
+- **Beyond step 7: anchored roles skip the design check, not just the pass.**
+  The plan said sourcing fills the remaining roles. It is also true that the
+  design check must not judge an anchor: asking whether the render contains
+  what the render was built from spends budget to re-derive a fact and buys the
+  judge's variance on top of it. Anchored roles are merged back after the check
+  rather than through it.
+- **Beyond step 7: `shopping_list_items.is_anchor`.** "This piece is in the
+  render" and "this piece was matched to it" are different promises to a
+  shopper, and only the first can be made by construction.
+- **New module `apps/web/lib/concept-run-budget.ts`.** The plan said the pass
+  would be bounded by the request budget; concept generation had no partition at
+  all, because until now it made one paid call. The render and the persistence
+  are reserved before anything anchoring gets a share.
+- **2XL (Ayo's condition, not in the original plan).** The prototype's anchored
+  render fell back from Evolink to OpenAI and took 232 s, close enough to the
+  route limit to matter, and the likely cause was an anchor whose 2XL image URL
+  carries the resize parameters that host answers with an error. Anchors now
+  reach the render as bytes with no reference URL at all: the fetch already
+  happened app-side through the guard, and it is the same fetch the set pass
+  judges, so a piece whose photograph cannot be fetched is not eligible to
+  anchor anything. Measured below.
+- **Cost accounting.** The anchor pass has its own `ai_jobs` row, so the concept
+  job does NOT also fold its cost in. A run's spend is the sum of its rows, and
+  counting the pass twice would overstate every ceiling.

@@ -924,6 +924,10 @@ async function main() {
     assert.ok(selected, "the anchored piece is chosen even though the pass failed");
     assert.equal(selected?.product_id, SOFA_ID);
     assert.equal(selected?.is_anchor, true, "the list says this piece is IN the render");
+    // And says it in words, not only in a column, since nothing renders the
+    // column yet. The stylist's own reason follows the promise.
+    assert.match(String(selected?.selection_reason), /^This piece is in your design/);
+    assert.match(String(selected?.selection_reason), /grounds the room/);
     assert.ok(
       insertedRows.filter((row) => row.is_anchor === true).length === 1,
       "and says it of nothing else"
