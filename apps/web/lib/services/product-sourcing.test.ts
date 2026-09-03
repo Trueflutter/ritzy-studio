@@ -872,13 +872,14 @@ async function main() {
     assert.deepEqual(order, ["job", "palette"], "spend never precedes its audit row");
   }
 
-  // --- an anchored role is not re-decided. The render was BUILT from the
-  // piece, so the sourcing pass is never asked to propose an alternative to it,
-  // the design check is never paid to confirm it, and the row says the piece is
-  // in the render rather than matched to it (S3b).
+  // --- an anchored role is not re-SOURCED, but it is still CHECKED. The render
+  // was generated from the piece's photograph, so there is nothing for the
+  // sourcing pass to propose; but "generated from" is not "contains", and the
+  // five-room measurement said so, so the claim that the piece is in the design
+  // is made only after the same independent judge confirms it (S3b).
   {
     const passRoles: string[] = [];
-    let checkedCount = 0;
+    const judged: string[] = [];
     let insertedRows: Array<Record<string, unknown>> = [];
     const { client } = userClient((call) => {
       if (call.table === "concept_anchors" && call.op === "select") {
@@ -899,7 +900,7 @@ async function main() {
       {
         readSpec: async () => CONFIRMED_SPEC,
         extractPalette: noPalette,
-        fetchCandidateImages: async () => ({}),
+        fetchCandidateImages: imagesForAll,
         sourceProducts: async ({ roleCandidatePools }) => {
           for (const pool of roleCandidatePools ?? []) {
             passRoles.push(pool.category);
@@ -907,8 +908,10 @@ async function main() {
           throw new Error("no pass in this test");
         },
         verifyProducts: async (input) => {
-          checkedCount += input.products.length;
-          throw new Error("the design check must not be asked about an anchor");
+          for (const product of input.products) {
+            judged.push(product.productId);
+          }
+          return (await verifyAll(0.9)!(input))!;
         }
       }
     );
@@ -917,20 +920,65 @@ async function main() {
     // Not vacuous: the pass ran, and it ran on the OTHER roles.
     assert.ok(passRoles.length > 0, "the pass still runs for everything the render was not built from");
     assert.ok(!passRoles.includes("sofas"), `the anchored role never reaches the pass; saw ${passRoles.join(", ")}`);
-    assert.equal(checkedCount, 0, "and nothing was left for the check to judge");
+    assert.ok(judged.includes(SOFA_ID), "but the judge is still asked whether the render kept it");
 
     const sofaRows = insertedRows.filter((row) => row.category === "sofas");
     const selected = sofaRows.find((row) => row.status === "selected");
-    assert.ok(selected, "the anchored piece is chosen even though the pass failed");
+    assert.ok(selected, "a confirmed anchor is chosen even though the pass failed");
     assert.equal(selected?.product_id, SOFA_ID);
     assert.equal(selected?.is_anchor, true, "the list says this piece is IN the render");
+    assert.equal(insertedRows.filter((row) => row.is_anchor === true).length, 1, "and says it of nothing else");
     // And says it in words, not only in a column, since nothing renders the
     // column yet. The stylist's own reason follows the promise.
     assert.match(String(selected?.selection_reason), /^This piece is in your design/);
     assert.match(String(selected?.selection_reason), /grounds the room/);
-    assert.ok(
-      insertedRows.filter((row) => row.is_anchor === true).length === 1,
-      "and says it of nothing else"
+  }
+
+  // --- the render did NOT keep the anchor. The measurement says this happens:
+  // across five harness rooms the render kept 15 of 20, dropping a bedside lamp
+  // to 0.30 and restyling a red armchair to 0.38. The role opens with the
+  // anchor still among its options, and nothing on the list claims the piece is
+  // in a design it is not in.
+  {
+    let insertedRows: Array<Record<string, unknown>> = [];
+    const { client } = userClient((call) => {
+      if (call.table === "concept_anchors" && call.op === "select") {
+        return {
+          data: [{ role_key: "sofas", role_category: "sofas", role_label: "Sofa", product_id: SOFA_ID, source: "aesthetic_pass", reason: "grounds the room" }]
+        };
+      }
+      if (call.table === "shopping_list_items" && call.op === "insert") {
+        insertedRows = (call.payload as unknown as Array<Record<string, unknown>>) ?? [];
+        return { data: null };
+      }
+      return { data: null };
+    });
+    const { client: service } = serviceClient();
+    const result = await groundProductsForRoom(
+      { supabase: client, serviceSupabase: service },
+      GROUND_INPUT,
+      {
+        readSpec: async () => CONFIRMED_SPEC,
+        extractPalette: noPalette,
+        fetchCandidateImages: imagesForAll,
+        sourceProducts: async () => { throw new Error("no pass in this test"); },
+        // The image model dropped it.
+        verifyProducts: verifyAll(0.3)
+      }
+    );
+
+    assert.equal(result.status, "sourced");
+    const sofaRows = insertedRows.filter((row) => row.category === "sofas");
+    assert.ok(sofaRows.some((row) => row.product_id === SOFA_ID), "the piece is still offered");
+    assert.equal(
+      sofaRows.filter((row) => row.status === "selected").length,
+      0,
+      "but nothing is chosen for the shopper in a role the judge could not confirm"
+    );
+    assert.equal(
+      insertedRows.filter((row) => row.is_anchor === true).length,
+      0,
+      "and nothing claims to be in a design it is not in"
     );
   }
 

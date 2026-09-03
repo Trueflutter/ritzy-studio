@@ -34,9 +34,13 @@ const ANCHOR_WEIGHT: Record<string, number> = {
   storage: 40,
   desks: 40,
   side_tables: 35,
-  chairs: 30,
-  lighting: 20
+  chairs: 30
 };
+// Lighting is deliberately absent, on evidence. A table lamp anchored a harness
+// bedroom and the render kept it at 0.30: a small object gives the image model
+// little to preserve and the judge little to compare, so it spends an anchor
+// slot on the piece least likely to survive the render. The room still gets its
+// lamp from sourcing, on the list, checked like everything else.
 
 export const DEFAULT_ANCHOR_LIMIT = 4;
 

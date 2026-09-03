@@ -622,6 +622,43 @@ export async function groundProductsForRoom(
       }
     }
 
+    // The anchored roles rejoin here, before the check rather than after it.
+    // They were kept out of the sourcing PASS because there is nothing there to
+    // propose: the render was generated from these photographs. But "generated
+    // from" is not "contains", and measuring it said so — across the five
+    // harness rooms the render kept 15 of 20 anchors at the gate's bar, dropping
+    // a bedside lamp to 0.30 and restyling a red armchair to 0.38. So the claim
+    // that a piece is IN the design is made only after the same independent
+    // judge that governs every other selection has confirmed it. An anchor it
+    // does not confirm opens its role, with the anchor still first among the
+    // options, exactly as an unverified proposal does.
+    const anchoredOutcomes: SpecRoleOutcome[] = anchored.flatMap((claim) => {
+      const product = claim.pool.candidates.find((candidate) => candidate.id === claim.productId);
+      return product
+        ? [
+            {
+              kind: "selected" as const,
+              role: claim.pool.role,
+              pool: claim.pool,
+              selectedProductId: claim.productId,
+              matchStatus: "strong_match" as const,
+              reason: [ANCHOR_SELECTION_REASON, claim.reason].filter(Boolean).join(" "),
+              mismatchNote: null,
+              similarity: null
+            }
+          ]
+        : [];
+    });
+    const anchorProductIds = new Set(
+      anchoredOutcomes.flatMap((outcome) => (outcome.kind === "selected" ? [outcome.selectedProductId] : []))
+    );
+    const resolvedPools = [...anchored.map((claim) => claim.pool), ...sourcingPools];
+    // Spec order, so the room still reads sofa, rug, table rather than
+    // everything-anchored-last.
+    outcomes = [...outcomes, ...anchoredOutcomes].sort(
+      (left, right) => (anchorOrder.get(left.role.echoKey) ?? 0) - (anchorOrder.get(right.role.echoKey) ?? 0)
+    );
+
     // The design check (AC 8). The pass proposed a product per role and scored
     // its own work; that self-report is not calibrated, so every proposal is
     // judged again by an independent pass on the production vision model,
@@ -645,7 +682,7 @@ export async function groundProductsForRoom(
         // request budget rather than added on top of it.
         const unfetched = proposals
           .filter((outcome) => !imageDataUrls[outcome.selectedProductId])
-          .map((outcome) => poolCandidateById(sourcingPools, outcome.selectedProductId))
+          .map((outcome) => poolCandidateById(resolvedPools, outcome.selectedProductId))
           .filter((candidate): candidate is RoleScopedRankedProductMatch => Boolean(candidate));
         if (unfetched.length > 0) {
           try {
@@ -657,7 +694,7 @@ export async function groundProductsForRoom(
         const judged = proposals
           .filter((outcome) => Boolean(imageDataUrls[outcome.selectedProductId]))
           .map((outcome) => {
-            const candidate = poolCandidateById(sourcingPools, outcome.selectedProductId);
+            const candidate = poolCandidateById(resolvedPools, outcome.selectedProductId);
             return {
               productId: outcome.selectedProductId,
               productName: candidate?.name ?? "Catalogue product",
@@ -732,38 +769,16 @@ export async function groundProductsForRoom(
       }
     }
 
-    // Merged after the design check, never through it: an anchored outcome has
-    // no verdict because none was asked for, and applyProductVerification opens
-    // any selection it cannot find one for. Restored to spec order so the room
-    // still reads sofa, rug, table rather than everything-anchored-last.
-    const anchoredOutcomes: SpecRoleOutcome[] = anchored.flatMap((claim) => {
-      const product = claim.pool.candidates.find((candidate) => candidate.id === claim.productId);
-      return product
-        ? [
-            {
-              kind: "selected" as const,
-              role: claim.pool.role,
-              pool: claim.pool,
-              selectedProductId: claim.productId,
-              // The strongest status the vocabulary has, and the only honest one
-              // here: the render was generated from this product's photograph.
-              matchStatus: "strong_match" as const,
-              reason: [ANCHOR_SELECTION_REASON, claim.reason].filter(Boolean).join(" "),
-              mismatchNote: null,
-              similarity: null,
-              // The design check's bar, met by construction: this render was
-              // generated from this product's photograph.
-              verifiedSimilarity: 1
-            }
-          ]
-        : [];
-    });
-    outcomes = [...outcomes, ...anchoredOutcomes].sort(
-      (left, right) => (anchorOrder.get(left.role.echoKey) ?? 0) - (anchorOrder.get(right.role.echoKey) ?? 0)
+    // Only an anchor the judge confirmed is still called an anchor. The rest are
+    // on the list as options for an open role, which is the honest state: the
+    // shopper approved a render, and we could not confirm this piece is the one
+    // in it.
+    const anchoredProductIds = new Set(
+      outcomes
+        .filter((outcome): outcome is Extract<SpecRoleOutcome, { kind: "selected" }> => outcome.kind === "selected")
+        .map((outcome) => outcome.selectedProductId)
+        .filter((productId) => anchorProductIds.has(productId))
     );
-    const anchoredProductIds = new Set(anchoredOutcomes.map((outcome) =>
-      outcome.kind === "selected" ? outcome.selectedProductId : ""
-    ));
 
     const resolved = roleOptionsFromOutcomes(outcomes);
     missingRoles = [...plan.missing, ...resolved.missing];
@@ -926,6 +941,10 @@ export async function groundProductsForRoom(
             // Roles this run did not have to source, because the render was
             // built from them.
             claimed: anchoredOutcomes.length,
+            // ...of which the independent judge confirmed the render actually
+            // kept. The gap between these two is the image model dropping or
+            // restyling references, and it is the number to watch.
+            kept: anchoredProductIds.size,
             // An anchor whose piece the spec role's contracts reject, or whose
             // category the spec has no role for. Sourced normally instead; a
             // number that climbs means the spec and the anchors disagree.

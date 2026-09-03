@@ -82,8 +82,21 @@ const ranked = (overrides: Partial<RankedProductMatch> & { id: string }): Ranked
   ];
   assert.deepEqual(
     anchorRolesFromBlueprint(bedroom).map((role) => role.category),
-    ["beds", "rugs", "side_tables", "lighting"],
+    ["beds", "rugs", "side_tables"],
     "the heaviest pieces the blueprint names, required or not, never decor"
+  );
+
+  // Lighting is not an anchor at all, on evidence: a table lamp anchored a
+  // harness bedroom and the render kept it at 0.30. A small object gives the
+  // image model little to preserve, so the slot is better spent or left empty.
+  assert.ok(
+    !anchorRolesFromBlueprint(bedroom).some((role) => role.category === "lighting"),
+    "a bedside lamp is not what a room is built around"
+  );
+  assert.deepEqual(
+    anchorRolesFromBlueprint([{ category: "lighting", label: "floor lamp", quantity: 1, required: true }]),
+    [],
+    "a blueprint of nothing but lighting anchors nothing, and the render runs free"
   );
 }
 
