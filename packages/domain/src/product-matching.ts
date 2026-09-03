@@ -664,14 +664,15 @@ export function filterSubstitutionCandidates({
 const RECENTLY_USED_PRODUCT_PENALTY = 30;
 const AVOID_COLOR_PENALTY = 24;
 
-function avoidColorMatches(candidate: ProductMatchCandidate, avoidColorTags?: string[]) {
+// The avoid vocabulary, expanded into colour families, as a set of tokens.
+// Exported so the anchor path uses the same families as sourcing: a colour
+// added to colorFamilies has to reach both, or a brief that forbids beige
+// stops a sourced sand sofa and still lets a sand sofa anchor the render.
+export function avoidColorTokens(avoidColorTags?: ReadonlyArray<string>): Set<string> {
   if (!avoidColorTags || avoidColorTags.length === 0) {
-    return [];
+    return new Set<string>();
   }
-
-  // Expand each avoid tag into its color family when the vocabulary knows it;
-  // tags outside the family map (e.g. "purple") still match as literal tokens.
-  const avoidTokens = new Set(
+  return new Set(
     avoidColorTags
       .flatMap((tag) => tag.toLowerCase().split(/[^a-z]+/))
       .filter(Boolean)
@@ -682,6 +683,16 @@ function avoidColorMatches(candidate: ProductMatchCandidate, avoidColorTags?: st
         return [lower, ...familyMembers];
       })
   );
+}
+
+function avoidColorMatches(candidate: ProductMatchCandidate, avoidColorTags?: string[]) {
+  if (!avoidColorTags || avoidColorTags.length === 0) {
+    return [];
+  }
+
+  // Expand each avoid tag into its color family when the vocabulary knows it;
+  // tags outside the family map (e.g. "purple") still match as literal tokens.
+  const avoidTokens = avoidColorTokens(avoidColorTags);
 
   const candidateColorTokens = [candidate.color ?? "", ...candidate.colorTags]
     .join(" ")

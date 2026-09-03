@@ -530,8 +530,8 @@ async function runRoom(model: string, room: ManifestRoom) {
   let productImagesUnavailable: string[] = [];
   if (lists[0]) {
     const items = (await supabaseGet(
-      `shopping_list_items?shopping_list_id=eq.${lists[0].id}&status=eq.selected&select=product_id,role_label,category,is_anchor,products(name,primary_image_url)`
-    )) as Array<{ product_id: string; role_label: string; category: string; is_anchor: boolean | null; products: { name: string; primary_image_url: string | null } | null }>;
+      `shopping_list_items?shopping_list_id=eq.${lists[0].id}&status=eq.selected&select=product_id,role_label,category,products(name,primary_image_url)`
+    )) as Array<{ product_id: string; role_label: string; category: string; products: { name: string; primary_image_url: string | null } | null }>;
 
     // The anchors come from concept_anchors, NOT from the list's is_anchor
     // flag. The flag is only set for anchors the APP's own design check already
@@ -547,7 +547,13 @@ async function runRoom(model: string, room: ManifestRoom) {
     // What the app went on to CLAIM, reported beside it: the gap between the
     // two is the anchors the app's own check declined to stand behind, which
     // is the honest handling of a render that dropped a reference.
-    const claimedAnchorIds = new Set(items.filter((item) => item.is_anchor).map((item) => item.product_id));
+    // Derived from the server-authored record intersected with what is
+    // SELECTED, never from shopping_list_items.is_anchor. That column sits on a
+    // table any room owner can PATCH, so reading it here would let a fixture
+    // room decide its own gate result.
+    const claimedAnchorIds = new Set(
+      items.filter((item) => anchorIds.has(item.product_id)).map((item) => item.product_id)
+    );
     // Every anchor is judged whether or not it reached the list, plus every
     // other selected product (reported, not gating).
     const judgeable = [

@@ -757,12 +757,14 @@ const DEFAULT_TEXT_TIMEOUT_MS = 90_000;
 const IMAGE_CALL_TIMEOUT_MS = 240_000;
 
 // What the OpenAI image fallback is given when there is room for it, and the
-// window below which it is not started at all. The module's own note sizes
-// gpt-image-2 at roughly 140 s, so a short window is not a slow attempt, it is
-// a guaranteed abort that spends the budget the caller still needs to record
-// what it has. 45 s is the point below which no observed render has landed.
-export const IMAGE_FALLBACK_RESERVE_MS = 60_000;
-export const IMAGE_FALLBACK_MIN_MS = 45_000;
+// window below which it is not started at all. Sized from what the provider
+// actually takes: this module's own note puts gpt-image-2 at roughly 140 s, the
+// repo's bake-off outputs at 132 to 143 s, and the S3b prototype's fallback at
+// 232 s. An earlier 60 s reserve was worse than no fallback at all: it cut the
+// primary's polling window by a minute to buy a window the fallback could not
+// land in, so a render the primary would have returned late became no render.
+export const IMAGE_FALLBACK_RESERVE_MS = 150_000;
+export const IMAGE_FALLBACK_MIN_MS = 120_000;
 
 // What is left of a caller's deadline, capped so no caller can extend the
 // provider ceiling past what this module is willing to wait. NOT floored:
@@ -792,10 +794,13 @@ export function evolinkPollWindowMs(deadlineMs: number | undefined): number | un
   }
   const share = deadlineMs - IMAGE_FALLBACK_RESERVE_MS;
   // Split only when BOTH halves are usable: the fallback needs a window it can
-  // land in, and the primary should not be cut below half the budget to buy one.
+  // land in, and the primary must not be cut below half the budget to buy one.
   // Otherwise the primary keeps the whole deadline, because a fallback that
-  // cannot return is not worth taking time from the provider that can.
-  const usableSplit = IMAGE_FALLBACK_RESERVE_MS >= IMAGE_FALLBACK_MIN_MS && share >= Math.floor(deadlineMs / 2);
+  // cannot return is not worth taking time from the provider that can. Under a
+  // concept route's reserve that means no fallback at all, which is the honest
+  // answer: one request cannot hold two renders of this length, and a run that
+  // fails cleanly is retryable where a killed one locks the shopper out.
+  const usableSplit = share >= Math.floor(deadlineMs / 2);
   return Math.max(EVOLINK_POLL_INTERVAL_MS * 2, usableSplit ? share : deadlineMs);
 }
 // The spec-driven sourcing pass reads the concept image plus up to a few
@@ -855,6 +860,46 @@ export function createOpenAiImageFallbackClient(
   });
 }
 
+// The one fallback, shared by every primary. It was pasted per branch, and the
+// copies differed only in a provider name inside an error string, which is how
+// the Gemini copy shipped naming Evolink; a tuning applied to the production
+// branch would have missed the other in the same way.
+async function openAiImageFallback({
+  env,
+  prompt,
+  references,
+  noImageErrorMessage,
+  deadlineMs,
+  startedAt,
+  providerName,
+  fallbackError
+}: {
+  env: Parameters<typeof createOpenAiImageFallbackClient>[0] & { OPENAI_IMAGE_MODEL: string };
+  prompt: string;
+  references: ImageGenerationReference[];
+  noImageErrorMessage: string;
+  deadlineMs: number | undefined;
+  startedAt: number;
+  providerName: string;
+  fallbackError: string;
+}) {
+  const fallbackMs = imageCallTimeoutMs(deadlineMs, startedAt);
+  // Not started at all below the minimum: a window too small to return a
+  // picture only spends the budget the caller still needs to record what it has.
+  if (deadlineMs !== undefined && fallbackMs < IMAGE_FALLBACK_MIN_MS) {
+    throw new Error(
+      `${providerName} image generation failed (${fallbackError}); too little of the request budget remained to try the OpenAI fallback.`
+    );
+  }
+  return generateOpenAiImage({
+    client: createOpenAiImageFallbackClient(env, fallbackMs),
+    prompt,
+    references,
+    model: env.OPENAI_IMAGE_MODEL,
+    noImageErrorMessage
+  });
+}
+
 async function generateImageWithConfiguredProvider({
   prompt,
   references,
@@ -890,25 +935,21 @@ async function generateImageWithConfiguredProvider({
         apiKey: env.EVOLINK_API_KEY,
         quality: env.EVOLINK_IMAGE_QUALITY,
         baseUrl: env.EVOLINK_BASE_URL,
-        // Two thirds to the primary, so a provider that stalls still leaves the
-        // fallback enough of the caller's budget to produce the picture.
+        // Everything except the fallback's reserve, when there is room for both.
         pollTimeoutMs: evolinkPollWindowMs(deadlineMs)
       });
     } catch (error) {
       const fallbackError = formatImageGenerationError(error);
       try {
-        const fallbackMs = imageCallTimeoutMs(deadlineMs, startedAt);
-        if (deadlineMs !== undefined && fallbackMs < IMAGE_FALLBACK_MIN_MS) {
-          throw new Error(
-            `Evolink image generation failed (${fallbackError}); too little of the request budget remained to try the OpenAI fallback.`
-          );
-        }
-        const fallbackAttempt = await generateOpenAiImage({
-          client: createOpenAiImageFallbackClient(env, Math.max(IMAGE_FALLBACK_MIN_MS, fallbackMs)),
+        const fallbackAttempt = await openAiImageFallback({
+          env,
           prompt,
           references,
-          model: env.OPENAI_IMAGE_MODEL,
-          noImageErrorMessage
+          noImageErrorMessage,
+          deadlineMs,
+          startedAt,
+          providerName: "Evolink",
+          fallbackError
         });
 
         return {
@@ -939,18 +980,15 @@ async function generateImageWithConfiguredProvider({
     } catch (error) {
       const fallbackError = formatImageGenerationError(error);
       try {
-        const fallbackMs = imageCallTimeoutMs(deadlineMs, startedAt);
-        if (deadlineMs !== undefined && fallbackMs < IMAGE_FALLBACK_MIN_MS) {
-          throw new Error(
-            `Gemini image generation failed (${fallbackError}); too little of the request budget remained to try the OpenAI fallback.`
-          );
-        }
-        const fallbackAttempt = await generateOpenAiImage({
-          client: createOpenAiImageFallbackClient(env, Math.max(IMAGE_FALLBACK_MIN_MS, fallbackMs)),
+        const fallbackAttempt = await openAiImageFallback({
+          env,
           prompt,
           references,
-          model: env.OPENAI_IMAGE_MODEL,
-          noImageErrorMessage
+          noImageErrorMessage,
+          deadlineMs,
+          startedAt,
+          providerName: "Gemini",
+          fallbackError
         });
 
         return {

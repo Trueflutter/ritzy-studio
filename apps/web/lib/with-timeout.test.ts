@@ -11,10 +11,26 @@ import { withTimeout } from "./with-timeout";
 // for fifteen minutes.
 
 async function main() {
-  // A promise that settles first wins, and the timer does not keep the process
-  // alive afterwards: an uncleaned timer would hold a serverless invocation open
-  // past the work it was measuring.
+  // A promise that settles first wins, and the timer is cleared: an uncleaned
+  // one holds a serverless invocation open past the work it was measuring, and
+  // Promise.race swallows the late rejection so nothing else would surface it.
+  // Asserted by counting the clear, because prose about it cannot fail.
   assert.equal(await withTimeout(Promise.resolve("done"), 50, "too slow"), "done");
+  {
+    const realClearTimeout = globalThis.clearTimeout;
+    let cleared = 0;
+    globalThis.clearTimeout = ((id: Parameters<typeof realClearTimeout>[0]) => {
+      cleared += 1;
+      return realClearTimeout(id);
+    }) as typeof globalThis.clearTimeout;
+    try {
+      await withTimeout(Promise.resolve("fast"), 600_000, "too slow");
+      await assert.rejects(withTimeout(Promise.reject(new Error("boom")), 600_000, "too slow"));
+    } finally {
+      globalThis.clearTimeout = realClearTimeout;
+    }
+    assert.equal(cleared, 2, "the timer is cleared whether the work resolves or rejects");
+  }
   await assert.rejects(
     withTimeout(Promise.reject(new Error("the work itself failed")), 50, "too slow"),
     /the work itself failed/,

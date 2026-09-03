@@ -7,6 +7,7 @@ import {
   DEFAULT_ANCHOR_LIMIT,
   anchorContradictsBrief,
   anchorSeedFor,
+  anchorRoleBudgets,
   anchorRolesFromBlueprint,
   anchorSetFromShortlists,
   anchorShortlist,
@@ -99,6 +100,31 @@ const ranked = (overrides: Partial<RankedProductMatch> & { id: string }): Ranked
     [],
     "a blueprint of nothing but lighting anchors nothing, and the render runs free"
   );
+}
+
+// --- the avoid vocabulary is shared with sourcing, so a colour family added
+// there reaches the anchor path too. Read over a wider text than sourcing uses,
+// because a brown arrives in a name and a material as often as in a tag.
+{
+  const sandSofa = ranked({ id: "sand", name: "Dune 3-Seater Sofa", color: "Sand", colorTags: ["sand"] });
+  const cognac = ranked({ id: "cognac2", name: "Stilo Armchair in Savoy Cognac Brown Leather", color: "Cognac", colorTags: [] });
+  // "beige" is not the literal token on the product; the colour family is.
+  assert.equal(anchorContradictsBrief(sandSofa, ["beige"]), true, "the family, not just the word");
+  // And the wider text: this piece's brown is in its name and material only.
+  assert.equal(anchorContradictsBrief(cognac, ["brown"]), true);
+  assert.equal(anchorContradictsBrief(sandSofa, []), false);
+  // But the families name MATERIALS as well as colours ("linen" sits in the
+  // cream family), so expanding them over the name and material text would read
+  // a linen-upholstered olive sofa as beige. The wider read matches only the
+  // literal words the brief used.
+  const oliveLinen = ranked({ id: "ol", name: "Osvaldo 3 Seater Sofa", color: "Olive", colorTags: ["olive"] });
+  oliveLinen.material = "Linen";
+  oliveLinen.materialTags = ["linen"];
+  assert.equal(anchorContradictsBrief(oliveLinen, ["beige"]), false, "linen upholstery is not a beige sofa");
+  // And the literal word still catches it where the catalogue writes it down.
+  const brownNamed = ranked({ id: "bn", name: "Savoy Cognac Brown Leather Chair", color: "Cognac", colorTags: [] });
+  assert.equal(anchorContradictsBrief(brownNamed, ["brown"]), true);
+  assert.equal(anchorContradictsBrief(ranked({ id: "olive", name: "Osvaldo Sofa", color: "Olive", colorTags: ["olive"] }), ["beige"]), false);
 }
 
 // --- warning 1: the brief is a hard filter for an anchor
@@ -287,6 +313,46 @@ const ranked = (overrides: Partial<RankedProductMatch> & { id: string }): Ranked
     ["desks", "rugs", "storage"],
     "a study is built around its desk"
   );
+}
+
+// --- the SET has to fit the room, not just each piece the room. Four roles
+// each priced at the whole budget can produce a render whose every hero piece
+// the list then opens for cost: a picture the shopper approved with nothing in
+// it chosen for them.
+{
+  const roles: RoomProductRole[] = [
+    { category: "sofas", label: "sofa", quantity: 1, required: true },
+    { category: "rugs", label: "rug", quantity: 1, required: true },
+    { category: "coffee_tables", label: "coffee table", quantity: 1, required: true }
+  ];
+  const budgets = anchorRoleBudgets(roles, 20_000)!;
+  // Shares are proportional to how much of the room each piece carries, so a
+  // sofa is not priced out of a room its price should mostly buy.
+  assert.ok(budgets.get("sofas")! > budgets.get("rugs")!);
+  assert.ok(budgets.get("rugs")! > budgets.get("coffee_tables")!);
+  // And the set as a whole stays inside its share of the room.
+  const total = [...budgets.values()].reduce((sum, value) => sum + value, 0);
+  assert.ok(total <= 20_000 * 0.6 + 0.001, `the anchor set's ceiling is a share of the room; got ${total}`);
+  assert.equal(anchorRoleBudgets(roles, null), null, "a room with no budget caps nothing");
+
+  // A piece above its role's share is not shortlisted at all: the render must
+  // not be built around something the list will open.
+  const cheap = ranked({ id: "cheap", name: "Nord Sofa Grey" });
+  cheap.priceAed = 5_000;
+  const dear = ranked({ id: "dear", name: "Grande Sofa Grey" });
+  dear.priceAed = 40_000;
+  assert.deepEqual(
+    anchorShortlist({ candidates: [dear, cheap], maxLineTotalAed: 9_000, seed: "s" }).map((entry) => entry.id),
+    ["cheap"]
+  );
+  // Quantity counts: two chairs at 5,000 are a 10,000 line.
+  assert.deepEqual(
+    anchorShortlist({ candidates: [cheap], maxLineTotalAed: 9_000, quantity: 2, seed: "s" }).map((entry) => entry.id),
+    []
+  );
+  // Unlike recency, affordability does not yield: an unaffordable anchor is
+  // worse than no anchor.
+  assert.deepEqual(anchorShortlist({ candidates: [dear], maxLineTotalAed: 9_000, seed: "s" }), []);
 }
 
 console.log("anchor selection tests passed");

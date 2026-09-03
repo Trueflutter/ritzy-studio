@@ -968,6 +968,71 @@ async function main() {
     // column yet. The stylist's own reason follows the promise.
     assert.match(String(selected?.selection_reason), /^This piece is in your design/);
     assert.match(String(selected?.selection_reason), /grounds the room/);
+
+    // Anchored roles rejoin in SPEC order, not appended at the end. sort_order
+    // is assigned from this order and the shopping list reads it, so appending
+    // would push the sofa, the bed and the rug below the decor on every
+    // anchored room.
+    const sofaOrder = Number(insertedRows.find((row) => row.category === "sofas")?.sort_order);
+    const armchairOrder = Number(insertedRows.find((row) => row.category === "armchairs")?.sort_order);
+    assert.ok(
+      Number.isFinite(sofaOrder) && Number.isFinite(armchairOrder) && sofaOrder < armchairOrder,
+      `the anchored sofa leads the list; got sofa ${sofaOrder} vs armchair ${armchairOrder}`
+    );
+  }
+
+  // --- the anchor's safety net. The design check failing, or the anchor having
+  // no photograph to judge, must open the role like any unverified proposal:
+  // otherwise a judge outage or one 404 from a retailer CDN puts "this piece is
+  // in your design" on the list for a piece nothing verified, which is the
+  // promise the whole slice rests on.
+  const noPassDeps = { sourceProducts: async () => { throw new Error("no pass in this test"); } };
+  for (const [label, deps] of [
+    [
+      "the design check is unavailable",
+      { ...noPassDeps, fetchCandidateImages: imagesForAll, verifyProducts: async () => { throw new Error("judge down"); } }
+    ],
+    [
+      "the anchor has no photograph",
+      { ...noPassDeps, fetchCandidateImages: async () => ({}), verifyProducts: verifyAll(0.9) }
+    ]
+  ] as const) {
+    let insertedRows: Array<Record<string, unknown>> = [];
+    const { client } = userClient((call) => {
+      if (call.table === "concept_anchors" && call.op === "select") {
+        return { data: [{ role_key: "sofas", role_category: "sofas", role_label: "Sofa", product_id: SOFA_ID, source: "aesthetic_pass", reason: "grounds the room" }] };
+      }
+      if (call.table === "shopping_list_items" && call.op === "insert") {
+        insertedRows = (call.payload as unknown as Array<Record<string, unknown>>) ?? [];
+      }
+      return { data: null };
+    });
+    const { client: service } = serviceClient();
+    const result = await groundProductsForRoom(
+      { supabase: client, serviceSupabase: service },
+      GROUND_INPUT,
+      {
+        readSpec: async () => CONFIRMED_SPEC,
+        extractPalette: noPalette,
+        ...deps
+      }
+    );
+
+    assert.equal(result.status, "sourced", label);
+    assert.equal(
+      insertedRows.filter((row) => row.status === "selected").length,
+      0,
+      `${label}: nothing is chosen for the shopper`
+    );
+    assert.equal(
+      insertedRows.filter((row) => row.is_anchor === true).length,
+      0,
+      `${label}: and nothing claims to be in the design`
+    );
+    assert.ok(
+      insertedRows.some((row) => row.product_id === SOFA_ID),
+      `${label}: the piece is still offered`
+    );
   }
 
   // --- the render did NOT keep the anchor. The measurement says this happens:

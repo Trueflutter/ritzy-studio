@@ -75,25 +75,39 @@ console.log("text-cost tests passed");
   // than a fixed fraction: two thirds of a 195 s budget left the fallback 66 s
   // against a provider needing well over twice that, so a stalled primary
   // produced no concept at all where the un-deadlined code produced a slow one.
-  assert.equal(evolinkPollWindowMs(195_000), 195_000 - IMAGE_FALLBACK_RESERVE_MS);
+  // At a concept route's reserve there is not room for two renders of this
+  // length, so the primary keeps the whole window and the fallback is skipped.
+  assert.equal(evolinkPollWindowMs(195_000), 195_000);
+  // Given a budget that can carry both, the primary keeps everything but the
+  // fallback's reserve.
+  assert.equal(evolinkPollWindowMs(400_000), 400_000 - IMAGE_FALLBACK_RESERVE_MS);
   assert.ok(evolinkPollWindowMs(1_000)! >= 6_000, "never below a poll round trip");
 
   // A budget too small to split leaves the primary whole and skips the fallback.
   assert.equal(evolinkPollWindowMs(90_000), 90_000, "no room for two providers, so one gets it all");
 
-  for (const deadline of [60_000, 90_000, 120_000, 195_000]) {
+  for (const deadline of [60_000, 90_000, 120_000, 195_000, 400_000]) {
     const primary = evolinkPollWindowMs(deadline)!;
     const fallback = imageCallTimeoutMs(deadline, 0, primary);
     assert.ok(
       primary + (fallback >= IMAGE_FALLBACK_MIN_MS ? fallback : 0) <= deadline,
       `both providers fit ${deadline}ms (primary ${primary}, fallback ${fallback})`
     );
-    if (fallback >= IMAGE_FALLBACK_MIN_MS) {
-      assert.ok(fallback >= IMAGE_FALLBACK_MIN_MS, "a started fallback has a window it can land in");
+    // The property, stated directly rather than guarded by itself: whenever the
+    // primary is cut back to make room for a fallback, the room it makes is one
+    // the fallback can land in. Cutting the primary for a window too small to
+    // return is the failure this arithmetic exists to prevent.
+    if (primary < deadline) {
+      assert.ok(
+        fallback >= IMAGE_FALLBACK_MIN_MS,
+        `at ${deadline}ms the primary was cut to ${primary}ms for a fallback window of only ${fallback}ms`
+      );
     }
   }
-  // At the render's full reserve the fallback gets a real window.
-  assert.ok(imageCallTimeoutMs(195_000, 0, evolinkPollWindowMs(195_000)!) >= IMAGE_FALLBACK_MIN_MS);
+  // Where the split does happen, the fallback's window is one it can land in.
+  assert.ok(imageCallTimeoutMs(400_000, 0, evolinkPollWindowMs(400_000)!) >= IMAGE_FALLBACK_MIN_MS);
+  // And the primary is never shortened for a fallback that cannot land.
+  assert.equal(evolinkPollWindowMs(195_000), 195_000);
   // Near the render's floor there is not room for both, so the primary keeps
   // the deadline and the fallback is skipped rather than started and abandoned.
   assert.equal(evolinkPollWindowMs(30_000), 30_000);

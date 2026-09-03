@@ -1,6 +1,7 @@
 import { selectAnchorSet, stageTextConfig, type AnchorSetResult } from "@ritzy-studio/ai";
 import { configuredTextModel } from "@ritzy-studio/config";
 import {
+  anchorRoleBudgets,
   anchorRolesFromBlueprint,
   anchorSeedFor,
   anchorSetFromShortlists,
@@ -111,11 +112,17 @@ function emptyOutcome(status: AnchorPassStatus, error: string | null = null): Co
 // they own and no cross-owner read is possible even by mistake.
 export async function recentAnchorProductIdsForUser(
   supabase: UserSupabaseClient,
-  { excludeRoomId, limit = RECENT_ANCHOR_LOOKBACK }: { excludeRoomId: string; limit?: number }
+  { userId, excludeRoomId, limit = RECENT_ANCHOR_LOOKBACK }: { userId: string; excludeRoomId: string; limit?: number }
 ): Promise<string[]> {
   const { data, error } = await supabase
     .from("concept_anchors")
-    .select("product_id, room_id, created_at")
+    .select("product_id, room_id, created_at, room:rooms!inner(project:projects!inner(owner_user_id))")
+    // Scoped by the owner explicitly, not only by the row policy. Both client
+    // types alias the same type, so "pass the user's client" is a convention a
+    // refactor can break silently, and the failure is a cross-tenant read that
+    // narrows this shopper's shortlist by strangers' rooms. The sibling recency
+    // reader in this layer filters the same way.
+    .eq("room.project.owner_user_id", userId)
     .neq("room_id", excludeRoomId)
     .order("created_at", { ascending: false })
     .limit(limit);
@@ -203,7 +210,7 @@ export async function chooseConceptAnchors(
   // here runs the concept request past the route limit. Losing the recency
   // window costs some variety; losing the request costs the concept.
   const recentAnchorProductIds = await withTimeout(
-    recentAnchorProductIdsForUser(supabase, { excludeRoomId: input.roomId }),
+    recentAnchorProductIdsForUser(supabase, { userId: input.userId, excludeRoomId: input.roomId }),
     Math.max(1_000, prepDeadline - now()),
     "The recency read ran past the time the run could spare for anchors."
   ).catch((error) => {
@@ -231,6 +238,12 @@ export async function chooseConceptAnchors(
     candidatesPerRole: ANCHOR_CANDIDATES_PER_ROLE * 2
   });
 
+  // The set has to fit the room, not just each piece the room. Four roles each
+  // priced at the whole budget can produce a render whose every hero piece the
+  // list then opens for cost, which is the worst outcome available: a picture
+  // the shopper approved with nothing in it chosen for them.
+  const roleBudgets = anchorRoleBudgets(anchorRoles, input.budgetMaxAed);
+
   const shortlists = plan.pools
     .map((pool) => ({
       role: pool.role,
@@ -238,6 +251,8 @@ export async function chooseConceptAnchors(
         candidates: pool.candidates,
         avoidColorTags,
         recentAnchorProductIds,
+        maxLineTotalAed: roleBudgets?.get(pool.role.category) ?? null,
+        quantity: pool.role.quantity,
         seed: anchorSeedFor(input.roomId, pool.role.category),
         size: ANCHOR_CANDIDATES_PER_ROLE
       })
@@ -450,6 +465,21 @@ export async function chooseConceptAnchors(
       rolesFilled: anchors.length
     }
   });
+
+  // Every answer discarded is the pass having no effect, which the job row is
+  // already told to record as a failure. The return has to agree with it, or
+  // the concept job's own summary reports "chosen" with nothing chosen and the
+  // room goes unanchored past a usable ranked shortlist.
+  if (anchors.length === 0 && result.dropped.length > 0) {
+    return {
+      ...emptyOutcome(
+        "pass_failed",
+        `The anchor set pass named ${result.dropped.length} product(s) the room could not use, and nothing it could.`
+      ),
+      anchors: rankedFallback(),
+      jobId: job.id
+    };
+  }
 
   return {
     anchors,

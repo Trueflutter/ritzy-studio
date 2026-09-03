@@ -1,4 +1,4 @@
-import { productFamilySignature } from "./product-matching";
+import { avoidColorTokens, productFamilySignature } from "./product-matching";
 import type { ProductMatchCandidate, RankedProductMatch, RoomProductRole } from "./product-matching";
 
 // Anchored concepts: the hero pieces are chosen from real stock BEFORE the
@@ -47,6 +47,30 @@ const ANCHOR_WEIGHT: Record<string, number> = {
 
 export const DEFAULT_ANCHOR_LIMIT = 4;
 
+// What the anchor set may cost, as a share of the room's budget. The render is
+// built from these pieces, so a set the list cannot afford is the worst of both
+// outcomes: the shopper approves a picture whose hero pieces are then opened
+// for budget and chosen for them by nobody. The rest of the room still has to
+// be furnished out of what is left, which is what keeps this below 1.
+export const ANCHOR_BUDGET_SHARE = 0.6;
+
+// The share of the anchor budget each role may spend, in proportion to how much
+// of the room it carries. An even split would price a sofa out of a room whose
+// budget a sofa should mostly buy.
+export function anchorRoleBudgets(
+  roles: ReadonlyArray<RoomProductRole>,
+  budgetMaxAed: number | null,
+  share = ANCHOR_BUDGET_SHARE
+): Map<string, number> | null {
+  if (budgetMaxAed === null || budgetMaxAed <= 0 || roles.length === 0) {
+    return null;
+  }
+  const weights = roles.map((role) => ANCHOR_WEIGHT[role.category] ?? 1);
+  const total = weights.reduce((sum, weight) => sum + weight, 0);
+  const anchorBudget = budgetMaxAed * share;
+  return new Map(roles.map((role, index) => [role.category, (anchorBudget * weights[index]) / total]));
+}
+
 // The roles worth anchoring for a room: the heaviest pieces its blueprint
 // names, whether or not the blueprint marks them required. Weight is what
 // matters here, because these are the pieces the RENDER is built around; a
@@ -75,11 +99,13 @@ export function anchorSeedFor(roomSeed: string, roleCategory: string): string {
   return `${roomSeed}::${roleCategory}`;
 }
 
-function candidateColorText(candidate: ProductMatchCandidate) {
-  return [candidate.color, candidate.material, ...candidate.colorTags, ...candidate.materialTags, candidate.name]
+function tokensOf(parts: ReadonlyArray<string | null | undefined>): string[] {
+  return parts
     .filter((part): part is string => Boolean(part))
     .join(" ")
-    .toLowerCase();
+    .toLowerCase()
+    .split(/[^a-z]+/)
+    .filter(Boolean);
 }
 
 // A colour the brief asked to avoid, present in the piece the whole room will
@@ -89,11 +115,26 @@ export function anchorContradictsBrief(candidate: ProductMatchCandidate, avoidCo
   if (avoidColorTags.length === 0) {
     return false;
   }
-  const text = candidateColorText(candidate);
-  return avoidColorTags.some((tag) => {
-    const token = tag.trim().toLowerCase();
-    return token.length > 0 && new RegExp(`(?:^|[^a-z])${token}(?:[^a-z]|$)`).test(text);
-  });
+
+  // Two reads, deliberately different, because widening both at once
+  // over-rejects. Where the catalogue states a COLOUR, the shared vocabulary
+  // applies, so "avoid beige" also catches a sand or oatmeal tag exactly as it
+  // does in sourcing.
+  const expanded = avoidColorTokens(avoidColorTags);
+  if (tokensOf([candidate.color, ...candidate.colorTags]).some((token) => expanded.has(token))) {
+    return true;
+  }
+
+  // The product's NAME and MATERIALS are read too, because a brown arrives
+  // there as often as in a tag — "Stilo Armchair in Savoy Cognac Brown Leather"
+  // was the piece that anchored a no-brown room in the prototype. But only the
+  // literal words the brief used: colour families name materials ("linen",
+  // "sand"), and expanding them here would read a linen-upholstered olive sofa
+  // as beige.
+  const literal = new Set(avoidColorTags.map((tag) => tag.trim().toLowerCase()).filter(Boolean));
+  return tokensOf([candidate.material, ...candidate.materialTags, candidate.name]).some((token) =>
+    literal.has(token)
+  );
 }
 
 // Two products from the same retailer that are the same piece in another colour
@@ -123,11 +164,15 @@ export function rotationOffset(seed: string, length: number): number {
 
 export type AnchorShortlistInput<T extends RankedProductMatch> = {
   candidates: ReadonlyArray<T>;
+  // The most this role's line may cost. A piece above it is not shortlisted at
+  // all: the render would be built around something the list then opens.
+  maxLineTotalAed?: number | null;
   avoidColorTags?: ReadonlyArray<string>;
   // Products anchored recently, anywhere. Dropped outright: with thousands of
   // rows there is no reason to repeat, and repetition is what made every room
   // look the same.
   recentAnchorProductIds?: ReadonlyArray<string>;
+  quantity?: number;
   // Usually the room id. Rotates the order so two rooms with one brief differ.
   seed: string;
   size?: number;
@@ -137,19 +182,27 @@ export function anchorShortlist<T extends RankedProductMatch>({
   candidates,
   avoidColorTags = [],
   recentAnchorProductIds = [],
+  maxLineTotalAed = null,
+  quantity = 1,
   seed,
   size = 6
 }: AnchorShortlistInput<T>): T[] {
   const recent = new Set(recentAnchorProductIds);
-  const eligible = candidates.filter(
-    (candidate) => !recent.has(candidate.id) && !anchorContradictsBrief(candidate, avoidColorTags)
-  );
+  // Affordability is as hard a filter as the brief, and for the same reason:
+  // both decide what the RENDER is built around, and a piece the list will not
+  // select is worse than no anchor at all. Unlike recency, neither yields.
+  const affordable =
+    maxLineTotalAed === null
+      ? candidates
+      : candidates.filter(
+          (candidate) => ((candidate.salePriceAed ?? candidate.priceAed ?? 0) * Math.max(1, quantity)) <= maxLineTotalAed
+        );
+  const onBrief = affordable.filter((candidate) => !anchorContradictsBrief(candidate, avoidColorTags));
+  const eligible = onBrief.filter((candidate) => !recent.has(candidate.id));
   // If the brief and the recency window leave nothing, the brief wins: an
   // anchor that contradicts it is worse than no anchor, because the render is
   // built around it. Recency is the softer of the two, so it yields first.
-  const pool = eligible.length > 0
-    ? eligible
-    : candidates.filter((candidate) => !anchorContradictsBrief(candidate, avoidColorTags));
+  const pool = eligible.length > 0 ? eligible : onBrief;
 
   const families = new Set<string>();
   const spread: T[] = [];

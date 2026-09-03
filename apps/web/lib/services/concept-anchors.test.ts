@@ -342,7 +342,11 @@ async function main() {
       now: () => 0
     });
 
-    assert.deepEqual(outcome.anchors, []);
+    // The ranked shortlist decides, as it does on every other failure path: a
+    // pass with no usable answer is not a stylist that liked nothing.
+    assert.equal(outcome.status, "pass_failed");
+    assert.ok(outcome.anchors.length > 0, "the room still gets anchors, from the ranking");
+    assert.ok(outcome.anchors.every((anchor) => anchor.source === "ranked_shortlist"));
     assert.equal(outcome.setNote, null, "the note is not offered as the room's rationale");
     assert.match(String(outcome.error), /2 product\(s\) the room could not use/);
     const close = service.calls.find((call: RecordedCall) => call.table === "ai_jobs" && call.op === "update");
