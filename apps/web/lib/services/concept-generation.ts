@@ -13,18 +13,30 @@ import { CONCEPT_VIEW_KEYS } from "@/lib/render-flags";
 import { configuredImageModel, configuredImageProvider, visionImageDataUrl } from "@/lib/render-images";
 import { normalizeCatalogFirstRoomType } from "@/lib/room-type-normalize";
 
+import { chooseConceptAnchors, persistConceptAnchors, type ConceptAnchorOutcome } from "./concept-anchors";
 import { roomImageInputs } from "./room-images";
 import { likedStyleSlugsFromStructuredBrief } from "./sourcing-support";
 import { storageImageDataUrl } from "./storage-images";
 import type { ServiceSupabaseClient, UserSupabaseClient } from "./supabase-clients";
 
 // The concept-generation service: typed inputs and results, all persisted state
-// transitions owned here. Concept-first (S2): the concept is generated from the
-// room, brief, and inspiration only — no catalogue SKU anchors before approval;
-// sourcing happens against the confirmed spec after approval. The action wrappers
-// keep auth, entitlement gating (injected as ensureEntitled), redirects, and copy.
-// Deferred work (the concept views) goes through the injected defer so the service
-// stays free of next/server.
+// transitions owned here. The action wrappers keep auth, entitlement gating
+// (injected as ensureEntitled), redirects, and copy. Deferred work (the concept
+// views) goes through the injected defer so the service stays free of
+// next/server.
+//
+// Anchored concepts (S3b) changed the ordering for the pieces that carry a
+// room. S2 generated from the room, brief and inspiration alone and sourced
+// everything afterwards; S3 then measured what that costs, and with four
+// retailers only about one in eight pieces an unconstrained render depicts has
+// a genuine match in stock. So the hero roles are now chosen from live stock
+// BEFORE the render and passed to it as reference photographs: they match by
+// construction rather than by search. Everything else is unchanged, and
+// sourcing still fills the remaining roles against the confirmed spec after
+// approval.
+//
+// A room whose anchor pass cannot run still gets a concept. The ranked
+// shortlist decides, or the render runs unanchored, and the job says which.
 
 // Generates the additional camera angles for a stored concept and records them as
 // concept-linked room assets. Runs deferred (after()): view failures must never
@@ -182,12 +194,17 @@ export async function generateInitialConceptForRoom(
   { userId, projectId, roomId }: GenerateInitialConceptInput,
   {
     ensureEntitled,
-    defer
+    defer,
+    chooseAnchors = chooseConceptAnchors,
+    now = Date.now
   }: {
     ensureEntitled: () => Promise<void>;
     defer: (task: () => Promise<void>) => void;
+    chooseAnchors?: typeof chooseConceptAnchors;
+    now?: () => number;
   }
 ): Promise<GenerateInitialConceptResult> {
+  const startedAt = now();
   let generatedConceptId = "";
   const { data: room } = await supabase
     .from("rooms")
@@ -349,11 +366,47 @@ export async function generateInitialConceptForRoom(
     throw new Error(jobError.message);
   }
 
+  let anchorOutcome: ConceptAnchorOutcome | null = null;
+
   try {
+    const roomPhotoDataUrl = await visionImageDataUrl(images.photoBytes, roomPhoto.mime_type);
+
+    // The hero pieces, chosen from live stock before the render is asked for.
+    // Never fatal: a room with no anchors still gets a concept, and the job
+    // records which of the three ways it got there.
+    anchorOutcome = await chooseAnchors(
+      { supabase, serviceSupabase },
+      {
+        userId,
+        roomId,
+        roomType: room.room_type,
+        roomPhotoDataUrl,
+        budgetMaxAed: project.budget_max_aed,
+        designBrief,
+        styleSlugs: likedStyleSlugsFromStructuredBrief(designBrief.structured_json),
+        measurements: measurements
+          ? { wall_length_cm: measurements.wall_length_cm, room_depth_cm: measurements.room_depth_cm }
+          : null,
+        startedAt
+      }
+    );
+
     const result = await generateInitialConcept({
       roomType: room.room_type,
-      roomPhotoUrl: await visionImageDataUrl(images.photoBytes, roomPhoto.mime_type),
+      roomPhotoUrl: roomPhotoDataUrl,
       roomPhotoReferenceUrl: images.signedPhotoUrl,
+      // Anchors travel as bytes with no reference URL. The image provider must
+      // never be handed a retailer link to follow: the fetch already happened
+      // app-side, through the guard, and a retailer host that refuses the
+      // provider (or answers it with a resize error) would otherwise cost the
+      // whole render its primary provider and most of the run's budget.
+      anchorProducts: (anchorOutcome?.anchors ?? []).map((anchor) => ({
+        roleLabel: anchor.roleLabel,
+        name: anchor.product.name,
+        bytes: anchor.imageBytes,
+        mimeType: anchor.imageMimeType,
+        referenceUrl: null
+      })),
       roomPhotoBytes: images.photoBytes,
       roomPhotoMimeType: roomPhoto.mime_type,
       additionalRoomPhotos,
@@ -396,7 +449,12 @@ export async function generateInitialConceptForRoom(
         provider: result.imageProvider,
         model: `${result.textModel} + ${result.imageModel}`,
         prompt_version: result.promptVersion,
-        cost_estimate_usd: sumImagePlusTextUsd(evolinkCreditsToUsd(result.imageCreditsUsed), result.textCostUsd),
+        // The anchor pass is part of this run's spend, so it is part of this
+        // run's recorded cost; its own row carries it too, for the per-call view.
+        cost_estimate_usd: sumImagePlusTextUsd(
+          evolinkCreditsToUsd(result.imageCreditsUsed),
+          sumImagePlusTextUsd(result.textCostUsd, anchorOutcome.costUsd)
+        ),
         output_summary: {
           promptKey: result.promptKey,
           title: result.concept.title,
@@ -408,7 +466,19 @@ export async function generateInitialConceptForRoom(
           imageLatencySeconds: result.imageLatencySeconds,
           imageFallbackUsed: result.imageFallbackUsed,
           imageFallbackError: result.imageFallbackError ?? null,
-          imageCreditsUsed: result.imageCreditsUsed
+          imageCreditsUsed: result.imageCreditsUsed,
+          anchors: {
+            status: anchorOutcome.status,
+            error: anchorOutcome.error,
+            chosen: anchorOutcome.anchors.map((anchor) => ({
+              roleKey: anchor.roleKey,
+              productId: anchor.product.id,
+              source: anchor.source
+            })),
+            setNote: anchorOutcome.setNote,
+            selectionJobId: anchorOutcome.jobId,
+            selectionCostUsd: anchorOutcome.costUsd
+          }
         }
       })
       .eq("id", job.id);
@@ -439,6 +509,16 @@ export async function generateInitialConceptForRoom(
     if (conceptError) {
       throw new Error(conceptError.message);
     }
+
+    // Now that there is a concept for them to belong to: what this render was
+    // actually built from, so sourcing fills the remaining roles instead of
+    // re-deciding these, and the next room can avoid repeating them.
+    await persistConceptAnchors(supabase, {
+      roomId,
+      conceptId: concept.id,
+      anchors: anchorOutcome.anchors,
+      selectionJobId: anchorOutcome.jobId
+    });
 
     const renderPath = `${userId}/${roomId}/${concept.id}.png`;
     const renderBytes = Buffer.from(result.imageBase64, "base64");
@@ -497,6 +577,9 @@ export async function generateInitialConceptForRoom(
       .update({
         status: "failed",
         completed_at: new Date().toISOString(),
+        // A run that paid for the anchor pass and then failed still spent that
+        // money; a failed row with no cost would understate every ceiling.
+        cost_estimate_usd: anchorOutcome?.costUsd ?? null,
         error_message: error instanceof Error ? error.message : "Initial concept generation failed."
       })
       .eq("id", job.id);

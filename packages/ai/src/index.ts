@@ -1828,6 +1828,10 @@ export type AnchorSetResult = {
   model: string;
   textCostUsd: number | null;
   picks: AnchorSetPick[];
+  // Answers that did not survive validation. Empty on a healthy call; anything
+  // here means the pass answered for roles the caller then could not use, which
+  // is a protocol problem and not a taste one.
+  dropped: AnchorSetDrop[];
   setNote: string;
 };
 
@@ -1884,33 +1888,48 @@ export function anchorSetSelectionContent(
   return content;
 }
 
-// A pass that names a product for a role it was never offered in, answers
-// twice for one role, or puts one product in two roles has not chosen a set.
-// Each of those picks is dropped rather than failing the whole call: the roles
-// that survive are still a coherent set, and a role left without one falls back
-// to its shortlist head exactly as every role does when the pass cannot run.
+export type AnchorSetDrop = AnchorSetPick & { dropped: "not_offered_for_role" | "role_already_answered" | "product_already_used" };
+
+// A pass that names a product for a role it was never offered in, answers twice
+// for one role, or puts one product in two roles has not chosen a set. Each of
+// those picks is dropped rather than failing the whole call, so a confused
+// response degrades to a smaller set instead of a contradictory one.
+//
+// The drops come back with it. A role the stylist DECLINED and a role whose
+// answer we threw away are the same thing to a caller that only sees survivors,
+// and they are not the same thing at all: the first is the pass working, the
+// second is the pass having no effect while still being paid for. A protocol
+// regression that dropped every pick in every room would otherwise look exactly
+// like a stylist that liked nothing.
 export function validateAnchorSetPicks(
   roles: ReadonlyArray<{ roleKey: string; candidates: ReadonlyArray<{ productId: string }> }>,
   picks: ReadonlyArray<AnchorSetPick>
-): AnchorSetPick[] {
+): { kept: AnchorSetPick[]; dropped: AnchorSetDrop[] } {
   const offered = new Map(
     roles.map((role) => [role.roleKey, new Set(role.candidates.map((candidate) => candidate.productId))])
   );
   const usedRoles = new Set<string>();
   const usedProducts = new Set<string>();
   const kept: AnchorSetPick[] = [];
+  const dropped: AnchorSetDrop[] = [];
   for (const pick of picks) {
     if (!offered.get(pick.roleKey)?.has(pick.productId)) {
+      dropped.push({ ...pick, dropped: "not_offered_for_role" });
       continue;
     }
-    if (usedRoles.has(pick.roleKey) || usedProducts.has(pick.productId)) {
+    if (usedRoles.has(pick.roleKey)) {
+      dropped.push({ ...pick, dropped: "role_already_answered" });
+      continue;
+    }
+    if (usedProducts.has(pick.productId)) {
+      dropped.push({ ...pick, dropped: "product_already_used" });
       continue;
     }
     usedRoles.add(pick.roleKey);
     usedProducts.add(pick.productId);
     kept.push(pick);
   }
-  return kept;
+  return { kept, dropped };
 }
 
 export async function selectAnchorSet(input: {
@@ -1946,7 +1965,10 @@ export async function selectAnchorSet(input: {
         format: {
           type: "json_schema",
           name: "ritzy_anchor_set_selection",
-          schema: anchorSetSelectionJsonSchema(roles.length),
+          schema: anchorSetSelectionJsonSchema(
+            roles.map((role) => role.roleKey),
+            roles.flatMap((role) => role.candidates.map((candidate) => candidate.productId))
+          ),
           strict: true
         }
       }
@@ -1955,12 +1977,14 @@ export async function selectAnchorSet(input: {
   );
 
   const parsed = anchorSetSelectionResponseSchema.parse(JSON.parse(response.output_text));
+  const validated = validateAnchorSetPicks(roles, parsed.picks);
   return {
     promptKey: anchorSetSelectionPrompt.key,
     promptVersion: anchorSetSelectionPrompt.version,
     model: stageModel,
     textCostUsd: estimateTextCostUsd(stageModel, response.usage),
-    picks: validateAnchorSetPicks(roles, parsed.picks),
+    picks: validated.kept,
+    dropped: validated.dropped,
     setNote: parsed.setNote
   };
 }

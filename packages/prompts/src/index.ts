@@ -541,20 +541,26 @@ export const anchorSetSelectionResponseSchema = z.object({
 // not close the array short would force a choice for a role whose candidates
 // the pass had just rejected, and an invented anchor does not sit on a list to
 // be ignored, it becomes the room.
-export const anchorSetSelectionJsonSchema = (roleCount: number) =>
+// Role keys and product ids are enumerated, not merely typed as strings. This
+// repo has more than one role-key convention ("rugs", "lighting::0:floor_lamp"),
+// and a pass that echoed a plausible variant would have its pick dropped by the
+// caller, the role would quietly fall back to the ranked head, and the run
+// would have paid for a set pass that changed nothing, with nothing anywhere
+// saying so. The decoder cannot emit a key or an id that was not offered.
+export const anchorSetSelectionJsonSchema = (roleKeys: readonly string[], productIds: readonly string[]) =>
   ({
   type: "object",
   additionalProperties: false,
   properties: {
     picks: {
       type: "array",
-      maxItems: Math.max(roleCount, 1),
+      maxItems: Math.max(roleKeys.length, 1),
       items: {
         type: "object",
         additionalProperties: false,
         properties: {
-          roleKey: { type: "string", minLength: 1, maxLength: 80 },
-          productId: { type: "string", minLength: 1, maxLength: 80 },
+          roleKey: { type: "string", enum: [...roleKeys] },
+          productId: { type: "string", enum: [...productIds] },
           reason: { type: "string", minLength: 4, maxLength: 400 }
         },
         required: ["roleKey", "productId", "reason"]

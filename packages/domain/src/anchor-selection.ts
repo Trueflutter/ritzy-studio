@@ -164,17 +164,20 @@ export function anchorShortlist<T extends RankedProductMatch>({
   return [...ordered.slice(offset), ...ordered.slice(0, offset)];
 }
 
-export type AnchorPick<T extends RankedProductMatch> = {
-  role: RoomProductRole;
+// Generic in the role, because this function never reads one: it carries the
+// caller's role through to the pick. Blueprint roles and the richer sourcing
+// spec roles both pass here, and neither should have to be flattened first.
+export type AnchorPick<T extends RankedProductMatch, R = RoomProductRole> = {
+  role: R;
   product: T;
 };
 
 // The set used when the aesthetic pass cannot run: the head of each shortlist,
 // with one retailer never allowed to supply the whole room.
-export function anchorSetFromShortlists<T extends RankedProductMatch>(
-  shortlists: ReadonlyArray<{ role: RoomProductRole; candidates: ReadonlyArray<T> }>
-): AnchorPick<T>[] {
-  const picks: AnchorPick<T>[] = [];
+export function anchorSetFromShortlists<T extends RankedProductMatch, R>(
+  shortlists: ReadonlyArray<{ role: R; candidates: ReadonlyArray<T> }>
+): AnchorPick<T, R>[] {
+  const picks: AnchorPick<T, R>[] = [];
   const retailerCounts = new Map<string, number>();
   const maxPerRetailer = Math.max(1, Math.ceil(shortlists.length / 2));
   for (const { role, candidates } of shortlists) {
@@ -194,7 +197,7 @@ export function anchorSetFromShortlists<T extends RankedProductMatch>(
 }
 
 // What two anchor sets have in common, for the diversity criterion.
-export function anchorSetSignature<T extends RankedProductMatch>(picks: ReadonlyArray<AnchorPick<T>>): string {
+export function anchorSetSignature<T extends RankedProductMatch, R>(picks: ReadonlyArray<AnchorPick<T, R>>): string {
   return picks
     .map((pick) => pick.product.id)
     .slice()

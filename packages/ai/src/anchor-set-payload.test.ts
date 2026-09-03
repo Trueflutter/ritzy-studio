@@ -34,50 +34,77 @@ const role = (roleKey: string, ids: string[]): AnchorSetRoleInput => ({
     validateAnchorSetPicks(roles, [
       { roleKey: "sofas", productId: "a2", reason: "sits with the floor" },
       { roleKey: "rugs", productId: "b1", reason: "picks up the sofa" }
-    ]).map((pick) => `${pick.roleKey}:${pick.productId}`),
+    ]).kept.map((pick) => `${pick.roleKey}:${pick.productId}`),
     ["sofas:a2", "rugs:b1"]
   );
 
   // Omitting a role is a real answer: the caller falls back to that role's
   // shortlist head, and no other role is disturbed.
   assert.equal(
-    validateAnchorSetPicks(roles, [{ roleKey: "sofas", productId: "a1", reason: "grounds the room" }]).length,
+    validateAnchorSetPicks(roles, [{ roleKey: "sofas", productId: "a1", reason: "grounds the room" }]).kept.length,
     1,
     "a set with a role left out is still a set"
   );
 
   // A product from another role's shortlist, or from no shortlist at all, was
   // not offered for this role: the render must never be built around it.
-  assert.deepEqual(
-    validateAnchorSetPicks(roles, [
+  {
+    const result = validateAnchorSetPicks(roles, [
       { roleKey: "sofas", productId: "b1", reason: "wrong role's product" },
       { roleKey: "rugs", productId: "not-in-catalogue", reason: "invented" }
-    ]),
-    []
-  );
+    ]);
+    assert.deepEqual(result.kept, []);
+    // And the caller is told, because a call whose every answer was thrown away
+    // is a protocol failure, not a stylist that liked nothing. Those two look
+    // identical to anyone who only sees the survivors.
+    assert.deepEqual(
+      result.dropped.map((pick) => pick.dropped),
+      ["not_offered_for_role", "not_offered_for_role"]
+    );
+  }
 
   // Two answers for one role, and one product answering for two roles: both
   // lose the later pick and keep the first, so a confused response degrades to
   // a smaller set rather than to a contradictory one.
-  assert.deepEqual(
-    validateAnchorSetPicks(roles, [
+  {
+    const result = validateAnchorSetPicks(roles, [
       { roleKey: "sofas", productId: "a1", reason: "first" },
       { roleKey: "sofas", productId: "a2", reason: "second answer for one role" }
-    ]).map((pick) => pick.productId),
-    ["a1"]
-  );
-  assert.deepEqual(
-    validateAnchorSetPicks(
+    ]);
+    assert.deepEqual(result.kept.map((pick) => pick.productId), ["a1"]);
+    assert.deepEqual(result.dropped.map((pick) => pick.dropped), ["role_already_answered"]);
+  }
+  {
+    const result = validateAnchorSetPicks(
       [role("coffee_tables", ["t1"]), role("side_tables", ["t1"])],
       [
         { roleKey: "coffee_tables", productId: "t1", reason: "first" },
         { roleKey: "side_tables", productId: "t1", reason: "the same piece twice" }
       ]
-    ).map((pick) => pick.roleKey),
-    ["coffee_tables"]
-  );
+    );
+    assert.deepEqual(result.kept.map((pick) => pick.roleKey), ["coffee_tables"]);
+    assert.deepEqual(result.dropped.map((pick) => pick.dropped), ["product_already_used"]);
+  }
 
-  assert.deepEqual(validateAnchorSetPicks(roles, []), [], "no picks is the fallback, not an error");
+  // A stylist that declines every role is a real answer and not a failure: it
+  // drops nothing, so the caller can tell it apart from the case above.
+  const declinedAll = validateAnchorSetPicks(roles, []);
+  assert.deepEqual(declinedAll.kept, []);
+  assert.deepEqual(declinedAll.dropped, []);
+}
+
+// --- The decoder cannot name a role or a product that was not offered.
+{
+  const { anchorSetSelectionJsonSchema } = await import("@ritzy-studio/prompts");
+  const schema = anchorSetSelectionJsonSchema(["sofas", "lighting::0:floor_lamp"], ["a1", "b1"]);
+  const item = schema.properties.picks.items.properties;
+  assert.deepEqual(item.roleKey.enum, ["sofas", "lighting::0:floor_lamp"]);
+  assert.deepEqual(item.productId.enum, ["a1", "b1"]);
+  assert.equal(schema.properties.picks.maxItems, 2, "at most one answer per role");
+  // This repo carries more than one role-key convention. An unconstrained
+  // string would let the pass echo a plausible variant, have its pick dropped,
+  // and leave the room anchored on the ranked head with the call still paid for.
+  assert.ok(!("minLength" in item.roleKey), "the enum is the constraint, not a length");
 }
 
 // --- The payload: the room first, the candidates after, nothing addressable.
