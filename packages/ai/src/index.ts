@@ -1966,8 +1966,11 @@ export async function selectAnchorSet(input: {
           type: "json_schema",
           name: "ritzy_anchor_set_selection",
           schema: anchorSetSelectionJsonSchema(
-            roles.map((role) => role.roleKey),
-            roles.flatMap((role) => role.candidates.map((candidate) => candidate.productId))
+            Array.from(new Set(roles.map((role) => role.roleKey))),
+            // Deduped: a role contract can admit a product another role also
+            // admits, and a JSON Schema enum with a repeated value is invalid.
+            // The validator still catches one product answering for two roles.
+            Array.from(new Set(roles.flatMap((role) => role.candidates.map((candidate) => candidate.productId))))
           ),
           strict: true
         }

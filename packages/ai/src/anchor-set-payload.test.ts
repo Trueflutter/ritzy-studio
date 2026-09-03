@@ -107,6 +107,17 @@ const role = (roleKey: string, ids: string[]): AnchorSetRoleInput => ({
   assert.ok(!("minLength" in item.roleKey), "the enum is the constraint, not a length");
 }
 
+// --- A product two roles both admit appears once in the enum. A repeated
+// value makes the schema invalid, and the validator still catches the case
+// where one product is named for two roles.
+{
+  const twice = [role("coffee_tables", ["t1", "t2"]), role("side_tables", ["t1"])];
+  const payload = anchorSetSelectionContent(twice, { roomType: "living_room" }, "data:image/png;base64,ROOM");
+  assert.equal(payload.filter((part) => part.type === "input_image").length, 4, "each role still shows its own copy");
+  const ids = Array.from(new Set(twice.flatMap((entry) => entry.candidates.map((candidate) => candidate.productId))));
+  assert.deepEqual(ids, ["t1", "t2"]);
+}
+
 // --- The payload: the room first, the candidates after, nothing addressable.
 {
   const roles = [role("sofas", ["a1", "a2", "a3", "a4", "a5", "a6", "a7"]), role("rugs", ["b1"])];
