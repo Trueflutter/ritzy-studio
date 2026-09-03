@@ -449,12 +449,11 @@ export async function generateInitialConceptForRoom(
         provider: result.imageProvider,
         model: `${result.textModel} + ${result.imageModel}`,
         prompt_version: result.promptVersion,
-        // The anchor pass is part of this run's spend, so it is part of this
-        // run's recorded cost; its own row carries it too, for the per-call view.
-        cost_estimate_usd: sumImagePlusTextUsd(
-          evolinkCreditsToUsd(result.imageCreditsUsed),
-          sumImagePlusTextUsd(result.textCostUsd, anchorOutcome.costUsd)
-        ),
+        // This job's own calls only. The anchor pass has its own row carrying
+        // its own cost, and a run's spend is the sum of its rows; adding it
+        // here as well would count it twice against the per-run ceiling.
+        // output_summary.anchors.selectionCostUsd keeps it visible from here.
+        cost_estimate_usd: sumImagePlusTextUsd(evolinkCreditsToUsd(result.imageCreditsUsed), result.textCostUsd),
         output_summary: {
           promptKey: result.promptKey,
           title: result.concept.title,
@@ -577,9 +576,6 @@ export async function generateInitialConceptForRoom(
       .update({
         status: "failed",
         completed_at: new Date().toISOString(),
-        // A run that paid for the anchor pass and then failed still spent that
-        // money; a failed row with no cost would understate every ceiling.
-        cost_estimate_usd: anchorOutcome?.costUsd ?? null,
         error_message: error instanceof Error ? error.message : "Initial concept generation failed."
       })
       .eq("id", job.id);

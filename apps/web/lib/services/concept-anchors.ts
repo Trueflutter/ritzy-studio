@@ -13,6 +13,7 @@ import {
 } from "@ritzy-studio/domain";
 
 import {
+  anchorPrepTimeoutMs,
   anchorProviderTimeoutMs,
   anchorSetTimeoutMs,
   CONCEPT_RUN_BUDGET_MS
@@ -80,6 +81,10 @@ export type AnchorPassStatus =
   | "no_anchor_roles"
   | "no_candidates"
   | "no_images"
+  // The catalogue read or the photograph fetches ran past what the run could
+  // spare. The render still happens, unanchored: an anchor pass that overran
+  // must never be the reason the request is killed before the render.
+  | "prep_timed_out"
   | "skipped_no_budget"
   | "pass_failed";
 
@@ -96,6 +101,25 @@ export type ConceptAnchorOutcome = {
   roleCount: number;
   candidateCount: number;
 };
+
+// The prep has no provider deadline of its own to lean on: a catalogue read
+// through a degraded pooler and a stalled retailer CDN both hang rather than
+// fail. Left unbounded, they eat the render's reserve and the platform kills
+// the request with no catch path, leaving the generation job stuck "running"
+// and the shopper locked out of a retry for fifteen minutes.
+async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
+  let timer: NodeJS.Timeout | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error(message)), timeoutMs);
+      })
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 function emptyOutcome(status: AnchorPassStatus, error: string | null = null): ConceptAnchorOutcome {
   return {
@@ -176,21 +200,39 @@ export async function chooseConceptAnchors(
     return emptyOutcome("no_anchor_roles");
   }
 
-  const { data: products = [] } = await serviceSupabase
-    .from("products")
-    .select(
-      `
+  const prepMs = anchorPrepTimeoutMs({ startedAt: input.startedAt, now: now(), runBudgetMs });
+  if (prepMs === null) {
+    return emptyOutcome("prep_timed_out", "The request had no time left to choose anchors before the render.");
+  }
+  const prepDeadline = now() + prepMs;
+
+  let products: unknown[];
+  try {
+    const read = await withTimeout(
+      Promise.resolve(
+        serviceSupabase
+          .from("products")
+          .select(
+            `
       *,
       retailer:retailers(name, status),
       dimensions:product_dimensions(width_cm, depth_cm, height_cm, source_text)
     `
-    )
-    .not("price_aed", "is", null)
-    .not("primary_image_url", "is", null)
-    .order("last_checked_at", { ascending: false, nullsFirst: false })
-    .limit(PRODUCT_MATCHING_CATALOG_LIMIT);
+          )
+          .not("price_aed", "is", null)
+          .not("primary_image_url", "is", null)
+          .order("last_checked_at", { ascending: false, nullsFirst: false })
+          .limit(PRODUCT_MATCHING_CATALOG_LIMIT)
+      ),
+      prepMs,
+      "The catalogue read ran past the time the run could spare for anchors."
+    );
+    products = read.data ?? [];
+  } catch (error) {
+    return emptyOutcome("prep_timed_out", error instanceof Error ? error.message : "The catalogue read timed out.");
+  }
 
-  const candidates = ((products ?? []) as ProductRow[])
+  const candidates = (products as ProductRow[])
     .map(productToMatchCandidate)
     .filter((candidate): candidate is NonNullable<typeof candidate> => Boolean(candidate));
 
@@ -244,7 +286,7 @@ export async function chooseConceptAnchors(
   // This is also what keeps a retailer's URL out of the image provider: an
   // anchor reaches the render as bytes, never as a link for it to follow.
   const imagesByProductId = new Map<string, { bytes: Buffer; mimeType: string; dataUrl: string }>();
-  await Promise.all(
+  const fetches = Promise.all(
     shortlists.flatMap((shortlist) =>
       shortlist.candidates.map(async (candidate) => {
         if (!candidate.primaryImageUrl) {
@@ -262,6 +304,23 @@ export async function chooseConceptAnchors(
       })
     )
   );
+  try {
+    // What is left of the prep window after the catalogue read, so the read and
+    // the fetches share one budget rather than each getting a fresh one.
+    await withTimeout(
+      fetches,
+      Math.max(1_000, prepDeadline - now()),
+      "The candidate photograph fetches ran past the time the run could spare for anchors."
+    );
+  } catch (error) {
+    // Whatever arrived before the deadline still counts: the map is filled as
+    // each fetch lands, so a set can be chosen from what is there. Only a run
+    // that got nothing gives up.
+    console.error("Anchor candidate image fetch timed out; choosing from what arrived.", error);
+    if (imagesByProductId.size === 0) {
+      return emptyOutcome("prep_timed_out", error instanceof Error ? error.message : "The photograph fetches timed out.");
+    }
+  }
 
   const withImages = shortlists
     .map((shortlist) => ({
@@ -446,24 +505,36 @@ export async function persistConceptAnchors(
     anchors,
     selectionJobId
   }: { roomId: string; conceptId: string; anchors: ConceptAnchor[]; selectionJobId: string | null }
-) {
+): Promise<{ persisted: boolean }> {
   if (anchors.length === 0) {
-    return;
+    return { persisted: true };
   }
-  await supabase.from("concept_anchors").upsert(
-    anchors.map((anchor) => ({
-      room_id: roomId,
-      concept_id: conceptId,
-      role_key: anchor.roleKey,
-      role_category: anchor.roleCategory,
-      role_label: anchor.roleLabel,
-      product_id: anchor.product.id,
-      source: anchor.source,
-      reason: anchor.reason,
-      selection_job_id: selectionJobId
-    })),
-    { onConflict: "concept_id,role_key" }
-  );
+  const rows = anchors.map((anchor) => ({
+    room_id: roomId,
+    concept_id: conceptId,
+    role_key: anchor.roleKey,
+    role_category: anchor.roleCategory,
+    role_label: anchor.roleLabel,
+    product_id: anchor.product.id,
+    source: anchor.source,
+    reason: anchor.reason,
+    selection_job_id: selectionJobId
+  }));
+
+  // Retried once, then logged loudly, and never thrown. Without these rows
+  // sourcing re-decides the anchored roles and can put a different sofa on the
+  // list than the one in the render, which is the mismatch this slice exists to
+  // remove; but the render is already paid for and the shopper can see it, so
+  // failing the whole generation over a provenance write would be the worse
+  // trade. The loss has to be visible either way.
+  const write = async () => (await supabase.from("concept_anchors").upsert(rows, { onConflict: "concept_id,role_key" })).error;
+  const error = (await write()) ? await write() : null;
+  if (error) {
+    console.error(
+      `Concept ${conceptId}: the render's anchors could not be recorded (${error.message}); sourcing will re-decide those roles.`
+    );
+  }
+  return { persisted: !error };
 }
 
 // ------------------------------------------------- what sourcing must not redo

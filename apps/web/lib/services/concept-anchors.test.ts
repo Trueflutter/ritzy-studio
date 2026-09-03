@@ -166,23 +166,48 @@ async function main() {
     assert.equal(jobUpdate?.payload?.error_message, "provider timeout");
   }
 
-  // --- No budget left for the pass: the shortlist decides and nothing is paid
-  // for. Starting a call that cannot return spends tokens and records nothing.
+  // --- The prep was affordable and then overran: the shortlist decides and
+  // nothing is paid for. Starting a call that cannot return spends tokens and
+  // records nothing.
   {
     const { clients: c, service } = clients();
     let called = false;
+    // The prep guard is taken first, the set guard after the fetches, so the
+    // clock has to move between them the way a slow CDN moves it.
+    const readings = [0, 0, 0, 70_000];
+    let tick = 0;
     const outcome = await chooseConceptAnchors(c, INPUT, {
       fetchImage,
       selectSet: async () => {
         called = true;
         throw new Error("must not run");
       },
-      now: () => 280_000
+      now: () => readings[Math.min(tick++, readings.length - 1)]
     });
     assert.equal(outcome.status, "skipped_no_budget");
     assert.ok(!called, "no paid call is started without the time to finish it");
-    assert.ok(outcome.anchors.length > 0);
+    assert.ok(outcome.anchors.length > 0, "the room still gets anchors, from the ranking");
     assert.equal(service.calls.filter((call: RecordedCall) => call.table === "ai_jobs").length, 0);
+  }
+
+  // --- There was never time to choose anchors at all: the render runs
+  // unanchored rather than the request being killed mid-generation. A run the
+  // platform kills has no catch path, so its job row stays "running" and the
+  // dedupe locks the shopper out of a retry for fifteen minutes.
+  {
+    const { clients: c, service } = clients();
+    const outcome = await chooseConceptAnchors(c, INPUT, {
+      fetchImage,
+      selectSet: async () => {
+        throw new Error("must not run");
+      },
+      now: () => 280_000
+    });
+    assert.equal(outcome.status, "prep_timed_out");
+    assert.deepEqual(outcome.anchors, []);
+    // Not even the catalogue is read: the guard is taken before the work, not
+    // after it.
+    assert.equal(service.calls.filter((call: RecordedCall) => call.table === "products").length, 0);
   }
 
   // --- A product whose photograph cannot be fetched cannot anchor anything.
@@ -271,8 +296,36 @@ async function main() {
       selectionJobId: "anchor-job-1"
     });
     assert.equal(calls[0].op, "upsert");
+    assert.equal(calls.length, 1, "a clean write is not retried");
     assert.equal(calls[0].table, "concept_anchors");
     assert.equal(calls[0].upsertOptions?.onConflict, "concept_id,role_key");
+
+    // The write that makes anchoring durable is retried once and, if it still
+    // fails, reported. Without these rows sourcing re-decides the anchored
+    // roles and can put a different sofa on the list than the one in the
+    // render, which is the whole mismatch this slice removes.
+    {
+      const { client: flaky, calls: flakyCalls } = fakeSupabase(() => ({ error: { message: "connection reset" } }));
+      const result = await persistConceptAnchors(flaky, {
+        roomId: "room-1",
+        conceptId: "concept-1",
+        anchors: [
+          {
+            roleKey: "sofas",
+            roleCategory: "sofas",
+            roleLabel: "Sofa",
+            product: { id: ID["sofa-1"], name: "Osvaldo" } as RankedProductMatch,
+            imageBytes: Buffer.from("x"),
+            imageMimeType: "image/jpeg",
+            source: "aesthetic_pass",
+            reason: null
+          }
+        ],
+        selectionJobId: null
+      });
+      assert.equal(flakyCalls.length, 2, "the failed write is retried once");
+      assert.equal(result.persisted, false, "and the loss is reported, not swallowed");
+    }
 
     // Nothing chosen writes nothing, rather than an empty upsert.
     const { client: empty, calls: emptyCalls } = fakeSupabase(() => ({ data: null }));
