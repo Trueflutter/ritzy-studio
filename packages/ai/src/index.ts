@@ -925,7 +925,7 @@ async function generateImageWithConfiguredProvider({
         const fallbackMs = imageCallTimeoutMs(deadlineMs, startedAt);
         if (deadlineMs !== undefined && fallbackMs < IMAGE_FALLBACK_MIN_MS) {
           throw new Error(
-            `Evolink image generation failed (${fallbackError}); too little of the request budget remained to try the OpenAI fallback.`
+            `Gemini image generation failed (${fallbackError}); too little of the request budget remained to try the OpenAI fallback.`
           );
         }
         const fallbackAttempt = await generateOpenAiImage({

@@ -214,6 +214,50 @@ async function main() {
     assert.equal(service.calls.filter((call: RecordedCall) => call.table === "products").length, 0);
   }
 
+  // --- A photograph fetch that never settles. This is the real shape of the
+  // failure the prep guard exists for: a stalled retailer CDN does not fail, it
+  // hangs, and left unbounded it runs the concept request past the route limit,
+  // where the platform kills it with no catch path and the shopper is locked
+  // out of a retry for fifteen minutes.
+  {
+    const { clients: c } = clients();
+    const outcome = await chooseConceptAnchors(c, INPUT, {
+      fetchImage: () => new Promise(() => {}),
+      selectSet: async () => {
+        throw new Error("must not run");
+      },
+      // The prep guard is taken at 0 and the fetch window closes 30s later.
+      now: () => 0,
+      runBudgetMs: 285_000
+    });
+    assert.equal(outcome.status, "prep_timed_out");
+    assert.deepEqual(outcome.anchors, []);
+  }
+
+  // --- Some photographs arrive and one hangs. Whatever landed before the
+  // deadline still counts: a set chosen from four of five shortlists is a real
+  // set, and giving up on all of them because one retailer is slow would cost
+  // the room its anchors for someone else's outage.
+  {
+    const { clients: c } = clients();
+    let served = 0;
+    const outcome = await chooseConceptAnchors(c, INPUT, {
+      fetchImage: async (url: string) => {
+        served += 1;
+        if (served > 3) {
+          return new Promise(() => {}) as never;
+        }
+        return { bytes: Buffer.from(`bytes:${url}`), mimeType: "image/jpeg" };
+      },
+      selectSet: async () => {
+        throw new Error("fall back to the ranking");
+      },
+      now: () => 0
+    });
+    assert.equal(outcome.status, "pass_failed", "the prep survived; the pass is what failed here");
+    assert.ok(outcome.anchors.length > 0, "the room is anchored on the photographs that arrived");
+  }
+
   // --- A product whose photograph cannot be fetched cannot anchor anything.
   // The pass needs the image to judge it and the render needs it to build from,
   // so there is no path where an unfetchable piece becomes the room.
