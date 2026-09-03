@@ -517,8 +517,12 @@ async function runRoom(model: string, room: ManifestRoom) {
     spec: specs[0] ?? null
   });
 
-  // Criterion 8: every SELECTED product on the concept's shopping list must
-  // belong to the design. NOT_APPLICABLE when the room has no list yet.
+  // Criterion 8, restated with S3b: every ANCHOR on the concept's shopping list
+  // must belong to the design. An anchor is a piece the render was GENERATED
+  // from, so a failure here means the image model dropped a reference it was
+  // told to keep. Non-anchor selected products are judged and reported but do
+  // not decide the verdict; checklist.md carries the reasoning and the history.
+  // NOT_APPLICABLE when the room has no list yet.
   const lists = (await supabaseGet(
     `shopping_lists?room_id=eq.${room.roomId}&concept_id=eq.${hero.id}&select=id,missing_roles&order=updated_at.desc&limit=1`
   )) as Array<{ id: string; missing_roles: unknown }>;
@@ -526,8 +530,9 @@ async function runRoom(model: string, room: ManifestRoom) {
   let productImagesUnavailable: string[] = [];
   if (lists[0]) {
     const items = (await supabaseGet(
-      `shopping_list_items?shopping_list_id=eq.${lists[0].id}&status=eq.selected&select=product_id,role_label,category,products(name,primary_image_url)`
-    )) as Array<{ product_id: string; role_label: string; category: string; products: { name: string; primary_image_url: string | null } | null }>;
+      `shopping_list_items?shopping_list_id=eq.${lists[0].id}&status=eq.selected&select=product_id,role_label,category,is_anchor,products(name,primary_image_url)`
+    )) as Array<{ product_id: string; role_label: string; category: string; is_anchor: boolean | null; products: { name: string; primary_image_url: string | null } | null }>;
+    const anchorIds = new Set(items.filter((item) => item.is_anchor).map((item) => item.product_id));
     const withImages = await Promise.all(
       items.map(async (item) => ({
         productId: item.product_id,
@@ -537,35 +542,46 @@ async function runRoom(model: string, room: ManifestRoom) {
         imageDataUrl: item.products?.primary_image_url ? await remoteImageDataUrl(item.products.primary_image_url) : null
       }))
     );
-    productImagesUnavailable = withImages.filter((product) => !product.imageDataUrl).map((product) => product.productName);
+    // Only an ANCHOR without a picture can stop this check passing: the render
+    // was built from that picture, so its absence is a real gap. A matched
+    // product with no picture is reported and does not decide the verdict.
+    productImagesUnavailable = withImages
+      .filter((product) => !product.imageDataUrl && anchorIds.has(product.productId))
+      .map((product) => product.productName);
     productVerdicts = await judgeProducts({
       model,
       conceptImage,
       products: withImages.filter((product): product is typeof product & { imageDataUrl: string } => Boolean(product.imageDataUrl)),
       threshold: productConsistencyThreshold()
     });
-    const failed = productVerdicts.filter((product) => product.verdict === "fail");
+    const anchorVerdicts = productVerdicts.filter((product) => anchorIds.has(product.productId));
+    const matchedVerdicts = productVerdicts.filter((product) => !anchorIds.has(product.productId));
+    const failed = anchorVerdicts.filter((product) => product.verdict === "fail");
+    const matchedFailed = matchedVerdicts.filter((product) => product.verdict === "fail");
     const missingRoles = Array.isArray(lists[0].missing_roles) ? (lists[0].missing_roles as Array<{ kind?: string; label?: string }>) : [];
     const missingLabels = missingRoles.filter((entry) => entry.kind === "missing").map((entry) => entry.label);
-    // AC 8 reads "every selected product passes": a product that could not be
-    // judged (no image) is never counted as passing, so the check fails until
-    // every selected product has been seen. And a list that exists with NOTHING
-    // selected cannot pass either: that is the state a broken design check
-    // produces, and calling it not-applicable would let exactly that
-    // regression read as gate-green. Not-applicable is reserved for a concept
-    // with no shopping list at all.
-    const nothingSelected = productVerdicts.length === 0 && productImagesUnavailable.length === 0;
+    // A list with no anchor on it cannot pass. "Every anchor belongs to the
+    // design" is vacuously true of a run that anchored nothing, and that run is
+    // precisely the regression this check exists to catch, so it is a failure
+    // and not a not-applicable. Not-applicable is reserved for a concept with
+    // no shopping list at all.
+    const noAnchors = anchorIds.size === 0;
     verdicts.push({
       check: "product_consistency",
-      verdict: nothingSelected ? "fail" : failed.length === 0 && productImagesUnavailable.length === 0 ? "pass" : "fail",
-      notes: nothingSelected
-        ? "The list exists but nothing is selected on it, so no product could be judged. A list where the design check chose nothing is not a passing list."
+      verdict: noAnchors ? "fail" : failed.length === 0 && productImagesUnavailable.length === 0 ? "pass" : "fail",
+      notes: noAnchors
+        ? "The list carries no anchor, so the render was not built from any catalogue piece. The claim this check tests does not exist for this room."
         : [
-            `${productVerdicts.length - failed.length}/${productVerdicts.length} judged products belong to the design`,
+            `anchors: ${anchorVerdicts.length - failed.length}/${anchorVerdicts.length} kept by the render`,
             failed.length > 0
-              ? `failed: ${failed.map((product) => `${product.productName} (${product.roleLabel}, similarity ${product.similarity.toFixed(2)}, compared with ${product.matchedObject})`).join("; ")}`
+              ? `anchors the render did not keep: ${failed.map((product) => `${product.productName} (${product.roleLabel}, similarity ${product.similarity.toFixed(2)}, compared with ${product.matchedObject})`).join("; ")}`
               : null,
-            productImagesUnavailable.length > 0 ? `NOT judged (image unavailable), so the check cannot pass: ${productImagesUnavailable.join("; ")}` : null,
+            productImagesUnavailable.length > 0 ? `anchors NOT judged (image unavailable), so the check cannot pass: ${productImagesUnavailable.join("; ")}` : null,
+            // Reported, never gating: these are matched to the design rather
+            // than built into it, and the app already states that difference.
+            matchedVerdicts.length > 0
+              ? `matched products (reported, not gating): ${matchedVerdicts.length - matchedFailed.length}/${matchedVerdicts.length} belong to the design${matchedFailed.length > 0 ? `; below the bar: ${matchedFailed.map((product) => `${product.productName} (${product.similarity.toFixed(2)})`).join("; ")}` : ""}`
+              : null,
             missingLabels.length > 0 ? `honestly missing on the list: ${missingLabels.join("; ")}` : null
           ]
             .filter(Boolean)
