@@ -872,6 +872,64 @@ async function main() {
     assert.deepEqual(order, ["job", "palette"], "spend never precedes its audit row");
   }
 
+  // --- an anchored role is not re-decided. The render was BUILT from the
+  // piece, so the sourcing pass is never asked to propose an alternative to it,
+  // the design check is never paid to confirm it, and the row says the piece is
+  // in the render rather than matched to it (S3b).
+  {
+    const passRoles: string[] = [];
+    let checkedCount = 0;
+    let insertedRows: Array<Record<string, unknown>> = [];
+    const { client } = userClient((call) => {
+      if (call.table === "concept_anchors" && call.op === "select") {
+        return {
+          data: [{ role_key: "sofas", role_category: "sofas", role_label: "Sofa", product_id: SOFA_ID, source: "aesthetic_pass", reason: "grounds the room" }]
+        };
+      }
+      if (call.table === "shopping_list_items" && call.op === "insert") {
+        insertedRows = (call.payload as unknown as Array<Record<string, unknown>>) ?? [];
+        return { data: null };
+      }
+      return { data: null };
+    });
+    const { client: service } = serviceClient();
+    const result = await groundProductsForRoom(
+      { supabase: client, serviceSupabase: service },
+      GROUND_INPUT,
+      {
+        readSpec: async () => CONFIRMED_SPEC,
+        extractPalette: noPalette,
+        fetchCandidateImages: async () => ({}),
+        sourceProducts: async ({ roleCandidatePools }) => {
+          for (const pool of roleCandidatePools ?? []) {
+            passRoles.push(pool.category);
+          }
+          throw new Error("no pass in this test");
+        },
+        verifyProducts: async (input) => {
+          checkedCount += input.products.length;
+          throw new Error("the design check must not be asked about an anchor");
+        }
+      }
+    );
+
+    assert.equal(result.status, "sourced");
+    // Not vacuous: the pass ran, and it ran on the OTHER roles.
+    assert.ok(passRoles.length > 0, "the pass still runs for everything the render was not built from");
+    assert.ok(!passRoles.includes("sofas"), `the anchored role never reaches the pass; saw ${passRoles.join(", ")}`);
+    assert.equal(checkedCount, 0, "and nothing was left for the check to judge");
+
+    const sofaRows = insertedRows.filter((row) => row.category === "sofas");
+    const selected = sofaRows.find((row) => row.status === "selected");
+    assert.ok(selected, "the anchored piece is chosen even though the pass failed");
+    assert.equal(selected?.product_id, SOFA_ID);
+    assert.equal(selected?.is_anchor, true, "the list says this piece is IN the render");
+    assert.ok(
+      insertedRows.filter((row) => row.is_anchor === true).length === 1,
+      "and says it of nothing else"
+    );
+  }
+
   // --- the terminal job write is retried once and its failure is logged,
   // never swallowed into a job left "running"
   {

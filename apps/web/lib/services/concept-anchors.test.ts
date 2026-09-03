@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import type { AnchorSetPick, AnchorSetResult } from "@ritzy-studio/ai";
 import type { RankedProductMatch } from "@ritzy-studio/domain";
 
-import { chooseConceptAnchors, persistConceptAnchors } from "./concept-anchors";
+import { chooseConceptAnchors, claimAnchoredPools, persistConceptAnchors } from "./concept-anchors";
 import { fakeSupabase, type RecordedCall, type Responder } from "./supabase-test-double";
 
 // The anchor path decides what a paid render is built around, so what it does
@@ -278,6 +278,70 @@ async function main() {
     const { client: empty, calls: emptyCalls } = fakeSupabase(() => ({ data: null }));
     await persistConceptAnchors(empty, { roomId: "r", conceptId: "c", anchors: [], selectionJobId: null });
     assert.equal(emptyCalls.length, 0);
+  }
+
+  // --- Which spec roles sourcing must not decide again.
+  {
+    const pool = (category: string, ids: string[]) => ({ role: { category }, candidates: ids.map((id) => ({ id })) });
+    const anchor = (role_category: string, product_id: string) => ({ role_category, product_id, reason: null });
+
+    // The ordinary case: the anchor claims its category's role, which then does
+    // not appear in what is left for the pass to source.
+    {
+      const pools = [pool("sofas", ["s1", "s2"]), pool("rugs", ["r1"])];
+      const result = claimAnchoredPools({ pools, anchors: [anchor("sofas", "s2")] });
+      assert.deepEqual(result.anchored.map((claim) => claim.productId), ["s2"]);
+      assert.deepEqual(result.remaining.map((entry) => entry.role.category), ["rugs"]);
+      assert.deepEqual(result.unclaimed, []);
+    }
+
+    // A living-dining hall carries two roles in one category. One anchor takes
+    // one of them; the other is sourced normally rather than being overwritten.
+    {
+      const pools = [pool("sofas", ["s1"]), pool("sofas", ["s1", "s9"])];
+      const result = claimAnchoredPools({ pools, anchors: [anchor("sofas", "s1")] });
+      assert.equal(result.anchored.length, 1);
+      assert.equal(result.remaining.length, 1);
+    }
+
+    // A category the spec has no role for cannot be claimed. The render still
+    // contains the piece; sourcing simply has nothing to attach it to, and the
+    // count is reported rather than lost.
+    {
+      const result = claimAnchoredPools({ pools: [pool("rugs", ["r1"])], anchors: [anchor("sofas", "s1")] });
+      assert.deepEqual(result.anchored, []);
+      assert.deepEqual(result.unclaimed, ["s1"]);
+      assert.equal(result.remaining.length, 1, "and the role it could not claim is still sourced");
+    }
+
+    // The anchor sits below the cut the sourcing pass is sized for. The pool is
+    // rebuilt deeper, on the same contracts and the same scorer, before the
+    // claim is given up.
+    {
+      const shallow = pool("sofas", ["s1"]);
+      const deep = pool("sofas", ["s1", "s2", "s3"]);
+      const result = claimAnchoredPools({
+        pools: [shallow],
+        anchors: [anchor("sofas", "s3")],
+        deepen: () => deep
+      });
+      assert.deepEqual(result.anchored.map((claim) => claim.pool), [deep]);
+      assert.deepEqual(result.remaining, []);
+    }
+
+    // Deeper and still absent: the contracts genuinely reject the piece for
+    // this role. It is not forced in with a score nobody computed.
+    {
+      const shallow = pool("sofas", ["s1"]);
+      const result = claimAnchoredPools({
+        pools: [shallow],
+        anchors: [anchor("sofas", "s3")],
+        deepen: () => null
+      });
+      assert.deepEqual(result.anchored, []);
+      assert.deepEqual(result.unclaimed, ["s3"]);
+      assert.deepEqual(result.remaining, [shallow], "the role goes to normal sourcing");
+    }
   }
 
   console.log("concept-anchors tests passed");

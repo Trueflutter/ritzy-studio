@@ -59,6 +59,7 @@ import {
   splitAvoidColorCues,
   type ProductRow
 } from "./sourcing-support";
+import { claimAnchoredPools, readConceptAnchors } from "./concept-anchors";
 import type { ServiceSupabaseClient, UserSupabaseClient } from "./supabase-clients";
 import { storageImageDataUrl } from "./storage-images";
 
@@ -146,6 +147,15 @@ export type SpecSource = "confirmed_spec" | "blueprint_fallback";
 // Six contract-clean candidates per role keep a sixteen-role design's pass
 // inside its deadline while still giving the picker alternates.
 const CANDIDATES_PER_ROLE = 6;
+
+// How deep one role's pool is rebuilt to find an anchor that sits below the cut
+// the sourcing pass is sized for. Pure ranking, no paid call, one role.
+const ANCHOR_DEEP_POOL_LIMIT = 200;
+
+// Why an anchored piece is on the list, when the aesthetic pass recorded no
+// reason of its own.
+const ANCHOR_SELECTION_REASON =
+  "This piece was chosen before the design was drawn, and the design was drawn around it.";
 
 // One sentence a person can read (design system 12.7): the visual pass's own
 // reason for the chosen piece, the ranking's reason for the alternates.
@@ -430,6 +440,35 @@ export async function groundProductsForRoom(
     avoidColorTags,
     candidatesPerRole: CANDIDATES_PER_ROLE
   });
+  // Anchored concepts (S3b): the hero roles were decided BEFORE this render
+  // existed, and this render was built from their photographs. Sourcing fills
+  // what is left; it does not pay a pass to propose an alternative to a piece
+  // that is already in the picture, and it does not pay a judge to confirm one.
+  const anchorRows = await readConceptAnchors(supabase, { roomId, conceptId });
+  const { anchored, remaining: sourcingPools, unclaimed: unclaimedAnchors } = claimAnchoredPools({
+    pools: plan.pools,
+    anchors: anchorRows,
+    // The anchor is in the render and the spec was extracted from that render,
+    // so the contracts should admit it; it can still sit below a cut sized for
+    // what the sourcing pass can look at. Same contracts, same scorer, deeper.
+    deepen: (pool, productId) => {
+      const deeper = buildSpecSourcingPlan({
+        roles: [pool.role],
+        unsourceable: [],
+        candidates,
+        roomType: room.room_type,
+        conceptText,
+        budgetMaxAed: project.budget_max_aed,
+        roomMeasurements,
+        recentlyUsedProductIds,
+        avoidColorTags,
+        candidatesPerRole: ANCHOR_DEEP_POOL_LIMIT
+      }).pools[0];
+      return deeper?.candidates.some((candidate) => candidate.id === productId) ? deeper : null;
+    }
+  });
+  const anchorOrder = new Map(plan.pools.map((pool, index) => [pool.role.echoKey, index]));
+
   const contractRejections = plan.pools.reduce<Record<string, number>>((totals, pool) => {
     for (const [reason, count] of Object.entries(pool.rejectionReasons)) {
       totals[reason] = (totals[reason] ?? 0) + count;
@@ -486,16 +525,16 @@ export async function groundProductsForRoom(
 
   try {
     let outcomes: SpecRoleOutcome[];
-    if (plan.pools.length === 0) {
-      outcomes = openSpecRoleOutcomes(plan.pools, "No visual pass ran for this list.");
+    if (sourcingPools.length === 0) {
+      outcomes = openSpecRoleOutcomes(sourcingPools, "No visual pass ran for this list.");
     } else {
       const poolCandidatesById = new Map<string, RoleScopedRankedProductMatch>();
-      for (const pool of plan.pools) {
+      for (const pool of sourcingPools) {
         for (const candidate of pool.candidates) {
           poolCandidatesById.set(candidate.id, candidate);
         }
       }
-      const imageIds = imageCandidateIdsForPools(plan.pools, imageBudget);
+      const imageIds = imageCandidateIdsForPools(sourcingPools, imageBudget);
       if (imageIds.length > 0) {
         try {
           Object.assign(
@@ -529,7 +568,7 @@ export async function groundProductsForRoom(
             conceptDescription: concept.description,
             conceptImageUrl,
             candidates: Array.from(poolCandidatesById.values()).map(matchToSourcingCandidate),
-            roleCandidatePools: plan.pools.map((pool) => ({
+            roleCandidatePools: sourcingPools.map((pool) => ({
               category: pool.role.category,
               roleLabel: pool.role.echoKey,
               visualBrief: pool.role.visualBrief,
@@ -541,7 +580,7 @@ export async function groundProductsForRoom(
             candidateImageDetail: "low",
             candidateImageDataUrls,
             designSpec: {
-              roles: plan.pools.map((pool) => ({
+              roles: sourcingPools.map((pool) => ({
                 echoKey: pool.role.echoKey,
                 category: pool.role.category,
                 label: pool.role.label,
@@ -557,7 +596,7 @@ export async function groundProductsForRoom(
           "Product visual sourcing timed out."
         );
         outcomes = resolveSpecRoleOutcomes({
-          pools: plan.pools,
+          pools: sourcingPools,
           roleResults: result.roleResults,
           selections: result.selectedProducts
         });
@@ -575,7 +614,7 @@ export async function groundProductsForRoom(
         const message = error instanceof Error ? error.message : "Product visual sourcing failed.";
         console.error("Product visual sourcing failed; falling back to ranking.", error);
         outcomes = openSpecRoleOutcomes(
-          plan.pools,
+          sourcingPools,
           "The visual pass was unavailable, so nothing was checked against the design and nothing was chosen for you; these are the closest catalogue options."
         );
         visualPass = { ...visualPass, used: false, error: message };
@@ -605,7 +644,7 @@ export async function groundProductsForRoom(
         // request budget rather than added on top of it.
         const unfetched = proposals
           .filter((outcome) => !imageDataUrls[outcome.selectedProductId])
-          .map((outcome) => poolCandidateById(plan.pools, outcome.selectedProductId))
+          .map((outcome) => poolCandidateById(sourcingPools, outcome.selectedProductId))
           .filter((candidate): candidate is RoleScopedRankedProductMatch => Boolean(candidate));
         if (unfetched.length > 0) {
           try {
@@ -617,7 +656,7 @@ export async function groundProductsForRoom(
         const judged = proposals
           .filter((outcome) => Boolean(imageDataUrls[outcome.selectedProductId]))
           .map((outcome) => {
-            const candidate = poolCandidateById(plan.pools, outcome.selectedProductId);
+            const candidate = poolCandidateById(sourcingPools, outcome.selectedProductId);
             return {
               productId: outcome.selectedProductId,
               productName: candidate?.name ?? "Catalogue product",
@@ -691,6 +730,39 @@ export async function groundProductsForRoom(
         outcomes = applyProductVerification({ outcomes, verdicts: new Map() });
       }
     }
+
+    // Merged after the design check, never through it: an anchored outcome has
+    // no verdict because none was asked for, and applyProductVerification opens
+    // any selection it cannot find one for. Restored to spec order so the room
+    // still reads sofa, rug, table rather than everything-anchored-last.
+    const anchoredOutcomes: SpecRoleOutcome[] = anchored.flatMap((claim) => {
+      const product = claim.pool.candidates.find((candidate) => candidate.id === claim.productId);
+      return product
+        ? [
+            {
+              kind: "selected" as const,
+              role: claim.pool.role,
+              pool: claim.pool,
+              selectedProductId: claim.productId,
+              // The strongest status the vocabulary has, and the only honest one
+              // here: the render was generated from this product's photograph.
+              matchStatus: "strong_match" as const,
+              reason: claim.reason ?? ANCHOR_SELECTION_REASON,
+              mismatchNote: null,
+              similarity: null,
+              // The design check's bar, met by construction: this render was
+              // generated from this product's photograph.
+              verifiedSimilarity: 1
+            }
+          ]
+        : [];
+    });
+    outcomes = [...outcomes, ...anchoredOutcomes].sort(
+      (left, right) => (anchorOrder.get(left.role.echoKey) ?? 0) - (anchorOrder.get(right.role.echoKey) ?? 0)
+    );
+    const anchoredProductIds = new Set(anchoredOutcomes.map((outcome) =>
+      outcome.kind === "selected" ? outcome.selectedProductId : ""
+    ));
 
     const resolved = roleOptionsFromOutcomes(outcomes);
     missingRoles = [...plan.missing, ...resolved.missing];
@@ -790,7 +862,16 @@ export async function groundProductsForRoom(
     if (itemRows.length > 0) {
       const { error: itemError } = await supabase
         .from("shopping_list_items")
-        .insert(itemRows.map((row) => ({ ...row, shopping_list_id: shoppingListId })));
+        .insert(
+          itemRows.map((row) => ({
+            ...row,
+            shopping_list_id: shoppingListId,
+            // Two different promises: this piece is in the render, or this
+            // piece was matched to it. Only the first can be made by
+            // construction.
+            is_anchor: row.status === "selected" && anchoredProductIds.has(row.product_id)
+          }))
+        );
       if (itemError) {
         throw new Error(itemError.message);
       }
@@ -840,6 +921,16 @@ export async function groundProductsForRoom(
             checkSimilarity: entry.checkSimilarity,
             reason: entry.reason
           })),
+          anchors: {
+            // Roles this run did not have to source, because the render was
+            // built from them.
+            claimed: anchoredOutcomes.length,
+            // An anchor whose piece the spec role's contracts reject, or whose
+            // category the spec has no role for. Sourced normally instead; a
+            // number that climbs means the spec and the anchors disagree.
+            unclaimed: unclaimedAnchors.length,
+            recorded: anchorRows.length
+          },
           missingRoles: missingRoles.filter((entry) => entry.kind === "missing").map((entry) => entry.label),
           unsourceable: missingRoles.filter((entry) => entry.kind !== "missing").map((entry) => entry.label),
           contractRejections,

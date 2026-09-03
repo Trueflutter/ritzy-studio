@@ -465,3 +465,86 @@ export async function persistConceptAnchors(
     { onConflict: "concept_id,role_key" }
   );
 }
+
+// ------------------------------------------------- what sourcing must not redo
+
+export type ConceptAnchorRow = {
+  role_key: string;
+  role_category: string;
+  role_label: string;
+  product_id: string;
+  source: string;
+  reason: string | null;
+};
+
+export async function readConceptAnchors(
+  supabase: UserSupabaseClient,
+  { roomId, conceptId }: { roomId: string; conceptId: string }
+): Promise<ConceptAnchorRow[]> {
+  const { data, error } = await supabase
+    .from("concept_anchors")
+    .select("role_key, role_category, role_label, product_id, source, reason")
+    .eq("room_id", roomId)
+    .eq("concept_id", conceptId)
+    .order("created_at", { ascending: true });
+
+  return error || !data ? [] : data;
+}
+
+export type AnchoredSpecRole<P> = {
+  pool: P;
+  productId: string;
+  reason: string | null;
+};
+
+// The roles this render was BUILT from. The piece is in the picture because the
+// picture was made from its photograph, so there is nothing here for the
+// sourcing pass to propose or for the design check to judge: asking the judge
+// whether the render contains what the render was built from spends budget to
+// re-derive a fact, and pays for the judge's variance on top.
+//
+// An anchor claims the first unclaimed spec role in its own category. One room
+// can carry two roles in a category (a living-dining hall has two seating
+// objects); the anchor takes one of them and the other is sourced normally.
+//
+// A pool that does not contain the anchor is NOT claimed. The spec was
+// extracted from a render built around the piece, so the contracts should admit
+// it and the caller looks deeper before giving up; if it is genuinely rejected
+// for this role, the role goes to normal sourcing rather than having the anchor
+// forced into it with a score nobody computed.
+export function claimAnchoredPools<P extends { role: { category: string }; candidates: ReadonlyArray<{ id: string }> }>({
+  pools,
+  anchors,
+  deepen
+}: {
+  pools: P[];
+  anchors: ReadonlyArray<{ role_category: string; product_id: string; reason: string | null }>;
+  // Rebuilds one role's pool deep enough to reach a product below the cut the
+  // sourcing pass is sized for. Same contracts, same scorer.
+  deepen?: (pool: P, productId: string) => P | null;
+}): { anchored: Array<AnchoredSpecRole<P>>; remaining: P[]; unclaimed: string[] } {
+  const claimed = new Set<P>();
+  const anchored: Array<AnchoredSpecRole<P>> = [];
+  const unclaimed: string[] = [];
+
+  for (const anchor of anchors) {
+    const match = pools.find(
+      (pool) => !claimed.has(pool) && pool.role.category === anchor.role_category
+    );
+    if (!match) {
+      unclaimed.push(anchor.product_id);
+      continue;
+    }
+    const pool = match.candidates.some((candidate) => candidate.id === anchor.product_id)
+      ? match
+      : (deepen?.(match, anchor.product_id) ?? null);
+    if (!pool || !pool.candidates.some((candidate) => candidate.id === anchor.product_id)) {
+      unclaimed.push(anchor.product_id);
+      continue;
+    }
+    claimed.add(match);
+    anchored.push({ pool, productId: anchor.product_id, reason: anchor.reason });
+  }
+
+  return { anchored, remaining: pools.filter((pool) => !claimed.has(pool)), unclaimed };
+}
