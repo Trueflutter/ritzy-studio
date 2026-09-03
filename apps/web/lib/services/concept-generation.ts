@@ -372,24 +372,31 @@ export async function generateInitialConceptForRoom(
     const roomPhotoDataUrl = await visionImageDataUrl(images.photoBytes, roomPhoto.mime_type);
 
     // The hero pieces, chosen from live stock before the render is asked for.
-    // Never fatal: a room with no anchors still gets a concept, and the job
-    // records which of the three ways it got there.
-    anchorOutcome = await chooseAnchors(
-      { supabase, serviceSupabase },
-      {
-        userId,
-        roomId,
-        roomType: room.room_type,
-        roomPhotoDataUrl,
-        budgetMaxAed: project.budget_max_aed,
-        designBrief,
-        styleSlugs: likedStyleSlugsFromStructuredBrief(designBrief.structured_json),
-        measurements: measurements
-          ? { wall_length_cm: measurements.wall_length_cm, room_depth_cm: measurements.room_depth_cm }
-          : null,
-        startedAt
-      }
-    );
+    // Never fatal, and this try is what makes that true rather than a comment:
+    // chooseConceptAnchors answers its own failures with a fallback, but an
+    // unexpected one would otherwise cost the room its concept, when the right
+    // answer is a concept with no anchors and a job that says so.
+    try {
+      anchorOutcome = await chooseAnchors(
+        { supabase, serviceSupabase },
+        {
+          userId,
+          roomId,
+          roomType: room.room_type,
+          roomPhotoDataUrl,
+          budgetMaxAed: project.budget_max_aed,
+          designBrief,
+          styleSlugs: likedStyleSlugsFromStructuredBrief(designBrief.structured_json),
+          measurements: measurements
+            ? { wall_length_cm: measurements.wall_length_cm, room_depth_cm: measurements.room_depth_cm }
+            : null,
+          startedAt
+        }
+      );
+    } catch (error) {
+      console.error(`Room ${roomId}: choosing anchors failed; the concept is generated unanchored.`, error);
+      anchorOutcome = null;
+    }
 
     const result = await generateInitialConcept({
       roomType: room.room_type,
@@ -466,18 +473,20 @@ export async function generateInitialConceptForRoom(
           imageFallbackUsed: result.imageFallbackUsed,
           imageFallbackError: result.imageFallbackError ?? null,
           imageCreditsUsed: result.imageCreditsUsed,
-          anchors: {
-            status: anchorOutcome.status,
-            error: anchorOutcome.error,
-            chosen: anchorOutcome.anchors.map((anchor) => ({
-              roleKey: anchor.roleKey,
-              productId: anchor.product.id,
-              source: anchor.source
-            })),
-            setNote: anchorOutcome.setNote,
-            selectionJobId: anchorOutcome.jobId,
-            selectionCostUsd: anchorOutcome.costUsd
-          }
+          anchors: anchorOutcome
+            ? {
+                status: anchorOutcome.status,
+                error: anchorOutcome.error,
+                chosen: anchorOutcome.anchors.map((anchor) => ({
+                  roleKey: anchor.roleKey,
+                  productId: anchor.product.id,
+                  source: anchor.source
+                })),
+                setNote: anchorOutcome.setNote,
+                selectionJobId: anchorOutcome.jobId,
+                selectionCostUsd: anchorOutcome.costUsd
+              }
+            : { status: "unavailable", error: "Choosing anchors failed; the concept was generated unanchored." }
         }
       })
       .eq("id", job.id);
@@ -515,8 +524,8 @@ export async function generateInitialConceptForRoom(
     await persistConceptAnchors(supabase, {
       roomId,
       conceptId: concept.id,
-      anchors: anchorOutcome.anchors,
-      selectionJobId: anchorOutcome.jobId
+      anchors: anchorOutcome?.anchors ?? [],
+      selectionJobId: anchorOutcome?.jobId ?? null
     });
 
     const renderPath = `${userId}/${roomId}/${concept.id}.png`;

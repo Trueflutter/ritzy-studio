@@ -175,6 +175,53 @@ async function main() {
     assert.deepEqual(updates[1].filters, [["id", "concept-2"]]);
   }
 
+  // --- Choosing anchors is best-effort: an unexpected failure there costs the
+  // room its anchors, never its concept (S3b criterion 10). Generation itself
+  // fails afterwards in this environment, which is the point: the job records
+  // THAT failure, not the anchor one, so the anchor throw was swallowed.
+  {
+    const { client } = fakeSupabase(
+      (call) => {
+        if (call.table === "rooms") return { data: { id: "room-1", room_type: "Living Room" } };
+        if (call.table === "projects") return { data: { id: "proj-1", budget_max_aed: null } };
+        if (call.table === "design_briefs") return { data: { id: "brief-1", structured_json: {} } };
+        if (call.table === "concepts") return { data: null };
+        if (call.table === "room_assets") {
+          return { data: [{ id: "photo-1", storage_path: "u/room-1/p1.jpg", mime_type: "image/jpeg" }] };
+        }
+        return { data: null };
+      },
+      (storageCall) =>
+        storageCall.op === "download"
+          ? { data: new Blob([Buffer.from([1, 2, 3])]) }
+          : { data: { signedUrl: "https://example-project.supabase.co/signed/p1.jpg" } }
+    );
+    let failure: RecordedCall | null = null;
+    const { client: service } = fakeSupabase((call) => {
+      if (call.table === "ai_jobs" && call.op === "insert") return { data: { id: "job-1" } };
+      if (call.table === "ai_jobs" && call.op === "update") failure = call;
+      return { data: null };
+    });
+    const result = await generateInitialConceptForRoom(
+      { supabase: client, serviceSupabase: service },
+      INPUT,
+      {
+        ensureEntitled: async () => {},
+        defer: () => {},
+        chooseAnchors: async () => {
+          throw new Error("anchor selection blew up");
+        },
+        now: () => 0
+      }
+    );
+    assert.equal(result.status, "generation_failed");
+    const message = String((failure as RecordedCall | null)?.payload?.error_message ?? "");
+    assert.ok(
+      !message.includes("anchor selection blew up"),
+      `the anchor failure must not be the concept's failure; saw "${message}"`
+    );
+  }
+
   // --- hasRequiredRoomSize needs all three dimensions
   assert.equal(hasRequiredRoomSize({ wall_length_cm: 500, room_depth_cm: 400, ceiling_height_cm: 280 }), true);
   assert.equal(hasRequiredRoomSize({ wall_length_cm: 500, room_depth_cm: 400, ceiling_height_cm: null }), false);
