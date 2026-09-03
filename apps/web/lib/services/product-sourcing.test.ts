@@ -901,11 +901,41 @@ async function main() {
         readSpec: async () => CONFIRMED_SPEC,
         extractPalette: noPalette,
         fetchCandidateImages: imagesForAll,
+        // The pass SUCCEEDS for a non-anchored role, so the list carries a
+        // second selected row. Without one, "says it of nothing else" would
+        // hold however is_anchor were computed.
         sourceProducts: async ({ roleCandidatePools }) => {
+          const armchair = (roleCandidatePools ?? []).find((pool) => pool.category === "armchairs");
           for (const pool of roleCandidatePools ?? []) {
             passRoles.push(pool.category);
           }
-          throw new Error("no pass in this test");
+          return {
+            promptKey: "sourcing.spec_visual_product_match",
+            promptVersion: "test",
+            model: "stub",
+            textCostUsd: 0.02,
+            selectedProducts: [
+              {
+                productId: CHAIR_ID,
+                category: "armchairs",
+                roleLabel: armchair?.roleLabel ?? "role-2",
+                quantity: 1,
+                matchStatus: "strong_match" as const,
+                visualMatchReason: "Cognac leather lounge chair, as the render shows.",
+                mismatchNote: null
+              }
+            ],
+            roleResults: [
+              {
+                category: "armchairs",
+                roleLabel: armchair?.roleLabel ?? "role-2",
+                status: "strong_match" as const,
+                productId: CHAIR_ID,
+                similarity: 0.85,
+                reason: "Cognac leather."
+              }
+            ]
+          };
         },
         verifyProducts: async (input) => {
           for (const product of input.products) {
@@ -927,6 +957,12 @@ async function main() {
     assert.ok(selected, "a confirmed anchor is chosen even though the pass failed");
     assert.equal(selected?.product_id, SOFA_ID);
     assert.equal(selected?.is_anchor, true, "the list says this piece is IN the render");
+    // The pass chose the armchair, the judge passed it, and it is on the list as
+    // selected. It is matched to the design, not built into it, so it must not
+    // carry the anchor promise.
+    const armchair = insertedRows.find((row) => row.product_id === CHAIR_ID && row.status === "selected");
+    assert.ok(armchair, "a non-anchored role is still filled by the pass");
+    assert.equal(armchair?.is_anchor, false, "and is not called an anchor");
     assert.equal(insertedRows.filter((row) => row.is_anchor === true).length, 1, "and says it of nothing else");
     // And says it in words, not only in a column, since nothing renders the
     // column yet. The stylist's own reason follows the promise.

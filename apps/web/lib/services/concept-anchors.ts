@@ -9,6 +9,7 @@ import {
   productRolesForRoom,
   roleOptionKey,
   sourcingRolesFromBlueprint,
+  type ProductMatchCandidate,
   type RankedProductMatch
 } from "@ritzy-studio/domain";
 
@@ -19,13 +20,9 @@ import {
   CONCEPT_RUN_BUDGET_MS
 } from "@/lib/concept-run-budget";
 import { fetchRemoteImage, visionImageDataUrl } from "@/lib/render-images";
+import { withTimeout } from "@/lib/with-timeout";
 
-import {
-  PRODUCT_MATCHING_CATALOG_LIMIT,
-  productToMatchCandidate,
-  splitAvoidColorCues,
-  type ProductRow
-} from "./sourcing-support";
+import { loadCatalogueCandidates, splitAvoidColorCues } from "./sourcing-support";
 import type { ServiceSupabaseClient, UserSupabaseClient } from "./supabase-clients";
 
 // Anchored concepts (S3b): the pieces that carry a room are chosen from live
@@ -86,55 +83,25 @@ export type AnchorPassStatus =
   // must never be the reason the request is killed before the render.
   | "prep_timed_out"
   | "skipped_no_budget"
+  // The pass's own ai_jobs row could not be opened, so the call was never made.
+  | "skipped_no_audit_row"
   | "pass_failed";
 
+// Only what the caller records on the generation job. The pass's own model,
+// prompt version and shortlist sizes live on the pass's own ai_jobs row, which
+// is where a per-call view belongs; carrying them here as well would make every
+// early return restate values nothing reads.
 export type ConceptAnchorOutcome = {
   anchors: ConceptAnchor[];
   status: AnchorPassStatus;
   error: string | null;
   setNote: string | null;
   costUsd: number | null;
-  model: string | null;
-  promptKey: string | null;
-  promptVersion: string | null;
   jobId: string | null;
-  roleCount: number;
-  candidateCount: number;
 };
 
-// The prep has no provider deadline of its own to lean on: a catalogue read
-// through a degraded pooler and a stalled retailer CDN both hang rather than
-// fail. Left unbounded, they eat the render's reserve and the platform kills
-// the request with no catch path, leaving the generation job stuck "running"
-// and the shopper locked out of a retry for fifteen minutes.
-async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
-  let timer: NodeJS.Timeout | undefined;
-  try {
-    return await Promise.race([
-      promise,
-      new Promise<never>((_, reject) => {
-        timer = setTimeout(() => reject(new Error(message)), timeoutMs);
-      })
-    ]);
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
 function emptyOutcome(status: AnchorPassStatus, error: string | null = null): ConceptAnchorOutcome {
-  return {
-    anchors: [],
-    status,
-    error,
-    setNote: null,
-    costUsd: null,
-    model: null,
-    promptKey: null,
-    promptVersion: null,
-    jobId: null,
-    roleCount: 0,
-    candidateCount: 0
-  };
+  return { anchors: [], status, error, setNote: null, costUsd: null, jobId: null };
 }
 
 // Products this owner has anchored a room on lately. Dropped from shortlists
@@ -181,6 +148,7 @@ export type ChooseConceptAnchorsInput = {
 export type ChooseConceptAnchorsDeps = {
   selectSet?: typeof selectAnchorSet;
   fetchImage?: typeof fetchRemoteImage;
+  loadCatalogue?: typeof loadCatalogueCandidates;
   now?: () => number;
   runBudgetMs?: number;
 };
@@ -192,6 +160,7 @@ export async function chooseConceptAnchors(
 ): Promise<ConceptAnchorOutcome> {
   const selectSet = deps.selectSet ?? selectAnchorSet;
   const fetchImage = deps.fetchImage ?? fetchRemoteImage;
+  const loadCatalogue = deps.loadCatalogue ?? loadCatalogueCandidates;
   const now = deps.now ?? Date.now;
   const runBudgetMs = deps.runBudgetMs ?? CONCEPT_RUN_BUDGET_MS;
 
@@ -206,35 +175,16 @@ export async function chooseConceptAnchors(
   }
   const prepDeadline = now() + prepMs;
 
-  let products: unknown[];
+  let candidates: ProductMatchCandidate[];
   try {
-    const read = await withTimeout(
-      Promise.resolve(
-        serviceSupabase
-          .from("products")
-          .select(
-            `
-      *,
-      retailer:retailers(name, status),
-      dimensions:product_dimensions(width_cm, depth_cm, height_cm, source_text)
-    `
-          )
-          .not("price_aed", "is", null)
-          .not("primary_image_url", "is", null)
-          .order("last_checked_at", { ascending: false, nullsFirst: false })
-          .limit(PRODUCT_MATCHING_CATALOG_LIMIT)
-      ),
+    ({ candidates } = await withTimeout(
+      loadCatalogue(serviceSupabase),
       prepMs,
       "The catalogue read ran past the time the run could spare for anchors."
-    );
-    products = read.data ?? [];
+    ));
   } catch (error) {
     return emptyOutcome("prep_timed_out", error instanceof Error ? error.message : "The catalogue read timed out.");
   }
-
-  const candidates = (products as ProductRow[])
-    .map(productToMatchCandidate)
-    .filter((candidate): candidate is NonNullable<typeof candidate> => Boolean(candidate));
 
   if (candidates.length === 0) {
     return emptyOutcome("no_candidates");
@@ -364,17 +314,16 @@ export async function chooseConceptAnchors(
   const guardMs = anchorSetTimeoutMs({ startedAt: input.startedAt, now: now(), runBudgetMs });
 
   if (guardMs === null) {
-    return {
-      ...emptyOutcome("skipped_no_budget"),
-      anchors: rankedFallback(),
-      roleCount,
-      candidateCount
-    };
+    return { ...emptyOutcome("skipped_no_budget"), anchors: rankedFallback() };
   }
 
   // Opened before the paid call, so a run that dies mid-call still leaves a
-  // row that says a call was made.
-  const { data: job } = await serviceSupabase
+  // row that says a call was made. If it cannot be opened the call is not made
+  // at all: the concept job deliberately excludes this cost from its own total
+  // ("a run's spend is the sum of its rows"), so a call with no row of its own
+  // is spend that no per-room aggregation can ever see. Sourcing refuses on the
+  // same grounds.
+  const { data: job, error: jobError } = await serviceSupabase
     .from("ai_jobs")
     .insert({
       user_id: input.userId,
@@ -388,10 +337,17 @@ export async function chooseConceptAnchors(
     .select("id")
     .single();
 
+  if (jobError || !job) {
+    console.error(
+      `Room ${input.roomId}: the anchor pass has no audit row (${jobError?.message ?? "no row returned"}); the ranked shortlist decides instead.`
+    );
+    return {
+      ...emptyOutcome("skipped_no_audit_row", jobError?.message ?? "The anchor pass could not open an audit row."),
+      anchors: rankedFallback()
+    };
+  }
+
   const closeJob = async (fields: Record<string, unknown>) => {
-    if (!job) {
-      return;
-    }
     await serviceSupabase
       .from("ai_jobs")
       .update({ completed_at: new Date().toISOString(), ...fields })
@@ -432,13 +388,7 @@ export async function chooseConceptAnchors(
     // A room still gets a concept: the ranked shortlist decides, and the job
     // says the pass is why. Criterion 10.
     await closeJob({ status: "failed", error_message: message });
-    return {
-      ...emptyOutcome("pass_failed", message),
-      anchors: rankedFallback(),
-      jobId: job?.id ?? null,
-      roleCount,
-      candidateCount
-    };
+    return { ...emptyOutcome("pass_failed", message), anchors: rankedFallback(), jobId: job.id };
   }
 
   const shortlistByRoleKey = new Map(withImages.map((shortlist) => [roleOptionKey(shortlist.role), shortlist]));
@@ -486,12 +436,7 @@ export async function chooseConceptAnchors(
     // describes a scheme that includes pieces no one anchored.
     setNote: result.dropped.length > 0 ? null : result.setNote,
     costUsd: result.textCostUsd,
-    model: result.model,
-    promptKey: result.promptKey,
-    promptVersion: result.promptVersion,
-    jobId: job?.id ?? null,
-    roleCount,
-    candidateCount
+    jobId: job.id
   };
 }
 

@@ -73,10 +73,12 @@ const CATALOGUE = [
 function clients({
   catalogue = CATALOGUE,
   recentAnchors = [] as Array<{ product_id: string }>,
+  jobRow = { id: "anchor-job-1" } as { id: string } | null,
   onCall
 }: {
   catalogue?: unknown[];
   recentAnchors?: Array<{ product_id: string }>;
+  jobRow?: { id: string } | null;
   onCall?: (call: RecordedCall) => void;
 } = {}) {
   const respondUser: Responder = (call) => {
@@ -87,7 +89,9 @@ function clients({
   const respondService: Responder = (call) => {
     onCall?.(call);
     if (call.table === "products") return { data: catalogue };
-    if (call.table === "ai_jobs" && call.op === "insert") return { data: { id: "anchor-job-1" } };
+    if (call.table === "ai_jobs" && call.op === "insert") {
+      return jobRow ? { data: jobRow } : { error: { message: "pooler blip" } };
+    }
     return { data: null };
   };
   const user = fakeSupabase(respondUser);
@@ -226,29 +230,100 @@ async function main() {
     assert.deepEqual(outcome.anchors, []);
   }
 
-  // --- The recency read is scoped to the owner by the row policy, not by a
-  // filter this code could forget, and it never counts the room being generated.
+  // --- A piece anchored recently is not offered again. Asserted against what
+  // this room actually picks WITHOUT a recency list first, so the second half
+  // can fail: an implementation that severed recency entirely would otherwise
+  // satisfy it by coincidence, because the rotation moves the pick anyway.
   {
-    const seen: RecordedCall[] = [];
-    const { clients: c } = clients({
-      recentAnchors: [{ product_id: ID["sofa-1"] }],
-      onCall: (call) => {
-        if (call.table === "concept_anchors") seen.push(call);
-      }
+    const anchorsFrom = async (recentAnchors: Array<{ product_id: string }>) => {
+      const { clients: c, user, service } = clients({ recentAnchors });
+      const outcome = await chooseConceptAnchors(c, INPUT, {
+        fetchImage,
+        selectSet: async () => {
+          throw new Error("fall back");
+        },
+        now: () => 0
+      });
+      return { outcome, user, service };
+    };
+
+    const fresh = await anchorsFrom([]);
+    const sofa = fresh.outcome.anchors.find((anchor) => anchor.roleCategory === "sofas");
+    assert.ok(sofa, "this room anchors a sofa when nothing is recent");
+
+    const repeat = await anchorsFrom([{ product_id: sofa.product.id }]);
+    assert.ok(
+      repeat.outcome.anchors.every((anchor) => anchor.product.id !== sofa.product.id),
+      "and not that same sofa once it has anchored another room"
+    );
+    assert.ok(
+      repeat.outcome.anchors.some((anchor) => anchor.roleCategory === "sofas"),
+      "the role is still filled, by a different piece"
+    );
+
+    // Scoped to the owner by the row policy, which means the read must go
+    // through the USER's client. Issued on the service client it would return
+    // the sixty most recent anchors of every user on the platform, narrowing a
+    // shopper's shortlists by strangers' rooms.
+    const userRead = repeat.user.calls.find((call: RecordedCall) => call.table === "concept_anchors");
+    assert.ok(userRead, "the recency read goes through the client RLS applies to");
+    assert.equal(
+      repeat.service.calls.filter((call: RecordedCall) => call.table === "concept_anchors").length,
+      0,
+      "and never through the one that bypasses it"
+    );
+    assert.deepEqual(userRead.neq, [["room_id", "room-1"]], "the room being generated is not its own history");
+    assert.deepEqual(userRead.order, [["created_at", { ascending: false }]]);
+  }
+
+  // --- Every answer discarded is a protocol failure, not a stylist that liked
+  // nothing. The job says so, and the set note is withheld, because it
+  // describes a scheme that includes pieces nobody anchored.
+  {
+    const { clients: c, service } = clients();
+    const outcome = await chooseConceptAnchors(c, INPUT, {
+      fetchImage,
+      selectSet: async () => ({
+        promptKey: "k",
+        promptVersion: "v",
+        model: "gpt-5.1",
+        textCostUsd: 0.02,
+        picks: [],
+        dropped: [
+          { roleKey: "sofas", productId: "not-offered", reason: "x", dropped: "not_offered_for_role" },
+          { roleKey: "rugs", productId: "also-not", reason: "y", dropped: "not_offered_for_role" }
+        ],
+        setNote: "a scheme built from pieces nobody anchored"
+      }),
+      now: () => 0
     });
+
+    assert.deepEqual(outcome.anchors, []);
+    assert.equal(outcome.setNote, null, "the note is not offered as the room's rationale");
+    assert.match(String(outcome.error), /2 product\(s\) the room could not use/);
+    const close = service.calls.find((call: RecordedCall) => call.table === "ai_jobs" && call.op === "update");
+    assert.equal(close?.payload?.status, "failed", "a call whose every answer was thrown away is not a success");
+    assert.match(String(close?.payload?.error_message), /none usable/);
+  }
+
+  // --- No audit row, no paid call. The concept job excludes this cost from its
+  // own total, so a call without a row of its own is spend no per-room
+  // aggregation can ever see.
+  {
+    const { clients: c, service } = clients({ jobRow: null });
+    let called = false;
     const outcome = await chooseConceptAnchors(c, INPUT, {
       fetchImage,
       selectSet: async () => {
-        throw new Error("fall back");
+        called = true;
+        throw new Error("must not run");
       },
       now: () => 0
     });
-    assert.deepEqual(seen[0].neq, [["room_id", "room-1"]]);
-    assert.deepEqual(seen[0].order, [["created_at", { ascending: false }]]);
-    assert.ok(
-      outcome.anchors.every((anchor) => anchor.product.id !== ID["sofa-1"]),
-      "a piece anchored recently is not offered again"
-    );
+    assert.equal(outcome.status, "skipped_no_audit_row");
+    assert.ok(!called, "the pass is not run without somewhere to record what it cost");
+    assert.ok(outcome.anchors.length > 0, "and the room still gets anchors, from the ranking");
+    assert.equal(service.calls.filter((call: RecordedCall) => call.table === "ai_jobs" && call.op === "update").length, 0);
   }
 
   // --- A brief's prohibitions are a hard filter on an anchor, not a penalty.

@@ -76,3 +76,25 @@ export function anchorSetTimeoutMs({
 export function anchorProviderTimeoutMs(guardMs: number): number {
   return Math.max(1_000, guardMs - ANCHOR_PROVIDER_HEADROOM_MS);
 }
+
+// What the render may still take, once the anchor work has spent its share.
+// The reserve above is what the anchor guards hold back FOR the render; this is
+// what the render is actually held to, and the two have to be the same number
+// or the reserve is an assumption rather than a budget. The image providers'
+// own ceilings (300 s of polling, a 240 s call) outlast this route, so nothing
+// else bounds them.
+export function conceptRenderTimeoutMs({
+  startedAt,
+  now,
+  runBudgetMs = CONCEPT_RUN_BUDGET_MS
+}: {
+  startedAt: number;
+  now: number;
+  runBudgetMs?: number;
+}): number {
+  const available = remainingMs(startedAt, now, runBudgetMs) - CONCEPT_PERSIST_RESERVE_MS;
+  // Never below a floor: a render started with seconds left cannot succeed, but
+  // refusing to render at all is worse than trying, because the room then has
+  // no concept while the shopper waited for one.
+  return Math.max(30_000, Math.min(CONCEPT_RENDER_RESERVE_MS, available));
+}

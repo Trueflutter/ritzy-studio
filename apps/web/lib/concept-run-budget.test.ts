@@ -7,6 +7,7 @@ import {
   anchorPrepTimeoutMs,
   anchorProviderTimeoutMs,
   anchorSetTimeoutMs,
+  conceptRenderTimeoutMs,
   CONCEPT_PERSIST_RESERVE_MS,
   CONCEPT_RENDER_RESERVE_MS,
   CONCEPT_RUN_BUDGET_MS
@@ -64,6 +65,28 @@ for (const now of [0, 10_000, 30_000, 65_000]) {
     );
   }
 }
+
+// The render is HELD to the reserve the anchor guards hold back for it, rather
+// than trusted to honour it. Without this the reserve is arithmetic nobody
+// enforces: the image providers' own ceilings are 300 s of polling and a 240 s
+// call, both longer than the route.
+assert.equal(conceptRenderTimeoutMs({ startedAt: 0, now: 0 }), CONCEPT_RENDER_RESERVE_MS);
+assert.equal(
+  conceptRenderTimeoutMs({ startedAt: 0, now: 90_000 }),
+  CONCEPT_RENDER_RESERVE_MS,
+  "a run that spent its whole anchor allowance still leaves the render its full reserve"
+);
+// Past that, the render gets what is actually left, never more.
+for (const now of [120_000, 200_000, 240_000]) {
+  const render = conceptRenderTimeoutMs({ startedAt: 0, now });
+  assert.ok(
+    now + render + CONCEPT_PERSIST_RESERVE_MS <= CONCEPT_RUN_BUDGET_MS || render === 30_000,
+    `the render cannot overrun the run at ${now}ms (got ${render})`
+  );
+}
+// A render started with seconds left still tries: no concept at all is worse
+// for the shopper than a render that may not finish.
+assert.equal(conceptRenderTimeoutMs({ startedAt: 0, now: 284_000 }), 30_000);
 
 // The provider aborts before the service guard does, so the guard is only ever
 // a backstop and never the thing that leaves a call's spend unrecorded.

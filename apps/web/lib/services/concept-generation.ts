@@ -9,6 +9,7 @@ import { configuredTextModel } from "@ritzy-studio/config";
 import { deriveSpatialDesignerWarnings, parseSpatialIntent } from "@ritzy-studio/domain";
 
 import { sumOutcomeCredits } from "@/lib/ai-cost";
+import { conceptRenderTimeoutMs } from "@/lib/concept-run-budget";
 import { CONCEPT_VIEW_KEYS } from "@/lib/render-flags";
 import { configuredImageModel, configuredImageProvider, visionImageDataUrl } from "@/lib/render-images";
 import { normalizeCatalogFirstRoomType } from "@/lib/room-type-normalize";
@@ -400,19 +401,22 @@ export async function generateInitialConceptForRoom(
 
     const result = await generateInitialConcept({
       roomType: room.room_type,
+      // What is left for the picture after the anchor work. Held to here
+      // because the image providers' own ceilings outlast this route, and a
+      // request the platform kills leaves this job "running" and the shopper
+      // locked out of a retry for fifteen minutes.
+      imageDeadlineMs: conceptRenderTimeoutMs({ startedAt, now: now() }),
       roomPhotoUrl: roomPhotoDataUrl,
       roomPhotoReferenceUrl: images.signedPhotoUrl,
-      // Anchors travel as bytes with no reference URL. The image provider must
-      // never be handed a retailer link to follow: the fetch already happened
-      // app-side, through the guard, and a retailer host that refuses the
-      // provider (or answers it with a resize error) would otherwise cost the
-      // whole render its primary provider and most of the run's budget.
+      // Anchors travel as bytes. The image provider is never handed a retailer
+      // link to follow: the fetch already happened app-side, through the guard,
+      // and a retailer host that refuses the provider (or answers it with a
+      // resize error) would otherwise cost the render its primary provider and
+      // most of the run's budget. The input type has no URL field to pass.
       anchorProducts: (anchorOutcome?.anchors ?? []).map((anchor) => ({
         roleLabel: anchor.roleLabel,
-        name: anchor.product.name,
         bytes: anchor.imageBytes,
-        mimeType: anchor.imageMimeType,
-        referenceUrl: null
+        mimeType: anchor.imageMimeType
       })),
       roomPhotoBytes: images.photoBytes,
       roomPhotoMimeType: roomPhoto.mime_type,

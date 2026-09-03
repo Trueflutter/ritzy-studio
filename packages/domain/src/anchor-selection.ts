@@ -1,3 +1,4 @@
+import { productFamilySignature } from "./product-matching";
 import type { ProductMatchCandidate, RankedProductMatch, RoomProductRole } from "./product-matching";
 
 // Anchored concepts: the hero pieces are chosen from real stock BEFORE the
@@ -93,17 +94,14 @@ export function anchorContradictsBrief(candidate: ProductMatchCandidate, avoidCo
   });
 }
 
-// Two products from the same retailer whose names start alike are usually the
-// same piece in another colour. One per family keeps a shortlist a real choice.
+// Two products from the same retailer that are the same piece in another colour
+// should not both take a shortlist slot. The judgement is the catalogue's, not
+// this module's: productFamilySignature already strips colour, size and
+// category nouns, so "Beige Cassia 3 Seater Sofa" and "Grey Cassia 3 Seater
+// Sofa" are one family. A row whose name leaves nothing meaningful behind gets
+// no family at all rather than sharing an empty one with every other such row.
 export function productFamilyKey(candidate: ProductMatchCandidate): string {
-  const words = candidate.name
-    .toLowerCase()
-    .replace(/[^a-z0-9\s]+/g, " ")
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .join(" ");
-  return `${(candidate.retailerName ?? "").toLowerCase()}::${words}`;
+  return productFamilySignature(candidate) || `unfamiliar::${candidate.id}`;
 }
 
 // A stable number from a string, so the same room always rotates the same way
@@ -200,11 +198,3 @@ export function anchorSetFromShortlists<T extends RankedProductMatch, R>(
   return picks;
 }
 
-// What two anchor sets have in common, for the diversity criterion.
-export function anchorSetSignature<T extends RankedProductMatch, R>(picks: ReadonlyArray<AnchorPick<T, R>>): string {
-  return picks
-    .map((pick) => pick.product.id)
-    .slice()
-    .sort()
-    .join("|");
-}

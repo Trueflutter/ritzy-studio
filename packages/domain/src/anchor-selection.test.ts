@@ -7,7 +7,6 @@ import {
   anchorSeedFor,
   anchorRolesFromBlueprint,
   anchorSetFromShortlists,
-  anchorSetSignature,
   anchorShortlist,
   productFamilyKey,
   rotationOffset
@@ -39,6 +38,11 @@ const base: ProductMatchCandidate = {
   lastCheckedAt: null,
   dimensions: null
 };
+// Two anchor sets are the same set when they hold the same products. One line,
+// used only here, so it does not become a public export the package has to keep.
+const setSignature = (picks: ReadonlyArray<{ product: { id: string } }>) =>
+  picks.map((pick) => pick.product.id).slice().sort().join("|");
+
 const ranked = (overrides: Partial<RankedProductMatch> & { id: string }): RankedProductMatch => ({
   ...base,
   score: 1,
@@ -133,14 +137,54 @@ const ranked = (overrides: Partial<RankedProductMatch> & { id: string }): Ranked
   const heads = seeds.map((seed) => anchorShortlist({ candidates, seed })[0].id);
   assert.ok(new Set(heads).size > 1, "five rooms do not all start from the same product");
 
-  // Criterion 8b is about the SET, not one role. Rotating every role of a room
-  // by one offset means two rooms whose offsets collide get an identical
+  // Criterion 8b in full, and modelled the way production runs it: each role
+  // draws from its OWN pool, and the rooms are generated in sequence with the
+  // anchors of earlier rooms fed forward as recency. Rotating every role of a
+  // room by one offset means two rooms whose offsets collide get an identical
   // scheme; qualifying the seed by role makes a collision cost one piece.
+  //
+  // The criterion is "five different sets AND no product anchoring more than
+  // two of the five". Asserting only the first is weaker than the criterion and
+  // passes on states the criterion calls a failure.
   const roleCategories = ["sofas", "armchairs", "rugs", "coffee_tables"];
+  const poolFor = (category: string) =>
+    [0, 1, 2, 3, 4, 5, 6, 7].map((index) =>
+      ranked({
+        id: `${category}-${index}`,
+        name: `${category} Model${index}`,
+        retailerName: `Retailer ${index % 3}`,
+        score: 10 - index
+      })
+    );
+  const pools = new Map(roleCategories.map((category) => [category, poolFor(category)]));
+
+  const recent: string[] = [];
+  const sets: string[] = [];
+  const appearances = new Map<string, number>();
+  for (const seed of seeds) {
+    const set = roleCategories.map(
+      (category) =>
+        anchorShortlist({
+          candidates: pools.get(category)!,
+          recentAnchorProductIds: recent,
+          seed: anchorSeedFor(seed, category)
+        })[0].id
+    );
+    for (const id of set) {
+      recent.push(id);
+      appearances.set(id, (appearances.get(id) ?? 0) + 1);
+    }
+    sets.push(set.join("|"));
+  }
+  assert.equal(new Set(sets).size, seeds.length, "five rooms, one brief, five different schemes");
+  const worst = Math.max(...appearances.values());
+  assert.ok(worst <= 2, `no piece anchors more than two of the five rooms; worst was ${worst}`);
+  // Not vacuous: the pools are small enough that a build without recency or
+  // rotation would repeat, so the bound is doing work.
+  assert.ok(appearances.size >= roleCategories.length * seeds.length - 4);
+
   const setFor = (seed: string) =>
     roleCategories.map((category) => anchorShortlist({ candidates, seed: anchorSeedFor(seed, category) })[0].id).join("|");
-  const sets = seeds.map(setFor);
-  assert.equal(new Set(sets).size, seeds.length, "five rooms, one brief, five different schemes");
   assert.equal(setFor("room-1"), setFor("room-1"), "and the same room is still reproducible");
   // And the same room is stable, so a run can be reproduced.
   assert.equal(anchorShortlist({ candidates, seed: "room-1" })[0].id, anchorShortlist({ candidates, seed: "room-1" })[0].id);
@@ -153,6 +197,29 @@ const ranked = (overrides: Partial<RankedProductMatch> & { id: string }): Ranked
   assert.notEqual(productFamilyKey(family[0]), productFamilyKey(family[3]));
   const spread = anchorShortlist({ candidates: family, seed: "room-1", size: 2 });
   assert.equal(new Set(spread.map(productFamilyKey)).size, 2, "one piece per family before repeats");
+
+  // The colour word does not have to come first. The family key is the
+  // catalogue's own signature, which strips colour, size and category nouns, so
+  // a shortlist cannot fill up with one sofa in four colours however the
+  // retailer happens to order the words.
+  const colourFirst = [
+    "Beige Cassia 3 Seater Sofa",
+    "Grey Cassia 3 Seater Sofa",
+    "Cassia 2 Seater Sofa - Ivory",
+    "Nord 3 Seater Sofa - Grey"
+  ].map((name, index) => ranked({ id: `c${index}`, name, retailerName: "One" }));
+  assert.equal(new Set(colourFirst.slice(0, 3).map(productFamilyKey)).size, 1, "one Cassia, three colours");
+  assert.notEqual(productFamilyKey(colourFirst[0]), productFamilyKey(colourFirst[3]));
+  assert.equal(
+    new Set(anchorShortlist({ candidates: colourFirst, seed: "room-1", size: 3 }).map(productFamilyKey)).size,
+    2,
+    "and the shortlist offers a real choice, not one piece four times"
+  );
+
+  // A name that leaves nothing meaningful behind gets its own family rather
+  // than sharing an empty one with every other such row.
+  const bare = ["Sofa", "Chair"].map((name, index) => ranked({ id: `b${index}`, name, retailerName: "One" }));
+  assert.notEqual(productFamilyKey(bare[0]), productFamilyKey(bare[1]));
 
   // The brief still wins when recency would empty the shortlist.
   const onlyOne = [ranked({ id: "only", name: "Nord Sofa Grey" })];
@@ -182,7 +249,7 @@ const ranked = (overrides: Partial<RankedProductMatch> & { id: string }): Ranked
   assert.equal(picks.length, 4);
   const retailers = picks.map((pick) => pick.product.retailerName);
   assert.ok(retailers.filter((name) => name === "Big Retailer").length <= 2, "one retailer cannot supply the whole room");
-  assert.equal(anchorSetSignature(picks), anchorSetSignature([...picks].reverse()), "the signature is order-free");
+  assert.equal(setSignature(picks), setSignature([...picks].reverse()), "the signature is order-free");
 }
 
 // --- rotation is stable and in range

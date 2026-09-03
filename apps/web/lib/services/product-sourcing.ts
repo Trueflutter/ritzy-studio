@@ -49,6 +49,7 @@ import {
 import { readRoomDesignSpec } from "./design-spec";
 import {
   PRODUCT_MATCHING_CATALOG_LIMIT,
+  loadCatalogueCandidates,
   catalogUnavailableMessage,
   matchToSourcingCandidate,
   productToMatchCandidate,
@@ -59,6 +60,8 @@ import {
   splitAvoidColorCues,
   type ProductRow
 } from "./sourcing-support";
+import { withTimeout } from "@/lib/with-timeout";
+
 import { claimAnchoredPools, readConceptAnchors } from "./concept-anchors";
 import type { ServiceSupabaseClient, UserSupabaseClient } from "./supabase-clients";
 import { storageImageDataUrl } from "./storage-images";
@@ -112,19 +115,6 @@ function poolCandidateById(pools: SpecRolePool[], productId: string): RoleScoped
   return null;
 }
 
-async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
-  let timer: ReturnType<typeof setTimeout> | null = null;
-  const timeout = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => reject(new Error(message)), timeoutMs);
-  });
-  try {
-    return await Promise.race([promise, timeout]);
-  } finally {
-    if (timer) {
-      clearTimeout(timer);
-    }
-  }
-}
 
 export type GroundProductsInput = {
   userId: string;
@@ -300,30 +290,10 @@ export async function groundProductsForRoom(
     return { status: "blocked", message: "Product sourcing needs the concept image before it can match catalog pieces." };
   }
 
-  const { data: products = [], error: productsError } = await serviceSupabase
-    .from("products")
-    .select(
-      `
-      *,
-      retailer:retailers(name, status),
-      dimensions:product_dimensions(width_cm, depth_cm, height_cm, source_text)
-    `
-    )
-    .not("price_aed", "is", null)
-    .not("primary_image_url", "is", null)
-    .order("last_checked_at", { ascending: false, nullsFirst: false })
-    .limit(PRODUCT_MATCHING_CATALOG_LIMIT);
-
-  if (productsError) {
-    throw new Error(productsError.message);
-  }
-
-  const candidates = (products ?? [])
-    .map(productToMatchCandidate)
-    .filter((candidate): candidate is ProductMatchCandidate => Boolean(candidate));
+  const { products, candidates } = await loadCatalogueCandidates(serviceSupabase);
 
   if (candidates.length === 0) {
-    return { status: "blocked", message: catalogUnavailableMessage(products ?? []) };
+    return { status: "blocked", message: catalogUnavailableMessage(products) };
   }
 
   // Spend never precedes its audit row, and the palette extraction below is
@@ -464,11 +434,23 @@ export async function groundProductsForRoom(
           candidatesPerRole: ANCHOR_DEEP_POOL_LIMIT
         }).pools[0];
 
-      // First, the ordinary miss: the anchor passes this role's contract but
-      // sits below a cut sized for what the sourcing pass can look at.
-      const deeper = deepPool(pool.role);
-      if (deeper?.candidates.some((candidate) => candidate.id === productId)) {
-        return deeper;
+      // The deep pools below exist to FIND the anchor, never to become the
+      // role's option list. Returning one whole would put up to 200 rows on the
+      // list for that role against six for every other, and every one of them
+      // would render in the shopper's picker.
+      const withAnchorFirst = (candidate: RoleScopedRankedProductMatch) => ({
+        ...pool,
+        // First, so that when the judge fails this anchor and the role opens,
+        // the piece the render was actually built from is the option the
+        // shopper sees at the top rather than one buried at its ranked position.
+        candidates: [candidate, ...pool.candidates.filter((existing) => existing.id !== candidate.id)]
+      });
+
+      // The ordinary miss: the anchor passes this role's contract but sits
+      // below a cut sized for what the sourcing pass can look at.
+      const deeper = deepPool(pool.role)?.candidates.find((candidate) => candidate.id === productId);
+      if (deeper) {
+        return withAnchorFirst(deeper);
       }
 
       // Then the harder one: the spec role's contract REJECTS the piece the
@@ -486,18 +468,25 @@ export async function groundProductsForRoom(
         [{ category: pool.role.category, label: pool.role.label, quantity: pool.role.quantity, required: true }],
         room.room_type
       )[0];
-      const anchorCandidate = deepPool(categoryRole)?.candidates.find((candidate) => candidate.id === productId);
-      return anchorCandidate
-        ? {
-            ...pool,
-            // Ranked against its own category rather than this spec role, which
-            // only affects the prose on its alternates, never the verdict.
-            candidates: [anchorCandidate, ...pool.candidates.filter((candidate) => candidate.id !== productId)]
-          }
-        : null;
+      // Ranked against its own category rather than this spec role, which only
+      // affects the prose on its alternates, never the verdict.
+      const admitted = deepPool(categoryRole)?.candidates.find((candidate) => candidate.id === productId);
+      return admitted ? withAnchorFirst(admitted) : null;
     }
   });
   const anchorOrder = new Map(plan.pools.map((pool, index) => [pool.role.echoKey, index]));
+  // A hall can carry two roles in one category. The anchor claims one of them;
+  // the other must not be offered the same piece, or the pass would pick it
+  // again (it is judging against a render that literally contains it), the list
+  // would carry the sofa twice, the total would charge for it twice, and both
+  // rows would claim to be the piece in the picture. resolveSpecRoleOutcomes
+  // dedupes by product within its own results, and anchored roles do not pass
+  // through it, so the exclusion happens here.
+  const claimedProductIds = new Set(anchored.map((claim) => claim.productId));
+  const openPools = sourcingPools.map((pool) => ({
+    ...pool,
+    candidates: pool.candidates.filter((candidate) => !claimedProductIds.has(candidate.id))
+  }));
 
   const contractRejections = plan.pools.reduce<Record<string, number>>((totals, pool) => {
     for (const [reason, count] of Object.entries(pool.rejectionReasons)) {
@@ -555,16 +544,16 @@ export async function groundProductsForRoom(
 
   try {
     let outcomes: SpecRoleOutcome[];
-    if (sourcingPools.length === 0) {
-      outcomes = openSpecRoleOutcomes(sourcingPools, "No visual pass ran for this list.");
+    if (openPools.length === 0) {
+      outcomes = openSpecRoleOutcomes(openPools, "No visual pass ran for this list.");
     } else {
       const poolCandidatesById = new Map<string, RoleScopedRankedProductMatch>();
-      for (const pool of sourcingPools) {
+      for (const pool of openPools) {
         for (const candidate of pool.candidates) {
           poolCandidatesById.set(candidate.id, candidate);
         }
       }
-      const imageIds = imageCandidateIdsForPools(sourcingPools, imageBudget);
+      const imageIds = imageCandidateIdsForPools(openPools, imageBudget);
       if (imageIds.length > 0) {
         try {
           Object.assign(
@@ -598,7 +587,7 @@ export async function groundProductsForRoom(
             conceptDescription: concept.description,
             conceptImageUrl,
             candidates: Array.from(poolCandidatesById.values()).map(matchToSourcingCandidate),
-            roleCandidatePools: sourcingPools.map((pool) => ({
+            roleCandidatePools: openPools.map((pool) => ({
               category: pool.role.category,
               roleLabel: pool.role.echoKey,
               visualBrief: pool.role.visualBrief,
@@ -610,7 +599,7 @@ export async function groundProductsForRoom(
             candidateImageDetail: "low",
             candidateImageDataUrls,
             designSpec: {
-              roles: sourcingPools.map((pool) => ({
+              roles: openPools.map((pool) => ({
                 echoKey: pool.role.echoKey,
                 category: pool.role.category,
                 label: pool.role.label,
@@ -626,7 +615,7 @@ export async function groundProductsForRoom(
           "Product visual sourcing timed out."
         );
         outcomes = resolveSpecRoleOutcomes({
-          pools: sourcingPools,
+          pools: openPools,
           roleResults: result.roleResults,
           selections: result.selectedProducts
         });
@@ -644,7 +633,7 @@ export async function groundProductsForRoom(
         const message = error instanceof Error ? error.message : "Product visual sourcing failed.";
         console.error("Product visual sourcing failed; falling back to ranking.", error);
         outcomes = openSpecRoleOutcomes(
-          sourcingPools,
+          openPools,
           "The visual pass was unavailable, so nothing was checked against the design and nothing was chosen for you; these are the closest catalogue options."
         );
         visualPass = { ...visualPass, used: false, error: message };
@@ -681,7 +670,7 @@ export async function groundProductsForRoom(
     const anchorProductIds = new Set(
       anchoredOutcomes.flatMap((outcome) => (outcome.kind === "selected" ? [outcome.selectedProductId] : []))
     );
-    const resolvedPools = [...anchored.map((claim) => claim.pool), ...sourcingPools];
+    const resolvedPools = [...anchored.map((claim) => claim.pool), ...openPools];
     // Spec order, so the room still reads sofa, rug, table rather than
     // everything-anchored-last.
     outcomes = [...outcomes, ...anchoredOutcomes].sort(

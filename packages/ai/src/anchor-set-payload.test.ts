@@ -135,16 +135,20 @@ const role = (roleKey: string, ids: string[]): AnchorSetRoleInput => ({
     "catalogue photographs are cutouts; low detail is enough and bounds the cost"
   );
 
-  // The per-role cap is enforced in the payload, not trusted to the caller.
-  const capped = anchorSetSelectionContent(
-    [{ ...roles[0], candidates: roles[0].candidates.slice(0, ANCHOR_SET_MAX_CANDIDATES_PER_ROLE) }],
-    { roomType: "living_room" },
-    "data:image/png;base64,ROOM"
-  );
+  // The per-role cap is enforced in the payload, so it holds for every caller
+  // of this exported builder and not only for selectAnchorSet. The role above
+  // carries seven candidates on purpose: an uncapped builder would show all of
+  // them, and the assertion has to be able to fail.
+  assert.ok(roles[0].candidates.length > ANCHOR_SET_MAX_CANDIDATES_PER_ROLE);
   assert.equal(
-    capped.filter((part) => part.type === "input_image").length,
-    ANCHOR_SET_MAX_CANDIDATES_PER_ROLE + 1
+    images.length,
+    ANCHOR_SET_MAX_CANDIDATES_PER_ROLE + 1 + 1,
+    "the room, five of the seven sofas, and the one rug"
   );
+  // And the JSON block agrees with the pictures: a candidate the pass cannot
+  // see must not be offered to it in text either.
+  const listed = JSON.parse(String(payload[0].text)) as { roles: Array<{ candidates: unknown[] }> };
+  assert.equal(listed.roles[0].candidates.length, ANCHOR_SET_MAX_CANDIDATES_PER_ROLE);
 
   // Every instruction line beside an image names a role key and a product id
   // and nothing else, so nothing scraped from a retailer can address the pass.

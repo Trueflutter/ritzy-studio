@@ -50,3 +50,18 @@ assert.equal(sumImagePlusTextUsd(0.07, 0.005), 0.075);
 assert.equal(sumImagePlusTextUsd(undefined, undefined), null);
 
 console.log("text-cost tests passed");
+
+// --- A caller's image deadline is honoured, floored and capped (S3b).
+{
+  const { imageCallTimeoutMs } = await import("./index");
+  // No deadline: the module's own ceiling stands.
+  assert.equal(imageCallTimeoutMs(undefined, 0), 240_000);
+  // With one: what is left of it, never more than the ceiling.
+  assert.equal(imageCallTimeoutMs(170_000, 0, 0), 170_000);
+  assert.equal(imageCallTimeoutMs(170_000, 0, 100_000), 70_000);
+  assert.equal(imageCallTimeoutMs(400_000, 0, 0), 240_000, "a caller cannot extend the provider ceiling");
+  // Floored: a fallback started with no time cannot return anything, but the
+  // floor is what makes the attempt honest rather than a guaranteed failure.
+  assert.equal(imageCallTimeoutMs(170_000, 0, 169_000), 20_000);
+  console.log("image deadline tests passed");
+}

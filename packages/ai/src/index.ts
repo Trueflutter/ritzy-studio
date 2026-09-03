@@ -196,13 +196,21 @@ export type GenerateInitialConceptInput = {
   roomPhotoMimeType: string;
   // Real catalogue pieces chosen for this room BEFORE the render, passed as
   // references so the render is built around them.
+  //
+  // Bytes only, and no URL field at all. The caller has already fetched every
+  // one of these through the reference guard, so a URL would add nothing but a
+  // way back to the failure it was added to prevent: a retailer host that
+  // answers the image provider with a resize error costs the render its primary
+  // provider, which was measured at 232 s against a 300 s route limit.
   anchorProducts?: Array<{
     roleLabel: string;
-    name: string;
     bytes: Buffer;
     mimeType: string;
-    referenceUrl?: string | null;
   }>;
+  // What the caller can still wait for a picture, once everything before the
+  // render has taken its share of the request. Without it the render honours
+  // only the providers' own ceilings, which outlast every route that calls it.
+  imageDeadlineMs?: number;
   // Additional photos of the SAME room from other corners. They give the model
   // real spatial coverage instead of hallucinating occluded walls from one frame.
   additionalRoomPhotos?: Array<{
@@ -547,7 +555,7 @@ type InitialConceptImagePromptInput = {
   // Real catalogue pieces already chosen for this room, supplied as the LAST
   // reference images. The render is built around them, which is what makes the
   // shopping list buyable instead of hopeful.
-  anchorProducts?: Array<{ roleLabel: string; name: string }>;
+  anchorProducts?: Array<{ roleLabel: string }>;
   styleSlugs?: string[];
   strictSourceRoomPreservation?: boolean;
   spatialIntent?: SpatialPromptIntent | null;
@@ -747,6 +755,16 @@ function assembleFinalGroundedRenderPrompt({
 // longer one sized to the slowest observed legitimate provider (gpt-image-2 at ~140s).
 const DEFAULT_TEXT_TIMEOUT_MS = 90_000;
 const IMAGE_CALL_TIMEOUT_MS = 240_000;
+
+// What is left of a caller's deadline, floored so a fallback is never started
+// with too little time to return anything, and capped so no caller can extend
+// the provider ceiling past what this module is willing to wait.
+export function imageCallTimeoutMs(deadlineMs: number | undefined, startedAt: number, now = Date.now()): number {
+  if (deadlineMs === undefined) {
+    return IMAGE_CALL_TIMEOUT_MS;
+  }
+  return Math.max(20_000, Math.min(IMAGE_CALL_TIMEOUT_MS, deadlineMs - Math.max(0, now - startedAt)));
+}
 // The spec-driven sourcing pass reads the concept image plus up to a few
 // dozen product images across every role of the design in one call; it is
 // the one text call allowed past the 90s default. The route that runs it
@@ -777,11 +795,14 @@ function isOpenAiOwnOrigin(baseUrl: string | undefined): boolean {
   }
 }
 
-export function createOpenAiImageFallbackClient(env: {
-  OPENAI_API_KEY: string;
-  OPENAI_FALLBACK_API_KEY?: string;
-  OPENAI_BASE_URL?: string;
-}): OpenAI {
+export function createOpenAiImageFallbackClient(
+  env: {
+    OPENAI_API_KEY: string;
+    OPENAI_FALLBACK_API_KEY?: string;
+    OPENAI_BASE_URL?: string;
+  },
+  timeoutMs: number = IMAGE_CALL_TIMEOUT_MS
+): OpenAI {
   // A gateway credential (the config that sets OPENAI_BASE_URL) cannot authenticate
   // against api.openai.com; pairing it with the pin would just turn the dead
   // fallback's 404 into a dead fallback's 401. Require a real credential: a
@@ -796,7 +817,7 @@ export function createOpenAiImageFallbackClient(env: {
   return new OpenAI({
     apiKey,
     baseURL: "https://api.openai.com/v1",
-    timeout: IMAGE_CALL_TIMEOUT_MS,
+    timeout: timeoutMs,
     maxRetries: 0
   });
 }
@@ -804,11 +825,19 @@ export function createOpenAiImageFallbackClient(env: {
 async function generateImageWithConfiguredProvider({
   prompt,
   references,
-  noImageErrorMessage
+  noImageErrorMessage,
+  // How long the caller can wait for a picture. The providers' own ceilings
+  // (300 s of Evolink polling, a 240 s OpenAI call) outlast every route that
+  // uses them, so without this a caller's budget is a number it subtracts
+  // against and nothing honours. A request the platform kills runs no catch
+  // path: its job row stays "running", and the dedupe reads that as a live
+  // generation and refuses the shopper a retry for fifteen minutes.
+  deadlineMs
 }: {
   prompt: string;
   references: ImageGenerationReference[];
   noImageErrorMessage: string;
+  deadlineMs?: number;
 }): Promise<ImageGenerationAttempt> {
   const env = parseServerEnv(process.env);
 
@@ -822,13 +851,16 @@ async function generateImageWithConfiguredProvider({
         model: env.EVOLINK_IMAGE_MODEL,
         apiKey: env.EVOLINK_API_KEY,
         quality: env.EVOLINK_IMAGE_QUALITY,
-        baseUrl: env.EVOLINK_BASE_URL
+        baseUrl: env.EVOLINK_BASE_URL,
+        // Two thirds to the primary, so a provider that stalls still leaves the
+        // fallback enough of the caller's budget to produce the picture.
+        pollTimeoutMs: deadlineMs === undefined ? undefined : Math.floor(deadlineMs * 0.66)
       });
     } catch (error) {
       const fallbackError = formatImageGenerationError(error);
       try {
         const fallbackAttempt = await generateOpenAiImage({
-          client: createOpenAiImageFallbackClient(env),
+          client: createOpenAiImageFallbackClient(env, imageCallTimeoutMs(deadlineMs, startedAt)),
           prompt,
           references,
           model: env.OPENAI_IMAGE_MODEL,
@@ -864,7 +896,7 @@ async function generateImageWithConfiguredProvider({
       const fallbackError = formatImageGenerationError(error);
       try {
         const fallbackAttempt = await generateOpenAiImage({
-          client: createOpenAiImageFallbackClient(env),
+          client: createOpenAiImageFallbackClient(env, imageCallTimeoutMs(deadlineMs, startedAt)),
           prompt,
           references,
           model: env.OPENAI_IMAGE_MODEL,
@@ -1149,7 +1181,8 @@ async function generateEvolinkImage({
   model,
   apiKey,
   quality,
-  baseUrl
+  baseUrl,
+  pollTimeoutMs
 }: {
   prompt: string;
   references: ImageGenerationReference[];
@@ -1157,6 +1190,7 @@ async function generateEvolinkImage({
   apiKey?: string;
   quality: "1K" | "2K" | "4K";
   baseUrl: string;
+  pollTimeoutMs?: number;
 }): Promise<ImageGenerationAttempt> {
   const apiBase = baseUrl;
   if (!apiKey) {
@@ -1205,7 +1239,8 @@ async function generateEvolinkImage({
     );
   }
 
-  const deadline = startedAt + EVOLINK_POLL_TIMEOUT_MS;
+  const pollWindowMs = Math.max(EVOLINK_POLL_INTERVAL_MS * 2, Math.min(EVOLINK_POLL_TIMEOUT_MS, pollTimeoutMs ?? EVOLINK_POLL_TIMEOUT_MS));
+  const deadline = startedAt + pollWindowMs;
 
   while (Date.now() < deadline) {
     await new Promise((resolve) => setTimeout(resolve, EVOLINK_POLL_INTERVAL_MS));
@@ -1314,7 +1349,7 @@ async function generateEvolinkImage({
     }
   }
 
-  throw new Error(`Evolink image generation timed out after ${EVOLINK_POLL_TIMEOUT_MS / 1000} seconds.`);
+  throw new Error(`Evolink image generation timed out after ${Math.round(pollWindowMs / 1000)} seconds.`);
 }
 
 // Downscaled data URL for a vision input; same pipeline as image references.
@@ -1841,10 +1876,16 @@ export type AnchorSetResult = {
 // and nothing else, so no catalogue row can address the stylist. Exported so
 // the fencing is pinned where it is applied, not only as a unit.
 export function anchorSetSelectionContent(
-  roles: AnchorSetRoleInput[],
+  inputRoles: AnchorSetRoleInput[],
   brief: AnchorSetBriefInput,
   roomPhotoUrl: string
 ): Array<Record<string, unknown>> {
+  // The caps live here, at the point the payload is built, so they hold for
+  // every caller of this exported builder and not only for selectAnchorSet.
+  const roles = inputRoles
+    .slice(0, ANCHOR_SET_MAX_ROLES)
+    .map((role) => ({ ...role, candidates: role.candidates.slice(0, ANCHOR_SET_MAX_CANDIDATES_PER_ROLE) }));
+
   const content: Array<Record<string, unknown>> = [
     {
       type: "input_text",
@@ -1938,6 +1979,9 @@ export async function selectAnchorSet(input: {
   roles: AnchorSetRoleInput[];
   timeoutMs?: number;
 }): Promise<AnchorSetResult> {
+  // Empty roles are dropped here; the caps are applied by the payload builder,
+  // and this list is trimmed the same way so the schema's enums describe
+  // exactly what the payload shows.
   const roles = input.roles
     .filter((role) => role.candidates.length > 0)
     .slice(0, ANCHOR_SET_MAX_ROLES)
@@ -2270,6 +2314,48 @@ function sourcingRoleKey(category: string, roleLabel: string) {
   return `${category}::${roleLabel}`.toLowerCase().replace(/[^a-z0-9:]+/g, "_");
 }
 
+// The images the render is built from, in the order the prompt describes them.
+// Exported because it IS the anchoring mechanism: the prompt tells the model
+// that the last N images are the pieces to keep, so the order, the count and
+// the "required" flags are not incidental to this slice, they are the slice.
+// A change here that silently dropped the anchors would leave every other part
+// of the pipeline intact — the pass paid for, the pieces persisted, the list
+// claiming they are in the design — around a render that never saw them.
+export function initialConceptReferences(
+  input: Pick<
+    GenerateInitialConceptInput,
+    "roomPhotoBytes" | "roomPhotoMimeType" | "roomPhotoUrl" | "roomPhotoReferenceUrl" | "additionalRoomPhotos" | "anchorProducts"
+  >
+): ImageGenerationReference[] {
+  return [
+    {
+      bytes: input.roomPhotoBytes,
+      mimeType: input.roomPhotoMimeType,
+      name: "room",
+      url: publicReferenceUrl(input.roomPhotoReferenceUrl ?? input.roomPhotoUrl),
+      required: true
+    },
+    ...(input.additionalRoomPhotos ?? []).slice(0, 2).map((photo, index) => ({
+      bytes: photo.bytes,
+      mimeType: photo.mimeType,
+      name: `room-angle-${index + 2}`,
+      url: publicReferenceUrl(photo.referenceUrl ?? photo.url)
+    })),
+    // Anchors come last so the prompt can refer to "the last N images", and
+    // each is required: a render that silently dropped one would be a render
+    // of furniture the shopper is not buying.
+    ...(input.anchorProducts ?? []).map((product, index) => ({
+      bytes: product.bytes,
+      mimeType: product.mimeType,
+      name: `anchor-${index + 1}`,
+      // Never a URL. See the input type: these bytes are already fetched and
+      // guarded, and a link is only a way back to the provider fallback.
+      url: null,
+      required: true
+    }))
+  ];
+}
+
 export async function generateInitialConcept(
   input: GenerateInitialConceptInput
 ): Promise<GenerateInitialConceptResult> {
@@ -2371,40 +2457,14 @@ export async function generateInitialConcept(
     spatialIntent: input.spatialIntent ?? null,
     measurements: input.measurements ?? null,
     additionalRoomPhotoCount: input.additionalRoomPhotos?.length ?? 0,
-    anchorProducts: (input.anchorProducts ?? []).map((product) => ({
-      roleLabel: product.roleLabel,
-      name: product.name
-    }))
+    anchorProducts: (input.anchorProducts ?? []).map((product) => ({ roleLabel: product.roleLabel }))
   });
 
   const imageResult = await generateImageWithConfiguredProvider({
     prompt: imagePrompt,
-    references: [
-      {
-        bytes: input.roomPhotoBytes,
-        mimeType: input.roomPhotoMimeType,
-        name: "room",
-        url: publicReferenceUrl(input.roomPhotoReferenceUrl ?? input.roomPhotoUrl),
-        required: true
-      },
-      ...(input.additionalRoomPhotos ?? []).slice(0, 2).map((photo, index) => ({
-        bytes: photo.bytes,
-        mimeType: photo.mimeType,
-        name: `room-angle-${index + 2}`,
-        url: publicReferenceUrl(photo.referenceUrl ?? photo.url)
-      })),
-      // Anchors come last so the prompt can refer to "the last N images", and
-      // each is required: a render that silently dropped one would be a render
-      // of furniture the shopper is not buying.
-      ...(input.anchorProducts ?? []).map((product, index) => ({
-        bytes: product.bytes,
-        mimeType: product.mimeType,
-        name: `anchor-${index + 1}`,
-        url: publicReferenceUrl(product.referenceUrl ?? null),
-        required: true
-      }))
-    ],
-    noImageErrorMessage: "OpenAI image generation returned no image data."
+    references: initialConceptReferences(input),
+    noImageErrorMessage: "OpenAI image generation returned no image data.",
+    deadlineMs: input.imageDeadlineMs
   });
 
   return {
