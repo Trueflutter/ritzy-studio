@@ -2459,6 +2459,34 @@ export function initialConceptReferences(
   ];
 }
 
+// The prompt and the pictures, built together, because they only work together:
+// the prompt says "the LAST N input images are the pieces to keep" and the
+// references are what makes that sentence true. Split across two call sites,
+// either half could be severed with every test still green — and both were,
+// which is the one failure the rest of the pipeline cannot detect. It keeps
+// paying for the anchor pass, writing concept_anchors, skipping those roles in
+// sourcing and judging them at the anchor bar, around a render that never saw
+// them.
+export function initialConceptImagePayload(
+  input: GenerateInitialConceptInput,
+  generationPrompt: string
+): { prompt: string; references: ImageGenerationReference[] } {
+  return {
+    prompt: buildInitialConceptImagePrompt({
+      generationPrompt,
+      roomType: input.roomType,
+      hasInspirationImages: Boolean(input.inspirationImageUrls?.length),
+      styleSlugs: input.styleSlugs,
+      strictSourceRoomPreservation: localStrictSourceRoomPreservationEnabled(),
+      spatialIntent: input.spatialIntent ?? null,
+      measurements: input.measurements ?? null,
+      additionalRoomPhotoCount: input.additionalRoomPhotos?.length ?? 0,
+      anchorProducts: (input.anchorProducts ?? []).map((product) => ({ roleLabel: product.roleLabel }))
+    }),
+    references: initialConceptReferences(input)
+  };
+}
+
 export async function generateInitialConcept(
   input: GenerateInitialConceptInput
 ): Promise<GenerateInitialConceptResult> {
@@ -2564,21 +2592,11 @@ export async function generateInitialConcept(
   });
 
   const direction = initialConceptResponseSchema.parse(JSON.parse(directionResponse.output_text));
-  const imagePrompt = buildInitialConceptImagePrompt({
-    generationPrompt: direction.concept.generationPrompt,
-    roomType: input.roomType,
-    hasInspirationImages: Boolean(input.inspirationImageUrls?.length),
-    styleSlugs: input.styleSlugs,
-    strictSourceRoomPreservation: localStrictSourceRoomPreservationEnabled(),
-    spatialIntent: input.spatialIntent ?? null,
-    measurements: input.measurements ?? null,
-    additionalRoomPhotoCount: input.additionalRoomPhotos?.length ?? 0,
-    anchorProducts: (input.anchorProducts ?? []).map((product) => ({ roleLabel: product.roleLabel }))
-  });
+  const { prompt: imagePrompt, references } = initialConceptImagePayload(input, direction.concept.generationPrompt);
 
   const imageResult = await generateImageWithConfiguredProvider({
     prompt: imagePrompt,
-    references: initialConceptReferences(input),
+    references,
     noImageErrorMessage: "OpenAI image generation returned no image data.",
     // What is left of it after the direction call.
     deadlineMs:

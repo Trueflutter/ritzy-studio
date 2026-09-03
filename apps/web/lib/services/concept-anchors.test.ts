@@ -3,6 +3,16 @@ import assert from "node:assert/strict";
 import type { AnchorSetPick, AnchorSetResult } from "@ritzy-studio/ai";
 import type { RankedProductMatch } from "@ritzy-studio/domain";
 
+import type { selectAnchorSet } from "@ritzy-studio/ai";
+
+import {
+  ANCHOR_PREP_FLOOR_MS,
+  ANCHOR_SET_MAX_MS,
+  anchorProviderTimeoutMs,
+  CONCEPT_PERSIST_RESERVE_MS,
+  CONCEPT_RENDER_FLOOR_MS
+} from "@/lib/concept-run-budget";
+
 import { chooseConceptAnchors, claimAnchoredPools, persistConceptAnchors } from "./concept-anchors";
 import { fakeSupabase, type RecordedCall, type Responder } from "./supabase-test-double";
 
@@ -109,12 +119,23 @@ async function main() {
   // --- The pass chooses; only what it chose is anchored.
   {
     const { clients: c, service } = clients();
+    let passInput: Parameters<typeof selectAnchorSet>[0] | undefined;
     const outcome = await chooseConceptAnchors(c, INPUT, {
       fetchImage,
-      selectSet: async ({ roles }) =>
-        passResult([{ roleKey: roles[0].roleKey, productId: roles[0].candidates[0].productId, reason: "grounds it" }]),
+      selectSet: async (input) => {
+        passInput = input;
+        return passResult([
+          { roleKey: input.roles[0].roleKey, productId: input.roles[0].candidates[0].productId, reason: "grounds it" }
+        ]);
+      },
       now: () => 0
     });
+
+    // The provider aborts before the service guard does, so the guard is only a
+    // backstop. Without this the pass falls back to its own 60 s default under
+    // a 45 s guard, and withTimeout does not cancel: a slow provider then keeps
+    // a request alive past the partition while the render has already started.
+    assert.equal(passInput?.timeoutMs, anchorProviderTimeoutMs(ANCHOR_SET_MAX_MS));
 
     assert.equal(outcome.status, "chosen");
     assert.equal(outcome.anchors.length, 1, "a role the pass declined stays declined");
@@ -226,9 +247,11 @@ async function main() {
       selectSet: async () => {
         throw new Error("must not run");
       },
-      // The prep guard is taken at 0 and the fetch window closes 30s later.
       now: () => 0,
-      runBudgetMs: 285_000
+      // Sized so the prep guard lands on its floor: the case under test is a
+      // fetch that never settles, not a five-second wait for one, and this file
+      // is chained into a suite nobody wants to sit through.
+      runBudgetMs: CONCEPT_PERSIST_RESERVE_MS + CONCEPT_RENDER_FLOOR_MS + ANCHOR_SET_MAX_MS + ANCHOR_PREP_FLOOR_MS
     });
     assert.equal(outcome.status, "prep_timed_out");
     assert.deepEqual(outcome.anchors, []);
@@ -252,7 +275,9 @@ async function main() {
       selectSet: async () => {
         throw new Error("fall back to the ranking");
       },
-      now: () => 0
+      now: () => 0,
+      // The prep guard on its floor: the case is a hanging fetch, not a wait.
+      runBudgetMs: CONCEPT_PERSIST_RESERVE_MS + CONCEPT_RENDER_FLOOR_MS + ANCHOR_SET_MAX_MS + ANCHOR_PREP_FLOOR_MS
     });
     assert.equal(outcome.status, "pass_failed", "the prep survived; the pass is what failed here");
     assert.ok(outcome.anchors.length > 0, "the room is anchored on the photographs that arrived");

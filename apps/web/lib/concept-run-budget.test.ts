@@ -42,23 +42,37 @@ assert.ok(
 );
 
 // At the top of the run both guards give their ceiling.
-assert.equal(anchorPrepTimeoutMs({ startedAt: 0, now: 0 }), ANCHOR_PREP_MAX_MS);
-assert.equal(anchorSetTimeoutMs({ startedAt: 0, now: 0 }), ANCHOR_SET_MAX_MS);
+assert.equal(anchorPrepTimeoutMs({ startedAt: 0, stageStartedAt: 0, now: 0 }), ANCHOR_PREP_MAX_MS);
+assert.equal(anchorSetTimeoutMs({ startedAt: 0, stageStartedAt: 0, now: 0 }), ANCHOR_SET_MAX_MS);
 
-// Prep is refused before it starts once the render's reserve is at stake, so
+// The anchor stage's allowance is measured from ITS OWN start, so the reads,
+// downloads and image work that precede it come out of the render's headroom
+// rather than switching anchoring off. Charged to the run's clock instead, a
+// room with three photos and six inspiration images reached this guard at ~16 s
+// and got nothing, silently, falling back to the search matching this slice
+// exists to replace.
+assert.equal(
+  anchorPrepTimeoutMs({ startedAt: 0, stageStartedAt: 16_000, now: 16_000 }),
+  ANCHOR_PREP_MAX_MS,
+  "a slow start costs the render headroom, not the anchors"
+);
+// The stage's own overrun still closes it.
+assert.equal(anchorPrepTimeoutMs({ startedAt: 0, stageStartedAt: 0, now: 16_000 }), null);
+
+// Prep is refused before it starts once the render's floor is at stake, so
 // the catalogue is not even read on a run that cannot afford to use it.
-assert.equal(anchorPrepTimeoutMs({ startedAt: 0, now: 25_000 }), null);
-assert.equal(anchorPrepTimeoutMs({ startedAt: 0, now: 280_000 }), null);
+assert.equal(anchorPrepTimeoutMs({ startedAt: 0, stageStartedAt: 220_000, now: 220_000 }), null);
+assert.equal(anchorPrepTimeoutMs({ startedAt: 0, stageStartedAt: 280_000, now: 280_000 }), null);
 
 // The pass keeps its floor while the render's reserve is intact, and is
 // refused the moment it is not: a call started under the floor cannot return,
 // so it would spend tokens and record nothing.
-assert.equal(anchorSetTimeoutMs({ startedAt: 0, now: 40_000 }), ANCHOR_SET_FLOOR_MS);
-assert.equal(anchorSetTimeoutMs({ startedAt: 0, now: 40_001 }), null);
+assert.equal(anchorSetTimeoutMs({ startedAt: 0, stageStartedAt: 0, now: 40_000 }), ANCHOR_SET_FLOOR_MS);
+assert.equal(anchorSetTimeoutMs({ startedAt: 0, stageStartedAt: 0, now: 40_001 }), null);
 
 // Whatever a guard allows, the render's reserve survives it.
 for (const now of [0, 10_000, 20_000, 40_000]) {
-  const guard = anchorSetTimeoutMs({ startedAt: 0, now });
+  const guard = anchorSetTimeoutMs({ startedAt: 0, stageStartedAt: 0, now });
   if (guard !== null) {
     assert.ok(
       CONCEPT_RUN_BUDGET_MS - now - guard - CONCEPT_PERSIST_RESERVE_MS >= CONCEPT_RENDER_RESERVE_MS,

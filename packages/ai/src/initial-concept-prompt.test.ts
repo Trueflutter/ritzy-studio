@@ -2,7 +2,12 @@ import assert from "node:assert/strict";
 
 import { initialConceptPrompt, roomBlueprintDefaultsLanguage, roomDesignLanguage } from "@ritzy-studio/prompts";
 
-import { buildInitialConceptImagePrompt, buildInitialConceptSystemPrompt, initialConceptReferences } from ".";
+import {
+  buildInitialConceptImagePrompt,
+  buildInitialConceptSystemPrompt,
+  initialConceptImagePayload,
+  initialConceptReferences
+} from ".";
 
 // Concept-first prompt architecture (S2): one path, no flags, no pre-approval
 // catalogue anchors. The system prompt carries the full design language plus the
@@ -119,6 +124,34 @@ assert.equal(imagePrompt.includes("Do not invent alternate anchor furniture"), f
     1,
     "an unanchored room sends its photograph and nothing else"
   );
+}
+
+// --- and the two together, from one input. Tested as a pair because they only
+// work as a pair: the prompt says "the LAST N images are the pieces to keep"
+// and the references are what makes that true. Severing either half left every
+// suite in the monorepo green, twice.
+{
+  const bytes = (tag: string) => Buffer.from(tag);
+  const anchoredInput = {
+    roomType: "living room",
+    roomPhotoUrl: "https://example-project.supabase.co/room.jpg",
+    roomPhotoBytes: bytes("room"),
+    roomPhotoMimeType: "image/jpeg",
+    anchorProducts: [
+      { roleLabel: "sofa", bytes: bytes("sofa"), mimeType: "image/jpeg" },
+      { roleLabel: "rug", bytes: bytes("rug"), mimeType: "image/jpeg" }
+    ]
+  };
+  const payload = initialConceptImagePayload(anchoredInput, "Create a warm living room concept.");
+  assert.match(payload.prompt, /The LAST 2 input images are photographs of real furniture/);
+  assert.match(payload.prompt, /image 1 of that set is the sofa, image 2 of that set is the rug/);
+  assert.deepEqual(payload.references.map((reference) => reference.name), ["room", "anchor-1", "anchor-2"]);
+  assert.deepEqual(payload.references.slice(1).map((reference) => reference.bytes.toString()), ["sofa", "rug"]);
+
+  // And an unanchored room gets neither half.
+  const plain = initialConceptImagePayload({ ...anchoredInput, anchorProducts: [] }, "Create a warm living room concept.");
+  assert.equal(plain.prompt.includes("already chosen for this room"), false);
+  assert.deepEqual(plain.references.map((reference) => reference.name), ["room"]);
 }
 
 const strictPreservationImagePrompt = buildInitialConceptImagePrompt({

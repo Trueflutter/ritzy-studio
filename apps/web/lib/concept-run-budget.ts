@@ -22,6 +22,17 @@ export const CONCEPT_PERSIST_RESERVE_MS = 25_000;
 // anchor pass that cannot finish costs only the pass.
 export const CONCEPT_RENDER_RESERVE_MS = 195_000;
 
+// What the render must keep no matter what, as opposed to what it is aimed at.
+// The reserve above is the target; this is the point below which anchoring is
+// not attempted at all. The distinction matters because everything BEFORE the
+// anchor stage — eight database round trips, up to three room photos and six
+// inspiration images through storage and sharp — is real time that has to come
+// out of somewhere. Charging it to the anchor allowance made anchoring switch
+// itself off on a room with a lot of images, silently, with the run falling
+// back to search matching: the one-in-eight in-stock hit rate this slice
+// exists to replace. It comes out of the render's headroom instead.
+export const CONCEPT_RENDER_FLOOR_MS = 90_000;
+
 // Reading the catalogue, building the shortlists and fetching the candidate
 // photographs. No paid call, but it is the pass's own pre-work and has to be
 // inside the budget rather than added to it.
@@ -49,16 +60,23 @@ export const ANCHOR_PROVIDER_HEADROOM_MS = 8_000;
 // room gets no concept at all.
 export function anchorPrepTimeoutMs({
   startedAt,
+  stageStartedAt,
   now,
   runBudgetMs = CONCEPT_RUN_BUDGET_MS
 }: {
   startedAt: number;
+  // When the anchor stage itself began. Its allowance is measured from here,
+  // not from the top of the request, so work done before it is charged to the
+  // render's headroom rather than to the anchor budget.
+  stageStartedAt: number;
   now: number;
   runBudgetMs?: number;
 }): number | null {
   return stageGuardMs({
-    availableMs:
-      remainingMs(startedAt, now, runBudgetMs) - CONCEPT_PERSIST_RESERVE_MS - CONCEPT_RENDER_RESERVE_MS - ANCHOR_SET_MAX_MS,
+    availableMs: Math.min(
+      remainingMs(startedAt, now, runBudgetMs) - CONCEPT_PERSIST_RESERVE_MS - CONCEPT_RENDER_FLOOR_MS - ANCHOR_SET_MAX_MS,
+      ANCHOR_PREP_MAX_MS - Math.max(0, now - stageStartedAt)
+    ),
     maxMs: ANCHOR_PREP_MAX_MS,
     floorMs: ANCHOR_PREP_FLOOR_MS
   });
@@ -68,15 +86,20 @@ export function anchorPrepTimeoutMs({
 // inside the budget rather than added to it.
 export function anchorSetTimeoutMs({
   startedAt,
+  stageStartedAt,
   now,
   runBudgetMs = CONCEPT_RUN_BUDGET_MS
 }: {
   startedAt: number;
+  stageStartedAt: number;
   now: number;
   runBudgetMs?: number;
 }): number | null {
   return stageGuardMs({
-    availableMs: remainingMs(startedAt, now, runBudgetMs) - CONCEPT_PERSIST_RESERVE_MS - CONCEPT_RENDER_RESERVE_MS,
+    availableMs: Math.min(
+      remainingMs(startedAt, now, runBudgetMs) - CONCEPT_PERSIST_RESERVE_MS - CONCEPT_RENDER_FLOOR_MS,
+      ANCHOR_PREP_MAX_MS + ANCHOR_SET_MAX_MS - Math.max(0, now - stageStartedAt)
+    ),
     maxMs: ANCHOR_SET_MAX_MS,
     floorMs: ANCHOR_SET_FLOOR_MS
   });

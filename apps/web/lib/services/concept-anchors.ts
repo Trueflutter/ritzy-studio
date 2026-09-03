@@ -183,7 +183,10 @@ export async function chooseConceptAnchors(
     return emptyOutcome("no_anchor_roles");
   }
 
-  const prepMs = anchorPrepTimeoutMs({ startedAt: input.startedAt, now: now(), runBudgetMs });
+  // The anchor stage's own clock. Everything the request did before reaching
+  // here is the render's headroom to give, not this stage's allowance to lose.
+  const stageStartedAt = now();
+  const prepMs = anchorPrepTimeoutMs({ startedAt: input.startedAt, stageStartedAt, now: now(), runBudgetMs });
   if (prepMs === null) {
     return emptyOutcome("prep_timed_out", "The request had no time left to choose anchors before the render.");
   }
@@ -344,7 +347,7 @@ export async function chooseConceptAnchors(
 
   const roleCount = withImages.length;
   const candidateCount = withImages.reduce((total, shortlist) => total + shortlist.candidates.length, 0);
-  const guardMs = anchorSetTimeoutMs({ startedAt: input.startedAt, now: now(), runBudgetMs });
+  const guardMs = anchorSetTimeoutMs({ startedAt: input.startedAt, stageStartedAt, now: now(), runBudgetMs });
 
   if (guardMs === null) {
     return { ...emptyOutcome("skipped_no_budget"), anchors: rankedFallback() };
