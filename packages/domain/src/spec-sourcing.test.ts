@@ -1155,7 +1155,28 @@ console.log("spec-sourcing tests passed");
     );
   }
 
-  console.log("spec-sourcing object-kind tests passed");
+  // A stool is not a dining chair. The catalogue files "Salamanca Stool in Cream
+// Pine" under chairs, and it was anchoring a dining room: the kind comes from
+// the product's own name, never from where the catalogue filed it.
+{
+  const diningChairs = sourcingRolesFromDesignSpec(
+    {
+      id: "s",
+      roomId: "r",
+      conceptId: "c",
+      status: "confirmed",
+      mustPreserve: [],
+      objects: [{ role: "dining_chairs", label: "upholstered dining chairs", quantity: 6, sizeDescriptor: null, capacity: null, paletteMaterials: [] }]
+    } as never,
+    "Dining Room"
+  ).roles[0];
+  const stool = { ...base, id: "st", name: "Salamanca Stool in Cream Pine and Medium Density Fibreboard", categoryNormalized: "chairs" };
+  const chair = { ...base, id: "dc", name: "Oslo Upholstered Dining Chair", categoryNormalized: "chairs" };
+  assert.equal(checkCandidateAgainstSpecRole(stool, diningChairs).ok, false, "a stool cannot seat a dining table");
+  assert.equal(checkCandidateAgainstSpecRole(chair, diningChairs).ok, true);
+}
+
+console.log("spec-sourcing object-kind tests passed");
 }
 
 // --- blueprint fallback roles carry the same contracts

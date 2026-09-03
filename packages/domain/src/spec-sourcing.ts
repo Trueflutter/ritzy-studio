@@ -505,6 +505,16 @@ const OBJECT_KIND_RULES: Array<{ kind: string; phrases: string[]; categories: st
   { kind: "storage unit", categories: ["storage"], phrases: ["dresser", "chest of drawers", "sideboard", "credenza", "wardrobe", "armoire", "bookcase", "cabinet", "tv unit", "tv stand", "media unit", "console"] },
   { kind: "sofa", categories: ["sofas"], phrases: ["sofa", "sectional", "loveseat", "couch", "settee"] },
   { kind: "armchair", categories: ["armchairs"], phrases: ["armchair", "accent chair", "lounge chair", "occasional chair", "club chair", "swivel chair", "wingback"] },
+  // Dining seating. The catalogue files a "Salamanca Stool" under chairs, and
+  // it was anchoring a dining room: a stool is not what you seat six people at
+  // a table on, and an anchor is the piece the render is built around. Stool
+  // first, so a name carrying both words resolves to the more specific one.
+  { kind: "stool", categories: ["chairs"], phrases: ["bar stool", "counter stool", "stool", "bench", "pouffe", "pouf"] },
+  // NOT the bare word "chair": a product called "Eames Style RAR Chair" names
+  // no specific kind, and this module's rule is that a product naming no kind
+  // cannot be proven wrong. Claiming the bare word would reject every lounge
+  // chair whose name does not spell out what it is.
+  { kind: "dining chair", categories: ["chairs"], phrases: ["dining chair", "side chair"] },
   // A runner is not a room rug, whatever the catalogue calls it.
   { kind: "runner", categories: ["rugs"], phrases: ["floor runner", "runner"] },
   { kind: "rug", categories: ["rugs"], phrases: ["rug", "carpet", "dhurry", "dhurrie", "kilim"] },
@@ -524,6 +534,7 @@ const KIND_CONSTRAINED_CATEGORIES = new Set<string>([
   "decor",
   "lighting",
   "beds",
+  "chairs",
   "sofas",
   "armchairs",
   "rugs",
