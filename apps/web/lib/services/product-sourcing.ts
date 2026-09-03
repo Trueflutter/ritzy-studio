@@ -449,23 +449,52 @@ export async function groundProductsForRoom(
   const { anchored, remaining: sourcingPools, unclaimed: unclaimedAnchors } = claimAnchoredPools({
     pools: plan.pools,
     anchors: anchorRows,
-    // The anchor is in the render and the spec was extracted from that render,
-    // so the contracts should admit it; it can still sit below a cut sized for
-    // what the sourcing pass can look at. Same contracts, same scorer, deeper.
     deepen: (pool, productId) => {
-      const deeper = buildSpecSourcingPlan({
-        roles: [pool.role],
-        unsourceable: [],
-        candidates,
-        roomType: room.room_type,
-        conceptText,
-        budgetMaxAed: project.budget_max_aed,
-        roomMeasurements,
-        recentlyUsedProductIds,
-        avoidColorTags,
-        candidatesPerRole: ANCHOR_DEEP_POOL_LIMIT
-      }).pools[0];
-      return deeper?.candidates.some((candidate) => candidate.id === productId) ? deeper : null;
+      const deepPool = (role: SpecSourcingRole) =>
+        buildSpecSourcingPlan({
+          roles: [role],
+          unsourceable: [],
+          candidates,
+          roomType: room.room_type,
+          conceptText,
+          budgetMaxAed: project.budget_max_aed,
+          roomMeasurements,
+          recentlyUsedProductIds,
+          avoidColorTags,
+          candidatesPerRole: ANCHOR_DEEP_POOL_LIMIT
+        }).pools[0];
+
+      // First, the ordinary miss: the anchor passes this role's contract but
+      // sits below a cut sized for what the sourcing pass can look at.
+      const deeper = deepPool(pool.role);
+      if (deeper?.candidates.some((candidate) => candidate.id === productId)) {
+        return deeper;
+      }
+
+      // Then the harder one: the spec role's contract REJECTS the piece the
+      // render was drawn from. Measured on the Al Furjan hall, where the spec
+      // read the Samone 2.5-seater-with-chaise as a "curved modular sectional"
+      // and its own seat contract then refused it, and read the Cooper
+      // 10-seater as a "round dining table". That is the spec's WORDS
+      // disagreeing with the render's PIXELS, and the pixels are what the
+      // shopper approved. Contracts exist to stop a SEARCH returning the wrong
+      // kind of object; this piece was not searched for, it was pinned, and
+      // the design check downstream is what decides whether the render kept
+      // it. So the piece is admitted on its category alone, and the role keeps
+      // its own identity and the rest of its options.
+      const categoryRole = sourcingRolesFromBlueprint(
+        [{ category: pool.role.category, label: pool.role.label, quantity: pool.role.quantity, required: true }],
+        room.room_type
+      )[0];
+      const anchorCandidate = deepPool(categoryRole)?.candidates.find((candidate) => candidate.id === productId);
+      return anchorCandidate
+        ? {
+            ...pool,
+            // Ranked against its own category rather than this spec role, which
+            // only affects the prose on its alternates, never the verdict.
+            candidates: [anchorCandidate, ...pool.candidates.filter((candidate) => candidate.id !== productId)]
+          }
+        : null;
     }
   });
   const anchorOrder = new Map(plan.pools.map((pool, index) => [pool.role.echoKey, index]));

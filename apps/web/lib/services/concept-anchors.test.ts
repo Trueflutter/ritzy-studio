@@ -382,8 +382,9 @@ async function main() {
       assert.deepEqual(result.remaining, []);
     }
 
-    // Deeper and still absent: the contracts genuinely reject the piece for
-    // this role. It is not forced in with a score nobody computed.
+    // Deeper and still absent: the caller could not produce a pool holding the
+    // piece at all, so there is nothing to attach. It is not forced in with a
+    // score nobody computed.
     {
       const shallow = pool("sofas", ["s1"]);
       const result = claimAnchoredPools({
@@ -394,6 +395,23 @@ async function main() {
       assert.deepEqual(result.anchored, []);
       assert.deepEqual(result.unclaimed, ["s3"]);
       assert.deepEqual(result.remaining, [shallow], "the role goes to normal sourcing");
+    }
+
+    // The pool the caller returns need not be the one it was given: when a spec
+    // role's own contract refuses the piece the render was drawn from, the
+    // caller admits it on category alone and keeps the role's other options.
+    // What is claimed is whatever pool comes back holding the product.
+    {
+      const shallow = pool("sofas", ["s1", "s2"]);
+      const admitted = { role: { category: "sofas" }, candidates: [{ id: "s9" }, { id: "s1" }, { id: "s2" }] };
+      const result = claimAnchoredPools({
+        pools: [shallow],
+        anchors: [anchor("sofas", "s9")],
+        deepen: () => admitted
+      });
+      assert.deepEqual(result.anchored.map((claim) => claim.productId), ["s9"]);
+      assert.equal(result.anchored[0].pool, admitted);
+      assert.deepEqual(result.unclaimed, []);
     }
   }
 
