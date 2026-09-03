@@ -41,22 +41,6 @@ assert.equal(formatPgVector([0.1, -2, 3.25]), "[0.1,-2,3.25]");
 
 const validatedSourcing = validateProductSourcingRoleContract(
   {
-    needs: [
-      {
-        category: "sofas",
-        roleLabel: "anchor seating",
-        visualBrief: "cream linen sofa",
-        quantity: 1,
-        priority: "required"
-      },
-      {
-        category: "chairs",
-        roleLabel: "dining chairs",
-        visualBrief: "slim dining chair",
-        quantity: 6,
-        priority: "required"
-      }
-    ],
     selectedProducts: [
       {
         productId: "00000000-0000-4000-8000-000000000010",
@@ -74,10 +58,10 @@ const validatedSourcing = validateProductSourcingRoleContract(
         roleLabel: "dining chairs",
         status: "acceptable_match",
         productId: "00000000-0000-4000-8000-000000000010",
+        similarity: 0.8,
         reason: "Incorrectly selected a globally valid sofa for dining chairs."
       }
     ],
-    missingRoles: ["side_tables bedside tables"]
   },
   [
     {
@@ -105,12 +89,10 @@ const diningChairRoleResult = validatedSourcing.roleResults.find(
 assert.ok(diningChairRoleResult);
 assert.equal(diningChairRoleResult.status, "missing_required");
 assert.equal(diningChairRoleResult.productId, null);
-assert.ok(validatedSourcing.missingRoles.includes("chairs dining chairs"));
 assert.equal(validatedSourcing.selectedProducts.length, 0);
 
 const repairedBedroomSourcing = validateProductSourcingRoleContract(
   {
-    needs: [],
     selectedProducts: [
       {
         productId: "10000000-0000-4000-8000-000000000020",
@@ -128,10 +110,10 @@ const repairedBedroomSourcing = validateProductSourcingRoleContract(
         roleLabel: "bedside tables",
         status: "strong_match",
         productId: "10000000-0000-4000-8000-000000000020",
+        similarity: 0.8,
         reason: "Correct product, malformed category."
       }
     ],
-    missingRoles: []
   },
   [
     {
@@ -162,11 +144,9 @@ assert.equal(repairedBedsideRoleResult.productId, "10000000-0000-4000-8000-00000
 assert.equal(repairedBedroomSourcing.selectedProducts[0]?.category, "side_tables");
 assert.equal(repairedBedroomSourcing.selectedProducts[0]?.roleLabel, "bedside tables");
 assert.equal(repairedBedroomSourcing.selectedProducts[0]?.quantity, 2);
-assert.equal(repairedBedroomSourcing.missingRoles.includes("side_tables bedside tables"), false);
 
 const repairedMissingBedsideRoleResult = validateProductSourcingRoleContract(
   {
-    needs: [],
     selectedProducts: [
       {
         productId: "10000000-0000-4000-8000-000000000020",
@@ -184,10 +164,10 @@ const repairedMissingBedsideRoleResult = validateProductSourcingRoleContract(
         roleLabel: "bedside tables",
         status: "missing_required",
         productId: null,
+        similarity: 0.8,
         reason: "The model marked the required bedside table role missing."
       }
     ],
-    missingRoles: ["side_tables bedside tables"]
   },
   [
     {
@@ -215,11 +195,9 @@ const repairedMissingBedsideResult = repairedMissingBedsideRoleResult.roleResult
 assert.ok(repairedMissingBedsideResult);
 assert.equal(repairedMissingBedsideResult.status, "strong_match");
 assert.equal(repairedMissingBedsideResult.productId, "10000000-0000-4000-8000-000000000020");
-assert.equal(repairedMissingBedsideRoleResult.missingRoles.includes("side_tables bedside tables"), false);
 
 const trueMissingBedsideRole = validateProductSourcingRoleContract(
   {
-    needs: [],
     selectedProducts: [],
     roleResults: [
       {
@@ -227,10 +205,10 @@ const trueMissingBedsideRole = validateProductSourcingRoleContract(
         roleLabel: "bedside tables",
         status: "missing_required",
         productId: null,
+        similarity: 0.8,
         reason: "No bedside table was suitable."
       }
     ],
-    missingRoles: ["side_tables bedside tables"]
   },
   [
     {
@@ -250,11 +228,9 @@ const trueMissingBedsideResult = trueMissingBedsideRole.roleResults.find(
 assert.ok(trueMissingBedsideResult);
 assert.equal(trueMissingBedsideResult.status, "missing_required");
 assert.equal(trueMissingBedsideResult.productId, null);
-assert.ok(trueMissingBedsideRole.missingRoles.includes("side_tables bedside tables"));
 
 const ambiguousRoleProduct = validateProductSourcingRoleContract(
   {
-    needs: [],
     selectedProducts: [
       {
         productId: "20000000-0000-4000-8000-000000000030",
@@ -272,10 +248,10 @@ const ambiguousRoleProduct = validateProductSourcingRoleContract(
         roleLabel: "storage piece",
         status: "acceptable_match",
         productId: "20000000-0000-4000-8000-000000000030",
+        similarity: 0.8,
         reason: "Product appears in multiple role pools."
       }
     ],
-    missingRoles: []
   },
   [
     {
@@ -311,7 +287,6 @@ assert.ok(
 
 const exactRoleAmbiguousProduct = validateProductSourcingRoleContract(
   {
-    needs: [],
     selectedProducts: [
       {
         productId: "20000000-0000-4000-8000-000000000030",
@@ -329,10 +304,10 @@ const exactRoleAmbiguousProduct = validateProductSourcingRoleContract(
         roleLabel: "media console",
         status: "acceptable_match",
         productId: "20000000-0000-4000-8000-000000000030",
+        similarity: 0.8,
         reason: "Exact role label should not rescue an ambiguous product."
       }
     ],
-    missingRoles: []
   },
   [
     {
@@ -363,7 +338,6 @@ assert.ok(
 
 const homeOfficeContractFixture = validateProductSourcingRoleContract(
   {
-    needs: [],
     selectedProducts: [
       {
         productId: "30000000-0000-4000-8000-000000000010",
@@ -408,6 +382,7 @@ const homeOfficeContractFixture = validateProductSourcingRoleContract(
         roleLabel: "work surface",
         status: "strong_match",
         productId: "30000000-0000-4000-8000-000000000010",
+        similarity: 0.8,
         reason: "Desk product is correct."
       },
       {
@@ -415,6 +390,7 @@ const homeOfficeContractFixture = validateProductSourcingRoleContract(
         roleLabel: "task seating",
         status: "acceptable_match",
         productId: "30000000-0000-4000-8000-000000000020",
+        similarity: 0.8,
         reason: "Office chair product is correct."
       },
       {
@@ -422,6 +398,7 @@ const homeOfficeContractFixture = validateProductSourcingRoleContract(
         roleLabel: "office storage",
         status: "acceptable_match",
         productId: "30000000-0000-4000-8000-000000000030",
+        similarity: 0.8,
         reason: "Storage product is correct."
       },
       {
@@ -429,10 +406,10 @@ const homeOfficeContractFixture = validateProductSourcingRoleContract(
         roleLabel: "desk lamp",
         status: "strong_match",
         productId: "30000000-0000-4000-8000-000000000040",
+        similarity: 0.8,
         reason: "Task lamp product is correct."
       }
     ],
-    missingRoles: []
   },
   [
     {
@@ -493,7 +470,6 @@ assert.deepEqual(
     "lighting:task lamp or layered lighting"
   ]
 );
-assert.equal(homeOfficeContractFixture.missingRoles.length, 0);
 
 const enrichment = productEnrichmentResponseSchema.parse({
   normalizedCategory: "sofas",
@@ -509,5 +485,51 @@ const enrichment = productEnrichmentResponseSchema.parse({
 const searchText = buildProductSearchText(input, enrichment);
 assert.ok(searchText.includes("model color tags: ivory"));
 assert.equal(searchText.includes("stock"), false);
+
+
+// The validator marks entries it INVENTED. The domain layer reads that flag to
+// leave a role open with its options rather than telling the shopper the
+// catalogue holds nothing for it, so it is a cross-package contract: losing it
+// turns every role the model omitted into a false "could not be sourced".
+{
+  const { validateProductSourcingRoleContract } = await import("./index");
+  const pool = {
+    category: "sofas",
+    roleLabel: "role-1",
+    visualBrief: null,
+    quantity: 1,
+    priority: "required" as const,
+    candidateIds: ["30000000-0000-4000-8000-000000000010"]
+  };
+  const omitted = validateProductSourcingRoleContract(
+    { selectedProducts: [], roleResults: [] } as never,
+    [pool],
+    new Set(["30000000-0000-4000-8000-000000000010"])
+  );
+  assert.equal(omitted.roleResults.length, 1, "a role the model skipped still gets an entry");
+  assert.equal(omitted.roleResults[0].synthesized, true, "flagged as the validator's, not the model's");
+  assert.equal(omitted.roleResults[0].similarity, 0, "and unscored, so it can never clear the bar");
+
+  const outsidePool = validateProductSourcingRoleContract(
+    {
+      selectedProducts: [],
+      roleResults: [
+        {
+          category: "sofas",
+          roleLabel: "role-1",
+          status: "strong_match",
+          productId: "30000000-0000-4000-8000-000000000099",
+          similarity: 0.95,
+          reason: "a product from another pool"
+        }
+      ]
+    } as never,
+    [pool],
+    new Set(["30000000-0000-4000-8000-000000000010"])
+  );
+  assert.equal(outsidePool.roleResults[0].synthesized, true, "a pick outside the pool is replaced by the validator's own entry");
+
+  console.log("validator synthesized-flag tests passed");
+}
 
 console.log("product enrichment ai tests passed");

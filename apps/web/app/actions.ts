@@ -1630,7 +1630,7 @@ export async function groundProductsAction(formData: FormData) {
 
   const result = await groundProductsForRoom(
     { supabase, serviceSupabase },
-    { userId: user.id, userEmail: user.email ?? null, projectId, roomId, conceptId }
+    { userId: user.id, projectId, roomId, conceptId }
   );
 
   if (result.status === "not_found") {
@@ -1691,8 +1691,24 @@ export async function substituteProductAction(formData: FormData) {
     redirect(`${redirectPath}?message=${encodeURIComponent("The current product cannot be substituted yet.")}`);
   }
 
+  if (result.status === "stale_spec") {
+    redirect(
+      `${redirectPath}?message=${encodeURIComponent(
+        "The design spec changed since this list was sourced. Refresh matches first, then swap."
+      )}`
+    );
+  }
+
   if (result.status === "no_replacement") {
     redirect(`${redirectPath}?message=${encodeURIComponent("No suitable replacement found for that line yet.")}`);
+  }
+
+  if (result.status === "not_verified") {
+    redirect(
+      `${redirectPath}?message=${encodeURIComponent(
+        "The closest replacement did not match the design closely enough, so your current piece was kept. Pick another option from the shopping list if you want to change it."
+      )}`
+    );
   }
 
   const impactText =
@@ -1738,8 +1754,10 @@ export async function refreshShoppingOptionsAction(input: {
   roomId: string;
   shoppingListId: string;
   category: string;
+  specKey?: string | null;
+  roleLabel?: string | null;
 }) {
-  const { projectId, roomId, shoppingListId, category } = input;
+  const { projectId, roomId, shoppingListId, category, specKey, roleLabel } = input;
   const supabase = await createClient();
   const {
     data: { user },
@@ -1753,12 +1771,15 @@ export async function refreshShoppingOptionsAction(input: {
   const serviceSupabase = createServiceClient();
   const result = await refreshShoppingOptions(
     { supabase, serviceSupabase },
-    { projectId, roomId, shoppingListId, category }
+    { projectId, roomId, shoppingListId, category, specKey: specKey ?? null, roleLabel: roleLabel ?? null }
   );
 
   if (result.status === "refreshed") {
     revalidatePath(`/projects/${projectId}/rooms/${roomId}/shopping-list`);
   }
+  // The grid reads the status: a refill that wrote nothing (stale spec, no
+  // fresh options) is shown, never a silent no-op.
+  return { status: result.status };
 }
 
 // Rare path: every loaded option for a role was rejected. Rank the catalog for
@@ -1768,8 +1789,10 @@ export async function findMoreShoppingOptionsAction(input: {
   roomId: string;
   shoppingListId: string;
   category: string;
+  specKey?: string | null;
+  roleLabel?: string | null;
 }) {
-  const { projectId, roomId, shoppingListId, category } = input;
+  const { projectId, roomId, shoppingListId, category, specKey, roleLabel } = input;
   const supabase = await createClient();
   const {
     data: { user },
@@ -1783,12 +1806,13 @@ export async function findMoreShoppingOptionsAction(input: {
   const serviceSupabase = createServiceClient();
   const result = await findMoreShoppingOptions(
     { supabase, serviceSupabase },
-    { projectId, roomId, shoppingListId, category }
+    { projectId, roomId, shoppingListId, category, specKey: specKey ?? null, roleLabel: roleLabel ?? null }
   );
 
-  if (result.status !== "no_change") {
+  if (result.status === "appended") {
     revalidatePath(`/projects/${projectId}/rooms/${roomId}/shopping-list`);
   }
+  return { status: result.status };
 }
 
 export async function generateFinalRenderAction(formData: FormData) {

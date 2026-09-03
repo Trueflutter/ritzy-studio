@@ -1139,6 +1139,7 @@ export type Database = {
           selection_reason: string | null
           shopping_list_id: string
           sort_order: number
+          spec_key: string | null
           status: string
           unit_price_aed: number | null
           updated_at: string
@@ -1159,6 +1160,7 @@ export type Database = {
           selection_reason?: string | null
           shopping_list_id: string
           sort_order?: number
+          spec_key?: string | null
           status?: string
           unit_price_aed?: number | null
           updated_at?: string
@@ -1179,6 +1181,7 @@ export type Database = {
           selection_reason?: string | null
           shopping_list_id?: string
           sort_order?: number
+          spec_key?: string | null
           status?: string
           unit_price_aed?: number | null
           updated_at?: string
@@ -1206,7 +1209,10 @@ export type Database = {
           created_at: string
           estimated_total_aed: number
           id: string
+          missing_roles: Json
           room_id: string
+          spec_id: string | null
+          spec_source: string | null
           status: Database["public"]["Enums"]["shopping_list_status"]
           updated_at: string
         }
@@ -1215,7 +1221,10 @@ export type Database = {
           created_at?: string
           estimated_total_aed?: number
           id?: string
+          missing_roles?: Json
           room_id: string
+          spec_id?: string | null
+          spec_source?: string | null
           status?: Database["public"]["Enums"]["shopping_list_status"]
           updated_at?: string
         }
@@ -1224,7 +1233,10 @@ export type Database = {
           created_at?: string
           estimated_total_aed?: number
           id?: string
+          missing_roles?: Json
           room_id?: string
+          spec_id?: string | null
+          spec_source?: string | null
           status?: Database["public"]["Enums"]["shopping_list_status"]
           updated_at?: string
         }
@@ -1241,6 +1253,13 @@ export type Database = {
             columns: ["room_id"]
             isOneToOne: false
             referencedRelation: "rooms"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shopping_lists_spec_id_fkey"
+            columns: ["spec_id"]
+            isOneToOne: false
+            referencedRelation: "room_design_specs"
             referencedColumns: ["id"]
           },
         ]
@@ -1497,12 +1516,12 @@ export type Tables<
   DefaultSchemaTableNameOrOptions extends
     | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
         DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -1526,11 +1545,11 @@ export type TablesInsert<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -1551,11 +1570,11 @@ export type TablesUpdate<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -1576,11 +1595,11 @@ export type Enums<
   DefaultSchemaEnumNameOrOptions extends
     | keyof DefaultSchema["Enums"]
     | { schema: keyof DatabaseWithoutInternals },
-  EnumName extends DefaultSchemaEnumNameOrOptions extends {
+  EnumName extends (DefaultSchemaEnumNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaEnumNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -1593,11 +1612,11 @@ export type CompositeTypes<
   PublicCompositeTypeNameOrOptions extends
     | keyof DefaultSchema["CompositeTypes"]
     | { schema: keyof DatabaseWithoutInternals },
-  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
+  CompositeTypeName extends (PublicCompositeTypeNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
-    : never = never,
+    : never) = never,
 > = PublicCompositeTypeNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }

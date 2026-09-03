@@ -255,35 +255,6 @@ export function finalRenderProductFidelityLanguage() {
   ].join(" ");
 }
 
-export function productRoleLanguage(roomType: string) {
-  const resolved = resolveRoomType(roomType);
-
-  if (resolved === "living_dining") {
-    return "Consider combined Living & Dining product roles from the Ritzy blueprint: living-zone sofa or sectional, secondary seating, coffee table, generous rug, TV/media console or built-in media storage, layered floor/table lighting, dining table, dining chairs, centered over-table lighting, sideboard/credenza/dining console where wall space allows, wall art or mirror, curtains/textiles when visible and catalog-supported, and restrained decor. Preserve clear circulation between the living and dining zones; do not source it as plain living only.";
-  }
-
-  if (resolved === "living") {
-    return "Consider layered living room product roles from the Ritzy blueprint: anchor seating, secondary seating, coffee table, side/end tables, generous rug, TV/media console or built-in media unit by default, floor/table lighting, wall art or mirror, curtains/textiles when catalog supports them, and cushions/decor.";
-  }
-
-  if (resolved === "dining") {
-    return "Consider layered dining room product roles from the Ritzy blueprint: dining table, dining chairs, over-table lighting, sideboard/credenza/dining console where wall space allows, rug only when practical, wall art or mirror, restrained table decor, and curtains/textiles when visible and catalog-supported.";
-  }
-
-  if (resolved === "bedroom") {
-    return "Consider layered bedroom product roles without forcing every item: bed or bed frame, headboard when relevant, bedside tables, bedside lighting, rug, bedding/textiles when catalog supports them, curtains/window treatment, bench/stool/chair only when space allows, wall art or mirror, and restrained decor.";
-  }
-
-  if (resolved === "bathroom") {
-    return "Consider conservative bathroom product roles without moving plumbing: mirror or medicine cabinet, vanity lighting/sconces, towels, bath mat, stool/bench if space allows, tray/vessel/plant/decor, and only hard fixtures if catalog support and renovation scope are explicit.";
-  }
-
-  if (resolved === "office") {
-    return "Consider layered home office product roles without forcing every item: desk, ergonomic task chair, storage/shelving or credenza, task lamp, rug/textiles, wall art or pinboard, and decor that makes the workspace residential, organized, and camera-ready.";
-  }
-
-  return "Consider layered product roles that materially define the room: anchor furniture, supporting furniture, rug/textiles, lighting, art or mirror, storage where useful, and restrained decor. Do not force every layer into every room.";
-}
 
 // Structured spatial intent captured by the brief. Mirrors the domain's
 // SpatialIntent shape without importing across packages.

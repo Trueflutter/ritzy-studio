@@ -12,7 +12,9 @@ import {
   clarifyingQuestionsPrompt,
   clarifyingQuestionsResponseSchema,
   conceptProductSourcingJsonSchema,
-  conceptProductSourcingPrompt,
+  designSpecSourcingLanguage,
+  specProductSourcingPrompt,
+  type DesignSpecSourcingRoleLanguageInput,
   conceptProductSourcingResponseSchema,
   conceptRevisionJsonSchema,
   conceptRevisionPrompt,
@@ -41,7 +43,6 @@ import {
   initialConceptPrompt,
   initialConceptResponseSchema,
   finalGroundedRenderPrompt,
-  productRoleLanguage,
   roomBlueprintDefaultsLanguage,
   roomDesignLanguage,
   roomSpatialPlacementGuardrailLanguage,
@@ -55,7 +56,10 @@ import {
   productMetadataEnrichmentJsonSchema,
   productMetadataEnrichmentPrompt,
   type ConceptProductSourcingResponse,
-  paletteRegisterLanguage
+  paletteRegisterLanguage,
+  productDesignVerificationPrompt,
+  productDesignVerificationJsonSchema,
+  productDesignVerificationResponseSchema
 } from "@ritzy-studio/prompts";
 import { createHash, createSign } from "node:crypto";
 import { readFile } from "node:fs/promises";
@@ -94,7 +98,7 @@ export function stageTextConfig(
 ): { model: string; requestParams: { model: string; reasoning?: { effort: "minimal" | "low" | "medium" | "high" } } } {
   const resolvedBase = baseModel ?? serverEnvTextModel();
   const model = resolveStageTextModel(stage, env, resolvedBase);
-  const effort = resolveStageTextEffort(stage, env);
+  const effort = resolveStageTextEffort(stage, env, model);
   return { model, requestParams: { model, ...(effort ? { reasoning: { effort } } : {}) } };
 }
 
@@ -376,6 +380,9 @@ export type ConceptProductSourcingRolePool = {
 export type ProductSourcingImageDetail = "low" | "high" | "auto";
 
 export type SourceProductsFromConceptInput = {
+  // Provider deadline for this run's pass; the caller derives it from the
+  // time left in its request. Defaults to PRODUCT_SOURCING_TIMEOUT_MS.
+  timeoutMs?: number;
   roomType: string;
   conceptTitle: string;
   conceptDescription?: string | null;
@@ -383,9 +390,18 @@ export type SourceProductsFromConceptInput = {
   candidates: ConceptProductSourcingCandidate[];
   roleCandidatePools?: ConceptProductSourcingRolePool[];
   conceptImageDetail?: ProductSourcingImageDetail;
-  candidateImageLimit?: number;
   candidateImageDetail?: ProductSourcingImageDetail;
   candidateImageDataUrls?: Record<string, string>;
+  // S3: the design spec drives the roles (the confirmed spec, or the
+  // room-blueprint roles carried through the same contract when no spec could
+  // be read). Every supplied candidate is listed (the pools are role-scoped
+  // and contract-clean), and the ONLY candidate images shown are the
+  // app-fetched data URLs in candidateImageDataUrls: the provider never
+  // downloads from retailer hosts.
+  designSpec: {
+    roles: DesignSpecSourcingRoleLanguageInput[];
+    mustPreserve?: readonly string[];
+  };
 };
 
 export type ProductVisualMatchStatus =
@@ -400,13 +416,6 @@ export type SourceProductsFromConceptResult = {
   textCostUsd?: number | null;
   promptVersion: string;
   model: string;
-  needs: Array<{
-    category: string;
-    roleLabel: string;
-    visualBrief: string;
-    quantity: number;
-    priority: "required" | "supporting";
-  }>;
   selectedProducts: Array<{
     productId: string;
     category: string;
@@ -421,14 +430,20 @@ export type SourceProductsFromConceptResult = {
     roleLabel: string;
     status: ProductVisualMatchStatus;
     productId: string | null;
+    // The pass's own visual similarity (0 to 1) for the product it proposes.
+    // The app pre-selects only at or above the committed bar.
+    similarity: number;
     reason: string;
+    // Set when the validator synthesized this entry (no valid verdict, or a
+    // pick outside the pool): not the pass's own judgement, so callers must
+    // never present it as one.
+    synthesized?: boolean;
   }>;
-  missingRoles: string[];
 };
 
 export type ValidatedConceptProductSourcingResult = Pick<
   SourceProductsFromConceptResult,
-  "selectedProducts" | "roleResults" | "missingRoles"
+  "selectedProducts" | "roleResults"
 >;
 
 // Concept-first (S2): single prompt path, no pre-approval catalogue anchors.
@@ -706,6 +721,12 @@ function assembleFinalGroundedRenderPrompt({
 // longer one sized to the slowest observed legitimate provider (gpt-image-2 at ~140s).
 const DEFAULT_TEXT_TIMEOUT_MS = 90_000;
 const IMAGE_CALL_TIMEOUT_MS = 240_000;
+// The spec-driven sourcing pass reads the concept image plus up to a few
+// dozen product images across every role of the design in one call; it is
+// the one text call allowed past the 90s default. The route that runs it
+// (/product-matching, 300s) must outlast it: PRODUCT_SOURCING_TIMEOUT_MS +
+// image fetch + persistence stays well inside that budget.
+export const PRODUCT_SOURCING_TIMEOUT_MS = 150_000;
 
 export function textTimeoutMs(env: { RITZY_TEXT_TIMEOUT_MS?: string }): number {
   const configured = Number(env.RITZY_TEXT_TIMEOUT_MS);
@@ -1437,30 +1458,40 @@ export async function analyzeInspirationImages(
 export async function sourceProductsFromConcept(
   input: SourceProductsFromConceptInput
 ): Promise<SourceProductsFromConceptResult> {
+  // The pools are the contract: without them the response cannot be held to
+  // one result per role inside its pool, so the pass is refused up front
+  // rather than run with prompt-only guarantees.
+  const roleCandidatePools = input.roleCandidatePools ?? [];
+  if (roleCandidatePools.length === 0) {
+    throw new Error("Product sourcing needs role candidate pools; refusing to run the visual pass without them.");
+  }
   const env = parseServerEnv(process.env);
   const client = createTextClient(env);
   const { model: stageModel, requestParams: stageRequestParams } = stageTextConfig("product_sourcing", env.OPENAI_TEXT_MODEL);
-  const candidateLimit = 36;
+  const prompt = specProductSourcingPrompt;
+  // The candidates are already the per-role pools, so every one of them is
+  // listed. Names and descriptions are scraped from retailer HTML into a
+  // shared catalogue: they are data, fenced and capped, never instruction.
   const allowedProductIds = new Set(input.candidates.map((candidate) => candidate.id));
-  const roleCandidatePools = input.roleCandidatePools ?? [];
   const candidateSummary = input.candidates
-    .slice(0, candidateLimit)
     .map((candidate, index) =>
       [
         `${index + 1}. id: ${candidate.id}`,
-        `name: ${candidate.name}`,
-        `retailer: ${candidate.retailerName}`,
-        `category: ${candidate.category ?? "unknown"}`,
-        candidate.description ? `description: ${candidate.description}` : null,
+        `name: ${fenceUntrustedText(candidate.name)}`,
+        `retailer: ${fenceUntrustedText(candidate.retailerName, 60)}`,
+        `category: ${fenceUntrustedText(candidate.category ?? "unknown", 60)}`,
+        candidate.description ? `description: ${fenceUntrustedText(candidate.description, 220)}` : null,
         candidate.salePriceAed ?? candidate.priceAed
           ? `price: AED ${candidate.salePriceAed ?? candidate.priceAed}`
           : null,
-        candidate.availability ? `availability: ${candidate.availability}` : null,
-        candidate.color ? `color: ${candidate.color}` : null,
-        candidate.material ? `material: ${candidate.material}` : null,
-        candidate.dimensions ? `dimensions: ${candidate.dimensions}` : null,
-        candidate.searchTags?.length ? `tags: ${candidate.searchTags.join(", ")}` : null,
-        candidate.primaryImageUrl ? `image: ${candidate.primaryImageUrl}` : null
+        candidate.availability ? `availability: ${fenceUntrustedText(candidate.availability, 40)}` : null,
+        candidate.color ? `color: ${fenceUntrustedText(candidate.color, 40)}` : null,
+        candidate.material ? `material: ${fenceUntrustedText(candidate.material, 60)}` : null,
+        // product_dimensions.source_text is raw scraped page text.
+        candidate.dimensions ? `dimensions: ${fenceUntrustedText(candidate.dimensions, 80)}` : null,
+        candidate.searchTags?.length
+          ? `tags: ${candidate.searchTags.map((tag) => fenceUntrustedText(tag, 30)).filter(Boolean).join(", ")}`
+          : null
       ]
         .filter(Boolean)
         .join("; ")
@@ -1482,21 +1513,22 @@ export async function sourceProductsFromConcept(
               .join("; ")
           )
           .join("\n")
-      : "No role-scoped pools supplied. Use the expected product roles and candidate list.";
-  const candidateImageContent = productSourcingCandidateImageContent(input.candidates, {
-    imageDataUrls: input.candidateImageDataUrls,
-    candidateLimit,
-    candidateImageLimit: input.candidateImageLimit,
-    detail: input.candidateImageDetail
-  });
+      : /* unreachable: the guard above refuses to run without pools */ "";
+  const candidateImageContent = productSourcingProvidedImageContent(
+    input.candidates,
+    input.candidateImageDataUrls ?? {},
+    input.candidateImageDetail ?? "low"
+  );
+  const roleContextLines = [designSpecSourcingLanguage(input.designSpec)];
 
-  const response = await client.responses.create({
+  const response = await client.responses.create(
+    {
     max_output_tokens: 32000,
     ...stageRequestParams,
     input: [
       {
         role: "system",
-        content: conceptProductSourcingPrompt.system
+        content: prompt.system
       },
       {
         role: "user",
@@ -1505,8 +1537,7 @@ export async function sourceProductsFromConcept(
             type: "input_text",
             text: [
               `Room type: ${input.roomType}`,
-              `Room blueprint: ${roomBlueprintDefaultsLanguage(input.roomType)}`,
-              `Expected product roles: ${productRoleLanguage(input.roomType)}`,
+              ...roleContextLines,
               `Approved concept title: ${input.conceptTitle}`,
               input.conceptDescription ? `Approved concept notes: ${input.conceptDescription}` : null,
               "",
@@ -1536,51 +1567,201 @@ export async function sourceProductsFromConcept(
         strict: true
       }
     }
-  });
+    },
+    { timeout: input.timeoutMs ?? PRODUCT_SOURCING_TIMEOUT_MS }
+  );
 
   const parsed = conceptProductSourcingResponseSchema.parse(JSON.parse(response.output_text));
   const validated = validateProductSourcingRoleContract(parsed, roleCandidatePools, allowedProductIds);
 
   return {
-    promptKey: conceptProductSourcingPrompt.key,
-    promptVersion: conceptProductSourcingPrompt.version,
+    promptKey: prompt.key,
+    promptVersion: prompt.version,
     model: stageModel,
     textCostUsd: estimateTextCostUsd(stageModel, response.usage),
-    needs: parsed.needs,
     ...validated
   };
 }
 
-export function productSourcingCandidateImageContent(
-  candidates: ConceptProductSourcingCandidate[],
-  {
-    candidateLimit = 36,
-    candidateImageLimit = candidateLimit,
-    detail = "high",
-    imageDataUrls
-  }: {
-    candidateLimit?: number;
-    candidateImageLimit?: number;
-    detail?: ProductSourcingImageDetail;
-    // Downscaled data URLs by candidate id; preferred over provider-side URL
-    // downloads, which flake on rate-limited CDNs and non-public hosts.
-    imageDataUrls?: Record<string, string>;
-  } = {}
-) {
-  const imageLimit = Math.max(0, Math.min(candidateLimit, candidateImageLimit));
+// S3 design check: the product the app is about to present as its own choice,
+// judged against the approved render by a pass with no roles to fill. Runs on
+// the production vision model by default (model-routing), because the gate
+// that asks the same question does.
+// The check's own deadline when the caller does not derive one from the
+// request budget. The web app's budget reserves the same 90 s for it.
+export const PRODUCT_VERIFICATION_TIMEOUT_MS = 90_000;
 
+// Text that reaches a model but did not come from us: a spec label the user
+// typed on /spec, a product name scraped from a retailer's HTML. It is DATA,
+// never instruction. Quotes, newlines, braces and control characters are
+// stripped so it cannot close a field or open a new one, and it is hard
+// capped so one poisoned catalogue row cannot flood the context. The design
+// check's boolean is the only thing standing between an unverified product
+// and the shopper's list, so this matters most there.
+export const UNTRUSTED_TEXT_MAX = 140;
+
+export function fenceUntrustedText(value: string | null | undefined, max = UNTRUSTED_TEXT_MAX): string {
+  const flattened = (value ?? "")
+    // eslint-disable-next-line no-control-regex
+    .replace(/[\u0000-\u001f\u007f]+/g, " ")
+    // Quotes and brackets so a value cannot close the structure it sits in;
+    // semicolons and colons because the candidate summary joins fields with
+    // them, so a scraped value could otherwise forge the fields beside it.
+    .replace(/["'`{}<>\\;:]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  return flattened.length > max ? `${flattened.slice(0, max)}...` : flattened;
+}
+
+export type ProductDesignVerificationCandidate = {
+  productId: string;
+  productName: string;
+  roleLabel: string;
+  category: string;
+  imageDataUrl: string;
+};
+
+export type ProductDesignVerificationResult = {
+  promptKey: string;
+  promptVersion: string;
+  model: string;
+  textCostUsd: number | null;
+  verdicts: Array<{
+    productId: string;
+    categoryMatches: boolean;
+    similarity: number;
+    matchedObject: string;
+    notes: string;
+  }>;
+};
+
+// One poisoned product image, on a retailer host we allow, could otherwise
+// carry a verdict for every other piece sharing its call. Judging in small
+// groups bounds that blast radius; the prompt tells the judge that text inside
+// an image is data and speaks only for its own product.
+export const PRODUCT_VERIFICATION_BATCH = 4;
+
+// Names and role labels are user- and retailer-supplied. They appear only
+// inside a block the system prompt declares to be data; the instruction text
+// around each image refers to products by index and id alone, so nothing a
+// shopper typed on /spec or a retailer put in a product title can read as an
+// instruction to this judge. Exported so the fencing is pinned where it is
+// applied, not only as a unit.
+export function productDesignVerificationContent(
+  products: ProductDesignVerificationCandidate[],
+  conceptImageUrl: string,
+  threshold: number
+): Array<Record<string, unknown>> {
+  const content: Array<Record<string, unknown>> = [
+    {
+      type: "input_text",
+      text: JSON.stringify({
+        threshold,
+        products: products.map((product, index) => ({
+          index: index + 1,
+          productId: product.productId,
+          untrustedProductName: fenceUntrustedText(product.productName),
+          untrustedRoleLabel: fenceUntrustedText(product.roleLabel),
+          category: fenceUntrustedText(product.category, 60)
+        }))
+      })
+    },
+    { type: "input_text", text: "Image 1: the approved concept render every product must belong to." },
+    { type: "input_image", image_url: conceptImageUrl, detail: "high" }
+  ];
+  products.forEach((product, index) => {
+    content.push(
+      { type: "input_text", text: `Product ${index + 1} (id ${product.productId}).` },
+      { type: "input_image", image_url: product.imageDataUrl, detail: "low" }
+    );
+  });
+  return content;
+}
+
+export async function verifyProductsAgainstConcept(input: {
+  conceptImageUrl: string;
+  products: ProductDesignVerificationCandidate[];
+  // The bar the judge is anchored to, sent in the payload exactly as the
+  // critique harness sends it to its own judge.
+  threshold: number;
+  timeoutMs?: number;
+}): Promise<ProductDesignVerificationResult> {
+  if (input.products.length === 0) {
+    throw new Error("The design check needs at least one product to judge.");
+  }
+  if (input.products.length > PRODUCT_VERIFICATION_BATCH) {
+    const groups: ProductDesignVerificationCandidate[][] = [];
+    for (let index = 0; index < input.products.length; index += PRODUCT_VERIFICATION_BATCH) {
+      groups.push(input.products.slice(index, index + PRODUCT_VERIFICATION_BATCH));
+    }
+    const results = await Promise.all(groups.map((products) => verifyProductsAgainstConcept({ ...input, products })));
+    return {
+      promptKey: results[0].promptKey,
+      promptVersion: results[0].promptVersion,
+      model: results[0].model,
+      textCostUsd: results.reduce<number | null>(
+        (total, result) => (result.textCostUsd === null ? total : (total ?? 0) + result.textCostUsd),
+        null
+      ),
+      verdicts: results.flatMap((result) => result.verdicts)
+    };
+  }
+  const env = parseServerEnv(process.env);
+  const client = createTextClient(env);
+  const { model: stageModel, requestParams: stageRequestParams } = stageTextConfig("product_verification", env.OPENAI_TEXT_MODEL);
+
+  const content = productDesignVerificationContent(input.products, input.conceptImageUrl, input.threshold);
+
+  const response = await client.responses.create(
+    {
+      max_output_tokens: 6000,
+      ...stageRequestParams,
+      input: [
+        { role: "system", content: productDesignVerificationPrompt.system },
+        { role: "user", content: content as never }
+      ],
+      text: {
+        format: {
+          type: "json_schema",
+          name: "ritzy_product_design_verification",
+          schema: productDesignVerificationJsonSchema(input.products.length),
+          strict: true
+        }
+      }
+    },
+    { timeout: input.timeoutMs ?? PRODUCT_VERIFICATION_TIMEOUT_MS }
+  );
+
+  const parsed = productDesignVerificationResponseSchema.parse(JSON.parse(response.output_text));
+  const known = new Set(input.products.map((product) => product.productId));
+  return {
+    promptKey: productDesignVerificationPrompt.key,
+    promptVersion: productDesignVerificationPrompt.version,
+    model: stageModel,
+    textCostUsd: estimateTextCostUsd(stageModel, response.usage),
+    // A verdict for a product that was never sent is not a verdict.
+    verdicts: parsed.products.filter((product) => known.has(product.productId))
+  };
+}
+
+// S3 image content: exactly the candidates the app fetched a data URL for, in
+// candidate order, at the given detail. A candidate without a provided data
+// URL gets no image, never a raw retailer URL for the provider to download.
+export function productSourcingProvidedImageContent(
+  candidates: ConceptProductSourcingCandidate[],
+  imageDataUrls: Record<string, string>,
+  detail: ProductSourcingImageDetail = "low"
+) {
   return candidates
-    .slice(0, candidateLimit)
-    .filter((candidate) => imageDataUrls?.[candidate.id] || candidate.primaryImageUrl)
-    .slice(0, imageLimit)
+    .filter((candidate) => Boolean(imageDataUrls[candidate.id]))
     .flatMap((candidate) => [
       {
         type: "input_text" as const,
-        text: `Candidate product image for id ${candidate.id}: ${candidate.name}`
+        text: `Candidate product image for id ${candidate.id}: ${fenceUntrustedText(candidate.name)}`
       },
       {
         type: "input_image" as const,
-        image_url: imageDataUrls?.[candidate.id] ?? (candidate.primaryImageUrl as string),
+        image_url: imageDataUrls[candidate.id],
         detail
       }
     ]);
@@ -1601,8 +1782,7 @@ export function validateProductSourcingRoleContract(
       selectedProducts: parsed.selectedProducts.filter((selection) => allowedProductIds.has(selection.productId)),
       roleResults: parsed.roleResults.filter(
         (result) => result.productId === null || allowedProductIds.has(result.productId)
-      ),
-      missingRoles: parsed.missingRoles
+      )
     };
   }
 
@@ -1700,31 +1880,9 @@ export function validateProductSourcingRoleContract(
     rolePoolsByKey
   });
 
-  const satisfiedRoleKeys = new Set(
-    validRoleResults
-      .filter((result) => result.status !== "missing_required" && result.status !== "missing_supporting")
-      .map((result) => sourcingRoleKey(result.category, result.roleLabel))
-  );
-
-  return {
-    selectedProducts,
-    roleResults: validRoleResults,
-    missingRoles: Array.from(
-      new Set([
-        ...parsed.missingRoles.filter(
-          (missingRole) =>
-            !roleCandidatePools.some(
-              (role) =>
-                satisfiedRoleKeys.has(sourcingRoleKey(role.category, role.roleLabel)) &&
-                missingRoleMatchesRole(missingRole, role)
-            )
-        ),
-        ...validRoleResults
-          .filter((result) => result.status === "missing_required" || result.status === "missing_supporting")
-          .map((result) => `${result.category} ${result.roleLabel}`)
-      ])
-    )
-  };
+  // The honest gap is derived from the statuses, by the caller, from
+  // roleResults; there is no second list to reconcile.
+  return { selectedProducts, roleResults: validRoleResults };
 }
 
 function repairRoleResultsForSelectedProducts({
@@ -1754,6 +1912,11 @@ function repairRoleResultsForSelectedProducts({
       roleLabel: role.roleLabel,
       status: selection.matchStatus,
       productId: selection.productId,
+      // A score belongs to the piece it was given for: keep it only when the
+      // repaired entry names the same product, else leave the pick unscored
+      // so it can never clear the bar and be chosen for the shopper.
+      similarity:
+        existing?.productId === selection.productId && typeof existing.similarity === "number" ? existing.similarity : 0,
       reason:
         existing?.productId === selection.productId &&
         existing.status !== "missing_required" &&
@@ -1842,17 +2005,6 @@ function uniqueRoleForProductId(
   return roles.length === 1 ? roles[0] : null;
 }
 
-function missingRoleMatchesRole(missingRole: string, role: ConceptProductSourcingRolePool) {
-  const normalizedMissingRole = normalizeMissingRoleText(missingRole);
-  const normalizedRole = normalizeMissingRoleText(`${role.category} ${role.roleLabel}`);
-  const normalizedRoleLabel = normalizeMissingRoleText(role.roleLabel);
-
-  return normalizedMissingRole === normalizedRole || normalizedMissingRole === normalizedRoleLabel;
-}
-
-function normalizeMissingRoleText(value: string) {
-  return value.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
-}
 
 function missingRoleResult(role: ConceptProductSourcingRolePool, reason: string) {
   return {
@@ -1860,7 +2012,9 @@ function missingRoleResult(role: ConceptProductSourcingRolePool, reason: string)
     roleLabel: role.roleLabel,
     status: role.priority === "required" ? ("missing_required" as const) : ("missing_supporting" as const),
     productId: null,
-    reason
+    similarity: 0,
+    reason,
+    synthesized: true as const
   };
 }
 
@@ -2168,9 +2322,17 @@ export async function generateFinalRenderView(
   };
 }
 
+// The palette call's own deadline when the caller does not derive one from a
+// request budget.
+export const CONCEPT_PALETTE_TIMEOUT_MS = 45_000;
+
 export type ExtractConceptImagePaletteInput = {
   // Data URL or fetchable URL of the generated concept image.
   imageUrl: string;
+  // Provider deadline for this call, derived by the caller from the time its
+  // request has left. Without one, a slow call keeps running and keeps
+  // spending after a local race has discarded its result.
+  timeoutMs?: number;
 };
 
 export type ExtractConceptImagePaletteResult = {
@@ -2193,7 +2355,11 @@ export async function extractConceptImagePalette(
   const client = createTextClient(env);
   const { model: stageModel, requestParams: stageRequestParams } = stageTextConfig("concept_palette", env.OPENAI_TEXT_MODEL);
 
-  const response = await client.responses.create({
+  // A caller-derived deadline the SDK actually enforces. Racing a promise
+  // locally would let the request keep running and keep spending after its
+  // result was discarded, and carry the run past the route's budget.
+  const response = await client.responses.create(
+    {
     max_output_tokens: 4000,
     ...stageRequestParams,
     input: [
@@ -2224,7 +2390,9 @@ export async function extractConceptImagePalette(
         strict: true
       }
     }
-  });
+    },
+    { timeout: input.timeoutMs ?? CONCEPT_PALETTE_TIMEOUT_MS }
+  );
 
   const palette = conceptPaletteResponseSchema.parse(JSON.parse(response.output_text));
 

@@ -9,7 +9,7 @@
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
     "validate-env": "tsx scripts/validate-env.ts",
-    "test": "tsx lib/inspiration-analysis-continue.test.ts && tsx lib/product-image-preflight.test.ts && tsx lib/product-sourcing-failure.test.ts && tsx lib/product-sourcing-text-fallback.test.ts && tsx lib/product-sourcing-timeout-diagnostics.test.ts && tsx lib/product-sourcing-visual-strategy.test.ts && tsx app/room-type-selector.test.tsx && tsx lib/ai-cost.test.ts && tsx lib/render.test.ts && tsx lib/spec-extraction.test.ts && tsx lib/render-images.test.ts && tsx lib/room-type-normalize.test.ts && tsx lib/services/selection-swap.test.ts && tsx lib/services/concept-generation.test.ts && tsx lib/services/concept-revision.test.ts && tsx lib/services/product-sourcing.test.ts && tsx lib/services/design-spec.test.ts && tsx lib/spec-ledger-form-data.test.ts && tsx app/spec-ledger-form.test.tsx"
+    "test": "tsx lib/inspiration-analysis-continue.test.ts && tsx app/room-type-selector.test.tsx && tsx lib/ai-cost.test.ts && tsx lib/render.test.ts && tsx lib/spec-extraction.test.ts && tsx lib/sourcing-run-budget.test.ts && tsx lib/product-consistency-threshold.test.ts && tsx lib/render-images.test.ts && tsx lib/room-type-normalize.test.ts && tsx lib/services/selection-swap.test.ts && tsx lib/services/concept-generation.test.ts && tsx lib/services/concept-revision.test.ts && tsx lib/services/product-sourcing.test.ts && tsx lib/services/design-spec.test.ts && tsx lib/spec-ledger-form-data.test.ts && tsx app/spec-ledger-form.test.tsx && tsx app/missing-roles.test.tsx && tsx app/shopping-list-grid.test.tsx"
   },
   "dependencies": {
     "@ritzy-studio/ai": "workspace:*",

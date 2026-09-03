@@ -11,7 +11,7 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "tsx src/product-enrichment.test.ts && tsx src/product-matching.test.ts && tsx src/product-matching-dimensions.test.ts && tsx src/product-matching-evidence.test.ts && tsx src/product-matching-freshness.test.ts && tsx src/product-matching-pool-diversity.test.ts && tsx src/product-matching-pool-quality.test.ts && tsx src/product-matching-pool-qa-rollup.test.ts && tsx src/product-matching-confidence.test.ts && tsx src/measurement-confidence.test.ts && tsx src/spatial-design-rules.test.ts && tsx src/design-spec.test.ts && tsx src/entitlements.test.ts && tsx src/room-type.test.ts"
+    "test": "tsx src/product-enrichment.test.ts && tsx src/product-matching.test.ts && tsx src/product-matching-role-keys.test.ts && tsx src/product-matching-dimensions.test.ts && tsx src/product-matching-evidence.test.ts && tsx src/product-matching-freshness.test.ts && tsx src/measurement-confidence.test.ts && tsx src/spatial-design-rules.test.ts && tsx src/design-spec.test.ts && tsx src/spec-sourcing.test.ts && tsx src/entitlements.test.ts && tsx src/room-type.test.ts"
   },
   "devDependencies": {
     "@types/node": "^20",

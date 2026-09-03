@@ -12,6 +12,10 @@ import {
 import Image from "next/image";
 import { notFound, redirect } from "next/navigation";
 
+import { parseMissingRoles,
+  groupShoppingItemsByRole
+} from "@ritzy-studio/domain";
+
 import {
   generateFinalRenderAction,
   groundProductsAction,
@@ -19,8 +23,14 @@ import {
 } from "@/app/actions";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
+import { awaitingChoiceCaveat, rolesAwaitingChoice } from "../shopping-list/completeness";
+import { MissingRolesSection, missingRolesCaveat } from "../shopping-list/missing-roles";
 
 export const dynamic = "force-dynamic";
+// Sourcing runs inside this route's server action: catalogue read, candidate
+// image fetch, the visual pass (PRODUCT_SOURCING_TIMEOUT_MS, 150s) and the
+// list writes must all fit the function budget.
+export const maxDuration = 300;
 
 function possessiveClientFirstName(clientName: string | null | undefined) {
   const firstName = clientName?.trim().split(/\s+/)[0];
@@ -259,6 +269,20 @@ export default async function ProductMatchingPage({
   const latestRenderJob = (conceptRenderJobs ?? [])[0] ?? null;
 
   const shoppingItemsList = shoppingItems ?? [];
+  // S3: the honest gap and its provenance, both read from the list itself. A
+  // list built without a confirmed spec (extraction failed, user continued,
+  // or a list from before specs) says so until it is re-sourced: its rows
+  // came from the room type, not the design.
+  const missingRoles = parseMissingRoles(shoppingList.missing_roles);
+  const missingCaveat = missingRolesCaveat(missingRoles);
+  const builtFromConfirmedSpec = shoppingList.spec_source === "confirmed_spec";
+  // The ledger is the CHOSEN pieces; the rest of the rows are that role's
+  // other options and belong to the shopping list. A role with no chosen row
+  // is one the app would not choose for the shopper (nothing was confirmed to
+  // match the design), so the count of those is stated beside the estimate
+  // rather than left to look like a complete list.
+  const chosenItems = shoppingItemsList.filter((item) => item.status === "selected");
+  const awaitingChoice = awaitingChoiceCaveat(rolesAwaitingChoice(groupShoppingItemsByRole(shoppingItemsList)));
   const latestRender = finalRenders[0] ?? null;
   const heroSrc = latestRender?.signedUrl ?? signedConceptImage?.signedUrl ?? null;
   const heroLabel = latestRender ? "Final render" : "Selected concept";
@@ -329,8 +353,14 @@ export default async function ProductMatchingPage({
               {estimatedTotalDisplay}
             </span>
             <span className="font-body text-caption font-medium uppercase tracking-[0.32em] text-ink-muted">
-              estimated · {shoppingItemsList.length} {shoppingItemsList.length === 1 ? "piece" : "pieces"}
+              estimated · {chosenItems.length} {chosenItems.length === 1 ? "piece" : "pieces"} chosen
             </span>
+            {awaitingChoice ? (
+              <span className="font-display text-body-s italic text-warning">{awaitingChoice}</span>
+            ) : null}
+            {missingCaveat ? (
+              <span className="font-display text-body-s italic text-warning">{missingCaveat}</span>
+            ) : null}
           </div>
 
           <div className="mt-7 flex flex-col items-stretch gap-3 sm:flex-row sm:items-center">
@@ -371,15 +401,25 @@ export default async function ProductMatchingPage({
             the shopping list remains the source of truth
           </p>
         </div>
+        {!builtFromConfirmedSpec ? (
+          <p className="mt-3 px-5 font-display text-body-s italic text-warning md:px-8 lg:px-12">
+            Built from the room type, not the design.{" "}
+            <a className="underline underline-offset-4" href={`/projects/${projectId}/rooms/${roomId}/spec`}>
+              Confirm the design spec
+            </a>{" "}
+            and refresh matches for a design-matched list.
+          </p>
+        ) : null}
 
-        {shoppingItemsList.length > 0 ? (
+        {chosenItems.length > 0 ? (
           <div className="mt-[18px] flex flex-col">
-            {shoppingItemsList.map((item) => {
+            {chosenItems.map((item) => {
               const product = item.product;
               const dimensions = product?.dimensions?.[0];
-              const warningText = [item.dimension_fit_note, item.selection_reason]
-                .filter(Boolean)
-                .join(" ");
+              // Warnings stay warnings; the reason a piece was chosen is prose
+              // behind a quiet "why this piece" (design system 12.7).
+              const warningText = item.dimension_fit_note ?? "";
+              const whyThisPiece = item.selection_reason?.trim() ?? "";
               const quantity = item.quantity ?? 1;
               const priceDisplay =
                 item.unit_price_aed === null || item.unit_price_aed === undefined
@@ -429,6 +469,16 @@ export default async function ProductMatchingPage({
                       <p className="mt-2 font-display text-body-m italic leading-snug text-warning">
                         {warningText}
                       </p>
+                    ) : null}
+                    {whyThisPiece ? (
+                      <details className="mt-2">
+                        <summary className="cursor-pointer list-none font-display text-[13px] italic text-accent-deep hover:text-accent">
+                          why this piece
+                        </summary>
+                        <p className="mt-1 max-w-[520px] font-body text-body-s leading-snug text-ink-secondary">
+                          {whyThisPiece}
+                        </p>
+                      </details>
                     ) : null}
                     {canAccessCommerce && product?.canonical_url ? (
                       <ButtonLink
@@ -510,18 +560,38 @@ export default async function ProductMatchingPage({
         ) : (
           <div className="border-t border-line px-5 py-12 md:px-8 lg:px-12">
             <p className="font-display text-display-xs font-light italic text-ink">
-              No pieces sourced yet.
+              {shoppingItemsList.length > 0 ? "Nothing chosen yet." : "No pieces sourced yet."}
             </p>
             <p className="mt-3 max-w-[560px] font-body text-body-s text-ink-secondary">
-              Press <span className="italic">Refresh matches</span> above to match catalog products
-              with prices, dimensions, and retailer links.
+              {shoppingItemsList.length > 0 ? (
+                <>
+                  Nothing in the catalogue was a close enough visual match to choose for you. The
+                  options for every piece are on the{" "}
+                  <span className="italic">shopping list</span>; pick the closest and they appear
+                  here.
+                </>
+              ) : (
+                <>
+                  Press <span className="italic">Refresh matches</span> above to match catalog
+                  products with prices, dimensions, and retailer links.
+                </>
+              )}
             </p>
           </div>
         )}
       </div>
 
+      {missingRoles.length > 0 ? (
+        <div className="bg-surface px-5 pb-10 md:px-8 lg:px-12">
+          <MissingRolesSection entries={missingRoles} tone="page" />
+        </div>
+      ) : null}
+
       {/* ink CTA band — ground the concept with the sourced pieces */}
-      {shoppingList && shoppingItemsList.length > 0 ? (
+      {/* The render is built from CHOSEN pieces, so the band follows the same
+          rule the shopping list enforces: every role chosen, or nothing to
+          press. Rows existing is not the same as anything being chosen. */}
+      {shoppingList && chosenItems.length > 0 && rolesAwaitingChoice(groupShoppingItemsByRole(shoppingItemsList)) === 0 ? (
         <div className="flex flex-col gap-8 bg-[var(--rs-surface-ink)] px-5 py-9 md:px-8 lg:flex-row lg:items-center lg:justify-between lg:px-12">
           <div className="max-w-[640px]">
             <p className="font-body text-caption font-medium uppercase tracking-[0.32em] text-ink-on-dark-muted">

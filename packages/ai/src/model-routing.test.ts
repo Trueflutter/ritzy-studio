@@ -26,7 +26,22 @@ assert.equal(resolveStageTextModel("spatial_qa", { RITZY_TEXT_MODEL_SPATIAL_QA: 
 
 // The stage list is the routing contract; a typo'd stage cannot compile at the call
 // sites, and the env var name derivation is stable and documented.
+// Per-stage defaults: the design check judges on the production vision model
+// because the gate does, and the sourcing pass buys speed because a proposal
+// that never arrives costs the shopper every pre-selected piece.
+assert.equal(resolveStageTextModel("product_verification", {}, "gpt-5-mini"), "gpt-5.1");
+assert.equal(resolveStageTextModel("product_verification", { RITZY_TEXT_MODEL_PRODUCT_VERIFICATION: "gpt-5-mini" }, "gpt-5-mini"), "gpt-5-mini", "an env override still wins");
+assert.equal(resolveStageTextEffort("product_sourcing", {}), "low");
+assert.equal(resolveStageTextEffort("product_sourcing", { RITZY_TEXT_EFFORT_PRODUCT_SOURCING: "high" }), "high");
+assert.equal(resolveStageTextEffort("product_verification", {}), null, "the check keeps the provider default");
+// The parameter only exists on reasoning models. Pointing a stage at another
+// model through the documented override must not 400 every call.
+assert.equal(resolveStageTextEffort("product_sourcing", {}, "gpt-5-mini"), "low");
+assert.equal(resolveStageTextEffort("product_sourcing", {}, "gpt-4.1"), null);
+// And an explicit "none" turns the stage default off.
+assert.equal(resolveStageTextEffort("product_sourcing", { RITZY_TEXT_EFFORT_PRODUCT_SOURCING: "none" }), null);
 assert.ok(TEXT_STAGES.includes("product_sourcing"));
+assert.ok(TEXT_STAGES.includes("product_verification"));
 assert.ok(TEXT_STAGES.includes("revision_direction"));
 assert.ok(TEXT_STAGES.includes("spec_extraction"));
 

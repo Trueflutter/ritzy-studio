@@ -12,6 +12,7 @@ export const TEXT_STAGES = [
   "concept_direction",
   "concept_palette",
   "product_sourcing",
+  "product_verification",
   "spatial_qa",
   "revision_direction",
   "spec_extraction",
@@ -31,14 +32,48 @@ function stageEnvValue(env: EnvRecord, prefix: string, stage: TextStage): string
   return value ? value : null;
 }
 
+// A stage whose default is NOT the room's base text model. The design check
+// decides whether a product is presented to a shopper as a match, and the
+// gate that judges the same question runs on the production vision model; the
+// app has to make that judgement with the same eyes or it will choose pieces
+// the gate then fails. An env override still wins.
+const STAGE_MODEL_DEFAULTS: Partial<Record<TextStage, string>> = {
+  product_verification: "gpt-5.1"
+};
+
 export function resolveStageTextModel(stage: TextStage, env: EnvRecord, baseModel: string): string {
-  return stageEnvValue(env, "RITZY_TEXT_MODEL_", stage) ?? baseModel;
+  return stageEnvValue(env, "RITZY_TEXT_MODEL_", stage) ?? STAGE_MODEL_DEFAULTS[stage] ?? baseModel;
 }
 
-export function resolveStageTextEffort(stage: TextStage, env: EnvRecord): TextEffort | null {
+// A stage whose default effort is not the provider's. The sourcing pass only
+// PROPOSES a product per role now; the design check that follows judges those
+// proposals on the production vision model. A proposal that never arrives
+// (the pass ran past its deadline) costs the shopper every pre-selected piece
+// on the list, while a hasty proposal costs nothing, because the check
+// rejects it. So the pass buys speed and the check buys care.
+const STAGE_EFFORT_DEFAULTS: Partial<Record<TextStage, TextEffort>> = {
+  product_sourcing: "low"
+};
+
+// Only a reasoning model accepts the parameter at all. A stage default that
+// ignored this would 400 every call the moment someone pointed the stage at a
+// non-reasoning model through the documented per-stage model override.
+function acceptsReasoningEffort(model: string) {
+  return /^(gpt-5|o[0-9])/.test(model.trim());
+}
+
+export function resolveStageTextEffort(stage: TextStage, env: EnvRecord, model?: string): TextEffort | null {
   const value = stageEnvValue(env, "RITZY_TEXT_EFFORT_", stage);
+  // An explicit "none" turns the stage default off; anything unrecognised is
+  // ignored rather than sent to the provider.
+  if (value === "none") {
+    return null;
+  }
   if (value && (EFFORT_VALUES as readonly string[]).includes(value)) {
     return value as TextEffort;
   }
-  return null;
+  if (model !== undefined && !acceptsReasoningEffort(model)) {
+    return null;
+  }
+  return STAGE_EFFORT_DEFAULTS[stage] ?? null;
 }

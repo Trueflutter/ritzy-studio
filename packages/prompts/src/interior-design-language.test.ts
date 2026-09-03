@@ -3,7 +3,6 @@ import assert from "node:assert/strict";
 import {
   finalRenderProductFidelityLanguage,
   globalPhotorealismLanguage,
-  productRoleLanguage,
   roomBlueprintDefaultsLanguage,
   roomDesignLanguage,
   roomSpatialPlacementGuardrailLanguage,
@@ -112,17 +111,6 @@ assert.match(finalRenderProductFidelityLanguage(), /commerce-critical visual ref
 assert.match(finalRenderProductFidelityLanguage(), /Do not substitute/);
 assert.match(finalRenderProductFidelityLanguage(), /do not imply exact product accuracy/);
 
-assert.match(productRoleLanguage("living room"), /anchor seating/);
-assert.match(productRoleLanguage("Living & Dining"), /living-zone sofa or sectional/);
-assert.match(productRoleLanguage("Living & Dining"), /dining table/);
-assert.match(productRoleLanguage("Living & Dining"), /dining chairs/);
-assert.match(productRoleLanguage("Living & Dining"), /centered over-table lighting/);
-assert.match(productRoleLanguage("Living & Dining"), /not source it as plain living only/);
-assert.match(productRoleLanguage("dining room"), /over-table lighting/);
-assert.match(productRoleLanguage("bedroom"), /bedside tables/);
-assert.match(productRoleLanguage("bathroom"), /without moving plumbing/);
-assert.match(productRoleLanguage("office"), /ergonomic task chair/);
-assert.match(productRoleLanguage("entry hall"), /Do not force every layer/);
 
 // Spatial layout language: intent-conditional fragments are additive and only
 // appear when the user actually answered.

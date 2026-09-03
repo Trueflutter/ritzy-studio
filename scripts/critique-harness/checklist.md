@@ -48,6 +48,22 @@ model (`--model`).
    beige-brown despite a cool/dark/saturated/bold brief, or an incoherent
    default register on a silent brief.
 
+7. **product_consistency** — for a room with a shopping list: every SELECTED
+   product belongs to the approved design. Judged per product against the
+   concept render and the spec role it was selected for: the category must
+   match the role (a floor lamp for a floor-lamp role, never a chandelier; an
+   armchair for a lounge-chair role, never a swing or rocking chair) and the
+   visual similarity to the corresponding object in the render must be at or
+   above the committed threshold: similarity at or above 0.6 (the whole render
+   is shown and the judge names which object it compared against; the spec
+   carries no regions, so there is no crop). Roles the list honestly reports
+   as missing are not failures; a wrong product is.
+   PASS: every selected product was judged and passes. FAIL: any selected
+   product fails, could not be judged (no usable image), or the list exists
+   with nothing selected at all (a design check that chooses nothing is a
+   regression, not a pass).
+   NOT_APPLICABLE only when the concept has no shopping list yet.
+
 ## Room matrix
 
 Five rooms, spanning the register space so the pipeline is proven off the beige
@@ -70,3 +86,7 @@ never silently dropped.
 - Criterion 10 (views): the TV-lounge spec's view set passes view_coverage.
 - Palette register: every non-control room passes palette_register on the
   production model.
+- Criterion 8 (sourcing fidelity, Gate 1 condition): all five rooms pass
+  product_consistency on the production model; the Phase 0 chandelier-for-
+  floor-lamp and swing-chair failures are rejected by the sourcing contracts
+  (pinned in packages/domain spec-sourcing tests).

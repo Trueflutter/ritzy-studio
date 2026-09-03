@@ -1006,7 +1006,20 @@ export type RoomProductRoleSpec = {
   disallowedClasses?: readonly ClassTag[];
   sizeClass?: RoleSizeClass;
   roomScope?: RoomScope;
+  // Explicit identity for selection maps when a list can carry two roles in one
+  // category (S3 spec roles: a floor lamp and a pendant are both lighting).
+  // Absent for blueprint roles, whose identity is their category.
+  roleKey?: string;
+  // The spec object's stable key ("3:floor_lamp"), persisted on every row the
+  // role produces so swaps and refills resolve the row's contract by identity.
+  specKey?: string;
 };
+
+// The key a selection map uses for a role: its explicit key when it has one,
+// else its category (legacy blueprint roles, one per category).
+export function roleOptionKey(role: { category: string; roleKey?: string }): string {
+  return role.roleKey ?? role.category;
+}
 
 export type RoleProductOptions = RoomProductRoleSpec & {
   options: RankedProductMatch[];
@@ -1075,6 +1088,7 @@ export type ShoppingListItemDraft = {
   product_id: string;
   category: string;
   status: ShoppingListItemStatus;
+  spec_key: string | null;
   role_label: string;
   role_visual_brief: string | null;
   role_priority: "required" | "supporting";
@@ -1117,9 +1131,15 @@ export type ShoppingItemRoleFields = {
   role_priority: string;
   role_quantity: number;
   option_rank: number;
+  spec_key?: string | null;
 };
 
 export type ShoppingRoleGroup<T> = {
+  // spec:<key> for rows that carry their spec object's key, else
+  // category::label — distinct for two spec roles that share a category.
+  roleKey: string;
+  // The spec object's key the rows carry (null for legacy or blueprint rows).
+  specKey: string | null;
   category: string;
   label: string;
   priority: "required" | "supporting";
@@ -1387,6 +1407,7 @@ export function buildRoleScopedCandidatePools({
   conceptText,
   roles,
   candidates,
+  companionCandidates,
   budgetMaxAed = null,
   roomMeasurements = null,
   candidatesPerRole = 12,
@@ -1397,6 +1418,9 @@ export function buildRoleScopedCandidatePools({
   conceptText: string;
   roles?: RoomProductRoleSpec[];
   candidates: ProductMatchCandidate[];
+  // The set the aesthetic-fit companion checks read (defaults to candidates);
+  // callers that pre-filter candidates per role pass the full catalogue here.
+  companionCandidates?: ProductMatchCandidate[];
   budgetMaxAed?: number | null;
   roomMeasurements?: ProductMatchRequest["roomMeasurements"];
   candidatesPerRole?: number;
@@ -1424,7 +1448,8 @@ export function buildRoleScopedCandidatePools({
         role,
         request: parsed,
         preferredCategories,
-        candidatesPerRole: limit
+        candidatesPerRole: limit,
+        companionCandidates: companionCandidates ?? parsed.candidates
       })
     )
   };
@@ -1554,12 +1579,14 @@ function buildRolePool({
   role,
   request,
   preferredCategories,
-  candidatesPerRole
+  candidatesPerRole,
+  companionCandidates = request.candidates
 }: {
   role: RoomProductRoleSpec;
   request: ProductMatchRequest;
   preferredCategories: string[];
   candidatesPerRole: number;
+  companionCandidates?: ProductMatchCandidate[];
 }): RoleScopedCandidatePool {
   const scored: ScoredRoleCandidate[] = [];
   const rejectionReasons: Record<string, number> = {};
@@ -1585,7 +1612,7 @@ function buildRolePool({
       role,
       roomType: request.roomType,
       conceptText: request.conceptText,
-      companionCandidates: request.candidates
+      companionCandidates
     });
     const roleScore = fit.total + aestheticFit.scoreAdjustment;
     scored.push({
@@ -2014,12 +2041,12 @@ function inferredRoleSizeClass(role: RoomProductRoleSpec): RoleSizeClass | undef
   return "standard";
 }
 
-function classTagsConflictWithRole(candidate: ProductMatchCandidate, contract: RoleClassContract) {
+export function classTagsConflictWithRole(candidate: ProductMatchCandidate, contract: RoleClassContract) {
   const classTags = deriveClassTags(candidate);
   return contract.disallowedClasses.some((classTag) => classTags.includes(classTag));
 }
 
-function roomScopeConflictsWithRole(candidate: ProductMatchCandidate, contract: RoleClassContract) {
+export function roomScopeConflictsWithRole(candidate: ProductMatchCandidate, contract: RoleClassContract) {
   if (!contract.roomScope) {
     return false;
   }
@@ -2032,7 +2059,7 @@ function roomScopeConflictsWithRole(candidate: ProductMatchCandidate, contract: 
   return candidateScope !== "general" && candidateScope !== contract.roomScope;
 }
 
-function sizeClassConflictsWithRole(candidate: ProductMatchCandidate, contract: RoleClassContract) {
+export function sizeClassConflictsWithRole(candidate: ProductMatchCandidate, contract: RoleClassContract) {
   if (!contract.sizeClass || contract.sizeClass === "any" || candidate.categoryNormalized !== "sofas") {
     return false;
   }
@@ -2935,122 +2962,7 @@ export function optionUnitPriceAed(match: Pick<RankedProductMatch, "salePriceAed
   return match.salePriceAed ?? match.priceAed ?? 0;
 }
 
-export type BudgetFitResult = {
-  selectedProductIdByRole: Map<string, string>;
-  adjusted: boolean;
-  // Downgrades applied to bring the qty-aware line-total sum within budget.
-  downgrades: Array<{ category: string; fromProductId: string; toProductId: string; savingsAed: number }>;
-  estimatedTotalAed: number;
-  budgetMaxAed: number | null;
-  withinBudget: boolean;
-};
 
-// Aggregate budget adherence. Per-role selection has no view of the running total, so the chosen
-// list can exceed the stated budget once quantities are applied (a role at qty 2 doubles its line
-// total). This greedily downgrades selected roles to cheaper in-pool alternates — smallest
-// sufficient swap first to preserve the aesthetic pick, else the largest saving — until the
-// qty-aware line-total sum fits the budget or no cheaper alternate remains. Required roles are
-// never emptied: a role always keeps one of its own options. Reasons on line totals, not unit
-// prices. Returns a fresh map; the input is not mutated.
-export function fitSelectionToBudget({
-  roleOptions,
-  selectedProductIdByRole,
-  budgetMaxAed
-}: {
-  roleOptions: RoleProductOptions[];
-  selectedProductIdByRole: Map<string, string>;
-  budgetMaxAed: number | null;
-}): BudgetFitResult {
-  const selection = new Map(selectedProductIdByRole);
-  const downgrades: BudgetFitResult["downgrades"] = [];
-
-  const lineTotalFor = (role: RoleProductOptions, productId: string | undefined) => {
-    const option = productId ? role.options.find((candidate) => candidate.id === productId) : undefined;
-    return option ? optionUnitPriceAed(option) * Math.max(1, role.quantity || 1) : 0;
-  };
-  const currentTotal = () =>
-    roleOptions.reduce((total, role) => total + lineTotalFor(role, selection.get(role.category)), 0);
-
-  const initialTotal = currentTotal();
-  if (budgetMaxAed === null || budgetMaxAed <= 0 || initialTotal <= budgetMaxAed) {
-    return {
-      selectedProductIdByRole: selection,
-      adjusted: false,
-      downgrades,
-      estimatedTotalAed: initialTotal,
-      budgetMaxAed,
-      withinBudget: budgetMaxAed === null || budgetMaxAed <= 0 || initialTotal <= budgetMaxAed
-    };
-  }
-
-  // Bound the loop by the number of roles x their options; each swap strictly lowers a role's
-  // selected price, so it always terminates well within this.
-  const maxSwaps = roleOptions.reduce((total, role) => total + role.options.length, 0) + 1;
-  for (let step = 0; step < maxSwaps; step += 1) {
-    const total = currentTotal();
-    if (total <= budgetMaxAed) {
-      break;
-    }
-    const overBy = total - budgetMaxAed;
-
-    let sufficient: { role: RoleProductOptions; to: RankedProductMatch; savings: number } | null = null;
-    let largest: { role: RoleProductOptions; to: RankedProductMatch; savings: number } | null = null;
-
-    for (const role of roleOptions) {
-      const quantity = Math.max(1, role.quantity || 1);
-      const selectedId = selection.get(role.category);
-      const selectedOption = selectedId ? role.options.find((option) => option.id === selectedId) : undefined;
-      if (!selectedOption) {
-        continue;
-      }
-      const selectedPrice = optionUnitPriceAed(selectedOption);
-      for (const option of role.options) {
-        const price = optionUnitPriceAed(option);
-        if (option.id === selectedOption.id || price >= selectedPrice) {
-          continue;
-        }
-        const savings = (selectedPrice - price) * quantity;
-        // Just-enough swap: smallest saving that still clears the overage (least aesthetic loss).
-        if (savings >= overBy && (!sufficient || savings < sufficient.savings)) {
-          sufficient = { role, to: option, savings };
-        }
-        // Fallback: the single largest saving available this round.
-        if (!largest || savings > largest.savings) {
-          largest = { role, to: option, savings };
-        }
-      }
-    }
-
-    const swap = sufficient ?? largest;
-    if (!swap) {
-      // No cheaper alternate anywhere — the pool cannot fit this budget.
-      break;
-    }
-
-    const fromId = selection.get(swap.role.category)!;
-    selection.set(swap.role.category, swap.to.id);
-    downgrades.push({
-      category: swap.role.category,
-      fromProductId: fromId,
-      toProductId: swap.to.id,
-      savingsAed: swap.savings
-    });
-
-    if (sufficient) {
-      break;
-    }
-  }
-
-  const estimatedTotalAed = currentTotal();
-  return {
-    selectedProductIdByRole: selection,
-    adjusted: downgrades.length > 0,
-    downgrades,
-    estimatedTotalAed,
-    budgetMaxAed,
-    withinBudget: estimatedTotalAed <= budgetMaxAed
-  };
-}
 
 // Flatten role option pools into shopping_list_item rows. The chosen product
 // per role is `selected`; the rest are `option`. Purchase quantity carries the
@@ -3062,19 +2974,22 @@ export function buildShoppingListItemRows({
 }: {
   roleOptions: RoleProductOptions[];
   selectedProductIdByRole: Map<string, string>;
-  reasonFor?: (match: RankedProductMatch) => string;
+  // The role is passed with the match: a product in two roles' pools carries
+  // each role's own reason.
+  reasonFor?: (match: RankedProductMatch, role: RoleProductOptions) => string;
 }): ShoppingListItemDraft[] {
   const rows: ShoppingListItemDraft[] = [];
   let sortOrder = 0;
 
   for (const role of roleOptions) {
-    const selectedId = selectedProductIdByRole.get(role.category) ?? null;
+    const selectedId = selectedProductIdByRole.get(roleOptionKey(role)) ?? null;
     role.options.forEach((match, rank) => {
       const unitPrice = match.salePriceAed ?? match.priceAed ?? 0;
       rows.push({
         product_id: match.id,
         category: role.category,
         status: match.id === selectedId ? "selected" : "option",
+        spec_key: role.specKey ?? null,
         role_label: role.label,
         role_visual_brief: role.visualBrief,
         role_priority: role.priority,
@@ -3083,7 +2998,7 @@ export function buildShoppingListItemRows({
         quantity: role.quantity,
         unit_price_aed: unitPrice,
         line_total_aed: unitPrice * role.quantity,
-        selection_reason: reasonFor ? reasonFor(match) : match.selectionReason,
+        selection_reason: reasonFor ? reasonFor(match, role) : match.selectionReason,
         dimension_fit_note: match.dimensionFitNote,
         sort_order: sortOrder
       });
@@ -3176,33 +3091,52 @@ export function buildPersistedSelectionSnapshot({
 // Group sourced items back into role groups for the picker. Rejected items are
 // dropped; options are ordered best-first; the selected option seeds the pick.
 // Legacy one-row-per-product lists group cleanly too — each row is its category.
+// A persisted row's role identity: the spec object's key when the row carries
+// one (S3 rows), else category plus the role label the row carries. Two spec
+// roles never merge, even when the user gave them the same label.
+export function shoppingItemRoleKey(item: {
+  category: string;
+  role_label?: string | null;
+  spec_key?: string | null;
+}): string {
+  if (item.spec_key) {
+    return `spec:${item.spec_key}`;
+  }
+  const label = (item.role_label ?? "").trim().toLowerCase();
+  return label ? `${item.category}::${label}` : item.category;
+}
+
 export function groupShoppingItemsByRole<T extends ShoppingItemRoleFields>(
   items: ReadonlyArray<T>
 ): ShoppingRoleGroup<T>[] {
-  const byCategory = new Map<string, T[]>();
+  const byRoleKey = new Map<string, T[]>();
   const order: string[] = [];
 
   for (const item of items) {
     if (item.status === "rejected") {
       continue;
     }
-    const existing = byCategory.get(item.category);
+    const key = shoppingItemRoleKey(item);
+    const existing = byRoleKey.get(key);
     if (existing) {
       existing.push(item);
     } else {
-      byCategory.set(item.category, [item]);
-      order.push(item.category);
+      byRoleKey.set(key, [item]);
+      order.push(key);
     }
   }
 
-  return order.map((category) => {
-    const options = byCategory
-      .get(category)!
+  return order.map((roleKey) => {
+    const options = byRoleKey
+      .get(roleKey)!
       .slice()
       .sort((left, right) => left.option_rank - right.option_rank);
     const first = options[0];
+    const category = first.category;
     const selected = options.find((item) => item.status === "selected") ?? null;
     return {
+      roleKey,
+      specKey: first.spec_key ?? null,
       category,
       label: first.role_label || category.replace(/_/g, " "),
       priority: first.role_priority === "required" ? "required" : "supporting",

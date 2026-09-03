@@ -34,19 +34,13 @@ const serverEnvSchema = z.object({
     .enum(["true", "false"])
     .default("false")
     .transform((value) => value === "true"),
-  RITZY_PRODUCT_MATCHING_ENGINE_V1_ENABLED: z
-    .enum(["true", "false"])
-    .default("false")
-    .transform((value) => value === "true"),
-  RITZY_PRODUCT_MATCHING_ENGINE_V1_CONTROLLED_PREVIEW_ENABLED: z
-    .enum(["true", "false"])
-    .default("false")
-    .transform((value) => value === "true"),
-  RITZY_PRODUCT_MATCHING_ENGINE_V1_PREVIEW_PROJECT_IDS: z.string().optional(),
-  RITZY_PRODUCT_MATCHING_ENGINE_V1_PREVIEW_ROOM_IDS: z.string().optional(),
-  RITZY_PRODUCT_MATCHING_ENGINE_V1_PREVIEW_USER_IDS: z.string().optional(),
-  RITZY_PRODUCT_MATCHING_ENGINE_V1_PREVIEW_USER_EMAILS: z.string().optional(),
   RITZY_RENDER_EXECUTION: z.enum(["queue", "inline"]).optional(),
+  // Visual sourcing image budget (S3): candidate product images shown to the
+  // visual pass per spec role and in total, at low detail. Unset uses the
+  // defaults below; "0" disables images (ranking-only sourcing) and is never
+  // the default, so "visual" sourcing is visual unless someone turns it off.
+  RITZY_PRODUCT_SOURCING_IMAGES_PER_ROLE: z.string().optional(),
+  RITZY_PRODUCT_SOURCING_IMAGE_TOTAL: z.string().optional(),
   // Comma-separated extra hosts allowed as remote reference-image sources, and hosts
   // whose query strings are stripped before use (defaults live in the ai package's
   // reference guard; these only extend or override them).
@@ -115,6 +109,27 @@ export function productReferenceOrderingV2Enabled(env: NodeJS.ProcessEnv = proce
   );
 }
 
+export const DEFAULT_PRODUCT_SOURCING_IMAGES_PER_ROLE = 4;
+export const DEFAULT_PRODUCT_SOURCING_IMAGE_TOTAL = 32;
+
+function nonNegativeIntegerEnv(value: string | undefined, fallback: number): number {
+  if (value === undefined || value.trim() === "") {
+    return fallback;
+  }
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed >= 0 ? parsed : fallback;
+}
+
+export function productSourcingImageBudget(env: NodeJS.ProcessEnv = process.env): {
+  perRole: number;
+  total: number;
+} {
+  return {
+    perRole: nonNegativeIntegerEnv(env.RITZY_PRODUCT_SOURCING_IMAGES_PER_ROLE, DEFAULT_PRODUCT_SOURCING_IMAGES_PER_ROLE),
+    total: nonNegativeIntegerEnv(env.RITZY_PRODUCT_SOURCING_IMAGE_TOTAL, DEFAULT_PRODUCT_SOURCING_IMAGE_TOTAL)
+  };
+}
+
 export function formatEnvError(error: unknown): string {
   if (!(error instanceof z.ZodError)) {
     return "Unknown environment validation error.";
@@ -162,69 +177,3 @@ export function signupAllowed(
   return entries.some((entry) => entry === "*" || entry === normalized || entry === domain);
 }
 
-export type ProductMatchingControlledPreviewGateInput = {
-  env: Record<string, string | undefined>;
-  projectId?: string | null;
-  roomId?: string | null;
-  userId?: string | null;
-  userEmail?: string | null;
-};
-
-export type ProductMatchingControlledPreviewGate = {
-  configured: boolean;
-  enabled: boolean;
-  allowed: boolean;
-  matchedScopes: Array<"project" | "room" | "user" | "email">;
-};
-
-function commaSeparatedValues(value: string | undefined) {
-  return new Set(
-    (value ?? "")
-      .split(",")
-      .map((entry) => entry.trim())
-      .filter(Boolean)
-  );
-}
-
-function commaSeparatedLowercaseValues(value: string | undefined) {
-  return new Set(Array.from(commaSeparatedValues(value)).map((entry) => entry.toLowerCase()));
-}
-
-export function productMatchingControlledPreviewGate({
-  env,
-  projectId,
-  roomId,
-  userId,
-  userEmail
-}: ProductMatchingControlledPreviewGateInput): ProductMatchingControlledPreviewGate {
-  const projectIds = commaSeparatedValues(env.RITZY_PRODUCT_MATCHING_ENGINE_V1_PREVIEW_PROJECT_IDS);
-  const roomIds = commaSeparatedValues(env.RITZY_PRODUCT_MATCHING_ENGINE_V1_PREVIEW_ROOM_IDS);
-  const userIds = commaSeparatedValues(env.RITZY_PRODUCT_MATCHING_ENGINE_V1_PREVIEW_USER_IDS);
-  const userEmails = commaSeparatedLowercaseValues(
-    env.RITZY_PRODUCT_MATCHING_ENGINE_V1_PREVIEW_USER_EMAILS
-  );
-  const enabled = env.RITZY_PRODUCT_MATCHING_ENGINE_V1_CONTROLLED_PREVIEW_ENABLED === "true";
-  const configured =
-    enabled || projectIds.size > 0 || roomIds.size > 0 || userIds.size > 0 || userEmails.size > 0;
-
-  const matchedScopes: ProductMatchingControlledPreviewGate["matchedScopes"] = [];
-  if (projectId && projectIds.has(projectId)) {
-    matchedScopes.push("project");
-  }
-  if (roomId && roomIds.has(roomId)) {
-    matchedScopes.push("room");
-  }
-  if (userId && userIds.has(userId)) {
-    matchedScopes.push("user");
-  }
-  if (userEmail && userEmails.has(userEmail.toLowerCase())) {
-    matchedScopes.push("email");
-  }
-
-  return {
-    configured,
-    enabled,
-    allowed: enabled && matchedScopes.length > 0,
-    matchedScopes
-  };
-}
