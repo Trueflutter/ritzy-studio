@@ -1,4 +1,4 @@
-import { avoidColorTokens, productFamilySignature } from "./product-matching";
+import { BUDGET_TOLERANCE, avoidColorTokens, productFamilySignature } from "./product-matching";
 import type { ProductMatchCandidate, RankedProductMatch, RoomProductRole } from "./product-matching";
 
 // Anchored concepts: the hero pieces are chosen from real stock BEFORE the
@@ -50,9 +50,14 @@ export const DEFAULT_ANCHOR_LIMIT = 4;
 // What the anchor set may cost, as a share of the room's budget. The render is
 // built from these pieces, so a set the list cannot afford is the worst of both
 // outcomes: the shopper approves a picture whose hero pieces are then opened
-// for budget and chosen for them by nobody. The rest of the room still has to
-// be furnished out of what is left, which is what keeps this below 1.
-export const ANCHOR_BUDGET_SHARE = 0.6;
+// for budget and chosen for them by nobody.
+//
+// Three quarters, not the half a first pass might suggest: anchors ARE the
+// expensive pieces, and what is left has to buy lighting, side tables and
+// decor rather than another sofa. The first version of this used 0.6 and a
+// hard per-role cap, which priced a 20,000 AED room's sofa at about 4,300 and
+// excluded most of the catalogue's sofas from anchoring anything.
+export const ANCHOR_BUDGET_SHARE = 0.75;
 
 // The share of the anchor budget each role may spend, in proportion to how much
 // of the room it carries. An even split would price a sofa out of a room whose
@@ -67,7 +72,10 @@ export function anchorRoleBudgets(
   }
   const weights = roles.map((role) => ANCHOR_WEIGHT[role.category] ?? 1);
   const total = weights.reduce((sum, weight) => sum + weight, 0);
-  const anchorBudget = budgetMaxAed * share;
+  // The tolerance applies here as much as anywhere: a role's share of a room is
+  // a weighting this module invented, and holding a heuristic to the decimal is
+  // false precision that costs the room its best piece.
+  const anchorBudget = budgetMaxAed * share * (1 + BUDGET_TOLERANCE);
   return new Map(roles.map((role, index) => [role.category, (anchorBudget * weights[index]) / total]));
 }
 

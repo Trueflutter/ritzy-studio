@@ -463,7 +463,7 @@ async function main() {
     const CHEAP_SOFA_ID = "00000000-0000-4000-8000-000000000105";
     const CHEAP_CHAIR_ID = "00000000-0000-4000-8000-000000000106";
     const { client, calls } = fakeSupabase((call) => {
-      if (call.table === "projects") return { data: { id: "proj-1", budget_max_aed: 3500 } };
+      if (call.table === "projects") return { data: { id: "proj-1", budget_max_aed: 3000 } };
       if (call.table === "rooms" && call.op === "select") return { data: { id: "room-1", room_type: "Living Room" } };
       if (call.table === "concepts" && call.op === "select") return { data: CONCEPT };
       if (call.table === "shopping_lists" && (call.op === "insert" || call.op === "upsert")) return { data: { id: "list-1" } };
@@ -514,8 +514,11 @@ async function main() {
         })
       }
     );
-    // Sofa 3000 plus chair 1200 is over 3500, and the only cheaper piece is
-    // the unscored sofa, so the sofa role opens instead of taking it.
+    // Sofa 3000 plus chair 1200 is 4200, past the tolerated ceiling of 3600,
+    // and the only cheaper piece is the unscored sofa, so the sofa role opens
+    // instead of taking it. Roles open against the ceiling rather than the
+    // stated figure: a list a few percent over is a better answer than one
+    // whose hero piece was removed to hit a number given as a guide.
     assert.deepEqual(result, { status: "sourced", selectedCount: 1, missingRoleCount: 1, openRoleCount: 1 });
     const insert = calls.find((call: RecordedCall) => call.table === "shopping_list_items" && call.op === "insert");
     const rows = (insert?.payload as unknown as Array<Record<string, unknown>>) ?? [];
@@ -649,7 +652,7 @@ async function main() {
   // anything cheaper
   {
     const { client, calls } = fakeSupabase((call) => {
-      if (call.table === "projects") return { data: { id: "proj-1", budget_max_aed: 8000 } };
+      if (call.table === "projects") return { data: { id: "proj-1", budget_max_aed: 7000 } };
       if (call.table === "rooms" && call.op === "select") return { data: { id: "room-1", room_type: "Living Room" } };
       if (call.table === "concepts" && call.op === "select") return { data: CONCEPT };
       if (call.table === "shopping_lists" && (call.op === "insert" || call.op === "upsert")) return { data: { id: "list-1" } };
@@ -677,18 +680,92 @@ async function main() {
         })
       }
     );
-    // Sofa 3000 and chair 5670 both verify; neither pool holds a cheaper
-    // piece, so the old planner found no swap and left both selected at 8670
-    // against an 8000 budget. The chair (dearest) opens; the sofa fits.
+    // Sofa 3000 and chair 5670 both verify; neither pool holds a cheaper piece,
+    // so the old planner found no swap and left both selected at 8670 against a
+    // 7000 budget, past the 8400 ceiling. The chair (dearest) opens; the sofa
+    // fits. Opening is against the tolerated ceiling, not the stated figure.
     assert.deepEqual(result, { status: "sourced", selectedCount: 1, missingRoleCount: 1, openRoleCount: 1 });
     const listUpdate = calls.find((call: RecordedCall) => call.table === "shopping_lists" && call.op === "update");
     assert.equal(listUpdate?.payload?.estimated_total_aed, 3000, "the estimate is what the shopper is actually shown as chosen");
     const summary = terminalJobUpdate(serviceCalls)?.payload?.output_summary as {
-      budgetFit: { adjusted: boolean; withinBudget: boolean; openedForBudget: number };
+      budgetFit: {
+        adjusted: boolean;
+        budgetMaxAed: number;
+        budgetCeilingAed: number;
+        withinBudget: boolean;
+        withinTolerance: boolean;
+        openedForBudget: number;
+      };
       openRoles: Array<{ label: string; reason: string }>;
     };
-    assert.deepEqual(summary.budgetFit, { adjusted: true, budgetMaxAed: 8000, withinBudget: true, openedForBudget: 1 } as never);
+    // Both numbers on the record: the one the shopper gave, and the one roles
+    // are opened against. A list between them is deliberate, not a miss.
+    assert.deepEqual(summary.budgetFit, {
+      adjusted: true,
+      budgetMaxAed: 7000,
+      budgetCeilingAed: 8400,
+      withinBudget: true,
+      withinTolerance: true,
+      openedForBudget: 1
+    } as never);
     assert.match(summary.openRoles.find((entry) => entry.label.includes("lounge chair"))?.reason ?? "", /above the room's budget/);
+  }
+
+  // --- a list inside the tolerance is left alone. Ayo's direction: a budget is
+  // a target, not a wall, and the alternative to a piece a tenth over the
+  // number is usually a worse piece. The stated figure is still recorded, and
+  // the list is marked as over it, so the flexibility is visible rather than
+  // quietly applied.
+  {
+    const { client, calls } = fakeSupabase(
+      (call) => {
+        // Sofa 3000 plus chair 5670 is 8670 against 8000: over the number,
+        // inside the 9600 ceiling.
+        if (call.table === "projects") return { data: { id: "proj-1", budget_max_aed: 8000 } };
+        if (call.table === "rooms" && call.op === "select") return { data: { id: "room-1", room_type: "Living Room" } };
+        if (call.table === "concepts" && call.op === "select") return { data: CONCEPT };
+        if (call.table === "shopping_lists" && (call.op === "insert" || call.op === "upsert")) return { data: { id: "list-1" } };
+        return { data: null };
+      },
+      (storageCall) => (storageCall.op === "download" ? { data: new Blob([Buffer.from([1, 2, 3])]) } : { data: null })
+    );
+    const { client: service, calls: serviceCalls } = serviceClient();
+    const result = await groundProductsForRoom(
+      { supabase: client, serviceSupabase: service },
+      GROUND_INPUT,
+      {
+        readSpec: async () => CONFIRMED_SPEC,
+        extractPalette: noPalette,
+        fetchCandidateImages: imagesForAll,
+        verifyProducts: verifyAll(),
+        sourceProducts: async () => ({
+          promptKey: "k",
+          promptVersion: "v",
+          model: "stub",
+          textCostUsd: 0.01,
+          selectedProducts: [],
+          roleResults: [
+            { category: "sofas", roleLabel: "role-1", status: "strong_match" as const, productId: SOFA_ID, similarity: 0.9, reason: "Matches." },
+            { category: "armchairs", roleLabel: "role-2", status: "strong_match" as const, productId: CHAIR_ID, similarity: 0.9, reason: "Matches." }
+          ]
+        })
+      }
+    );
+
+    assert.deepEqual(
+      result,
+      { status: "sourced", selectedCount: 2, missingRoleCount: 1, openRoleCount: 0 },
+      "nothing is opened for a total inside the tolerance, and both pieces stay chosen"
+    );
+    const listUpdate = calls.find((call: RecordedCall) => call.table === "shopping_lists" && call.op === "update");
+    assert.equal(listUpdate?.payload?.estimated_total_aed, 8670);
+    const summary = terminalJobUpdate(serviceCalls)?.payload?.output_summary as {
+      budgetFit: { withinBudget: boolean; withinTolerance: boolean; budgetMaxAed: number; budgetCeilingAed: number };
+    };
+    assert.equal(summary.budgetFit.withinBudget, false, "the record says plainly that it is over the stated figure");
+    assert.equal(summary.budgetFit.withinTolerance, true, "and that it is inside the band that allows it");
+    assert.equal(summary.budgetFit.budgetMaxAed, 8000);
+    assert.equal(summary.budgetFit.budgetCeilingAed, 9600);
   }
 
   // --- the pass failing (timeout, provider) means nothing was judged against

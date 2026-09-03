@@ -9,6 +9,7 @@ import { configuredTextModel, productSourcingImageBudget } from "@ritzy-studio/c
 import type { Database } from "@ritzy-studio/db";
 import {
   buildShoppingListItemRows,
+  budgetCeilingAed,
   buildSpecSourcingPlan,
   checkCandidateAgainstSpecRole,
   conceptPaletteMatchingText,
@@ -806,20 +807,25 @@ export async function groundProductsForRoom(
     // cheaper, because "no cheaper option exists" is not a reason to present
     // an over-budget list as if it were within budget.
     const budgetMaxAed = project.budget_max_aed ?? null;
+    // Roles are opened against the tolerated ceiling, not the exact number. A
+    // list a few percent over is a better answer than one whose hero piece was
+    // removed to hit a figure the shopper gave as a guide; a list well over is
+    // still trimmed, dearest first. Both numbers go on the record below.
+    const budgetCeiling = budgetCeilingAed(budgetMaxAed);
     const lineTotalAed = (role: RoleProductOptions, productId: string | undefined) => {
       const option = productId ? role.options.find((candidate) => candidate.id === productId) : undefined;
       return option ? (option.salePriceAed ?? option.priceAed ?? 0) * Math.max(1, role.quantity || 1) : 0;
     };
     const selection = new Map(resolved.selectedProductIdByRole);
     const openedForBudget = new Set<string>();
-    if (budgetMaxAed !== null && budgetMaxAed > 0) {
+    if (budgetCeiling !== null) {
       const byCost = resolved.roleOptions
         .map((role) => ({ role, key: roleOptionKey(role), total: lineTotalAed(role, resolved.selectedProductIdByRole.get(roleOptionKey(role))) }))
         .filter((entry) => entry.total > 0)
         .sort((left, right) => right.total - left.total);
       let running = byCost.reduce((total, entry) => total + entry.total, 0);
       for (const entry of byCost) {
-        if (running <= budgetMaxAed) {
+        if (running <= budgetCeiling) {
           break;
         }
         selection.delete(entry.key);
@@ -972,7 +978,12 @@ export async function groundProductsForRoom(
           budgetFit: {
             adjusted: openedForBudget.size > 0,
             budgetMaxAed,
+            // The number the shopper gave, and the number roles are opened
+            // against. A list between the two is deliberate, not a miss, and
+            // both are recorded so nobody has to infer which happened.
+            budgetCeilingAed: budgetCeiling,
             withinBudget: budgetMaxAed === null || budgetMaxAed <= 0 || estimatedTotal <= budgetMaxAed,
+            withinTolerance: budgetCeiling === null || estimatedTotal <= budgetCeiling,
             // Roles opened because the piece that matched the design costs
             // more than the room's budget allows.
             openedForBudget: openedForBudget.size

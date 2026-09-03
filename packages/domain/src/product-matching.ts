@@ -467,7 +467,8 @@ function isEligibleCandidate(
   }
 
   const effectivePrice = candidate.salePriceAed ?? candidate.priceAed;
-  if (effectivePrice !== null && request.budgetMaxAed && effectivePrice > request.budgetMaxAed) {
+  const ceiling = budgetCeilingAed(request.budgetMaxAed);
+  if (effectivePrice !== null && ceiling !== null && effectivePrice > ceiling) {
     return false;
   }
 
@@ -568,6 +569,26 @@ export function productRolesForRoom(roomType: string) {
   }
   const match = Object.entries(roomProductRoles).find(([key]) => lower.includes(key));
   return match?.[1] ?? roomProductRoles.default;
+}
+
+// A budget is a target, not a wall. Ayo's direction, 2026-09-03: "keep budget
+// flexible, plus or minus 20%, that way we give the system some room for
+// creativity. Budgets are never exact."
+//
+// The operative half is the plus. Under budget needs no mechanism; over budget
+// is where a hard line does damage, because the alternative to a piece slightly
+// above the number is usually a worse piece, and the numbers being compared are
+// themselves estimates: a role's share of a room is a weighting we invented, and
+// a catalogue price moves.
+//
+// What this does NOT soften is honesty. A list over the stated budget is
+// recorded as over, with both numbers, so nobody has to infer it.
+export const BUDGET_TOLERANCE = 0.2;
+
+export function budgetCeilingAed(budgetMaxAed: number | null | undefined): number | null {
+  return budgetMaxAed === null || budgetMaxAed === undefined || budgetMaxAed <= 0
+    ? null
+    : budgetMaxAed * (1 + BUDGET_TOLERANCE);
 }
 
 export function enhancedProductRolesForRoom(roomType: string) {
@@ -2137,7 +2158,8 @@ function roleGateRejectionReason(
   const effectivePrice = candidate.salePriceAed ?? candidate.priceAed;
   const roleQuantity = Math.max(1, role.quantity || 1);
   const lineTotal = effectivePrice === null ? null : effectivePrice * roleQuantity;
-  if (lineTotal !== null && request.budgetMaxAed && lineTotal > request.budgetMaxAed) {
+  const lineCeiling = budgetCeilingAed(request.budgetMaxAed);
+  if (lineTotal !== null && lineCeiling !== null && lineTotal > lineCeiling) {
     return "over_budget";
   }
 

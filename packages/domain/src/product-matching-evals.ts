@@ -697,7 +697,7 @@ export const productMatchingEvalScenarios: ProductMatchingEvalScenario[] = [
     }
   },
   {
-    name: "quantity-aware budget gate rejects a role line total over budget",
+    name: "quantity-aware budget gate rejects a role line total past the tolerated ceiling",
     roomType: "living room",
     conceptText: "cognac leather accent armchair, pair",
     budgetMaxAed: 40000,
@@ -711,19 +711,24 @@ export const productMatchingEvalScenarios: ProductMatchingEvalScenario[] = [
       }
     ],
     candidates: [
-      // Unit price fits the budget (22,059 < 40,000) but the LINE total at qty 2
-      // is 44,118 — over budget. Must be gated out, not selected.
+      // Unit price fits the budget (26,000 < 40,000) but the LINE total at qty 2
+      // is 52,000, past the tolerated ceiling of 48,000. Must be gated out.
+      // The gate is quantity-aware, which is what this scenario proves; the
+      // threshold it compares against is the ceiling, because a budget is a
+      // target and the plus-20 percent band is deliberate (BUDGET_TOLERANCE).
       evalCandidate("10000000-0000-4000-8000-000000000091", "Stilo Cognac Leather Armchair", {
         categoryNormalized: "chairs",
-        priceAed: 22059,
+        priceAed: 26000,
         primaryImageUrl: "https://example.com/eval-stilo-armchair.jpg",
         colorTags: ["cognac", "brown"],
         materialTags: ["leather"]
       }),
-      // Line total 30,000 < 40,000 — the affordable pair, should win.
+      // Line total 44,000: over the stated 40,000 but inside the tolerance, so
+      // it is offered rather than withheld. The alternative to a piece a tenth
+      // over the number is usually a worse piece, and the number is a guide.
       evalCandidate("10000000-0000-4000-8000-000000000092", "Budget Cognac Leather Armchair", {
         categoryNormalized: "chairs",
-        priceAed: 15000,
+        priceAed: 22000,
         primaryImageUrl: "https://example.com/eval-budget-armchair.jpg",
         colorTags: ["cognac", "brown"],
         materialTags: ["leather"]
