@@ -59,7 +59,10 @@ import {
   paletteRegisterLanguage,
   productDesignVerificationPrompt,
   productDesignVerificationJsonSchema,
-  productDesignVerificationResponseSchema
+  productDesignVerificationResponseSchema,
+  anchorSetSelectionPrompt,
+  anchorSetSelectionJsonSchema,
+  anchorSetSelectionResponseSchema
 } from "@ritzy-studio/prompts";
 import { createHash, createSign } from "node:crypto";
 import { readFile } from "node:fs/promises";
@@ -1764,6 +1767,201 @@ export async function verifyProductsAgainstConcept(input: {
     textCostUsd: estimateTextCostUsd(stageModel, response.usage),
     // A verdict for a product that was never sent is not a verdict.
     verdicts: parsed.products.filter((product) => known.has(product.productId))
+  };
+}
+
+// The anchor set pass (S3b). One call, before the render, that turns the ranked
+// shortlists for a room's hero roles into one SET of real pieces the render is
+// then built around.
+//
+// It is not a second opinion on the ranking. A scorer judges each role's
+// candidates alone and cannot see that the sofa it ranked first and the rug it
+// ranked first belong to two different rooms; and it can only enforce what the
+// brief forbids, never deliver what the brief asks for. Both of those are
+// properties of the set, which is what this call is shown.
+//
+// Its deadline is its own rather than borrowed from the design check's: it runs
+// inside the concept generation request, ahead of an image generation that can
+// itself take two minutes, so it has to be the cheap part of that budget.
+export const ANCHOR_SET_TIMEOUT_MS = 60_000;
+
+// What one call may see. Five candidates for each of four roles is twenty
+// product photographs beside the room's own; more buys little, because the
+// shortlist is already de-duplicated by product family, and every extra image
+// is context the room photograph has to compete with. Enforced here rather
+// than trusted to the caller, because the caller is what grows.
+export const ANCHOR_SET_MAX_CANDIDATES_PER_ROLE = 5;
+export const ANCHOR_SET_MAX_ROLES = 6;
+
+export type AnchorSetCandidate = {
+  productId: string;
+  name: string;
+  retailerName: string | null;
+  color: string | null;
+  material: string | null;
+  priceAed: number | null;
+  imageDataUrl: string;
+};
+
+export type AnchorSetRoleInput = {
+  roleKey: string;
+  roleLabel: string;
+  category: string;
+  candidates: AnchorSetCandidate[];
+};
+
+export type AnchorSetBriefInput = {
+  roomType: string;
+  styleSlugs?: string[];
+  styleNotes?: string | null;
+  colorNotes?: string | null;
+  inspirationNotes?: string | null;
+  functionalRequirements?: string | null;
+  avoidNotes?: string | null;
+};
+
+export type AnchorSetPick = { roleKey: string; productId: string; reason: string };
+
+export type AnchorSetResult = {
+  promptKey: string;
+  promptVersion: string;
+  model: string;
+  textCostUsd: number | null;
+  picks: AnchorSetPick[];
+  setNote: string;
+};
+
+// Everything a shopper typed and everything a retailer published reaches this
+// call inside one JSON block the prompt declares to be data, under untrusted
+// keys. The instruction text beside each image names its role and product id
+// and nothing else, so no catalogue row can address the stylist. Exported so
+// the fencing is pinned where it is applied, not only as a unit.
+export function anchorSetSelectionContent(
+  roles: AnchorSetRoleInput[],
+  brief: AnchorSetBriefInput,
+  roomPhotoUrl: string
+): Array<Record<string, unknown>> {
+  const content: Array<Record<string, unknown>> = [
+    {
+      type: "input_text",
+      text: JSON.stringify({
+        untrustedBrief: {
+          roomType: fenceUntrustedText(brief.roomType, 60),
+          styles: (brief.styleSlugs ?? []).slice(0, 8).map((slug) => fenceUntrustedText(slug, 40)).filter(Boolean),
+          style: fenceUntrustedText(brief.styleNotes, 400),
+          colour: fenceUntrustedText(brief.colorNotes, 400),
+          inspiration: fenceUntrustedText(brief.inspirationNotes, 400),
+          function: fenceUntrustedText(brief.functionalRequirements, 400),
+          avoid: fenceUntrustedText(brief.avoidNotes, 400)
+        },
+        roles: roles.map((role) => ({
+          roleKey: role.roleKey,
+          category: fenceUntrustedText(role.category, 60),
+          untrustedRoleLabel: fenceUntrustedText(role.roleLabel),
+          candidates: role.candidates.map((candidate, index) => ({
+            index: index + 1,
+            productId: candidate.productId,
+            untrustedName: fenceUntrustedText(candidate.name),
+            untrustedRetailer: fenceUntrustedText(candidate.retailerName, 60),
+            untrustedColour: fenceUntrustedText(candidate.color, 40),
+            untrustedMaterial: fenceUntrustedText(candidate.material, 60),
+            priceAed: candidate.priceAed
+          }))
+        }))
+      })
+    },
+    { type: "input_text", text: "Image 1: the room as it is today. Every chosen piece has to live in it." },
+    { type: "input_image", image_url: roomPhotoUrl, detail: "high" }
+  ];
+  roles.forEach((role) => {
+    role.candidates.forEach((candidate) => {
+      content.push(
+        { type: "input_text", text: `Role ${role.roleKey}, product id ${candidate.productId}.` },
+        { type: "input_image", image_url: candidate.imageDataUrl, detail: "low" }
+      );
+    });
+  });
+  return content;
+}
+
+// A pass that names a product for a role it was never offered in, answers
+// twice for one role, or puts one product in two roles has not chosen a set.
+// Each of those picks is dropped rather than failing the whole call: the roles
+// that survive are still a coherent set, and a role left without one falls back
+// to its shortlist head exactly as every role does when the pass cannot run.
+export function validateAnchorSetPicks(
+  roles: ReadonlyArray<{ roleKey: string; candidates: ReadonlyArray<{ productId: string }> }>,
+  picks: ReadonlyArray<AnchorSetPick>
+): AnchorSetPick[] {
+  const offered = new Map(
+    roles.map((role) => [role.roleKey, new Set(role.candidates.map((candidate) => candidate.productId))])
+  );
+  const usedRoles = new Set<string>();
+  const usedProducts = new Set<string>();
+  const kept: AnchorSetPick[] = [];
+  for (const pick of picks) {
+    if (!offered.get(pick.roleKey)?.has(pick.productId)) {
+      continue;
+    }
+    if (usedRoles.has(pick.roleKey) || usedProducts.has(pick.productId)) {
+      continue;
+    }
+    usedRoles.add(pick.roleKey);
+    usedProducts.add(pick.productId);
+    kept.push(pick);
+  }
+  return kept;
+}
+
+export async function selectAnchorSet(input: {
+  roomPhotoUrl: string;
+  brief: AnchorSetBriefInput;
+  roles: AnchorSetRoleInput[];
+  timeoutMs?: number;
+}): Promise<AnchorSetResult> {
+  const roles = input.roles
+    .filter((role) => role.candidates.length > 0)
+    .slice(0, ANCHOR_SET_MAX_ROLES)
+    .map((role) => ({ ...role, candidates: role.candidates.slice(0, ANCHOR_SET_MAX_CANDIDATES_PER_ROLE) }));
+
+  if (roles.length === 0) {
+    throw new Error("The anchor set pass needs at least one role with candidates.");
+  }
+
+  const env = parseServerEnv(process.env);
+  const client = createTextClient(env);
+  const { model: stageModel, requestParams: stageRequestParams } = stageTextConfig("anchor_set", env.OPENAI_TEXT_MODEL);
+
+  const content = anchorSetSelectionContent(roles, input.brief, input.roomPhotoUrl);
+
+  const response = await client.responses.create(
+    {
+      max_output_tokens: 4000,
+      ...stageRequestParams,
+      input: [
+        { role: "system", content: anchorSetSelectionPrompt.system },
+        { role: "user", content: content as never }
+      ],
+      text: {
+        format: {
+          type: "json_schema",
+          name: "ritzy_anchor_set_selection",
+          schema: anchorSetSelectionJsonSchema(roles.length),
+          strict: true
+        }
+      }
+    },
+    { timeout: input.timeoutMs ?? ANCHOR_SET_TIMEOUT_MS }
+  );
+
+  const parsed = anchorSetSelectionResponseSchema.parse(JSON.parse(response.output_text));
+  return {
+    promptKey: anchorSetSelectionPrompt.key,
+    promptVersion: anchorSetSelectionPrompt.version,
+    model: stageModel,
+    textCostUsd: estimateTextCostUsd(stageModel, response.usage),
+    picks: validateAnchorSetPicks(roles, parsed.picks),
+    setNote: parsed.setNote
   };
 }
 
