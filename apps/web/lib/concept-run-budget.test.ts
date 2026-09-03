@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
 import {
+  ANCHOR_PREP_MAX_MS,
   ANCHOR_SET_FLOOR_MS,
   ANCHOR_SET_MAX_MS,
   anchorPrepTimeoutMs,
@@ -41,22 +42,22 @@ assert.ok(
 );
 
 // At the top of the run both guards give their ceiling.
-assert.equal(anchorPrepTimeoutMs({ startedAt: 0, now: 0 }), 30_000);
+assert.equal(anchorPrepTimeoutMs({ startedAt: 0, now: 0 }), ANCHOR_PREP_MAX_MS);
 assert.equal(anchorSetTimeoutMs({ startedAt: 0, now: 0 }), ANCHOR_SET_MAX_MS);
 
 // Prep is refused before it starts once the render's reserve is at stake, so
 // the catalogue is not even read on a run that cannot afford to use it.
-assert.equal(anchorPrepTimeoutMs({ startedAt: 0, now: 30_000 }), null);
+assert.equal(anchorPrepTimeoutMs({ startedAt: 0, now: 25_000 }), null);
 assert.equal(anchorPrepTimeoutMs({ startedAt: 0, now: 280_000 }), null);
 
 // The pass keeps its floor while the render's reserve is intact, and is
 // refused the moment it is not: a call started under the floor cannot return,
 // so it would spend tokens and record nothing.
-assert.equal(anchorSetTimeoutMs({ startedAt: 0, now: 65_000 }), ANCHOR_SET_FLOOR_MS);
-assert.equal(anchorSetTimeoutMs({ startedAt: 0, now: 65_001 }), null);
+assert.equal(anchorSetTimeoutMs({ startedAt: 0, now: 40_000 }), ANCHOR_SET_FLOOR_MS);
+assert.equal(anchorSetTimeoutMs({ startedAt: 0, now: 40_001 }), null);
 
 // Whatever a guard allows, the render's reserve survives it.
-for (const now of [0, 10_000, 30_000, 65_000]) {
+for (const now of [0, 10_000, 20_000, 40_000]) {
   const guard = anchorSetTimeoutMs({ startedAt: 0, now });
   if (guard !== null) {
     assert.ok(
@@ -72,7 +73,7 @@ for (const now of [0, 10_000, 30_000, 65_000]) {
 // call, both longer than the route.
 assert.equal(conceptRenderTimeoutMs({ startedAt: 0, now: 0 }), CONCEPT_RENDER_RESERVE_MS);
 assert.equal(
-  conceptRenderTimeoutMs({ startedAt: 0, now: 90_000 }),
+  conceptRenderTimeoutMs({ startedAt: 0, now: ANCHOR_PREP_MAX_MS + ANCHOR_SET_MAX_MS }),
   CONCEPT_RENDER_RESERVE_MS,
   "a run that spent its whole anchor allowance still leaves the render its full reserve"
 );

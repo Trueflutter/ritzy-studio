@@ -14,16 +14,21 @@ export const CONCEPT_RUN_BUDGET_MS = 285_000;
 export const CONCEPT_PERSIST_RESERVE_MS = 25_000;
 
 // What the render itself must always keep: the direction call and the image
-// generation. Measured on the anchored prototype at roughly 90 s end to end on
-// the primary provider; the reserve is nearly double that, because a render
-// that cannot finish is the whole product failing, while an anchor pass that
-// cannot finish costs only the pass.
-export const CONCEPT_RENDER_RESERVE_MS = 170_000;
+// generation. Ten live runs put the whole render at 40 to 60 s on the primary
+// provider, and the reserve is more than triple that because it also has to
+// hold the fallback's own window: the fallback needs well over a minute, and a
+// share too small for it to return is not a slow attempt but a guaranteed
+// abort. A render that cannot finish is the whole product failing, while an
+// anchor pass that cannot finish costs only the pass.
+export const CONCEPT_RENDER_RESERVE_MS = 195_000;
 
 // Reading the catalogue, building the shortlists and fetching the candidate
 // photographs. No paid call, but it is the pass's own pre-work and has to be
 // inside the budget rather than added to it.
-export const ANCHOR_PREP_MAX_MS = 30_000;
+// Measured across ten live runs: the catalogue read and twenty photograph
+// fetches land well inside this. The ceiling is what a degraded dependency is
+// allowed to take, not what the work needs.
+export const ANCHOR_PREP_MAX_MS = 20_000;
 // Below this the catalogue read cannot land, so issuing it only spends the
 // budget the render needs and then abandons the connection.
 export const ANCHOR_PREP_FLOOR_MS = 5_000;
@@ -32,7 +37,7 @@ export const ANCHOR_PREP_FLOOR_MS = 5_000;
 // point below which starting it would only burn tokens on a call that cannot
 // return. Under the floor the room falls back to the ranked shortlist, which
 // is the same path a room takes when the pass is unavailable entirely.
-export const ANCHOR_SET_MAX_MS = 60_000;
+export const ANCHOR_SET_MAX_MS = 45_000;
 export const ANCHOR_SET_FLOOR_MS = 25_000;
 
 // The provider deadline sits under the service guard so the SDK aborts first

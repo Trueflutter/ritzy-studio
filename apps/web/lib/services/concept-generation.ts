@@ -530,7 +530,7 @@ export async function generateInitialConceptForRoom(
     // Now that there is a concept for them to belong to: what this render was
     // actually built from, so sourcing fills the remaining roles instead of
     // re-deciding these, and the next room can avoid repeating them.
-    await persistConceptAnchors(supabase, {
+    await persistConceptAnchors(serviceSupabase, {
       roomId,
       conceptId: concept.id,
       anchors: anchorOutcome?.anchors ?? [],

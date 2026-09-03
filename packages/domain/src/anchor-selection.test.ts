@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 
+import { enhancedProductRolesForRoom } from "./product-matching";
 import type { ProductMatchCandidate, RankedProductMatch, RoomProductRole } from "./product-matching";
+import { canonicalRoomTypes } from "./index";
 import {
   DEFAULT_ANCHOR_LIMIT,
   anchorContradictsBrief,
@@ -253,6 +255,38 @@ const ranked = (overrides: Partial<RankedProductMatch> & { id: string }): Ranked
     const offset = rotationOffset(seed, 6);
     assert.ok(Number.isInteger(offset) && offset >= 0 && offset < 6);
   }
+}
+
+// --- Every room type the app can create is anchored on pieces that room can
+// actually use. This is Ayo's first warning at its most dangerous: an anchor is
+// not one bad row on a list, the render is BUILT around it, and the contracts
+// do not catch a sofa in an office (room scope only constrains decor-ish
+// categories, and an office-scoped role deliberately relaxes the desk and
+// task-chair exclusions). Asserted per room type rather than on one fixture.
+{
+  const forbidden: Record<string, string[]> = {
+    "Home Office": ["sofas", "beds", "dining_tables", "coffee_tables"],
+    Bedroom: ["sofas", "dining_tables", "desks", "coffee_tables"],
+    "Dining Room": ["beds", "sofas", "desks"],
+    "Living Room": ["beds", "desks", "dining_tables"],
+    "Living & Dining": ["beds", "desks"]
+  };
+  for (const roomType of canonicalRoomTypes) {
+    const anchors = anchorRolesFromBlueprint(enhancedProductRolesForRoom(roomType)).map((role) => role.category);
+    assert.ok(anchors.length > 0, `${roomType} anchors something`);
+    for (const category of forbidden[roomType] ?? []) {
+      assert.ok(
+        !anchors.includes(category),
+        `${roomType} must not be anchored on ${category}; got ${anchors.join(", ")}`
+      );
+    }
+  }
+  // And the room that exposed it gets what an office is actually built around.
+  assert.deepEqual(
+    anchorRolesFromBlueprint(enhancedProductRolesForRoom("Home Office")).map((role) => role.category),
+    ["desks", "rugs", "storage"],
+    "a study is built around its desk"
+  );
 }
 
 console.log("anchor selection tests passed");

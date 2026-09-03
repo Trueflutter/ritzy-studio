@@ -394,7 +394,11 @@ async function main() {
   }
 
   // --- Persistence names the conflict target, so a retried generation updates
-  // the concept's anchors instead of failing on the unique index.
+  // the concept's anchors instead of failing on the unique index. It writes
+  // through the SERVICE client: these rows decide which products skip the
+  // visual pass and the spec contracts, and are judged at the anchor bar, so a
+  // client-authored one would put "this piece is in your design" on a list for
+  // a piece no render was built around.
   {
     const { client, calls } = fakeSupabase(() => ({ data: null }));
     await persistConceptAnchors(client, {

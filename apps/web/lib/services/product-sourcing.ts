@@ -460,8 +460,14 @@ export async function groundProductsForRoom(
       // this piece was not searched for, it was pinned before the render
       // existed, and the design check downstream decides whether the render
       // kept it. So it is admitted on its category alone.
+      // The label is the CATEGORY, not the spec's wording. Passing the spec
+      // label back in would re-derive a seat range and silhouette exclusions
+      // from the very sentence that just refused the piece ("curved modular
+      // sectional sofa" refusing a 2.5-seater-with-chaise), so the fallback
+      // would reject it a second time for the first reason. "Admitted on its
+      // category alone" has to mean the category alone.
       const categoryRole = sourcingRolesFromBlueprint(
-        [{ category: pool.role.category, label: pool.role.label, quantity: pool.role.quantity, required: true }],
+        [{ category: pool.role.category, label: pool.role.category, quantity: pool.role.quantity, required: true }],
         room.room_type
       )[0];
       const underItsCategory = rankedFor(categoryRole);

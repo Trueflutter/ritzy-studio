@@ -1153,6 +1153,240 @@ async function main() {
     assert.equal(insertedRows.filter((row) => row.is_anchor === true).length, 1);
   }
 
+  // --- the two bars, wired. An anchor is held to the gate's bar (0.6) and a
+  // searched product to the app's higher one (0.75), so a verdict of 0.65 keeps
+  // the anchor and opens the other. Measured: the higher bar left one harness
+  // room claiming NONE of the four anchors the gate then found in its render.
+  {
+    let insertedRows: Array<Record<string, unknown>> = [];
+    const { client } = userClient((call) => {
+      if (call.table === "concept_anchors" && call.op === "select") {
+        return { data: [{ role_key: "sofas", role_category: "sofas", role_label: "Sofa", product_id: SOFA_ID, source: "aesthetic_pass", reason: "grounds the room" }] };
+      }
+      if (call.table === "shopping_list_items" && call.op === "insert") {
+        insertedRows = (call.payload as unknown as Array<Record<string, unknown>>) ?? [];
+      }
+      return { data: null };
+    });
+    const { client: service } = serviceClient();
+    await groundProductsForRoom(
+      { supabase: client, serviceSupabase: service },
+      GROUND_INPUT,
+      {
+        readSpec: async () => CONFIRMED_SPEC,
+        extractPalette: noPalette,
+        fetchCandidateImages: imagesForAll,
+        sourceProducts: async ({ roleCandidatePools }) => {
+          const armchair = (roleCandidatePools ?? []).find((pool) => pool.category === "armchairs");
+          return {
+            promptKey: "k",
+            promptVersion: "t",
+            model: "stub",
+            textCostUsd: 0.01,
+            selectedProducts: [
+              {
+                productId: CHAIR_ID,
+                category: "armchairs",
+                roleLabel: armchair?.roleLabel ?? "role-2",
+                quantity: 1,
+                matchStatus: "strong_match" as const,
+                visualMatchReason: "Cognac leather.",
+                mismatchNote: null
+              }
+            ],
+            roleResults: [
+              {
+                category: "armchairs",
+                roleLabel: armchair?.roleLabel ?? "role-2",
+                status: "strong_match" as const,
+                productId: CHAIR_ID,
+                similarity: 0.8,
+                reason: "Cognac leather."
+              }
+            ]
+          };
+        },
+        // Between the two bars.
+        verifyProducts: verifyAll(0.65)
+      }
+    );
+
+    const anchorRow = insertedRows.find((row) => row.product_id === SOFA_ID && row.status === "selected");
+    assert.ok(anchorRow, "the render was built from this piece and the judge agrees it is there");
+    assert.equal(anchorRow?.is_anchor, true);
+    assert.equal(
+      insertedRows.filter((row) => row.product_id === CHAIR_ID && row.status === "selected").length,
+      0,
+      "nothing but the judge connects the searched piece, so at the same score it stays the shopper's choice"
+    );
+  }
+
+  // --- the spec role's own contract rejects the anchor. Measured on the Al
+  // Furjan hall: the spec read a 2.5-seater-with-chaise as a "curved modular
+  // sectional" and its seat contract then refused the piece the render was
+  // drawn from. The piece is admitted on its CATEGORY, which means the spec's
+  // wording must not come back in through the fallback role's label.
+  {
+    const narrowSpec = {
+      ...CONFIRMED_SPEC,
+      spec: {
+        ...CONFIRMED_SPEC.spec,
+        objects: [
+          {
+            role: "sofa",
+            label: "curved modular sectional sofa",
+            quantity: 1,
+            sizeDescriptor: "around 320 cm",
+            // The anchor is a three-seater; this asks for six.
+            capacity: "seats 6",
+            paletteMaterials: ["ivory boucle"]
+          },
+          ...CONFIRMED_SPEC.spec.objects.slice(1)
+        ]
+      }
+    } as typeof CONFIRMED_SPEC;
+
+    // A sofa the narrowed contract DOES admit, so the role has a pool and the
+    // anchor's exclusion is the contract's, not an empty catalogue's.
+    const sixSeater = productRow({
+      id: "00000000-0000-4000-8000-0000000000e6",
+      name: "Grande 6 Seater Sectional Sofa",
+      category_normalized: "sofas",
+      price_aed: 8000,
+      description: "A curved modular sectional in ivory boucle, seats six."
+    });
+
+    let insertedRows: Array<Record<string, unknown>> = [];
+    const { client } = userClient((call) => {
+      if (call.table === "concept_anchors" && call.op === "select") {
+        return { data: [{ role_key: "sofas", role_category: "sofas", role_label: "Sofa", product_id: SOFA_ID, source: "aesthetic_pass", reason: "grounds the room" }] };
+      }
+      if (call.table === "shopping_list_items" && call.op === "insert") {
+        insertedRows = (call.payload as unknown as Array<Record<string, unknown>>) ?? [];
+      }
+      return { data: null };
+    });
+    const { client: service, calls: serviceCalls } = fakeSupabase(
+      (call) => {
+        if (call.table === "products") return { data: [...CATALOGUE, sixSeater] };
+        if (call.table === "ai_jobs" && call.op === "insert") return { data: { id: "job-1" } };
+        return { data: null };
+      },
+      (storageCall) => (storageCall.op === "download" ? { data: new Blob([Buffer.from([1, 2, 3])]) } : { data: null })
+    );
+    const result = await groundProductsForRoom(
+      { supabase: client, serviceSupabase: service },
+      GROUND_INPUT,
+      {
+        readSpec: async () => narrowSpec,
+        extractPalette: noPalette,
+        fetchCandidateImages: imagesForAll,
+        sourceProducts: async () => { throw new Error("no pass in this test"); },
+        verifyProducts: verifyAll(0.9)
+      }
+    );
+
+    assert.equal(result.status, "sourced");
+    const selected = insertedRows.find((row) => row.category === "sofas" && row.status === "selected");
+    assert.equal(selected?.product_id, SOFA_ID, "the piece the render was drawn from is still the room's sofa");
+    assert.equal(selected?.is_anchor, true);
+    const job = terminalJobUpdate(serviceCalls);
+    const anchors = (job?.payload?.output_summary as Record<string, unknown> | undefined)?.anchors as
+      | Record<string, number>
+      | undefined;
+    assert.equal(anchors?.unclaimed, 0, "and it is not written off as unclaimable");
+  }
+
+  // --- an anchored role the room cannot afford. Budget opening runs
+  // most-expensive-first and an anchor is by construction among the heaviest
+  // pieces, so it is often the first selection demoted. That is the right
+  // outcome — the room's total is a promise too — and the row must stop
+  // claiming to be in the design the moment it stops being chosen.
+  {
+    let insertedRows: Array<Record<string, unknown>> = [];
+    // Not userClient(): it answers `projects` before consulting the override,
+    // so the budget would stay null and the case would not be the case.
+    const { client } = fakeSupabase(
+      (call) => {
+        // The anchor (5670) and the pass's sofa (3000) come to 8670 together.
+        if (call.table === "projects") return { data: { id: "proj-1", budget_max_aed: 6000 } };
+        if (call.table === "rooms" && call.op === "select") return { data: { id: "room-1", room_type: "Living Room" } };
+        if (call.table === "concepts" && call.op === "select") return { data: CONCEPT };
+        if (call.table === "shopping_lists" && (call.op === "insert" || call.op === "upsert")) return { data: { id: "list-1" } };
+        if (call.table === "concept_anchors" && call.op === "select") {
+          return {
+            data: [{ role_key: "armchairs", role_category: "armchairs", role_label: "Lounge chair", product_id: CHAIR_ID, source: "aesthetic_pass", reason: "the room turns on it" }]
+          };
+        }
+        if (call.table === "shopping_list_items" && call.op === "insert") {
+          insertedRows = (call.payload as unknown as Array<Record<string, unknown>>) ?? [];
+        }
+        return { data: null };
+      },
+      (storageCall) => (storageCall.op === "download" ? { data: new Blob([Buffer.from([1, 2, 3])]) } : { data: null })
+    );
+    const { client: service } = serviceClient();
+    const result = await groundProductsForRoom(
+      { supabase: client, serviceSupabase: service },
+      GROUND_INPUT,
+      {
+        readSpec: async () => CONFIRMED_SPEC,
+        extractPalette: noPalette,
+        fetchCandidateImages: imagesForAll,
+        sourceProducts: async ({ roleCandidatePools }) => {
+          const sofa = (roleCandidatePools ?? []).find((pool) => pool.category === "sofas");
+          return {
+            promptKey: "k",
+            promptVersion: "t",
+            model: "stub",
+            textCostUsd: 0.01,
+            selectedProducts: [
+              {
+                productId: SOFA_ID,
+                category: "sofas",
+                roleLabel: sofa?.roleLabel ?? "role-1",
+                quantity: 1,
+                matchStatus: "strong_match" as const,
+                visualMatchReason: "Curved ivory boucle.",
+                mismatchNote: null
+              }
+            ],
+            roleResults: [
+              {
+                category: "sofas",
+                roleLabel: sofa?.roleLabel ?? "role-1",
+                status: "strong_match" as const,
+                productId: SOFA_ID,
+                similarity: 0.85,
+                reason: "Curved ivory boucle."
+              }
+            ]
+          };
+        },
+        verifyProducts: verifyAll(0.9)
+      }
+    );
+
+    assert.equal(result.status, "sourced");
+    const chairRows = insertedRows.filter((row) => row.product_id === CHAIR_ID);
+    assert.ok(chairRows.length > 0, "the piece is still offered");
+    assert.equal(
+      chairRows.filter((row) => row.status === "selected").length,
+      0,
+      "a piece the room cannot afford is not chosen for the shopper"
+    );
+    assert.equal(
+      insertedRows.filter((row) => row.is_anchor === true).length,
+      0,
+      "and an unchosen row does not claim to be in the design"
+    );
+    // The cheaper matched piece keeps its place: opening runs dearest-first.
+    assert.equal(
+      insertedRows.filter((row) => row.product_id === SOFA_ID && row.status === "selected").length,
+      1
+    );
+  }
+
   // --- the terminal job write is retried once and its failure is logged,
   // never swallowed into a job left "running"
   {

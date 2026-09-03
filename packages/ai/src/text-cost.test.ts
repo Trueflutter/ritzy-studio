@@ -70,18 +70,34 @@ console.log("text-cost tests passed");
   // The primary's share, and the two together inside the caller's deadline.
   const { evolinkPollWindowMs, IMAGE_FALLBACK_MIN_MS } = await import("./index");
   assert.equal(evolinkPollWindowMs(undefined), undefined, "no deadline, the provider's own ceiling stands");
-  assert.equal(evolinkPollWindowMs(170_000), 112_200);
+  const { IMAGE_FALLBACK_RESERVE_MS } = await import("./index");
+  // The primary keeps everything except what the fallback would need, rather
+  // than a fixed fraction: two thirds of a 195 s budget left the fallback 66 s
+  // against a provider needing well over twice that, so a stalled primary
+  // produced no concept at all where the un-deadlined code produced a slow one.
+  assert.equal(evolinkPollWindowMs(195_000), 195_000 - IMAGE_FALLBACK_RESERVE_MS);
   assert.ok(evolinkPollWindowMs(1_000)! >= 6_000, "never below a poll round trip");
-  for (const deadline of [30_000, 60_000, 120_000, 170_000]) {
+
+  // A budget too small to split leaves the primary whole and skips the fallback.
+  assert.equal(evolinkPollWindowMs(90_000), 90_000, "no room for two providers, so one gets it all");
+
+  for (const deadline of [60_000, 90_000, 120_000, 195_000]) {
     const primary = evolinkPollWindowMs(deadline)!;
     const fallback = imageCallTimeoutMs(deadline, 0, primary);
     assert.ok(
-      primary + Math.max(fallback >= IMAGE_FALLBACK_MIN_MS ? fallback : 0, 0) <= deadline,
+      primary + (fallback >= IMAGE_FALLBACK_MIN_MS ? fallback : 0) <= deadline,
       `both providers fit ${deadline}ms (primary ${primary}, fallback ${fallback})`
     );
+    if (fallback >= IMAGE_FALLBACK_MIN_MS) {
+      assert.ok(fallback >= IMAGE_FALLBACK_MIN_MS, "a started fallback has a window it can land in");
+    }
   }
-  // At the render's own floor there is not enough left for a second provider,
-  // so the fallback is skipped rather than started and abandoned.
+  // At the render's full reserve the fallback gets a real window.
+  assert.ok(imageCallTimeoutMs(195_000, 0, evolinkPollWindowMs(195_000)!) >= IMAGE_FALLBACK_MIN_MS);
+  // Near the render's floor there is not room for both, so the primary keeps
+  // the deadline and the fallback is skipped rather than started and abandoned.
+  assert.equal(evolinkPollWindowMs(30_000), 30_000);
+  assert.ok(evolinkPollWindowMs(195_000)! >= Math.floor(195_000 / 2), "and never cut below half the budget to buy one");
   assert.ok(imageCallTimeoutMs(30_000, 0, evolinkPollWindowMs(30_000)!) < IMAGE_FALLBACK_MIN_MS);
 
   console.log("image deadline tests passed");

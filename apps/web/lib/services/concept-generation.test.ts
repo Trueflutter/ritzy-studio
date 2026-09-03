@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 import type { generateInitialConcept } from "@ritzy-studio/ai";
 import type { RankedProductMatch } from "@ritzy-studio/domain";
 
+import { CONCEPT_RENDER_RESERVE_MS } from "@/lib/concept-run-budget";
+
 import { generateInitialConceptForRoom, hasRequiredRoomSize, selectConcept } from "./concept-generation";
 import { fakeSupabase, type RecordedCall, type Responder } from "./supabase-test-double";
 
@@ -217,8 +219,10 @@ async function main() {
           ? { data: new Blob([Buffer.from([1, 2, 3])]) }
           : { data: { signedUrl: "https://example-project.supabase.co/signed/p1.jpg" } }
     );
+    const serviceWrites: RecordedCall[] = [];
     const { client: service } = fakeSupabase(
       (call) => {
+        if (call.op === "insert" || call.op === "upsert") serviceWrites.push(call);
         if (call.table === "ai_jobs" && call.op === "insert") return { data: { id: "job-9" } };
         if (call.table === "ai_jobs" && call.op === "update") jobUpdate = call;
         return { data: null };
@@ -270,14 +274,21 @@ async function main() {
     assert.equal(renderInput?.anchorProducts?.[0].roleLabel, "Sofa");
     assert.equal(renderInput?.anchorProducts?.[0].bytes.toString(), "sofa-bytes");
     assert.ok(!("referenceUrl" in (renderInput?.anchorProducts?.[0] ?? {})));
-    // And the render was held to what the run could still spare for it.
-    assert.ok(
-      typeof renderInput?.imageDeadlineMs === "number" && renderInput.imageDeadlineMs > 0,
-      "the render is given a deadline, not left to the provider's own ceiling"
-    );
+    // And the render was held to what the run could still spare for it. Pinned
+    // to the value, not merely to its presence: this deadline is the only thing
+    // keeping the render inside the route's limit, and `imageDeadlineMs: 1`
+    // satisfies "a number greater than zero" just as well.
+    assert.equal(renderInput?.imageDeadlineMs, CONCEPT_RENDER_RESERVE_MS);
 
-    // The anchors were recorded against the CONCEPT that was just inserted.
-    const anchorInsert = inserts.find((call) => call.table === "concept_anchors");
+    // The anchors were recorded against the CONCEPT that was just inserted, and
+    // through the SERVICE client: they decide which products skip the visual
+    // pass and the spec contracts, so a client must not be able to author them.
+    assert.equal(
+      inserts.filter((call) => call.table === "concept_anchors").length,
+      0,
+      "not through the user's client"
+    );
+    const anchorInsert = serviceWrites.find((call) => call.table === "concept_anchors");
     assert.ok(anchorInsert, "the render's anchors are written once the concept exists");
     const rows = anchorInsert.payload as unknown as Array<Record<string, unknown>>;
     assert.equal(rows[0].concept_id, "concept-9");

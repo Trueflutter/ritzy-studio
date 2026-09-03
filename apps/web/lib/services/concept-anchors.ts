@@ -6,7 +6,7 @@ import {
   anchorSetFromShortlists,
   anchorShortlist,
   buildSpecSourcingPlan,
-  productRolesForRoom,
+  enhancedProductRolesForRoom,
   roleOptionKey,
   sourcingRolesFromBlueprint,
   type ProductMatchCandidate,
@@ -164,7 +164,14 @@ export async function chooseConceptAnchors(
   const now = deps.now ?? Date.now;
   const runBudgetMs = deps.runBudgetMs ?? CONCEPT_RUN_BUDGET_MS;
 
-  const anchorRoles = anchorRolesFromBlueprint(productRolesForRoom(input.roomType));
+  // The ROOM-AWARE blueprint, the one sourcing itself uses. The legacy
+  // productRolesForRoom has no office entry and falls through to a generic
+  // default, so a Home Office was anchored on a sofa, an armchair, a rug and a
+  // coffee table, and the render was then BUILT around them. That is Ayo's
+  // first warning with the render constructed on top of it, and the contracts
+  // do not catch it: room scope only constrains decor-ish categories, and an
+  // office-scoped role deliberately relaxes the desk and task-chair exclusions.
+  const anchorRoles = anchorRolesFromBlueprint(enhancedProductRolesForRoom(input.roomType));
   if (anchorRoles.length === 0) {
     return emptyOutcome("no_anchor_roles");
   }
@@ -462,7 +469,13 @@ export async function chooseConceptAnchors(
 // The rows that record what a render was actually built from. Written after the
 // concept row exists, because until then there is nothing for them to belong to.
 export async function persistConceptAnchors(
-  supabase: UserSupabaseClient,
+  // The SERVICE client, deliberately. These rows are the record of what the
+  // server built a render from, and the table's policy now lets an owner read
+  // them and nobody but the server write them: a client-authored anchor would
+  // skip the visual pass, skip the spec role's size and capacity contracts, be
+  // judged at the anchor bar, and put "this piece is in your design" on a list
+  // for a piece no render was built around.
+  serviceSupabase: ServiceSupabaseClient,
   {
     roomId,
     conceptId,
@@ -491,7 +504,8 @@ export async function persistConceptAnchors(
   // remove; but the render is already paid for and the shopper can see it, so
   // failing the whole generation over a provenance write would be the worse
   // trade. The loss has to be visible either way.
-  const write = async () => (await supabase.from("concept_anchors").upsert(rows, { onConflict: "room_id,concept_id,role_key" })).error;
+  const write = async () =>
+    (await serviceSupabase.from("concept_anchors").upsert(rows, { onConflict: "room_id,concept_id,role_key" })).error;
   const error = (await write()) ? await write() : null;
   if (error) {
     console.error(

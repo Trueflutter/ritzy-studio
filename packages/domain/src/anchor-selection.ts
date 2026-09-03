@@ -32,8 +32,10 @@ const ANCHOR_WEIGHT: Record<string, number> = {
   armchairs: 70,
   rugs: 60,
   coffee_tables: 50,
+  // A study is built around its desk the way a bedroom is around its bed, so
+  // the desk outranks the rug that would otherwise lead an office's anchors.
+  desks: 80,
   storage: 40,
-  desks: 40,
   side_tables: 35,
   chairs: 30
 };

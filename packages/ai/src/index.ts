@@ -756,9 +756,13 @@ function assembleFinalGroundedRenderPrompt({
 const DEFAULT_TEXT_TIMEOUT_MS = 90_000;
 const IMAGE_CALL_TIMEOUT_MS = 240_000;
 
-// A fallback started with seconds left cannot return a picture; it can only
-// spend the budget the caller still needs to write what it has.
-export const IMAGE_FALLBACK_MIN_MS = 20_000;
+// What the OpenAI image fallback is given when there is room for it, and the
+// window below which it is not started at all. The module's own note sizes
+// gpt-image-2 at roughly 140 s, so a short window is not a slow attempt, it is
+// a guaranteed abort that spends the budget the caller still needs to record
+// what it has. 45 s is the point below which no observed render has landed.
+export const IMAGE_FALLBACK_RESERVE_MS = 60_000;
+export const IMAGE_FALLBACK_MIN_MS = 45_000;
 
 // What is left of a caller's deadline, capped so no caller can extend the
 // provider ceiling past what this module is willing to wait. NOT floored:
@@ -772,14 +776,27 @@ export function imageCallTimeoutMs(deadlineMs: number | undefined, startedAt: nu
   return Math.max(0, Math.min(IMAGE_CALL_TIMEOUT_MS, deadlineMs - Math.max(0, now - startedAt)));
 }
 
-// The primary's share of a caller's deadline. Two thirds, so a provider that
-// stalls still leaves the fallback a usable remainder, and never below two poll
-// intervals or the loop cannot complete a single round trip.
+// The primary's share of a caller's deadline: everything except what the
+// fallback would need. A fixed fraction was wrong in both directions — two
+// thirds of a 170 s budget left the fallback 58 s against a provider that needs
+// well over twice that, so a stalled primary produced no concept at all where
+// the un-deadlined code produced a slow one.
+//
+// The primary keeps the deadline itself when there is not enough for both. That
+// is the honest trade inside one request: a provider outage then costs the run,
+// which the shopper retries, rather than costing the request, which the platform
+// kills without a catch path and locks them out of retrying for fifteen minutes.
 export function evolinkPollWindowMs(deadlineMs: number | undefined): number | undefined {
   if (deadlineMs === undefined) {
     return undefined;
   }
-  return Math.max(EVOLINK_POLL_INTERVAL_MS * 2, Math.floor(deadlineMs * 0.66));
+  const share = deadlineMs - IMAGE_FALLBACK_RESERVE_MS;
+  // Split only when BOTH halves are usable: the fallback needs a window it can
+  // land in, and the primary should not be cut below half the budget to buy one.
+  // Otherwise the primary keeps the whole deadline, because a fallback that
+  // cannot return is not worth taking time from the provider that can.
+  const usableSplit = IMAGE_FALLBACK_RESERVE_MS >= IMAGE_FALLBACK_MIN_MS && share >= Math.floor(deadlineMs / 2);
+  return Math.max(EVOLINK_POLL_INTERVAL_MS * 2, usableSplit ? share : deadlineMs);
 }
 // The spec-driven sourcing pass reads the concept image plus up to a few
 // dozen product images across every role of the design in one call; it is

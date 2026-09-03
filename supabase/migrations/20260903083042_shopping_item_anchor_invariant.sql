@@ -4,13 +4,15 @@
 -- this product". The swap path updates product_id in place, so without this the
 -- claim survived the one mutation that falsifies it: a shopper swapping an
 -- anchored sofa for a cheaper one left a row asserting the new sofa was in a
--- render it never appeared in. The design gate reads exactly this flag to
--- decide which products it judges, so a stale true also moved the gate.
+-- render it never appeared in.
 --
--- The service now clears it on swap. This is the invariant behind that, because
--- shopping_list_items carries a "for all" policy to the list's owner and is
--- therefore writable directly from the browser: a claim the app makes by
--- construction should not be one a client can set by hand.
+-- What this flag is NOT: an authority. shopping_list_items carries a "for all"
+-- policy to the list's owner and the app writes these rows through the user's
+-- client, so the flag is display metadata a client can also set, and this
+-- trigger removes the one way it could go stale without anyone touching it. The
+-- authoritative record of what a render was built from is concept_anchors,
+-- which is server-written and owner-readable, and that is what the design gate
+-- reads.
 --
 -- Additive: one trigger, no data rewritten.
 

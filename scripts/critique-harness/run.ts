@@ -605,13 +605,20 @@ async function runRoom(model: string, room: ManifestRoom) {
     // not-applicable; anything else means a run anchored nothing, which is the
     // regression this check exists to catch.
     const noAnchors = anchorIds.size === 0;
+    // A list that claims nothing is not a passing list, however well the render
+    // itself did. That condition predates this slice and moving the denominator
+    // to concept_anchors dropped it: a run whose design check chose NOTHING
+    // would have gone gate-green on the strength of anchors the shopper is
+    // never shown. checklist.md states it as "the list carries at least one
+    // anchor AND every anchor passes".
+    const claimsNothing = claimedAnchorIds.size === 0;
     verdicts.push({
       check: "product_consistency",
       verdict: noAnchors
         ? hero.parent_concept_id
           ? "not_applicable"
           : "fail"
-        : failed.length === 0 && productImagesUnavailable.length === 0
+        : failed.length === 0 && productImagesUnavailable.length === 0 && !claimsNothing
           ? "pass"
           : "fail",
       notes: noAnchors
@@ -624,6 +631,9 @@ async function runRoom(model: string, room: ManifestRoom) {
               ? `anchors the render did not keep: ${failed.map((product) => `${product.productName} (${product.roleLabel}, similarity ${product.similarity.toFixed(2)}, compared with ${product.matchedObject})`).join("; ")}`
               : null,
             productImagesUnavailable.length > 0 ? `anchors NOT judged (image unavailable), so the check cannot pass: ${productImagesUnavailable.join("; ")}` : null,
+            claimsNothing
+              ? "the list claims NO anchor, so the shopper is shown none of the pieces the render was built from; a list that chooses nothing is not a passing list"
+              : null,
             // Reported, never gating: these are matched to the design rather
             // than built into it, and the app already states that difference.
             matchedVerdicts.length > 0
