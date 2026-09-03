@@ -532,14 +532,49 @@ async function runRoom(model: string, room: ManifestRoom) {
     const items = (await supabaseGet(
       `shopping_list_items?shopping_list_id=eq.${lists[0].id}&status=eq.selected&select=product_id,role_label,category,is_anchor,products(name,primary_image_url)`
     )) as Array<{ product_id: string; role_label: string; category: string; is_anchor: boolean | null; products: { name: string; primary_image_url: string | null } | null }>;
-    const anchorIds = new Set(items.filter((item) => item.is_anchor).map((item) => item.product_id));
+
+    // The anchors come from concept_anchors, NOT from the list's is_anchor
+    // flag. The flag is only set for anchors the APP's own design check already
+    // passed, so using it as the denominator would make this check report
+    // 15/15 on the run that actually kept 15 of 20, and the gate could then
+    // fail only on judge variance or on total anchor loss. concept_anchors is
+    // the record of what the render was BUILT from, which is the claim under
+    // test.
+    const anchorRows = (await supabaseGet(
+      `concept_anchors?concept_id=eq.${hero.id}&select=product_id,role_label,role_category,products(name,primary_image_url)`
+    )) as Array<{ product_id: string; role_label: string; role_category: string; products: { name: string; primary_image_url: string | null } | null }>;
+    const anchorIds = new Set(anchorRows.map((row) => row.product_id));
+    // What the app went on to CLAIM, reported beside it: the gap between the
+    // two is the anchors the app's own check declined to stand behind, which
+    // is the honest handling of a render that dropped a reference.
+    const claimedAnchorIds = new Set(items.filter((item) => item.is_anchor).map((item) => item.product_id));
+    // Every anchor is judged whether or not it reached the list, plus every
+    // other selected product (reported, not gating).
+    const judgeable = [
+      ...anchorRows.map((row) => ({
+        productId: row.product_id,
+        productName: row.products?.name ?? row.product_id,
+        roleLabel: row.role_label,
+        category: row.role_category,
+        imageUrl: row.products?.primary_image_url ?? null
+      })),
+      ...items
+        .filter((item) => !anchorIds.has(item.product_id))
+        .map((item) => ({
+          productId: item.product_id,
+          productName: item.products?.name ?? item.product_id,
+          roleLabel: item.role_label,
+          category: item.category,
+          imageUrl: item.products?.primary_image_url ?? null
+        }))
+    ];
     const withImages = await Promise.all(
-      items.map(async (item) => ({
-        productId: item.product_id,
-        productName: item.products?.name ?? item.product_id,
-        roleLabel: item.role_label,
-        category: item.category,
-        imageDataUrl: item.products?.primary_image_url ? await remoteImageDataUrl(item.products.primary_image_url) : null
+      judgeable.map(async (product) => ({
+        productId: product.productId,
+        productName: product.productName,
+        roleLabel: product.roleLabel,
+        category: product.category,
+        imageDataUrl: product.imageUrl ? await remoteImageDataUrl(product.imageUrl) : null
       }))
     );
     // Only an ANCHOR without a picture can stop this check passing: the render
@@ -565,14 +600,26 @@ async function runRoom(model: string, room: ManifestRoom) {
     // precisely the regression this check exists to catch, so it is a failure
     // and not a not-applicable. Not-applicable is reserved for a concept with
     // no shopping list at all.
+    // A hero the pipeline never anchored has no claim to test. A REVISION is
+    // the legitimate case (the revision path does not re-anchor), so it is
+    // not-applicable; anything else means a run anchored nothing, which is the
+    // regression this check exists to catch.
     const noAnchors = anchorIds.size === 0;
     verdicts.push({
       check: "product_consistency",
-      verdict: noAnchors ? "fail" : failed.length === 0 && productImagesUnavailable.length === 0 ? "pass" : "fail",
+      verdict: noAnchors
+        ? hero.parent_concept_id
+          ? "not_applicable"
+          : "fail"
+        : failed.length === 0 && productImagesUnavailable.length === 0
+          ? "pass"
+          : "fail",
       notes: noAnchors
-        ? "The list carries no anchor, so the render was not built from any catalogue piece. The claim this check tests does not exist for this room."
+        ? hero.parent_concept_id
+          ? "The hero concept is a revision, and revisions are not re-anchored, so there is nothing for this check to test."
+          : "The render was not built from any catalogue piece. The claim this check tests does not exist for this room."
         : [
-            `anchors: ${anchorVerdicts.length - failed.length}/${anchorVerdicts.length} kept by the render`,
+            `anchors: ${anchorVerdicts.length - failed.length}/${anchorIds.size} kept by the render, of which the app claimed ${claimedAnchorIds.size} on the list`,
             failed.length > 0
               ? `anchors the render did not keep: ${failed.map((product) => `${product.productName} (${product.roleLabel}, similarity ${product.similarity.toFixed(2)}, compared with ${product.matchedObject})`).join("; ")}`
               : null,

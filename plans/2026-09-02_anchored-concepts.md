@@ -120,12 +120,18 @@ HIGH: a migration, and a change to the paid generation path.
   now cannot name a role or a product that was not offered, and validation
   returns what it dropped so a call whose every answer was discarded fails its
   job row instead of looking like a stylist that liked nothing.
-- **Beyond step 7: anchored roles skip the design check, not just the pass.**
-  The plan said sourcing fills the remaining roles. It is also true that the
-  design check must not judge an anchor: asking whether the render contains
-  what the render was built from spends budget to re-derive a fact and buys the
-  judge's variance on top of it. Anchored roles are merged back after the check
-  rather than through it.
+- **Beyond step 7: anchored roles skip the sourcing PASS but go through the
+  design check.** The plan said sourcing fills the remaining roles. There is
+  nothing for the pass to propose for an anchored role, so it never sees one.
+  The check is a different matter, and I had it the other way round first, on
+  the reasoning that asking whether a render contains what it was built from
+  re-derives a fact. Measuring it said otherwise: across the five harness rooms
+  the render kept 15 of 20 anchors at the gate's bar, dropping a bedside lamp
+  to 0.30 and restyling a red armchair to 0.38. "Generated from" is not
+  "contains". So anchored roles rejoin BEFORE the check and are judged like
+  every other selection; one the judge confirms is selected and the row says
+  the piece is in your design, and one it does not confirm opens its role with
+  the anchor still first among the options.
 - **Beyond step 7: `shopping_list_items.is_anchor`.** "This piece is in the
   render" and "this piece was matched to it" are different promises to a
   shopper, and only the first can be made by construction.

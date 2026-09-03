@@ -191,7 +191,18 @@ export async function chooseConceptAnchors(
   }
 
   const avoidColorTags = splitAvoidColorCues(input.designBrief.avoid_notes ?? "").avoidColorTags;
-  const recentAnchorProductIds = await recentAnchorProductIdsForUser(supabase, { excludeRoomId: input.roomId });
+  // Bounded like the catalogue read either side of it, and for the same
+  // reason: a degraded pooler hangs rather than failing, and an unbounded hang
+  // here runs the concept request past the route limit. Losing the recency
+  // window costs some variety; losing the request costs the concept.
+  const recentAnchorProductIds = await withTimeout(
+    recentAnchorProductIdsForUser(supabase, { excludeRoomId: input.roomId }),
+    Math.max(1_000, prepDeadline - now()),
+    "The recency read ran past the time the run could spare for anchors."
+  ).catch((error) => {
+    console.error("Anchor recency read timed out; this room may repeat a recent piece.", error);
+    return [] as string[];
+  });
 
   const plan = buildSpecSourcingPlan({
     roles: sourcingRolesFromBlueprint(anchorRoles, input.roomType),
