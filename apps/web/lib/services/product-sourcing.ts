@@ -763,6 +763,7 @@ export async function groundProductsForRoom(
         };
         outcomes = applyProductVerification({
           outcomes,
+          anchorProductIds: claimedProductIds,
           verdicts: new Map(
             checked.verdicts.map((verdict) => [verdict.productId, { categoryMatches: verdict.categoryMatches, similarity: verdict.similarity }])
           )
@@ -771,7 +772,7 @@ export async function groundProductsForRoom(
         const message = error instanceof Error ? error.message : "The design check failed.";
         console.error("Product design check failed; nothing is chosen for the shopper.", error);
         verification = { ...verification, used: false, error: message };
-        outcomes = applyProductVerification({ outcomes, verdicts: new Map() });
+        outcomes = applyProductVerification({ outcomes, anchorProductIds: claimedProductIds, verdicts: new Map() });
       }
     }
 

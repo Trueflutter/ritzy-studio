@@ -1382,19 +1382,33 @@ export function resolveSpecRoleOutcomes({
 export function applyProductVerification({
   outcomes,
   verdicts,
-  threshold = PRODUCT_SELECTION_THRESHOLD
+  threshold = PRODUCT_SELECTION_THRESHOLD,
+  // Products whose claim the render itself supports: this concept was
+  // GENERATED from their photographs. They are held to the gate's bar rather
+  // than the app's higher one, because the two bars answer different questions.
+  // The app's bar is higher to absorb judge variance for a piece that nothing
+  // but the judge connects to the render, where the safe error is to claim
+  // less. An anchor already has the render's own construction behind it, so
+  // the judge is confirming rather than establishing, and the safe error runs
+  // the other way: measured on the five harness rooms, the higher bar left one
+  // room claiming NONE of the four anchors the gate then found in its render.
+  anchorProductIds = new Set<string>(),
+  anchorThreshold = PRODUCT_CONSISTENCY_THRESHOLD
 }: {
   outcomes: SpecRoleOutcome[];
   // By product id. A product absent from the map was not judged.
   verdicts: Map<string, { categoryMatches: boolean; similarity: number }>;
   threshold?: number;
+  anchorProductIds?: ReadonlySet<string>;
+  anchorThreshold?: number;
 }): SpecRoleOutcome[] {
   return outcomes.map((outcome) => {
     if (outcome.kind !== "selected") {
       return outcome;
     }
     const verdict = verdicts.get(outcome.selectedProductId);
-    if (verdict && verdict.categoryMatches && verdict.similarity >= threshold) {
+    const bar = anchorProductIds.has(outcome.selectedProductId) ? anchorThreshold : threshold;
+    if (verdict && verdict.categoryMatches && verdict.similarity >= bar) {
       return { ...outcome, verifiedSimilarity: verdict.similarity };
     }
     return {

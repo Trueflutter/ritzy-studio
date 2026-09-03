@@ -2,11 +2,15 @@ import assert from "node:assert/strict";
 
 import type { ProductMatchCandidate } from "./product-matching";
 import {
+  applyProductVerification,
   checkCandidateAgainstSpecRole,
   missingRolesSchema,
   parseMissingRoles,
   placementStrippedText,
+  sourcingRolesFromBlueprint,
   sourcingRolesFromDesignSpec,
+  type SpecRoleOutcome,
+  type SpecRolePool,
   type SpecSourcingRole
 } from "./spec-sourcing";
 
@@ -588,6 +592,50 @@ assert.equal(entries.length, 2);
 assert.deepEqual(parseMissingRoles("garbage"), []);
 assert.deepEqual(parseMissingRoles([{ nope: true }]), []);
 assert.equal(parseMissingRoles(entries).length, 2);
+
+// --- An anchor is held to the gate's bar, a searched product to the app's
+// higher one. The two bars answer different questions: nothing but the judge
+// connects a searched product to the render, so the safe error is to claim
+// less; an anchor has the render's own construction behind it, and measured on
+// the five harness rooms the higher bar left one room claiming NONE of the four
+// anchors the gate then found in its render.
+{
+  const role = sourcingRolesFromBlueprint(
+    [{ category: "sofas", label: "sofa", quantity: 1, required: true }],
+    "Living Room"
+  )[0];
+  const pool = { role, candidates: [], rejectionReasons: {} } as unknown as SpecRolePool;
+  const selected = (productId: string): SpecRoleOutcome => ({
+    kind: "selected",
+    role,
+    pool,
+    selectedProductId: productId,
+    matchStatus: "strong_match",
+    reason: "r",
+    mismatchNote: null,
+    similarity: null
+  });
+  // 0.65 sits between the two bars.
+  const verdicts = new Map([
+    ["anchor", { categoryMatches: true, similarity: 0.65 }],
+    ["searched", { categoryMatches: true, similarity: 0.65 }]
+  ]);
+  const applied = applyProductVerification({
+    outcomes: [selected("anchor"), selected("searched")],
+    verdicts,
+    anchorProductIds: new Set(["anchor"])
+  });
+  assert.equal(applied[0].kind, "selected", "the render was built from this piece; the judge agrees it is there");
+  assert.equal(applied[1].kind, "open", "nothing but the judge connects this one, so it stays the shopper's choice");
+
+  // The anchor's own floor still holds: below the gate's bar it opens too.
+  const belowBoth = applyProductVerification({
+    outcomes: [selected("anchor")],
+    verdicts: new Map([["anchor", { categoryMatches: true, similarity: 0.4 }]]),
+    anchorProductIds: new Set(["anchor"])
+  });
+  assert.equal(belowBoth[0].kind, "open", "an anchor the render did not keep is not claimed either");
+}
 
 console.log("spec-sourcing tests passed");
 
