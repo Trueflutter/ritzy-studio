@@ -150,3 +150,109 @@ HIGH: a migration, and a change to the paid generation path.
 - **Cost accounting.** The anchor pass has its own `ai_jobs` row, so the concept
   job does NOT also fold its cost in. A run's spend is the sum of its rows, and
   counting the pass twice would overstate every ceiling.
+
+## Verification
+
+Live, on the hosted project, against all five harness rooms. The pipeline was
+run end to end twice on the shipped code (concepts, then spec, sourcing and the
+critique harness on the production judge), so the numbers below are the second
+run except where both are given.
+
+### Criterion 8 (anchors): NOT MET — 2 of 5 rooms pass
+
+| room | anchors kept by the render | verdict |
+| --- | --- | --- |
+| alfurjan-living-dining | 2 of 4 | FAIL |
+| cincinnati-bedroom | 3 of 3 | PASS |
+| stress-dense-apartment | 4 of 4 | PASS |
+| stress-columns | 3 of 4 | FAIL |
+| stress-glass-glare | 3 of 4, then 2 of 4 | FAIL |
+
+Across the five rooms the render kept 15 of 19 anchors on the first run and 14
+of 19 on the second. The two rooms that pass, pass both times; the three that
+fail, fail both times.
+
+What it drops, and it is not random:
+
+- **Rugs.** Elenor green multicolour 0.10, Olaf brown/grey 0.20, Bryn 0.40. A
+  rug is mostly hidden under the furniture standing on it, so the model has the
+  least of it to preserve and the judge the least of it to compare.
+- **Unusual silhouettes.** The Samone 2.5-seater-with-chaise came back as a
+  cream sectional (0.40); the Cooper 10-seater dining table came back as a small
+  oval one (0.20). Both are pieces whose shape is the thing that makes them
+  distinctive, and both are the two the spec's own contract had also refused.
+- **One saturated accent.** The red Cigar Lounge Armchair, 0.38, restyled into
+  the room's terracotta scheme rather than kept.
+
+Everything else scored 0.80 to 0.98. Anchoring is a large improvement on what
+S3 measured for searched products (2 of 7 proposals passing an independent
+judge), and it is not a guarantee.
+
+### The measurement's own variance, restated
+
+The same room judged twice does not score the same twice, which is what S3
+found and what makes a unanimity criterion hard to hold. Al Furjan's app-side
+check passed two of its anchors on one run and none on the next, from the same
+render and the same products. The gate's own numbers moved less (3 of 4 to 2 of
+4 on glass-glare) but they moved.
+
+### Criterion 8a (anchor fit): MET
+
+Across ten room-runs, no anchor was a piece the room could not use. Bedrooms
+anchor on beds, rugs and bedside tables; the living-dining hall on a sofa, a
+dining table, an armchair and a rug; living rooms on seating, rug and coffee
+table. The contracts run before any ranking, and the brief is a hard filter on
+top: the cool, no-beige room is anchored on an off-white sofa, a black-framed
+tweed chair, a greige rug and a glass-and-steel table.
+
+Two anchor classes were removed on evidence rather than taste: **lighting**,
+after a bedside lamp anchored a bedroom and the render kept it at 0.30, and
+implicitly any piece whose photograph cannot be fetched, which cannot anchor at
+all because the same fetch feeds the aesthetic pass and the render.
+
+### Criterion 8b (anchor diversity): MET
+
+Five rooms on one brief, generated in sequence so the recency window sees the
+earlier rooms exactly as production does: **5 of 5 distinct anchor sets, and no
+product anchoring more than two of the five.** Held on both runs.
+
+### Criterion 9 (spend and budget): MET
+
+Per room: concept generation USD 0.083 to 0.088 (of which the anchor pass is
+about USD 0.012), sourcing USD 0.014 to 0.045. Whole pipeline about USD 0.10 to
+0.13 per room, against the USD 1.00 ceiling.
+
+Every paid call has an `ai_jobs` row opened before it and closed with its cost;
+the anchor pass refuses to run at all when its row cannot be opened. The concept
+job does not re-count the anchor pass, so summing a room's rows is its spend.
+
+Inside the route budget, comfortably: concept generation 80 to 97 s and sourcing
+92 to 143 s, both against 300 s. Every render ran on the primary provider with
+no fallback, including rooms whose anchors come from the retailer whose image
+URLs forced the fallback in the prototype: anchors now reach the provider as
+bytes, so there is nothing for it to fetch.
+
+### Criterion 10 (a room with no anchor pass): MET by construction, not observed
+
+The pass ran successfully on all ten room-runs, so the fallback was not
+exercised live. It is pinned by test in four shapes: the pass failing, no budget
+left for it, no audit row for it, and choosing anchors throwing outright. Each
+leaves the room with a concept and records on the job which way it got there.
+
+### Unclaimed anchors
+
+3 of 19 anchors could not be attached to a spec role: the spec extracted from
+the render described the piece differently enough that no role in its category
+would take it. Those roles are sourced normally and the count is on the job, so
+a number that climbs is visible.
+
+### Still open, for Ayo
+
+Criterion 8 as written asks for every anchor to be kept. The measurement says
+about three in four, stably, with the failures concentrated in rugs and unusual
+silhouettes. The options are the same shape as S3's: restate the criterion as a
+floor the measurement can carry (no room below three of four, and no room at
+zero), stop anchoring the classes that do not survive as lighting already does,
+or accept the rate and keep the honest handling. Nothing here is presented to a
+shopper as being in their design unless the check confirmed it, so the failure
+mode is a shorter list, not a false one.
