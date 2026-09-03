@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   ANCHOR_SET_MAX_CANDIDATES_PER_ROLE,
   anchorSetSelectionContent,
+  anchorSetSelectionEnums,
   validateAnchorSetPicks,
   type AnchorSetCandidate,
   type AnchorSetRoleInput
@@ -107,15 +108,20 @@ const role = (roleKey: string, ids: string[]): AnchorSetRoleInput => ({
   assert.ok(!("minLength" in item.roleKey), "the enum is the constraint, not a length");
 }
 
-// --- A product two roles both admit appears once in the enum. A repeated
-// value makes the schema invalid, and the validator still catches the case
-// where one product is named for two roles.
+// --- A product two roles both admit appears once in the enum. A JSON Schema
+// enum with a repeated value is invalid, so the schema builder is called with
+// the overlapping fixture rather than with a list the test deduped itself.
 {
+  const { anchorSetSelectionJsonSchema } = await import("@ritzy-studio/prompts");
   const twice = [role("coffee_tables", ["t1", "t2"]), role("side_tables", ["t1"])];
   const payload = anchorSetSelectionContent(twice, { roomType: "living_room" }, "data:image/png;base64,ROOM");
   assert.equal(payload.filter((part) => part.type === "input_image").length, 4, "each role still shows its own copy");
-  const ids = Array.from(new Set(twice.flatMap((entry) => entry.candidates.map((candidate) => candidate.productId))));
-  assert.deepEqual(ids, ["t1", "t2"]);
+
+  const { productIdEnum } = anchorSetSelectionEnums(twice);
+  assert.deepEqual(productIdEnum, ["t1", "t2"], "the shared product is named once");
+  const schema = anchorSetSelectionJsonSchema(twice.map((entry) => entry.roleKey), productIdEnum);
+  const ids = schema.properties.picks.items.properties.productId.enum;
+  assert.equal(new Set(ids).size, ids.length, "no repeated value reaches the schema");
 }
 
 // --- The payload: the room first, the candidates after, nothing addressable.

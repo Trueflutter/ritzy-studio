@@ -1,3 +1,5 @@
+import { providerDeadlineMs, remainingMs, stageGuardMs } from "@/lib/run-budget";
+
 // Concept generation is one function invocation, and slice S3b adds a paid
 // call to the front of it. The anchor set pass now runs BEFORE the render, so
 // the two share a deadline that a hard platform kill would end with no catch
@@ -22,6 +24,9 @@ export const CONCEPT_RENDER_RESERVE_MS = 170_000;
 // photographs. No paid call, but it is the pass's own pre-work and has to be
 // inside the budget rather than added to it.
 export const ANCHOR_PREP_MAX_MS = 30_000;
+// Below this the catalogue read cannot land, so issuing it only spends the
+// budget the render needs and then abandons the connection.
+export const ANCHOR_PREP_FLOOR_MS = 5_000;
 
 // The aesthetic set pass's ceiling when the whole budget is available, and the
 // point below which starting it would only burn tokens on a call that cannot
@@ -33,10 +38,6 @@ export const ANCHOR_SET_FLOOR_MS = 25_000;
 // The provider deadline sits under the service guard so the SDK aborts first
 // and the guard is only a backstop.
 export const ANCHOR_PROVIDER_HEADROOM_MS = 8_000;
-
-function remainingMs(startedAt: number, now: number, runBudgetMs: number) {
-  return runBudgetMs - Math.max(0, now - startedAt);
-}
 
 // The guard for the anchor pre-work. It reserves the render and persistence,
 // so a slow catalogue read or a stalled retailer CDN cannot be the reason a
@@ -50,10 +51,12 @@ export function anchorPrepTimeoutMs({
   now: number;
   runBudgetMs?: number;
 }): number | null {
-  const available =
-    remainingMs(startedAt, now, runBudgetMs) - CONCEPT_PERSIST_RESERVE_MS - CONCEPT_RENDER_RESERVE_MS - ANCHOR_SET_MAX_MS;
-  const timeout = Math.min(ANCHOR_PREP_MAX_MS, available);
-  return timeout > 0 ? timeout : null;
+  return stageGuardMs({
+    availableMs:
+      remainingMs(startedAt, now, runBudgetMs) - CONCEPT_PERSIST_RESERVE_MS - CONCEPT_RENDER_RESERVE_MS - ANCHOR_SET_MAX_MS,
+    maxMs: ANCHOR_PREP_MAX_MS,
+    floorMs: ANCHOR_PREP_FLOOR_MS
+  });
 }
 
 // The guard for the pass itself, taken after the pre-work, so the fetches are
@@ -67,14 +70,15 @@ export function anchorSetTimeoutMs({
   now: number;
   runBudgetMs?: number;
 }): number | null {
-  const available =
-    remainingMs(startedAt, now, runBudgetMs) - CONCEPT_PERSIST_RESERVE_MS - CONCEPT_RENDER_RESERVE_MS;
-  const timeout = Math.min(ANCHOR_SET_MAX_MS, available);
-  return timeout >= ANCHOR_SET_FLOOR_MS ? timeout : null;
+  return stageGuardMs({
+    availableMs: remainingMs(startedAt, now, runBudgetMs) - CONCEPT_PERSIST_RESERVE_MS - CONCEPT_RENDER_RESERVE_MS,
+    maxMs: ANCHOR_SET_MAX_MS,
+    floorMs: ANCHOR_SET_FLOOR_MS
+  });
 }
 
 export function anchorProviderTimeoutMs(guardMs: number): number {
-  return Math.max(1_000, guardMs - ANCHOR_PROVIDER_HEADROOM_MS);
+  return providerDeadlineMs(guardMs, ANCHOR_PROVIDER_HEADROOM_MS);
 }
 
 // What the render may still take, once the anchor work has spent its share.

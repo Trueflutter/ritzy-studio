@@ -48,17 +48,14 @@ import {
 
 import { readRoomDesignSpec } from "./design-spec";
 import {
-  PRODUCT_MATCHING_CATALOG_LIMIT,
-  loadCatalogueCandidates,
   catalogUnavailableMessage,
+  loadCatalogueCandidates,
   matchToSourcingCandidate,
-  productToMatchCandidate,
   recentlyUsedProductIdsForUser,
   roleScopedShoppingAlternates,
   shoppingListRoleSpecFromRow,
   sourcingCandidateImageDataUrls,
-  splitAvoidColorCues,
-  type ProductRow
+  splitAvoidColorCues
 } from "./sourcing-support";
 import { withTimeout } from "@/lib/with-timeout";
 
@@ -137,10 +134,6 @@ export type SpecSource = "confirmed_spec" | "blueprint_fallback";
 // Six contract-clean candidates per role keep a sixteen-role design's pass
 // inside its deadline while still giving the picker alternates.
 const CANDIDATES_PER_ROLE = 6;
-
-// How deep one role's pool is rebuilt to find an anchor that sits below the cut
-// the sourcing pass is sized for. Pure ranking, no paid call, one role.
-const ANCHOR_DEEP_POOL_LIMIT = 200;
 
 // An anchored row is a different promise from a matched one, and the shopper
 // should read that promise rather than infer it from a badge that does not
@@ -420,58 +413,59 @@ export async function groundProductsForRoom(
     pools: plan.pools,
     anchors: anchorRows,
     deepen: (pool, productId) => {
-      const deepPool = (role: SpecSourcingRole) =>
+      // The anchor is one known product, so rank exactly that one rather than
+      // rebuilding the catalogue to look for it. Ranking a single candidate
+      // gives it a real attributeScore under the role's own contract; the
+      // score only orders alternates, and the anchor is placed first anyway.
+      const candidate = candidates.find((entry) => entry.id === productId);
+      if (!candidate) {
+        return null;
+      }
+      const rankedFor = (role: SpecSourcingRole) =>
         buildSpecSourcingPlan({
           roles: [role],
           unsourceable: [],
-          candidates,
+          candidates: [candidate],
           roomType: room.room_type,
           conceptText,
           budgetMaxAed: project.budget_max_aed,
           roomMeasurements,
-          recentlyUsedProductIds,
           avoidColorTags,
-          candidatesPerRole: ANCHOR_DEEP_POOL_LIMIT
-        }).pools[0];
+          candidatesPerRole: 1
+        }).pools[0]?.candidates.find((entry) => entry.id === productId) ?? null;
 
-      // The deep pools below exist to FIND the anchor, never to become the
-      // role's option list. Returning one whole would put up to 200 rows on the
-      // list for that role against six for every other, and every one of them
-      // would render in the shopper's picker.
-      const withAnchorFirst = (candidate: RoleScopedRankedProductMatch) => ({
+      // The role keeps its own identity and the rest of its options: a lookup
+      // is for FINDING the anchor, never for becoming the list. Ordering is
+      // claimAnchoredPools's job, so it holds for every claim rather than only
+      // for the ones that came through here.
+      const admit = (entry: RoleScopedRankedProductMatch) => ({
         ...pool,
-        // First, so that when the judge fails this anchor and the role opens,
-        // the piece the render was actually built from is the option the
-        // shopper sees at the top rather than one buried at its ranked position.
-        candidates: [candidate, ...pool.candidates.filter((existing) => existing.id !== candidate.id)]
+        candidates: [entry, ...pool.candidates.filter((existing) => existing.id !== entry.id)]
       });
 
-      // The ordinary miss: the anchor passes this role's contract but sits
-      // below a cut sized for what the sourcing pass can look at.
-      const deeper = deepPool(pool.role)?.candidates.find((candidate) => candidate.id === productId);
-      if (deeper) {
-        return withAnchorFirst(deeper);
+      // The ordinary miss: the anchor passes this role's contract but sat below
+      // the cut sized for what the sourcing pass can look at.
+      const underThisRole = rankedFor(pool.role);
+      if (underThisRole) {
+        return admit(underThisRole);
       }
 
-      // Then the harder one: the spec role's contract REJECTS the piece the
-      // render was drawn from. Measured on the Al Furjan hall, where the spec
-      // read the Samone 2.5-seater-with-chaise as a "curved modular sectional"
-      // and its own seat contract then refused it, and read the Cooper
-      // 10-seater as a "round dining table". That is the spec's WORDS
-      // disagreeing with the render's PIXELS, and the pixels are what the
-      // shopper approved. Contracts exist to stop a SEARCH returning the wrong
-      // kind of object; this piece was not searched for, it was pinned, and
-      // the design check downstream is what decides whether the render kept
-      // it. So the piece is admitted on its category alone, and the role keeps
-      // its own identity and the rest of its options.
+      // The harder one: the spec role's contract REJECTS the piece the render
+      // was drawn from. Measured on the Al Furjan hall, where the spec read the
+      // Samone 2.5-seater-with-chaise as a "curved modular sectional" and its
+      // own seat contract then refused it, and read the Cooper 10-seater as a
+      // "round dining table". That is the spec's WORDS disagreeing with the
+      // render's PIXELS, and the pixels are what the shopper approved.
+      // Contracts exist to stop a SEARCH returning the wrong kind of object;
+      // this piece was not searched for, it was pinned before the render
+      // existed, and the design check downstream decides whether the render
+      // kept it. So it is admitted on its category alone.
       const categoryRole = sourcingRolesFromBlueprint(
         [{ category: pool.role.category, label: pool.role.label, quantity: pool.role.quantity, required: true }],
         room.room_type
       )[0];
-      // Ranked against its own category rather than this spec role, which only
-      // affects the prose on its alternates, never the verdict.
-      const admitted = deepPool(categoryRole)?.candidates.find((candidate) => candidate.id === productId);
-      return admitted ? withAnchorFirst(admitted) : null;
+      const underItsCategory = rankedFor(categoryRole);
+      return underItsCategory ? admit(underItsCategory) : null;
     }
   });
   const anchorOrder = new Map(plan.pools.map((pool, index) => [pool.role.echoKey, index]));
@@ -650,26 +644,20 @@ export async function groundProductsForRoom(
     // judge that governs every other selection has confirmed it. An anchor it
     // does not confirm opens its role, with the anchor still first among the
     // options, exactly as an unverified proposal does.
-    const anchoredOutcomes: SpecRoleOutcome[] = anchored.flatMap((claim) => {
-      const product = claim.pool.candidates.find((candidate) => candidate.id === claim.productId);
-      return product
-        ? [
-            {
-              kind: "selected" as const,
-              role: claim.pool.role,
-              pool: claim.pool,
-              selectedProductId: claim.productId,
-              matchStatus: "strong_match" as const,
-              reason: [ANCHOR_SELECTION_REASON, claim.reason].filter(Boolean).join(" "),
-              mismatchNote: null,
-              similarity: null
-            }
-          ]
-        : [];
-    });
-    const anchorProductIds = new Set(
-      anchoredOutcomes.flatMap((outcome) => (outcome.kind === "selected" ? [outcome.selectedProductId] : []))
-    );
+    // One outcome per claim, unconditionally: claimAnchoredPools only returns a
+    // claim after proving the pool holds the product, so a conditional here
+    // would advertise a silent-drop path that cannot happen and would leave no
+    // trace if it ever did.
+    const anchoredOutcomes: SpecRoleOutcome[] = anchored.map((claim) => ({
+      kind: "selected" as const,
+      role: claim.pool.role,
+      pool: claim.pool,
+      selectedProductId: claim.productId,
+      matchStatus: "strong_match" as const,
+      reason: [ANCHOR_SELECTION_REASON, claim.reason].filter(Boolean).join(" "),
+      mismatchNote: null,
+      similarity: null
+    }));
     const resolvedPools = [...anchored.map((claim) => claim.pool), ...openPools];
     // Spec order, so the room still reads sofa, rug, table rather than
     // everything-anchored-last.
@@ -795,7 +783,7 @@ export async function groundProductsForRoom(
       outcomes
         .filter((outcome): outcome is Extract<SpecRoleOutcome, { kind: "selected" }> => outcome.kind === "selected")
         .map((outcome) => outcome.selectedProductId)
-        .filter((productId) => anchorProductIds.has(productId))
+        .filter((productId) => claimedProductIds.has(productId))
     );
 
     const resolved = roleOptionsFromOutcomes(outcomes);
@@ -1207,19 +1195,11 @@ async function loadRefillContext(
     .limit(1)
     .maybeSingle();
 
-  const { data: products } = await serviceSupabase
-    .from("products")
-    .select(
-      `
-      *,
-      retailer:retailers(name, status),
-      dimensions:product_dimensions(width_cm, depth_cm, height_cm, source_text)
-    `
-    )
-    .not("price_aed", "is", null)
-    .not("primary_image_url", "is", null)
-    .order("last_checked_at", { ascending: false, nullsFirst: false })
-    .limit(PRODUCT_MATCHING_CATALOG_LIMIT);
+  // The same reader sourcing and the anchor pass use. A refill that ranked from
+  // a different column set would re-rank an anchored role against data the
+  // render was not built from, and the piece could drop off or be
+  // contract-rejected on the refill alone.
+  const { candidates } = await loadCatalogueCandidates(serviceSupabase);
 
   const specRole = await specRoleForListRow(serviceSupabase, {
     roomId,
@@ -1230,7 +1210,7 @@ async function loadRefillContext(
     roleLabel: rowLabel
   });
 
-  return { room, project, concept, existingRows, measurements, products, specRole };
+  return { room, project, concept, existingRows, measurements, candidates, specRole };
 }
 
 function rankFreshOptions({
@@ -1238,7 +1218,7 @@ function rankFreshOptions({
   project,
   concept,
   measurements,
-  products,
+  catalogueCandidates,
   category,
   template,
   usedProductIds,
@@ -1249,20 +1229,17 @@ function rankFreshOptions({
   project: { budget_max_aed: number | null };
   concept: { title: string; description: string | null };
   measurements: { wall_length_cm: number | null; room_depth_cm: number | null } | null;
-  products: ProductRow[] | null;
+  catalogueCandidates: ProductMatchCandidate[];
   category: string;
   template: OptionRowTemplate;
   usedProductIds: Set<string>;
   limit: number;
   specRole: SpecSourcingRole | null;
 }): { role: RoomProductRoleSpec; matches: RankedProductMatch[] } {
-  const allCandidates = (products ?? [])
-    .map(productToMatchCandidate)
-    .filter((candidate): candidate is ProductMatchCandidate => Boolean(candidate));
   // Spec-constrained: only contract-clean candidates can refill a spec role.
   const candidates = specRole
-    ? allCandidates.filter((candidate) => checkCandidateAgainstSpecRole(candidate, specRole).ok)
-    : allCandidates;
+    ? catalogueCandidates.filter((candidate) => checkCandidateAgainstSpecRole(candidate, specRole).ok)
+    : catalogueCandidates;
 
   const conceptText = `${concept.title}\n${concept.description ?? ""}`;
   const role =
@@ -1330,7 +1307,7 @@ export async function refreshShoppingOptions(
     project: context.project,
     concept: context.concept,
     measurements: context.measurements,
-    products: context.products as ProductRow[] | null,
+    catalogueCandidates: context.candidates,
     category: input.category,
     template,
     usedProductIds,
@@ -1404,7 +1381,7 @@ export async function findMoreShoppingOptions(
     project: context.project,
     concept: context.concept,
     measurements: context.measurements,
-    products: context.products as ProductRow[] | null,
+    catalogueCandidates: context.candidates,
     category: input.category,
     template,
     usedProductIds,

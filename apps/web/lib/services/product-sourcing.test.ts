@@ -1016,6 +1016,141 @@ async function main() {
       0,
       "and nothing claims to be in a design it is not in"
     );
+    // The shopper is choosing for a role whose render they approved, so the
+    // piece in that picture leads the options rather than sitting at its
+    // ranked position.
+    assert.equal(
+      sofaRows.find((row) => row.option_rank === 0)?.product_id,
+      SOFA_ID,
+      "the piece the render was built from is still the first option"
+    );
+  }
+
+  // --- the anchor sits BELOW the cut the sourcing pass is sized for. The spec
+  // role admits it, it just did not rank in the top six, so the claim is made
+  // by looking the piece up rather than by widening the list: the role keeps
+  // its normal number of options and the anchor is first among them.
+  {
+    // Nine competitors in nine different product families, so the diversity
+    // ranking cannot promote the odd one out. Verified against the real plan
+    // builder: the anchor lands OUTSIDE the top six, which is what makes this
+    // test exercise the lookup rather than the ordinary match.
+    const deepSofas = ["Aria", "Bello", "Cielo", "Dorma", "Elba", "Faro", "Gaia", "Hera", "Iris"].map((family, index) =>
+      productRow({
+        id: `00000000-0000-4000-8000-0000000000${(20 + index).toString().padStart(2, "0")}`,
+        name: `${family} Curved Ivory Boucle Sofa`,
+        retailer: { name: `Retailer ${index % 4}`, status: "active" },
+        category_normalized: "sofas",
+        price_aed: 3000 + index,
+        description: "A curved three-seat sofa in ivory boucle.",
+        color: "ivory"
+      })
+    );
+    // Named so it ranks last: a straight grey leather three-seater against a
+    // spec asking for curved ivory boucle.
+    const LOW_ID = "00000000-0000-4000-8000-0000000000ff";
+    const lowRanked = productRow({
+      id: LOW_ID,
+      name: "Straight Slab Sofa",
+      category_normalized: "sofas",
+      price_aed: 9000,
+      description: "A straight-backed three-seat sofa in grey leather.",
+      color: "grey",
+      material: "leather"
+    });
+
+    let insertedRows: Array<Record<string, unknown>> = [];
+    const { client } = userClient((call) => {
+      if (call.table === "concept_anchors" && call.op === "select") {
+        return { data: [{ role_key: "sofas", role_category: "sofas", role_label: "Sofa", product_id: LOW_ID, source: "aesthetic_pass", reason: "the shopper approved it" }] };
+      }
+      if (call.table === "shopping_list_items" && call.op === "insert") {
+        insertedRows = (call.payload as unknown as Array<Record<string, unknown>>) ?? [];
+      }
+      return { data: null };
+    });
+    const { client: service } = fakeSupabase(
+      (call) => {
+        if (call.table === "products") return { data: [...CATALOGUE, ...deepSofas, lowRanked] };
+        if (call.table === "ai_jobs" && call.op === "insert") return { data: { id: "job-1" } };
+        return { data: null };
+      },
+      (storageCall) => (storageCall.op === "download" ? { data: new Blob([Buffer.from([1, 2, 3])]) } : { data: null })
+    );
+    const result = await groundProductsForRoom(
+      { supabase: client, serviceSupabase: service },
+      GROUND_INPUT,
+      {
+        readSpec: async () => CONFIRMED_SPEC,
+        extractPalette: noPalette,
+        fetchCandidateImages: imagesForAll,
+        sourceProducts: async () => { throw new Error("no pass in this test"); },
+        verifyProducts: verifyAll(0.9)
+      }
+    );
+
+    assert.equal(result.status, "sourced");
+    const sofaRows = insertedRows.filter((row) => row.category === "sofas");
+    const selected = sofaRows.find((row) => row.status === "selected");
+    assert.equal(selected?.product_id, LOW_ID, "a piece below the cut is still claimed as the anchor");
+    assert.equal(selected?.is_anchor, true);
+    assert.equal(sofaRows.find((row) => row.option_rank === 0)?.product_id, LOW_ID, "and is the first option in its role");
+    // The deep pool exists to FIND the piece, never to become the list: this
+    // role must not ship dozens of rows against six for every other.
+    assert.ok(sofaRows.length <= 8, `the role keeps a normal option count; got ${sofaRows.length}`);
+  }
+
+  // --- one product, one role. A hall with two spec roles in one category: the
+  // anchor claims one, and the piece is withheld from the pool the pass sees
+  // for the other, so the list cannot carry it twice, charge for it twice, or
+  // call two different rows the piece in the render.
+  {
+    const twoSofaSpec = {
+      ...CONFIRMED_SPEC,
+      spec: {
+        ...CONFIRMED_SPEC.spec,
+        objects: [
+          CONFIRMED_SPEC.spec.objects[0],
+          { role: "sofa", label: "second sofa facing the garden", quantity: 1, sizeDescriptor: null, capacity: "seats 3", paletteMaterials: ["ivory boucle"] }
+        ]
+      }
+    } as typeof CONFIRMED_SPEC;
+
+    let insertedRows: Array<Record<string, unknown>> = [];
+    let offeredToPass: string[] = [];
+    const { client } = userClient((call) => {
+      if (call.table === "concept_anchors" && call.op === "select") {
+        return { data: [{ role_key: "sofas", role_category: "sofas", role_label: "Sofa", product_id: SOFA_ID, source: "aesthetic_pass", reason: "grounds the room" }] };
+      }
+      if (call.table === "shopping_list_items" && call.op === "insert") {
+        insertedRows = (call.payload as unknown as Array<Record<string, unknown>>) ?? [];
+      }
+      return { data: null };
+    });
+    const { client: service } = serviceClient();
+    const result = await groundProductsForRoom(
+      { supabase: client, serviceSupabase: service },
+      GROUND_INPUT,
+      {
+        readSpec: async () => twoSofaSpec,
+        extractPalette: noPalette,
+        fetchCandidateImages: imagesForAll,
+        sourceProducts: async ({ roleCandidatePools }) => {
+          offeredToPass = (roleCandidatePools ?? []).flatMap((pool) => pool.candidateIds ?? []);
+          throw new Error("no pass in this test");
+        },
+        verifyProducts: verifyAll(0.9)
+      }
+    );
+
+    assert.equal(result.status, "sourced");
+    assert.ok(!offeredToPass.includes(SOFA_ID), "the claimed piece is never offered to the pass for a sibling role");
+    assert.equal(
+      insertedRows.filter((row) => row.product_id === SOFA_ID && row.status === "selected").length,
+      1,
+      "one product fills one role"
+    );
+    assert.equal(insertedRows.filter((row) => row.is_anchor === true).length, 1);
   }
 
   // --- the terminal job write is retried once and its failure is logged,

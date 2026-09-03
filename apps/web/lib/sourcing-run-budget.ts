@@ -1,3 +1,5 @@
+import { providerDeadlineMs, remainingMs, stageGuardMs } from "@/lib/run-budget";
+
 // The /product-matching request is one function invocation and it makes TWO
 // paid vision calls: the sourcing pass proposes a product per role, and the
 // design check judges those proposals against the render. Both have to fit,
@@ -36,10 +38,6 @@ export const PRODUCT_SOURCING_CHECK_FLOOR_MS = 45_000;
 // and the guard is only a backstop.
 export const PRODUCT_SOURCING_PROVIDER_HEADROOM_MS = 10_000;
 
-function remainingMs(startedAt: number, now: number, runBudgetMs: number) {
-  return runBudgetMs - Math.max(0, now - startedAt);
-}
-
 // The service guard for palette extraction. It reserves both later paid calls
 // as well as persistence: a slow palette call must never be the reason the
 // pass or the design check cannot run, because a cached palette only improves
@@ -53,13 +51,15 @@ export function palettePassTimeoutMs({
   now: number;
   runBudgetMs?: number;
 }): number | null {
-  const available =
-    remainingMs(startedAt, now, runBudgetMs) -
-    PRODUCT_SOURCING_PERSIST_RESERVE_MS -
-    PRODUCT_SOURCING_CHECK_MAX_MS -
-    PRODUCT_SOURCING_PASS_MAX_MS;
-  const timeout = Math.min(PRODUCT_SOURCING_PALETTE_MAX_MS, available);
-  return timeout >= PRODUCT_SOURCING_PALETTE_FLOOR_MS ? timeout : null;
+  return stageGuardMs({
+    availableMs:
+      remainingMs(startedAt, now, runBudgetMs) -
+      PRODUCT_SOURCING_PERSIST_RESERVE_MS -
+      PRODUCT_SOURCING_CHECK_MAX_MS -
+      PRODUCT_SOURCING_PASS_MAX_MS,
+    maxMs: PRODUCT_SOURCING_PALETTE_MAX_MS,
+    floorMs: PRODUCT_SOURCING_PALETTE_FLOOR_MS
+  });
 }
 
 // The service guard for the sourcing pass. It reserves the design check's
@@ -75,10 +75,12 @@ export function sourcingPassTimeoutMs({
   now: number;
   runBudgetMs?: number;
 }): number | null {
-  const available =
-    remainingMs(startedAt, now, runBudgetMs) - PRODUCT_SOURCING_PERSIST_RESERVE_MS - PRODUCT_SOURCING_CHECK_MAX_MS;
-  const timeout = Math.min(PRODUCT_SOURCING_PASS_MAX_MS, available);
-  return timeout >= PRODUCT_SOURCING_PASS_FLOOR_MS ? timeout : null;
+  return stageGuardMs({
+    availableMs:
+      remainingMs(startedAt, now, runBudgetMs) - PRODUCT_SOURCING_PERSIST_RESERVE_MS - PRODUCT_SOURCING_CHECK_MAX_MS,
+    maxMs: PRODUCT_SOURCING_PASS_MAX_MS,
+    floorMs: PRODUCT_SOURCING_PASS_FLOOR_MS
+  });
 }
 
 // The service guard for the design check, taken after the pass and after the
@@ -93,12 +95,14 @@ export function designCheckTimeoutMs({
   now: number;
   runBudgetMs?: number;
 }): number | null {
-  const available = remainingMs(startedAt, now, runBudgetMs) - PRODUCT_SOURCING_PERSIST_RESERVE_MS;
-  const timeout = Math.min(PRODUCT_SOURCING_CHECK_MAX_MS, available);
-  return timeout >= PRODUCT_SOURCING_CHECK_FLOOR_MS ? timeout : null;
+  return stageGuardMs({
+    availableMs: remainingMs(startedAt, now, runBudgetMs) - PRODUCT_SOURCING_PERSIST_RESERVE_MS,
+    maxMs: PRODUCT_SOURCING_CHECK_MAX_MS,
+    floorMs: PRODUCT_SOURCING_CHECK_FLOOR_MS
+  });
 }
 
 // The provider deadline for a call guarded at guardMs.
 export function providerTimeoutMs(guardMs: number): number {
-  return Math.max(1_000, guardMs - PRODUCT_SOURCING_PROVIDER_HEADROOM_MS);
+  return providerDeadlineMs(guardMs, PRODUCT_SOURCING_PROVIDER_HEADROOM_MS);
 }

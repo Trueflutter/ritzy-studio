@@ -356,33 +356,41 @@ export async function chooseConceptAnchors(
 
   let result: AnchorSetResult;
   try {
-    result = await selectSet({
-      roomPhotoUrl: input.roomPhotoDataUrl,
-      brief: {
-        roomType: input.roomType,
-        styleSlugs: input.styleSlugs,
-        styleNotes: input.designBrief.style_notes,
-        colorNotes: input.designBrief.color_notes,
-        inspirationNotes: input.designBrief.inspiration_notes,
-        functionalRequirements: input.designBrief.functional_requirements,
-        avoidNotes: input.designBrief.avoid_notes
-      },
-      roles: withImages.map((shortlist) => ({
-        roleKey: roleOptionKey(shortlist.role),
-        roleLabel: shortlist.role.label,
-        category: shortlist.role.category,
-        candidates: shortlist.candidates.map((candidate) => ({
-          productId: candidate.id,
-          name: candidate.name,
-          retailerName: candidate.retailerName ?? null,
-          color: candidate.color ?? null,
-          material: candidate.material ?? null,
-          priceAed: candidate.priceAed ?? null,
-          imageDataUrl: imagesByProductId.get(candidate.id)!.dataUrl
-        }))
-      })),
-      timeoutMs: anchorProviderTimeoutMs(guardMs)
-    });
+    // The provider's own deadline is the inner bound; this guard is the
+    // backstop, for the class of hang an SDK abort does not tear down. The
+    // sibling paid call in sourcing is wrapped the same way, and the headroom
+    // constant exists so the two cannot fire at the same moment.
+    result = await withTimeout(
+      selectSet({
+        roomPhotoUrl: input.roomPhotoDataUrl,
+        brief: {
+          roomType: input.roomType,
+          styleSlugs: input.styleSlugs,
+          styleNotes: input.designBrief.style_notes,
+          colorNotes: input.designBrief.color_notes,
+          inspirationNotes: input.designBrief.inspiration_notes,
+          functionalRequirements: input.designBrief.functional_requirements,
+          avoidNotes: input.designBrief.avoid_notes
+        },
+        roles: withImages.map((shortlist) => ({
+          roleKey: roleOptionKey(shortlist.role),
+          roleLabel: shortlist.role.label,
+          category: shortlist.role.category,
+          candidates: shortlist.candidates.map((candidate) => ({
+            productId: candidate.id,
+            name: candidate.name,
+            retailerName: candidate.retailerName ?? null,
+            color: candidate.color ?? null,
+            material: candidate.material ?? null,
+            priceAed: candidate.priceAed ?? null,
+            imageDataUrl: imagesByProductId.get(candidate.id)!.dataUrl
+          }))
+        })),
+        timeoutMs: anchorProviderTimeoutMs(guardMs)
+      }),
+      guardMs,
+      "The anchor set pass ran past the time the run could spare for it."
+    );
   } catch (error) {
     const message = error instanceof Error ? error.message : "The anchor set pass failed.";
     // A room still gets a concept: the ranked shortlist decides, and the job
@@ -472,7 +480,7 @@ export async function persistConceptAnchors(
   // remove; but the render is already paid for and the shopper can see it, so
   // failing the whole generation over a provenance write would be the worse
   // trade. The loss has to be visible either way.
-  const write = async () => (await supabase.from("concept_anchors").upsert(rows, { onConflict: "concept_id,role_key" })).error;
+  const write = async () => (await supabase.from("concept_anchors").upsert(rows, { onConflict: "room_id,concept_id,role_key" })).error;
   const error = (await write()) ? await write() : null;
   if (error) {
     console.error(
@@ -528,6 +536,17 @@ export type AnchoredSpecRole<P> = {
 // it and the caller looks deeper before giving up; if it is genuinely rejected
 // for this role, the role goes to normal sourcing rather than having the anchor
 // forced into it with a score nobody computed.
+// The piece the render was built from leads its role's options. It matters on
+// the path where the judge FAILS the anchor and the role opens: the shopper is
+// then choosing for a role whose render they approved, and the piece in that
+// picture belongs at the top rather than at whatever rank the scorer gave it.
+function withAnchorFirst<P extends { candidates: ReadonlyArray<{ id: string }> }>(pool: P, productId: string): P {
+  const anchor = pool.candidates.find((candidate) => candidate.id === productId);
+  return anchor
+    ? { ...pool, candidates: [anchor, ...pool.candidates.filter((candidate) => candidate.id !== productId)] }
+    : pool;
+}
+
 export function claimAnchoredPools<P extends { role: { category: string }; candidates: ReadonlyArray<{ id: string }> }>({
   pools,
   anchors,
@@ -559,7 +578,7 @@ export function claimAnchoredPools<P extends { role: { category: string }; candi
       continue;
     }
     claimed.add(match);
-    anchored.push({ pool, productId: anchor.product_id, reason: anchor.reason });
+    anchored.push({ pool: withAnchorFirst(pool, anchor.product_id), productId: anchor.product_id, reason: anchor.reason });
   }
 
   return { anchored, remaining: pools.filter((pool) => !claimed.has(pool)), unclaimed };

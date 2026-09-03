@@ -197,11 +197,16 @@ export async function generateInitialConceptForRoom(
     ensureEntitled,
     defer,
     chooseAnchors = chooseConceptAnchors,
+    generateConcept = generateInitialConcept,
     now = Date.now
   }: {
     ensureEntitled: () => Promise<void>;
     defer: (task: () => Promise<void>) => void;
     chooseAnchors?: typeof chooseConceptAnchors;
+    // Injected for the same reason the anchor pass is: this is where the
+    // anchors either reach the render or silently do not, and that is the one
+    // failure the rest of the pipeline cannot detect.
+    generateConcept?: typeof generateInitialConcept;
     now?: () => number;
   }
 ): Promise<GenerateInitialConceptResult> {
@@ -399,7 +404,7 @@ export async function generateInitialConceptForRoom(
       anchorOutcome = null;
     }
 
-    const result = await generateInitialConcept({
+    const result = await generateConcept({
       roomType: room.room_type,
       // What is left for the picture after the anchor work. Held to here
       // because the image providers' own ceilings outlast this route, and a

@@ -373,7 +373,11 @@ async function main() {
     assert.equal(calls[0].op, "upsert");
     assert.equal(calls.length, 1, "a clean write is not retried");
     assert.equal(calls[0].table, "concept_anchors");
-    assert.equal(calls[0].upsertOptions?.onConflict, "concept_id,role_key");
+    // Room-scoped, matching the unique index. Global uniqueness on
+    // (concept_id, role_key) let any authenticated writer plant a row naming
+    // their own room and someone else's concept, whose collision then failed
+    // the victim's whole upsert and silently cost that concept every anchor.
+    assert.equal(calls[0].upsertOptions?.onConflict, "room_id,concept_id,role_key");
 
     // The write that makes anchoring durable is retried once and, if it still
     // fails, reported. Without these rows sourcing re-decides the anchored
@@ -453,7 +457,12 @@ async function main() {
         anchors: [anchor("sofas", "s3")],
         deepen: () => deep
       });
-      assert.deepEqual(result.anchored.map((claim) => claim.pool), [deep]);
+      // The deeper pool is what is claimed, with the anchor promoted to the
+      // front of it like every other claim.
+      assert.deepEqual(
+        result.anchored[0].pool.candidates.map((candidate) => candidate.id),
+        ["s3", "s1", "s2"]
+      );
       assert.deepEqual(result.remaining, []);
     }
 
@@ -472,6 +481,20 @@ async function main() {
       assert.deepEqual(result.remaining, [shallow], "the role goes to normal sourcing");
     }
 
+    // Whatever pool is claimed, the anchor leads its options. It matters where
+    // the judge later FAILS the anchor and the role opens: the shopper is then
+    // choosing for a role whose render they approved, and the piece in that
+    // picture belongs at the top rather than at its ranked position.
+    {
+      const middle = { role: { category: "sofas" }, candidates: [{ id: "s1" }, { id: "s2" }, { id: "s3" }] };
+      const result = claimAnchoredPools({ pools: [middle], anchors: [anchor("sofas", "s3")] });
+      assert.deepEqual(
+        result.anchored[0].pool.candidates.map((candidate) => candidate.id),
+        ["s3", "s1", "s2"],
+        "the anchor first, the rest in their own order"
+      );
+    }
+
     // The pool the caller returns need not be the one it was given: when a spec
     // role's own contract refuses the piece the render was drawn from, the
     // caller admits it on category alone and keeps the role's other options.
@@ -485,7 +508,7 @@ async function main() {
         deepen: () => admitted
       });
       assert.deepEqual(result.anchored.map((claim) => claim.productId), ["s9"]);
-      assert.equal(result.anchored[0].pool, admitted);
+      assert.deepEqual(result.anchored[0].pool.role, admitted.role);
       assert.deepEqual(result.unclaimed, []);
     }
   }

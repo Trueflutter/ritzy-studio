@@ -38,11 +38,6 @@ const base: ProductMatchCandidate = {
   lastCheckedAt: null,
   dimensions: null
 };
-// Two anchor sets are the same set when they hold the same products. One line,
-// used only here, so it does not become a public export the package has to keep.
-const setSignature = (picks: ReadonlyArray<{ product: { id: string } }>) =>
-  picks.map((pick) => pick.product.id).slice().sort().join("|");
-
 const ranked = (overrides: Partial<RankedProductMatch> & { id: string }): RankedProductMatch => ({
   ...base,
   score: 1,
@@ -249,7 +244,6 @@ const ranked = (overrides: Partial<RankedProductMatch> & { id: string }): Ranked
   assert.equal(picks.length, 4);
   const retailers = picks.map((pick) => pick.product.retailerName);
   assert.ok(retailers.filter((name) => name === "Big Retailer").length <= 2, "one retailer cannot supply the whole room");
-  assert.equal(setSignature(picks), setSignature([...picks].reverse()), "the signature is order-free");
 }
 
 // --- rotation is stable and in range

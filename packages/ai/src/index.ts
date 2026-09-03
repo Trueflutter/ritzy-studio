@@ -756,14 +756,30 @@ function assembleFinalGroundedRenderPrompt({
 const DEFAULT_TEXT_TIMEOUT_MS = 90_000;
 const IMAGE_CALL_TIMEOUT_MS = 240_000;
 
-// What is left of a caller's deadline, floored so a fallback is never started
-// with too little time to return anything, and capped so no caller can extend
-// the provider ceiling past what this module is willing to wait.
+// A fallback started with seconds left cannot return a picture; it can only
+// spend the budget the caller still needs to write what it has.
+export const IMAGE_FALLBACK_MIN_MS = 20_000;
+
+// What is left of a caller's deadline, capped so no caller can extend the
+// provider ceiling past what this module is willing to wait. NOT floored:
+// flooring it made the primary and the fallback together overrun the caller,
+// which is the failure the deadline exists to prevent. Below the minimum the
+// caller skips the fallback instead.
 export function imageCallTimeoutMs(deadlineMs: number | undefined, startedAt: number, now = Date.now()): number {
   if (deadlineMs === undefined) {
     return IMAGE_CALL_TIMEOUT_MS;
   }
-  return Math.max(20_000, Math.min(IMAGE_CALL_TIMEOUT_MS, deadlineMs - Math.max(0, now - startedAt)));
+  return Math.max(0, Math.min(IMAGE_CALL_TIMEOUT_MS, deadlineMs - Math.max(0, now - startedAt)));
+}
+
+// The primary's share of a caller's deadline. Two thirds, so a provider that
+// stalls still leaves the fallback a usable remainder, and never below two poll
+// intervals or the loop cannot complete a single round trip.
+export function evolinkPollWindowMs(deadlineMs: number | undefined): number | undefined {
+  if (deadlineMs === undefined) {
+    return undefined;
+  }
+  return Math.max(EVOLINK_POLL_INTERVAL_MS * 2, Math.floor(deadlineMs * 0.66));
 }
 // The spec-driven sourcing pass reads the concept image plus up to a few
 // dozen product images across every role of the design in one call; it is
@@ -840,6 +856,11 @@ async function generateImageWithConfiguredProvider({
   deadlineMs?: number;
 }): Promise<ImageGenerationAttempt> {
   const env = parseServerEnv(process.env);
+  // Taken once, at the top, so every branch measures the caller's deadline from
+  // the same moment. RITZY_IMAGE_PROVIDER defaults to "openai", so the branch
+  // that ignored deadlineMs entirely is the one a preview deploy or a fresh
+  // production project takes.
+  const providerStartedAt = Date.now();
 
   if (env.RITZY_IMAGE_PROVIDER === "evolink") {
     const startedAt = Date.now();
@@ -854,13 +875,19 @@ async function generateImageWithConfiguredProvider({
         baseUrl: env.EVOLINK_BASE_URL,
         // Two thirds to the primary, so a provider that stalls still leaves the
         // fallback enough of the caller's budget to produce the picture.
-        pollTimeoutMs: deadlineMs === undefined ? undefined : Math.floor(deadlineMs * 0.66)
+        pollTimeoutMs: evolinkPollWindowMs(deadlineMs)
       });
     } catch (error) {
       const fallbackError = formatImageGenerationError(error);
       try {
+        const fallbackMs = imageCallTimeoutMs(deadlineMs, startedAt);
+        if (deadlineMs !== undefined && fallbackMs < IMAGE_FALLBACK_MIN_MS) {
+          throw new Error(
+            `Evolink image generation failed (${fallbackError}); too little of the request budget remained to try the OpenAI fallback.`
+          );
+        }
         const fallbackAttempt = await generateOpenAiImage({
-          client: createOpenAiImageFallbackClient(env, imageCallTimeoutMs(deadlineMs, startedAt)),
+          client: createOpenAiImageFallbackClient(env, Math.max(IMAGE_FALLBACK_MIN_MS, fallbackMs)),
           prompt,
           references,
           model: env.OPENAI_IMAGE_MODEL,
@@ -895,8 +922,14 @@ async function generateImageWithConfiguredProvider({
     } catch (error) {
       const fallbackError = formatImageGenerationError(error);
       try {
+        const fallbackMs = imageCallTimeoutMs(deadlineMs, startedAt);
+        if (deadlineMs !== undefined && fallbackMs < IMAGE_FALLBACK_MIN_MS) {
+          throw new Error(
+            `Evolink image generation failed (${fallbackError}); too little of the request budget remained to try the OpenAI fallback.`
+          );
+        }
         const fallbackAttempt = await generateOpenAiImage({
-          client: createOpenAiImageFallbackClient(env, imageCallTimeoutMs(deadlineMs, startedAt)),
+          client: createOpenAiImageFallbackClient(env, Math.max(IMAGE_FALLBACK_MIN_MS, fallbackMs)),
           prompt,
           references,
           model: env.OPENAI_IMAGE_MODEL,
@@ -918,7 +951,13 @@ async function generateImageWithConfiguredProvider({
   }
 
   return generateOpenAiImage({
-    client: new OpenAI({ apiKey: env.OPENAI_API_KEY, timeout: IMAGE_CALL_TIMEOUT_MS, maxRetries: 0 }),
+    client: new OpenAI({
+      apiKey: env.OPENAI_API_KEY,
+      // Whatever is left, floored: this branch has no second provider after it,
+      // so there is no share for it to eat, and an attempt beats none.
+      timeout: Math.max(IMAGE_FALLBACK_MIN_MS, imageCallTimeoutMs(deadlineMs, providerStartedAt)),
+      maxRetries: 0
+    }),
     prompt,
     references,
     model: env.OPENAI_IMAGE_MODEL,
@@ -1239,7 +1278,7 @@ async function generateEvolinkImage({
     );
   }
 
-  const pollWindowMs = Math.max(EVOLINK_POLL_INTERVAL_MS * 2, Math.min(EVOLINK_POLL_TIMEOUT_MS, pollTimeoutMs ?? EVOLINK_POLL_TIMEOUT_MS));
+  const pollWindowMs = Math.min(EVOLINK_POLL_TIMEOUT_MS, pollTimeoutMs ?? EVOLINK_POLL_TIMEOUT_MS);
   const deadline = startedAt + pollWindowMs;
 
   while (Date.now() < deadline) {
@@ -1973,6 +2012,20 @@ export function validateAnchorSetPicks(
   return { kept, dropped };
 }
 
+// What the constrained decoder is allowed to name. Deduped, because a role
+// contract can admit a product another role also admits and a JSON Schema enum
+// with a repeated value is invalid; the validator still catches one product
+// answering for two roles. Exported so the dedupe is pinned where it is
+// applied, not only through a call that needs a provider.
+export function anchorSetSelectionEnums(
+  roles: ReadonlyArray<{ roleKey: string; candidates: ReadonlyArray<{ productId: string }> }>
+): { roleKeyEnum: string[]; productIdEnum: string[] } {
+  return {
+    roleKeyEnum: Array.from(new Set(roles.map((role) => role.roleKey))),
+    productIdEnum: Array.from(new Set(roles.flatMap((role) => role.candidates.map((candidate) => candidate.productId))))
+  };
+}
+
 export async function selectAnchorSet(input: {
   roomPhotoUrl: string;
   brief: AnchorSetBriefInput;
@@ -1996,6 +2049,7 @@ export async function selectAnchorSet(input: {
   const { model: stageModel, requestParams: stageRequestParams } = stageTextConfig("anchor_set", env.OPENAI_TEXT_MODEL);
 
   const content = anchorSetSelectionContent(roles, input.brief, input.roomPhotoUrl);
+  const enums = anchorSetSelectionEnums(roles);
 
   const response = await client.responses.create(
     {
@@ -2009,13 +2063,7 @@ export async function selectAnchorSet(input: {
         format: {
           type: "json_schema",
           name: "ritzy_anchor_set_selection",
-          schema: anchorSetSelectionJsonSchema(
-            Array.from(new Set(roles.map((role) => role.roleKey))),
-            // Deduped: a role contract can admit a product another role also
-            // admits, and a JSON Schema enum with a repeated value is invalid.
-            // The validator still catches one product answering for two roles.
-            Array.from(new Set(roles.flatMap((role) => role.candidates.map((candidate) => candidate.productId))))
-          ),
+          schema: anchorSetSelectionJsonSchema(enums.roleKeyEnum, enums.productIdEnum),
           strict: true
         }
       }
@@ -2376,6 +2424,13 @@ export async function generateInitialConcept(
     measurements: input.measurements
   };
 
+  // The caller's deadline covers this call as well as the picture. It was
+  // documented as covering "the direction call and the image generation" and
+  // bounded only the second, so a slow direction call pushed the image past the
+  // route limit; the platform kills the request with no catch path and the job
+  // is left "running", which the dedupe reads as a live run and refuses the
+  // shopper a retry for fifteen minutes.
+  const renderStartedAt = Date.now();
   const directionResponse = await client.responses.create({
     max_output_tokens: 24000,
     ...stageRequestParams,
@@ -2445,6 +2500,12 @@ export async function generateInitialConcept(
         strict: true
       }
     }
+  }, {
+    // A third of the render's budget, so a slow direction call cannot eat the
+    // picture's share. Its own 90 s ceiling still applies when the caller sets
+    // no deadline.
+    timeout:
+      input.imageDeadlineMs === undefined ? undefined : Math.max(15_000, Math.floor(input.imageDeadlineMs / 3))
   });
 
   const direction = initialConceptResponseSchema.parse(JSON.parse(directionResponse.output_text));
@@ -2464,7 +2525,11 @@ export async function generateInitialConcept(
     prompt: imagePrompt,
     references: initialConceptReferences(input),
     noImageErrorMessage: "OpenAI image generation returned no image data.",
-    deadlineMs: input.imageDeadlineMs
+    // What is left of it after the direction call.
+    deadlineMs:
+      input.imageDeadlineMs === undefined
+        ? undefined
+        : Math.max(0, input.imageDeadlineMs - (Date.now() - renderStartedAt))
   });
 
   return {

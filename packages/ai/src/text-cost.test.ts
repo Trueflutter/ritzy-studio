@@ -60,8 +60,29 @@ console.log("text-cost tests passed");
   assert.equal(imageCallTimeoutMs(170_000, 0, 0), 170_000);
   assert.equal(imageCallTimeoutMs(170_000, 0, 100_000), 70_000);
   assert.equal(imageCallTimeoutMs(400_000, 0, 0), 240_000, "a caller cannot extend the provider ceiling");
-  // Floored: a fallback started with no time cannot return anything, but the
-  // floor is what makes the attempt honest rather than a guaranteed failure.
-  assert.equal(imageCallTimeoutMs(170_000, 0, 169_000), 20_000);
+  // NOT floored. Flooring it made the primary and the fallback together
+  // overrun the caller: at the render's own 30 s floor the primary takes 19.8 s
+  // and a 20 s floor on the fallback totals 39.8 s against a 30 s allowance.
+  // The caller skips the fallback below the minimum instead.
+  assert.equal(imageCallTimeoutMs(170_000, 0, 169_000), 1_000);
+  assert.equal(imageCallTimeoutMs(170_000, 0, 200_000), 0);
+
+  // The primary's share, and the two together inside the caller's deadline.
+  const { evolinkPollWindowMs, IMAGE_FALLBACK_MIN_MS } = await import("./index");
+  assert.equal(evolinkPollWindowMs(undefined), undefined, "no deadline, the provider's own ceiling stands");
+  assert.equal(evolinkPollWindowMs(170_000), 112_200);
+  assert.ok(evolinkPollWindowMs(1_000)! >= 6_000, "never below a poll round trip");
+  for (const deadline of [30_000, 60_000, 120_000, 170_000]) {
+    const primary = evolinkPollWindowMs(deadline)!;
+    const fallback = imageCallTimeoutMs(deadline, 0, primary);
+    assert.ok(
+      primary + Math.max(fallback >= IMAGE_FALLBACK_MIN_MS ? fallback : 0, 0) <= deadline,
+      `both providers fit ${deadline}ms (primary ${primary}, fallback ${fallback})`
+    );
+  }
+  // At the render's own floor there is not enough left for a second provider,
+  // so the fallback is skipped rather than started and abandoned.
+  assert.ok(imageCallTimeoutMs(30_000, 0, evolinkPollWindowMs(30_000)!) < IMAGE_FALLBACK_MIN_MS);
+
   console.log("image deadline tests passed");
 }
