@@ -748,7 +748,17 @@ async function main() {
     },
     { kept: 0, total: 0 }
   );
-  if (anchorTotals.total > 0) {
+  // Only a COMPLETE run can speak to a rate across the rooms. A single-room run
+  // or one with a skipped room reports what it saw and says it cannot judge the
+  // floor; asserting it would let "3/4 — BELOW the floor" stand as a verdict on
+  // a run that measured one room.
+  // A --room run is partial by definition, whatever it judged.
+  const partial = Boolean(onlyRoomId) || skipped > 0 || judged.length < manifest.rooms.length;
+  if (anchorTotals.total > 0 && partial) {
+    console.log(
+      `\nAnchors kept in the rooms that ran: ${anchorTotals.kept}/${anchorTotals.total}. The five-in-six floor is a rate across ALL ${manifest.rooms.length} rooms and is not judged on a partial run.`
+    );
+  } else if (anchorTotals.total > 0) {
     // Five in six. Three in four of nineteen is fifteen, so it would have
     // passed a regression losing three anchors — the thing this exists to
     // catch. Sixteen is two pieces below the measurement, which is the judges'
