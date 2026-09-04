@@ -508,18 +508,29 @@ export async function recordAnchorVerification(
   serviceSupabase: ServiceSupabaseClient,
   {
     conceptId,
-    verified
-  }: { conceptId: string; verified: ReadonlyArray<{ productId: string; similarity: number }> }
+    verdicts
+  }: {
+    conceptId: string;
+    // EVERY anchor this run judged, not only the ones it confirmed. A null
+    // similarity is a verdict too: the check looked and did not stand behind
+    // the piece. Writing only the passes let a later run leave an earlier
+    // run's "verified" in place after this one declined the same anchor, and
+    // this record is the authority the design gate and any badge read.
+    verdicts: ReadonlyArray<{ productId: string; similarity: number | null }>;
+  }
 ) {
-  if (verified.length === 0) {
+  if (verdicts.length === 0) {
     return;
   }
   const verifiedAt = new Date().toISOString();
   await Promise.all(
-    verified.map(async (entry) => {
+    verdicts.map(async (entry) => {
       const { error } = await serviceSupabase
         .from("concept_anchors")
-        .update({ verified_similarity: entry.similarity, verified_at: verifiedAt })
+        .update({
+          verified_similarity: entry.similarity,
+          verified_at: entry.similarity === null ? null : verifiedAt
+        })
         .eq("concept_id", conceptId)
         .eq("product_id", entry.productId);
       if (error) {

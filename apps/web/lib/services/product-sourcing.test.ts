@@ -1107,9 +1107,15 @@ async function main() {
       0,
       `${label}: nothing is chosen for the shopper`
     );
-    assert.equal(
-      serviceCallsLoop.filter((call: RecordedCall) => call.table === "concept_anchors" && call.op === "update").length,
-      0,
+    // A verdict IS written, and it is "not confirmed". Writing nothing would
+    // leave an earlier run's confirmation standing on the authoritative record
+    // when this run could not judge at all.
+    const verdicts = serviceCallsLoop.filter(
+      (call: RecordedCall) => call.table === "concept_anchors" && call.op === "update"
+    );
+    assert.ok(verdicts.length > 0, `${label}: the run records what it could not confirm`);
+    assert.ok(
+      verdicts.every((call: RecordedCall) => call.payload?.verified_similarity === null),
       `${label}: and nothing claims to be in the design`
     );
     assert.ok(
@@ -1159,10 +1165,12 @@ async function main() {
       0,
       "but nothing is chosen for the shopper in a role the judge could not confirm"
     );
-    assert.equal(
-      serviceCallsCheck.filter((call: RecordedCall) => call.table === "concept_anchors" && call.op === "update").length,
-      0,
-      "and no verdict is recorded for a piece the render did not keep"
+    const checkVerdicts = serviceCallsCheck.filter(
+      (call: RecordedCall) => call.table === "concept_anchors" && call.op === "update"
+    );
+    assert.ok(
+      checkVerdicts.every((call: RecordedCall) => call.payload?.verified_similarity === null),
+      "a piece the render did not keep is recorded as not confirmed, never left confirmed"
     );
     // The shopper is choosing for a role whose render they approved, so the
     // piece in that picture leads the options rather than sitting at its
@@ -1547,6 +1555,48 @@ async function main() {
       summary.openRoles.some((entry) => /above the room's budget/.test(entry.reason)),
       "and the list says why that role was left to the shopper"
     );
+  }
+
+  // --- pass, then fail. The judge varies, so the same anchor can be confirmed
+  // on one run and declined on the next; writing only the passes left the
+  // earlier run's "verified" standing on the record the design gate reads and a
+  // badge would join. Every claimed anchor gets a verdict, and a decline is
+  // written as one.
+  {
+    const runFor = async (similarity: number) => {
+      const { client } = userClient((call) => {
+        if (call.table === "concept_anchors" && call.op === "select") {
+          return { data: [{ role_key: "sofas", role_category: "sofas", role_label: "Sofa", product_id: SOFA_ID, source: "aesthetic_pass", reason: "grounds the room" }] };
+        }
+        return { data: null };
+      });
+      const { client: service, calls } = serviceClient();
+      await groundProductsForRoom(
+        { supabase: client, serviceSupabase: service },
+        GROUND_INPUT,
+        {
+          readSpec: async () => CONFIRMED_SPEC,
+          extractPalette: noPalette,
+          fetchCandidateImages: imagesForAll,
+          sourceProducts: async () => { throw new Error("no pass in this test"); },
+          verifyProducts: verifyAll(similarity)
+        }
+      );
+      return calls.find(
+        (call: RecordedCall) =>
+          call.table === "concept_anchors" &&
+          call.op === "update" &&
+          call.filters.some(([column, value]) => column === "product_id" && value === SOFA_ID)
+      );
+    };
+
+    const confirmed = await runFor(0.9);
+    assert.equal(confirmed?.payload?.verified_similarity, 0.9);
+    assert.ok(confirmed?.payload?.verified_at, "a confirmed anchor carries when it was confirmed");
+
+    const declined = await runFor(0.3);
+    assert.equal(declined?.payload?.verified_similarity, null, "a decline is written, not left to an older run");
+    assert.equal(declined?.payload?.verified_at, null);
   }
 
   // --- the terminal job write is retried once and its failure is logged,

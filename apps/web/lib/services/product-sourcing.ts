@@ -782,17 +782,28 @@ export async function groundProductsForRoom(
     // on the list as options for an open role, which is the honest state: the
     // shopper approved a render, and we could not confirm this piece is the one
     // in it.
-    const verifiedAnchors = outcomes
-      .filter((outcome): outcome is Extract<SpecRoleOutcome, { kind: "selected" }> => outcome.kind === "selected")
-      .filter((outcome) => claimedProductIds.has(outcome.selectedProductId))
-      .map((outcome) => ({ productId: outcome.selectedProductId, similarity: outcome.verifiedSimilarity ?? 0 }));
-    const anchoredProductIds = new Set(verifiedAnchors.map((entry) => entry.productId));
+    const keptSimilarityByProduct = new Map(
+      outcomes
+        .filter((outcome): outcome is Extract<SpecRoleOutcome, { kind: "selected" }> => outcome.kind === "selected")
+        .map((outcome) => [outcome.selectedProductId, outcome.verifiedSimilarity ?? 0])
+    );
+    // Every anchor this run claimed gets a verdict, pass or fail. Writing only
+    // the passes let a re-run leave an earlier run's "verified" standing after
+    // this one declined the same piece, and the judge's own variance makes that
+    // an ordinary occurrence rather than an edge case.
+    const anchorVerdicts = [...claimedProductIds].map((productId) => ({
+      productId,
+      similarity: keptSimilarityByProduct.get(productId) ?? null
+    }));
+    const anchoredProductIds = new Set(
+      anchorVerdicts.filter((entry) => entry.similarity !== null).map((entry) => entry.productId)
+    );
 
     // The verdict goes where only the server can write it. The list's own
     // is_anchor column and a row's selected status both sit on a table the
     // owner may PATCH, so a claim the app makes on the shopper's behalf cannot
     // rest on either, and neither can the design gate.
-    await recordAnchorVerification(serviceSupabase, { conceptId, verified: verifiedAnchors });
+    await recordAnchorVerification(serviceSupabase, { conceptId, verdicts: anchorVerdicts });
 
     const resolved = roleOptionsFromOutcomes(outcomes);
     missingRoles = [...plan.missing, ...resolved.missing];
