@@ -125,13 +125,20 @@ console.log("text-cost tests passed");
   // per-hop value handed a redirecting result two windows, with the body read
   // starting after those.
   const { evolinkDownloadBudgetMs } = await import("./index");
-  for (const remaining of [500, 5_000, 40_000, 200_000]) {
-    const budget = evolinkDownloadBudgetMs(remaining, 0);
-    assert.ok(budget.overallTimeoutMs <= Math.max(1_000, remaining), `overall fits what is left (${remaining})`);
+  for (const remaining of [1, 500, 5_000, 40_000, 200_000]) {
+    const budget = evolinkDownloadBudgetMs(remaining, 0)!;
+    assert.ok(budget.overallTimeoutMs <= remaining, `overall fits what is actually left (${remaining})`);
     assert.ok(budget.timeoutMs <= budget.overallTimeoutMs, "and a hop never outlives the whole download");
   }
   assert.deepEqual(evolinkDownloadBudgetMs(200_000, 0), { timeoutMs: 60_000, overallTimeoutMs: 200_000 });
   assert.deepEqual(evolinkDownloadBudgetMs(40_000, 0), { timeoutMs: 40_000, overallTimeoutMs: 40_000 });
+  // No floor. Half a second left means half a second, not a second: a helper
+  // whose comment says "what is left" and whose code says "at least a second"
+  // is one the next reader will trust for the larger number too.
+  assert.deepEqual(evolinkDownloadBudgetMs(500, 0), { timeoutMs: 500, overallTimeoutMs: 500 });
+  // And nothing left means the download is refused, not attempted.
+  assert.equal(evolinkDownloadBudgetMs(0, 0), null);
+  assert.equal(evolinkDownloadBudgetMs(-5_000, 0), null);
 
   console.log("image deadline tests passed");
 }

@@ -783,11 +783,19 @@ export function imageCallTimeoutMs(deadlineMs: number | undefined, startedAt: nu
 // value, so a caller passing only timeoutMs hands a redirecting result two
 // windows, and the body read then starts after those. The download is the last
 // stage of the render and has to finish inside the same window as the rest.
-export function evolinkDownloadBudgetMs(deadline: number, now = Date.now()): {
-  timeoutMs: number;
-  overallTimeoutMs: number;
-} {
-  const remaining = Math.max(1_000, deadline - now);
+// Null when nothing is left: a floor here, however small, is still a promise
+// the caller did not make. One second past a 285 s budget cannot breach the
+// route on its own, but a helper whose comment says "what is left" and whose
+// code says "at least a second" is one the next reader will trust for the
+// larger number too.
+export function evolinkDownloadBudgetMs(
+  deadline: number,
+  now = Date.now()
+): { timeoutMs: number; overallTimeoutMs: number } | null {
+  const remaining = deadline - now;
+  if (remaining <= 0) {
+    return null;
+  }
   return { timeoutMs: Math.min(60_000, remaining), overallTimeoutMs: remaining };
 }
 
@@ -1432,6 +1440,9 @@ async function generateEvolinkImage({
         // stage still carrying its own fixed minute, which meant a run could
         // finish polling on time and then spend two more minutes fetching.
         const budget = evolinkDownloadBudgetMs(deadline);
+        if (!budget) {
+          throw new Error("Evolink returned a result after the request budget was spent; it was not downloaded.");
+        }
         const followed = await followGuardedRedirects(resultUrl, {
           allowlist,
           timeoutMs: budget.timeoutMs,
@@ -1456,11 +1467,11 @@ async function generateEvolinkImage({
         );
       }
 
-      const resultBytes = await readResponseBytesCapped(
-        imageResponse,
-        30 * 1024 * 1024,
-        evolinkDownloadBudgetMs(deadline).timeoutMs
-      );
+      const readBudget = evolinkDownloadBudgetMs(deadline);
+      if (!readBudget) {
+        throw new Error("Evolink's result body could not be read inside the request budget.");
+      }
+      const resultBytes = await readResponseBytesCapped(imageResponse, 30 * 1024 * 1024, readBudget.timeoutMs);
       if (!resultBytes) {
         throw new Error("Evolink result image exceeded the 30MB download cap or had no body.");
       }
