@@ -153,18 +153,35 @@ export function anchorUnderscaledForRole(
   }
 
   if (category === "rugs" && groupAnchoringRugRole(role.label)) {
-    const shorterSideCm = shorterRoomSide(context.measurements);
-    const largest = largestDimensionCm(candidate);
-    // No measurements means no invented constraint: without the room's numbers
-    // there is nothing to be under-scaled against.
-    if (shorterSideCm !== null && largest !== null) {
-      // A rug anchoring a seating group has to reach under the sofa and the
-      // chairs facing it. Sixty percent of the room's shorter side is what the
-      // kept rugs in this corpus measure; the bounds keep a 3m room from
-      // demanding a 300cm rug and a 7m hall from settling for a doormat.
-      const required = Math.min(300, Math.max(180, Math.round(shorterSideCm * 0.6)));
-      if (largest < required) {
+    const sides = rugSidesCm(candidate);
+    if (sides !== null) {
+      // SHAPE, before size. A runner is long enough to pass any
+      // largest-dimension test and is still the wrong object: the catalogue
+      // carries 16 of them at 0.25-0.35, down to a 60cm short side and up to a
+      // 400cm long one, so an 80x400 hallway runner would otherwise sail past a
+      // 180cm minimum and anchor a seating group.
+      //
+      // 0.6 sits in an empty band. Measured over the 264 rugs whose names state
+      // a size: runners and narrow rugs stop at 0.53, area rugs start at 0.65,
+      // and nothing at all lies between. Comparing the SHORT side against the
+      // size floor instead would reject most of the real stock, since the 217
+      // area rugs run from a 120cm short side.
+      if (sides.short / sides.long < 0.6) {
         return true;
+      }
+
+      // No measurements means no invented constraint: without the room's
+      // numbers there is nothing to be under-scaled against.
+      const shorterSideCm = shorterRoomSide(context.measurements);
+      if (shorterSideCm !== null) {
+        // A rug anchoring a seating group has to reach under the sofa and the
+        // chairs facing it. Sixty percent of the room's shorter side is what the
+        // kept rugs in this corpus measure; the bounds keep a 3m room from
+        // demanding a 300cm rug and a 7m hall from settling for a doormat.
+        const required = Math.min(300, Math.max(180, Math.round(shorterSideCm * 0.6)));
+        if (sides.long < required) {
+          return true;
+        }
       }
     }
   }
@@ -194,25 +211,29 @@ function statedSeatCount(candidate: ProductMatchCandidate): number | null {
   return Number.isFinite(seats) && seats > 0 ? seats : null;
 }
 
-// Rugs state their size in the NAME as often as in a dimensions column
-// ("Bryn Dhurry 400X500CM", "Milas Carpet 45605A Yellow - 160X230"), so the
-// structured columns are preferred and the name is the fallback.
-function largestDimensionCm(candidate: ProductMatchCandidate): number | null {
+// Both sides, because shape decides as much as size for a rug. Rugs state
+// their size in the NAME far more reliably than in a dimensions column
+// ("Bryn Dhurry 400X500CM", "Milas Carpet 45605A Yellow - 160X230"): not one
+// rug row in the catalogue carries structured width and depth, so the name is
+// the real source here and the columns are the fallback for the day they fill.
+function rugSidesCm(candidate: ProductMatchCandidate): { short: number; long: number } | null {
   const structured = [candidate.dimensions?.widthCm, candidate.dimensions?.depthCm].filter(
     (value): value is number => typeof value === "number" && value > 0
   );
-  if (structured.length > 0) {
-    return Math.max(...structured);
+  if (structured.length === 2) {
+    return { short: Math.min(...structured), long: Math.max(...structured) };
   }
 
   const named = /(\d{2,3})\s*[xX×]\s*(\d{2,3})/.exec(`${candidate.name} ${candidate.description ?? ""}`);
   if (!named) {
     return null;
   }
-  const sides = [Number.parseInt(named[1] ?? "", 10), Number.parseInt(named[2] ?? "", 10)].filter((value) =>
-    Number.isFinite(value)
-  );
-  return sides.length > 0 ? Math.max(...sides) : null;
+  const a = Number.parseInt(named[1] ?? "", 10);
+  const b = Number.parseInt(named[2] ?? "", 10);
+  if (!Number.isFinite(a) || !Number.isFinite(b) || a <= 0 || b <= 0) {
+    return null;
+  }
+  return { short: Math.min(a, b), long: Math.max(a, b) };
 }
 
 // Two products from the same retailer that are the same piece in another colour

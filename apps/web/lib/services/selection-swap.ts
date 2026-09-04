@@ -7,7 +7,6 @@ import {
   checkCandidateAgainstSpecRole,
   filterSubstitutionCandidates,
   selectedItemsTotalAed,
-  type ProductMatchCandidate,
   type SubstitutionMode,
   PRODUCT_SELECTION_THRESHOLD
 } from "@ritzy-studio/domain";
@@ -16,7 +15,7 @@ import { alternateProse, specRoleForListRow } from "./product-sourcing";
 import { storageImageDataUrl } from "./storage-images";
 import type { ServiceSupabaseClient, UserSupabaseClient } from "./supabase-clients";
 import {
-  PRODUCT_MATCHING_CATALOG_LIMIT,
+  loadCatalogueCandidates,
   productToMatchCandidate,
   roleScopedShoppingAlternates,
   shoppingListRoleSpecFromRow,
@@ -135,28 +134,16 @@ export async function substituteProduct(
     .select("product_id")
     .eq("shopping_list_id", shoppingListId);
 
-  const { data: products = [], error: productsError } = await serviceSupabase
-    .from("products")
-    .select(
-      `
-      *,
-      retailer:retailers(name, status),
-      dimensions:product_dimensions(width_cm, depth_cm, height_cm, source_text)
-    `
-    )
-    .not("price_aed", "is", null)
-    .not("primary_image_url", "is", null)
-    .order("last_checked_at", { ascending: false, nullsFirst: false })
-    .limit(PRODUCT_MATCHING_CATALOG_LIMIT);
-
-  if (productsError) {
-    throw new Error(productsError.message);
-  }
+  // The shared paginated read, not a private copy of it. This query was
+  // byte-identical to loadCatalogueCandidates apart from asking for the rows
+  // with .limit(): PostgREST answers with at most 1,000 rows however large a
+  // limit asks for, so the swap path saw 1,000 of 3,233 products and every
+  // eligible replacement past the first page was invisible. Raising
+  // PRODUCT_MATCHING_CATALOG_LIMIT from 1,500 to 5,000 for the sourcing read
+  // made the constant advertise a reach this caller never had.
+  const { candidates } = await loadCatalogueCandidates(serviceSupabase);
 
   const currentCandidate = productToMatchCandidate(item.product as ProductRow);
-  const candidates = (products ?? [])
-    .map(productToMatchCandidate)
-    .filter((candidate): candidate is ProductMatchCandidate => Boolean(candidate));
 
   if (!currentCandidate) {
     return { status: "not_substitutable" };

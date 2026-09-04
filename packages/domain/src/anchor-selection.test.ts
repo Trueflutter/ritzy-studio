@@ -463,4 +463,37 @@ console.log("anchor selection tests passed");
     false,
     "only the group-anchoring rug roles carry the floor"
   );
+
+  // Shape, not just size. Codex, reviewing PR #335: a runner is long enough to
+  // pass any largest-dimension test and is still the wrong object. This is not
+  // hypothetical stock — the catalogue carries 16 rugs at ratio 0.25-0.35, down
+  // to a 60cm short side and up to a 400cm long one.
+  assert.equal(
+    anchorUnderscaledForRole(carpet("Hallway Runner Rug 80x400"), generous, glassGlare),
+    true,
+    "an 80x400 runner cannot anchor a seating group however long it is"
+  );
+  assert.equal(
+    anchorUnderscaledForRole(carpet("Hallway Runner Rug 80x400"), generous, {}),
+    true,
+    "shape disqualifies a runner even with no room measurements to size against"
+  );
+  assert.equal(
+    anchorUnderscaledForRole(carpet("Corridor Rug 60x240"), generous, {}),
+    true
+  );
+  // The threshold sits in an empty band: across the 264 rugs whose names state a
+  // size, runners and narrow rugs stop at 0.53 and area rugs start at 0.65.
+  // Comparing the SHORT side against the size floor instead, as first proposed,
+  // would reject most real stock — the 217 area rugs run from a 120cm short
+  // side, so a 240x340 in a 4.2m room (floor 252) would have been thrown out.
+  assert.equal(
+    anchorUnderscaledForRole(carpet("Harmony Contemporary Transitional Rug 240 x 340"), generous, glassGlare),
+    false,
+    "a legitimate 240x340 area rug survives: its long side clears the floor and its shape is right"
+  );
+  assert.equal(
+    anchorUnderscaledForRole(carpet("Sheena Rug - 300x400 cm"), generous, glassGlare),
+    false
+  );
 }
