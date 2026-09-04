@@ -273,3 +273,30 @@ brief; the architecture around them is not.
 - The shopping list does not yet SAY that a row is in the render, or that a
   total is deliberately over budget. Both facts are recorded; the copy and the
   badge are queued.
+
+## Review record
+
+Six internal rounds (correctness, tests, security, simplification) and five
+external gate rounds. Every round found something real; the four that mattered
+most were all invisible to the tests as written:
+
+- A **Home Office was anchored on a sofa**, because anchor roles read the one
+  blueprint in this repo with no office entry, and the render was then built
+  around it. Ayo's first warning, with the render constructed on top.
+- The **anchoring mechanism was severable with every test green**, found at
+  three separate levels: the prompt clause, the reference list, and finally
+  their composition. Cutting any one left the pass paid for, the pieces
+  persisted, the list claiming them and the gate measuring them, around a render
+  that never saw them.
+- **One user could silently wipe another's anchors.** concept_anchors carried an
+  owner "for all" policy and no concept/room integrity trigger, so a planted row
+  collided with the victim's upsert, failed the whole statement, and the handler
+  logged and continued by design.
+- **The gate could not fail, then could be switched off.** Its denominator came
+  from a flag the app sets, then from a list row an owner can delete. It now
+  reads the server-written verdict, and fails when anchors exist and the
+  evidence does not.
+
+The external gate closed at round 5. Its earlier rounds found the claim's second
+copy in owner-writable prose, the render's 30 s floor overrunning the route, and
+a redirecting download taking two windows.
