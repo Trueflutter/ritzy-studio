@@ -160,16 +160,26 @@ final run, with the earlier ones kept where the movement is the point.
 
 ### Criterion 8 (anchors): NOT MET, but close — 4 of 5 rooms pass
 
-| room | anchors kept by the render | claimed on the list | verdict |
+| room | anchors kept by the render | the app stands behind | verdict |
 | --- | --- | --- | --- |
 | alfurjan-living-dining | 3 of 4 | 2 | FAIL |
 | cincinnati-bedroom | 3 of 3 | 2 | PASS |
 | stress-dense-apartment | 4 of 4 | 4 | PASS |
-| stress-columns | 4 of 4 | 4 | PASS |
-| stress-glass-glare | 4 of 4 | 3 | PASS |
+| stress-columns | 4 of 4 | 3 | PASS |
+| stress-glass-glare | 4 of 4 | 4 | PASS |
 
 **18 of 19 anchors kept.** The single failure is the Cooper 10 Seater Dining
 Table at 0.18: the render put a different dining table under the chandelier.
+
+Of those 19, the app's own check stands behind **15**, the lowest at exactly the
+bar. The gap is the two judges disagreeing on three pieces, and it runs in the
+safe direction: the app claims less than the gate would allow, and a piece it
+will not stand behind is offered rather than chosen.
+
+The claim itself lives on `concept_anchors.verified_similarity`, written by the
+service client after the check. It used to live on a shopping-list column and on
+a row being selected, both of which the list's owner can write, which meant the
+system under test could set its own gate result. Found by the external gate.
 It is the same piece and the same failure the earlier runs found, and it is the
 same shape as the others they found — a silhouette whose distinctiveness is its
 proportions.
