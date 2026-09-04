@@ -9,6 +9,7 @@ import {
   enhancedProductRolesForRoom,
   roleOptionKey,
   sourcingRolesFromBlueprint,
+  wantedColorFamilies,
   type ProductMatchCandidate,
   type RankedProductMatch
 } from "@ritzy-studio/domain";
@@ -54,6 +55,14 @@ import type { ServiceSupabaseClient, UserSupabaseClient } from "./supabase-clien
 // photographs stay inside the run's image budget. The pass caps what it will
 // look at as well; this is the fetch budget.
 export const ANCHOR_CANDIDATES_PER_ROLE = 5;
+
+// How deep the anchor pool is built before the shortlist is drawn from it.
+// Deeper than the shortlist on purpose: the pool is ranked, and a brief's
+// colour competes there with freshness and tag overlap, so the piece that
+// actually carries the brief can sit at rank 19 of a category. The shortlist
+// then promotes it to the front. Pure ranking over an in-memory list; no paid
+// call is bounded by this.
+const ANCHOR_POOL_DEPTH = 30;
 
 // How far back "already used this piece" reaches for one owner. Large enough
 // that a shopper doing a whole apartment does not meet the same sofa twice,
@@ -209,6 +218,15 @@ export async function chooseConceptAnchors(
   }
 
   const avoidColorTags = splitAvoidColorCues(input.designBrief.avoid_notes ?? "").avoidColorTags;
+  // What the brief ASKS for, read from its own words. The contracts already
+  // enforce what it forbids; this is the half that was missing, and without it
+  // a room briefed for a committed colour was anchored on whatever the rotation
+  // landed on and the render faithfully built a room around that.
+  const wanted = wantedColorFamilies(
+    input.designBrief.color_notes,
+    input.designBrief.style_notes,
+    input.designBrief.inspiration_notes
+  );
   // Bounded like the catalogue read either side of it, and for the same
   // reason: a degraded pooler hangs rather than failing, and an unbounded hang
   // here runs the concept request past the route limit. Losing the recency
@@ -239,7 +257,7 @@ export async function chooseConceptAnchors(
       ? { wallLengthCm: input.measurements.wall_length_cm, roomDepthCm: input.measurements.room_depth_cm }
       : null,
     avoidColorTags,
-    candidatesPerRole: ANCHOR_CANDIDATES_PER_ROLE * 2
+    candidatesPerRole: ANCHOR_POOL_DEPTH
   });
 
   // No per-role price cap on the anchors. An earlier version gave each role a
@@ -258,6 +276,7 @@ export async function chooseConceptAnchors(
       candidates: anchorShortlist({
         candidates: pool.candidates,
         avoidColorTags,
+        wantedColorFamilies: wanted,
         recentAnchorProductIds,
         seed: anchorSeedFor(input.roomId, pool.role.category),
         size: ANCHOR_CANDIDATES_PER_ROLE

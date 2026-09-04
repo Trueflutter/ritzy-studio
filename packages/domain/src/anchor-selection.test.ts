@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 
-import { enhancedProductRolesForRoom } from "./product-matching";
+import { enhancedProductRolesForRoom, wantedColorFamilies } from "./product-matching";
 import type { ProductMatchCandidate, RankedProductMatch, RoomProductRole } from "./product-matching";
 import { canonicalRoomTypes } from "./index";
 import {
@@ -10,6 +10,7 @@ import {
   anchorRolesFromBlueprint,
   anchorSetFromShortlists,
   anchorShortlist,
+  onWantedPalette,
   productFamilyKey,
   rotationOffset
 } from "./anchor-selection";
@@ -331,6 +332,56 @@ const ranked = (overrides: Partial<RankedProductMatch> & { id: string }): Ranked
     ["cheap", "dear"],
     "the expensive piece is still eligible to anchor"
   );
+}
+
+// --- the colour a brief ASKS FOR leads the shortlist. The contracts enforce
+// what a brief forbids; nothing pulled toward what it wants, so a room briefed
+// "a committed terracotta and ochre... carried across upholstery, rug and art"
+// was offered five white rugs and the render faithfully built a neutral room.
+{
+  const rug = (id: string, name: string, color: string) => ranked({ id, name, color, colorTags: [color.toLowerCase()] });
+  // Ranked order puts the neutrals first, as the catalogue's own scoring does.
+  const candidates = [
+    rug("w1", "Snow Rug Neutral", "White"),
+    rug("w2", "Galeria Lux Rug", "White"),
+    rug("w3", "Urbana Rug", "White"),
+    rug("w4", "Mason Rug", "White"),
+    rug("w5", "Charleen Rug", "White"),
+    rug("r1", "Milas Carpet Ochre", "Ochre"),
+    rug("r2", "Aleem Persian Rug", "Red")
+  ];
+  const wanted = wantedColorFamilies("a committed terracotta and ochre accent, against a warm off-white shell");
+  assert.ok(wanted.includes("orange") && wanted.includes("yellow"), `the brief's colours are read: ${wanted.join(",")}`);
+
+  const shortlist = anchorShortlist({ candidates, wantedColorFamilies: wanted, seed: "room-1", size: 5 });
+  assert.ok(
+    shortlist.some((entry) => entry.id === "r1" || entry.id === "r2"),
+    `a piece that carries the brief reaches the shortlist; got ${shortlist.map((e) => e.id).join(",")}`
+  );
+
+  // The promotion happens BEFORE the cut. Applied after, it reorders five
+  // pieces already chosen, which is no help when the piece that carries the
+  // brief sits below them: every rug that could carry the terracotta was cut
+  // before the promotion could see it.
+  const deep = [...Array.from({ length: 12 }, (_, i) => rug(`n${i}`, `Neutral Rug ${i}`, "White")), rug("late", "Ochre Kilim", "Ochre")];
+  assert.ok(
+    anchorShortlist({ candidates: deep, wantedColorFamilies: wanted, seed: "s", size: 5 }).some((e) => e.id === "late"),
+    "a piece ranked below the cut is promoted into the shortlist, not past it"
+  );
+
+  // The shell is not the accent. A brief naming both must not treat every
+  // neutral as on-palette, or the promotion is a no-op — which is what left
+  // nine rust rugs behind five white ones.
+  assert.equal(onWantedPalette(rug("w9", "Snow Rug", "White"), wanted), false);
+  assert.equal(onWantedPalette(rug("r9", "Ochre Rug", "Ochre"), wanted), true);
+
+  // A brief that names only neutrals still gets them: the rule is "prefer the
+  // colour a room would not arrive at by itself", not "prefer saturation".
+  const neutralBrief = wantedColorFamilies("a calm scheme of warm greys and cream");
+  assert.equal(onWantedPalette(rug("g1", "Slate Rug", "Grey"), neutralBrief), true);
+
+  // And a brief with no colour at all promotes nothing.
+  assert.equal(onWantedPalette(rug("x", "Any Rug", "Ochre"), wantedColorFamilies(null)), false);
 }
 
 console.log("anchor selection tests passed");

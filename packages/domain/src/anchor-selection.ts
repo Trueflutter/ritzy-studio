@@ -1,4 +1,9 @@
-import { BUDGET_TOLERANCE, avoidColorTokens, productFamilySignature } from "./product-matching";
+import {
+  BUDGET_TOLERANCE,
+  avoidColorTokens,
+  candidateColorFamilies,
+  productFamilySignature
+} from "./product-matching";
 import type { ProductMatchCandidate, RankedProductMatch, RoomProductRole } from "./product-matching";
 
 // Anchored concepts: the hero pieces are chosen from real stock BEFORE the
@@ -138,9 +143,41 @@ export function rotationOffset(seed: string, length: number): number {
   return Math.abs(hash) % length;
 }
 
+// A piece that answers the brief's own colour. Not a filter: a room needs a
+// sofa even when the catalogue has no terracotta one, so this promotes rather
+// than excludes, and it sits behind the contracts — nothing reaches a shortlist
+// for its colour that the room's size, scope or object-kind rules would reject.
+// The families a room falls back to on its own. A render defaults to these; it
+// never defaults to a committed colour.
+const NEUTRAL_FAMILIES = new Set(["white", "cream", "grey", "black", "brown"]);
+
+export function onWantedPalette(
+  candidate: ProductMatchCandidate,
+  wantedColorFamilies: ReadonlyArray<string>
+): boolean {
+  if (wantedColorFamilies.length === 0) {
+    return false;
+  }
+  // A brief that names a committed colour usually names its shell too — "a
+  // committed terracotta and ochre accent, against a warm off-white shell".
+  // Matching either makes every candidate on-palette and the promotion a
+  // no-op, which is exactly what happened: nine rust rugs sat behind five
+  // white ones for a brief that asked for a terracotta rug by name. So when a
+  // brief names any colour a room would not arrive at by itself, THAT is the
+  // one an anchor is promoted for. The shell needs no help; the render
+  // produces it anyway.
+  const committed = wantedColorFamilies.filter((family) => !NEUTRAL_FAMILIES.has(family));
+  const target = committed.length > 0 ? committed : wantedColorFamilies;
+  return candidateColorFamilies(candidate).some((family) => target.includes(family));
+}
+
 export type AnchorShortlistInput<T extends RankedProductMatch> = {
   candidates: ReadonlyArray<T>;
   avoidColorTags?: ReadonlyArray<string>;
+  // The families the brief asks for. A candidate in one of them leads the
+  // shortlist, so a room briefed for a committed colour is offered pieces that
+  // can carry it rather than five neutrals that cannot.
+  wantedColorFamilies?: ReadonlyArray<string>;
   // Products anchored recently, anywhere. Dropped outright: with thousands of
   // rows there is no reason to repeat, and repetition is what made every room
   // look the same.
@@ -153,6 +190,7 @@ export type AnchorShortlistInput<T extends RankedProductMatch> = {
 export function anchorShortlist<T extends RankedProductMatch>({
   candidates,
   avoidColorTags = [],
+  wantedColorFamilies = [],
   recentAnchorProductIds = [],
   seed,
   size = 6
@@ -177,7 +215,24 @@ export function anchorShortlist<T extends RankedProductMatch>({
     families.add(family);
     spread.push(candidate);
   }
-  const ordered = [...spread, ...overflow].slice(0, Math.max(1, size));
+  // The brief's own colour is applied BEFORE the cut, not after it. Promoting
+  // afterwards reordered five pieces that were already chosen, which is no help
+  // when the piece that actually carries the brief sits at rank 19 of its
+  // category: for a room briefed "a committed terracotta and ochre... carried
+  // across upholstery, rug and art", every rug that could carry it was cut
+  // before the promotion could see it.
+  //
+  // It still cannot bring in a piece the contracts, the brief's prohibitions or
+  // the family spread have already removed. Colour decides the order of what
+  // survives them, never what survives them.
+  const ranked = [...spread, ...overflow];
+  const onPalette = ranked.filter((candidate) => onWantedPalette(candidate, wantedColorFamilies));
+  const ordered = (
+    onPalette.length === 0 ? ranked : [...onPalette, ...ranked.filter((candidate) => !onPalette.includes(candidate))]
+  ).slice(0, Math.max(1, size));
+
+  // Rotation still varies the order WITHIN the shortlist, so two rooms on one
+  // brief are not handed the same set in the same order.
   const offset = rotationOffset(seed, ordered.length);
   return [...ordered.slice(offset), ...ordered.slice(0, offset)];
 }
