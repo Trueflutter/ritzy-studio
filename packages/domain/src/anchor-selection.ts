@@ -1,4 +1,9 @@
-import { BUDGET_TOLERANCE, avoidColorTokens, productFamilySignature } from "./product-matching";
+import {
+  BUDGET_TOLERANCE,
+  avoidColorTokens,
+  candidateColorFamilies,
+  productFamilySignature
+} from "./product-matching";
 import type { ProductMatchCandidate, RankedProductMatch, RoomProductRole } from "./product-matching";
 
 // Anchored concepts: the hero pieces are chosen from real stock BEFORE the
@@ -113,6 +118,124 @@ export function anchorContradictsBrief(candidate: ProductMatchCandidate, avoidCo
   );
 }
 
+export type AnchorScaleContext = {
+  measurements?: { wallLengthCm: number | null; roomDepthCm: number | null } | null;
+  diningSeatCount?: number | null;
+};
+
+// A piece the RENDER is contractually required to overrule. The image prompt
+// carries the room's real measurements, and where the brief states a dining
+// seat count it carries "do not render a different seat count". Anchor a hall
+// briefed for ten on a four-seater table and the render obeys the brief, draws
+// the right table, and the anchor is simply lost.
+//
+// Measured 2026-09-04, round 2 of the five harness rooms: a 4-seater round
+// dining table anchored a hall briefed for ten, and a 160x230 rug anchored the
+// group-anchoring rug role in a 5.2m x 4.2m room. Both were exactly the colour
+// the brief asked for, and both were overruled; anchors kept fell to 13 of 19,
+// under the five-in-six floor. This is the gate that keeps colour from buying a
+// place scale has already disqualified. It runs BEFORE the shortlist, so an
+// under-scaled piece never reaches the colour reservation at all.
+export function anchorUnderscaledForRole(
+  candidate: ProductMatchCandidate,
+  role: { category: string; label: string },
+  context: AnchorScaleContext
+): boolean {
+  const category = candidate.categoryNormalized || role.category;
+
+  if (category === "dining_tables" && typeof context.diningSeatCount === "number" && context.diningSeatCount > 0) {
+    const seats = statedSeatCount(candidate);
+    // Only a STATED count disqualifies. A table that does not say how many it
+    // seats is judged by the rest of the pipeline, not guessed at here.
+    if (seats !== null && seats < context.diningSeatCount) {
+      return true;
+    }
+  }
+
+  if (category === "rugs" && groupAnchoringRugRole(role.label)) {
+    const sides = rugSidesCm(candidate);
+    if (sides !== null) {
+      // SHAPE, before size. A runner is long enough to pass any
+      // largest-dimension test and is still the wrong object: the catalogue
+      // carries 16 of them at 0.25-0.35, down to a 60cm short side and up to a
+      // 400cm long one, so an 80x400 hallway runner would otherwise sail past a
+      // 180cm minimum and anchor a seating group.
+      //
+      // 0.6 sits in an empty band. Measured over the 264 rugs whose names state
+      // a size: runners and narrow rugs stop at 0.53, area rugs start at 0.65,
+      // and nothing at all lies between. Comparing the SHORT side against the
+      // size floor instead would reject most of the real stock, since the 217
+      // area rugs run from a 120cm short side.
+      if (sides.short / sides.long < 0.6) {
+        return true;
+      }
+
+      // No measurements means no invented constraint: without the room's
+      // numbers there is nothing to be under-scaled against.
+      const shorterSideCm = shorterRoomSide(context.measurements);
+      if (shorterSideCm !== null) {
+        // A rug anchoring a seating group has to reach under the sofa and the
+        // chairs facing it. Sixty percent of the room's shorter side is what the
+        // kept rugs in this corpus measure; the bounds keep a 3m room from
+        // demanding a 300cm rug and a 7m hall from settling for a doormat.
+        const required = Math.min(300, Math.max(180, Math.round(shorterSideCm * 0.6)));
+        if (sides.long < required) {
+          return true;
+        }
+      }
+    }
+  }
+
+  return false;
+}
+
+function groupAnchoringRugRole(label: string): boolean {
+  const normalized = label.toLowerCase();
+  return normalized.includes("generous") || normalized.includes("zoned") || normalized.includes("foundation");
+}
+
+function shorterRoomSide(measurements: AnchorScaleContext["measurements"]): number | null {
+  const sides = [measurements?.wallLengthCm, measurements?.roomDepthCm].filter(
+    (side): side is number => typeof side === "number" && side > 0
+  );
+  return sides.length > 0 ? Math.min(...sides) : null;
+}
+
+function statedSeatCount(candidate: ProductMatchCandidate): number | null {
+  const text = `${candidate.name} ${candidate.description ?? ""}`.toLowerCase();
+  const match = /(\d{1,2})\s*[-\s]?\s*seater/.exec(text);
+  if (!match) {
+    return null;
+  }
+  const seats = Number.parseInt(match[1] ?? "", 10);
+  return Number.isFinite(seats) && seats > 0 ? seats : null;
+}
+
+// Both sides, because shape decides as much as size for a rug. Rugs state
+// their size in the NAME far more reliably than in a dimensions column
+// ("Bryn Dhurry 400X500CM", "Milas Carpet 45605A Yellow - 160X230"): not one
+// rug row in the catalogue carries structured width and depth, so the name is
+// the real source here and the columns are the fallback for the day they fill.
+function rugSidesCm(candidate: ProductMatchCandidate): { short: number; long: number } | null {
+  const structured = [candidate.dimensions?.widthCm, candidate.dimensions?.depthCm].filter(
+    (value): value is number => typeof value === "number" && value > 0
+  );
+  if (structured.length === 2) {
+    return { short: Math.min(...structured), long: Math.max(...structured) };
+  }
+
+  const named = /(\d{2,3})\s*[xX×]\s*(\d{2,3})/.exec(`${candidate.name} ${candidate.description ?? ""}`);
+  if (!named) {
+    return null;
+  }
+  const a = Number.parseInt(named[1] ?? "", 10);
+  const b = Number.parseInt(named[2] ?? "", 10);
+  if (!Number.isFinite(a) || !Number.isFinite(b) || a <= 0 || b <= 0) {
+    return null;
+  }
+  return { short: Math.min(a, b), long: Math.max(a, b) };
+}
+
 // Two products from the same retailer that are the same piece in another colour
 // should not both take a shortlist slot. The judgement is the catalogue's, not
 // this module's: productFamilySignature already strips colour, size and
@@ -138,9 +261,41 @@ export function rotationOffset(seed: string, length: number): number {
   return Math.abs(hash) % length;
 }
 
+// A piece that answers the brief's own colour. Not a filter: a room needs a
+// sofa even when the catalogue has no terracotta one, so this promotes rather
+// than excludes, and it sits behind the contracts — nothing reaches a shortlist
+// for its colour that the room's size, scope or object-kind rules would reject.
+// The families a room falls back to on its own. A render defaults to these; it
+// never defaults to a committed colour.
+const NEUTRAL_FAMILIES = new Set(["white", "cream", "grey", "black", "brown"]);
+
+export function onWantedPalette(
+  candidate: ProductMatchCandidate,
+  wantedColorFamilies: ReadonlyArray<string>
+): boolean {
+  if (wantedColorFamilies.length === 0) {
+    return false;
+  }
+  // A brief that names a committed colour usually names its shell too — "a
+  // committed terracotta and ochre accent, against a warm off-white shell".
+  // Matching either makes every candidate on-palette and the promotion a
+  // no-op, which is exactly what happened: nine rust rugs sat behind five
+  // white ones for a brief that asked for a terracotta rug by name. So when a
+  // brief names any colour a room would not arrive at by itself, THAT is the
+  // one an anchor is promoted for. The shell needs no help; the render
+  // produces it anyway.
+  const committed = wantedColorFamilies.filter((family) => !NEUTRAL_FAMILIES.has(family));
+  const target = committed.length > 0 ? committed : wantedColorFamilies;
+  return candidateColorFamilies(candidate).some((family) => target.includes(family));
+}
+
 export type AnchorShortlistInput<T extends RankedProductMatch> = {
   candidates: ReadonlyArray<T>;
   avoidColorTags?: ReadonlyArray<string>;
+  // The families the brief asks for. A candidate in one of them leads the
+  // shortlist, so a room briefed for a committed colour is offered pieces that
+  // can carry it rather than five neutrals that cannot.
+  wantedColorFamilies?: ReadonlyArray<string>;
   // Products anchored recently, anywhere. Dropped outright: with thousands of
   // rows there is no reason to repeat, and repetition is what made every room
   // look the same.
@@ -153,6 +308,7 @@ export type AnchorShortlistInput<T extends RankedProductMatch> = {
 export function anchorShortlist<T extends RankedProductMatch>({
   candidates,
   avoidColorTags = [],
+  wantedColorFamilies = [],
   recentAnchorProductIds = [],
   seed,
   size = 6
@@ -177,7 +333,41 @@ export function anchorShortlist<T extends RankedProductMatch>({
     families.add(family);
     spread.push(candidate);
   }
-  const ordered = [...spread, ...overflow].slice(0, Math.max(1, size));
+  // The brief's own colour is applied BEFORE the cut, not after it. Promoting
+  // afterwards reordered five pieces that were already chosen, which is no help
+  // when the piece that actually carries the brief sits at rank 19 of its
+  // category: for a room briefed "a committed terracotta and ochre... carried
+  // across upholstery, rug and art", every rug that could carry it was cut
+  // before the promotion could see it.
+  //
+  // It still cannot bring in a piece the contracts, the brief's prohibitions or
+  // the family spread have already removed. Colour decides the order of what
+  // survives them, never what survives them.
+  const ranked = [...spread, ...overflow];
+  const shortlistSize = Math.max(1, size);
+
+  // Colour RESERVES places in the shortlist; it does not take it over. Letting
+  // every on-palette piece jump every better-ranked one put a rust 2.5-seater
+  // with a left chaise into a hall — the right colour, and the one silhouette
+  // the render has failed to reproduce in every run since this was measured —
+  // and the room lost its dining zone with it. The aesthetic pass exists to
+  // weigh colour against everything else; its job is to be SHOWN a piece that
+  // carries the brief, not to be handed a shortlist that is only those.
+  const reserved = shortlistSize >= 5 ? 2 : 1;
+  const onPalette = ranked.filter((candidate) => onWantedPalette(candidate, wantedColorFamilies));
+  const byRank = ranked.filter((candidate) => !onPalette.includes(candidate));
+  const ordered =
+    onPalette.length === 0
+      ? ranked.slice(0, shortlistSize)
+      : [
+          ...onPalette.slice(0, reserved),
+          ...byRank.slice(0, Math.max(0, shortlistSize - Math.min(reserved, onPalette.length))),
+          // Only if the room has nothing else to offer.
+          ...onPalette.slice(reserved)
+        ].slice(0, shortlistSize);
+
+  // Rotation still varies the order WITHIN the shortlist, so two rooms on one
+  // brief are not handed the same set in the same order.
   const offset = rotationOffset(seed, ordered.length);
   return [...ordered.slice(offset), ...ordered.slice(0, offset)];
 }

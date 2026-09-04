@@ -673,6 +673,102 @@ async function main() {
     assert.equal(userUpdates.length, 0);
   }
 
+  // --- substituteProduct: the replacement pool reaches past PostgREST's page cap
+  //
+  // Codex, reviewing PR #335. The swap path had its own copy of the catalogue
+  // read asking for rows with .limit(PRODUCT_MATCHING_CATALOG_LIMIT), and
+  // PostgREST answers with at most 1,000 rows however large a limit asks for.
+  // The swap therefore saw 1,000 of 3,233 products and every eligible
+  // replacement past the first page was invisible. Raising that constant from
+  // 1,500 to 5,000 for the sourcing read made it advertise a reach this caller
+  // never had. It now shares the paginated read instead of copying it.
+  {
+    const currentProduct = productRow({ id: "00000000-0000-4000-8000-000000000001", price_aed: 3000 });
+    // The only cheaper sofa in the catalogue sits on the SECOND page.
+    const cheaperOnPageTwo = productRow({
+      id: "00000000-0000-4000-8000-000000000002",
+      name: "Second Page Sofa",
+      price_aed: 2000
+    });
+    const pageOne = Array.from({ length: 1000 }, (_, index) =>
+      productRow({
+        id: `00000000-0000-4000-8000-${String(index + 100).padStart(12, "0")}`,
+        name: `Filler Sofa ${index}`,
+        // Dearer than the current row, so nothing here can satisfy a "cheaper" swap.
+        price_aed: 9000
+      })
+    );
+
+    const userUpdates: RecordedCall[] = [];
+    const { client } = fakeSupabase((call) => {
+      if (call.op === "update") {
+        userUpdates.push(call);
+        return { data: null };
+      }
+      if (call.table === "projects") return { data: { id: "p", budget_max_aed: 20000 } };
+      if (call.table === "rooms") return { data: { id: "r", room_type: "Living Room" } };
+      if (call.table === "shopping_lists") return { data: { id: "l", concept_id: "c" } };
+      if (call.table === "concepts") {
+        return {
+          data: {
+            id: "c",
+            title: "Warm modern living room",
+            description: "Soft neutral boucle sofa and walnut accents.",
+            primary_image_asset: { storage_path: "u/r/c.png", mime_type: "image/png" }
+          }
+        };
+      }
+      if (call.table === "room_measurements") return { data: { wall_length_cm: 500, room_depth_cm: 400 } };
+      if (call.table === "shopping_list_items") {
+        return { data: [{ status: "selected", unit_price_aed: 2000, quantity: 1 }] };
+      }
+      return { data: null };
+    });
+
+    const productPages: Array<[number, number] | undefined> = [];
+    const { client: service } = fakeSupabase(
+      (call) => {
+        if (call.table === "shopping_list_items" && call.single) {
+          return {
+            data: {
+              id: "item-1",
+              category: "sofas",
+              quantity: 1,
+              unit_price_aed: 3000,
+              line_total_aed: 3000,
+              role_label: "sofa",
+              role_priority: "required",
+              role_quantity: 1,
+              product: currentProduct
+            }
+          };
+        }
+        if (call.table === "products") {
+          productPages.push(call.range);
+          // A full page means "there may be more", which is exactly the signal
+          // the old .limit() call could never act on.
+          return { data: call.range && call.range[0] >= 1000 ? [cheaperOnPageTwo] : pageOne };
+        }
+        if (call.table === "ai_jobs" && call.op === "insert") return { data: { id: "check-job" } };
+        return { data: null };
+      },
+      (storageCall) => (storageCall.op === "download" ? { data: new Blob([Buffer.from([1, 2, 3])]) } : { data: null })
+    );
+
+    const result = await substituteProduct(
+      { supabase: client, serviceSupabase: service },
+      { projectId: "p", roomId: "r", shoppingListId: "l", itemId: "item-1", mode: "cheaper" },
+      swapDeps()
+    );
+
+    assert.ok(productPages.length >= 2, `the swap must page the catalogue, asked for ${productPages.length} page(s)`);
+    assert.deepEqual(productPages[0], [0, 999], "first page");
+    assert.deepEqual(productPages[1], [1000, 1999], "second page, which the .limit() version never requested");
+    assert.equal(result.status, "swapped", "a replacement beyond the first page is reachable");
+    const itemUpdate = userUpdates.find((call) => call.table === "shopping_list_items");
+    assert.equal(itemUpdate?.payload?.product_id, "00000000-0000-4000-8000-000000000002");
+  }
+
   console.log("selection-swap service tests passed");
 }
 

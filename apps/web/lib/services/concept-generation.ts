@@ -409,6 +409,7 @@ export async function generateInitialConceptForRoom(
           measurements: measurements
             ? { wall_length_cm: measurements.wall_length_cm, room_depth_cm: measurements.room_depth_cm }
             : null,
+          diningSeatCount: spatialIntent.diningSeatCount,
           startedAt
         }
       );

@@ -97,6 +97,33 @@ model (`--model`).
    disagree on about three, so unanimity measures their agreement rather than
    the work. A dropped reference is still a defect; it is one the floor counts.
 
+   DECISION, 2026-09-04 (Ayo). The across-rooms rate is KNOWINGLY UNMET on the
+   palette-register branch and the number is NOT being lowered. Reviewers should
+   not reopen this; the reasoning is recorded here so it does not have to be
+   argued again.
+
+   The floor was set against a catalogue read that could only see 975 of 3,233
+   rows. Fixing that read is what moved the measurement: 18/19 and 17/18 before,
+   then 16/19, 13/19, 13/19 after. Lowering the gate would bank a regression
+   that a bug fix caused, and would keep being wrong as the catalogue grows.
+
+   What ships instead is the PER-ROOM floor, which held in all three runs: no
+   room below half its anchors, none at zero. That is the half protecting an
+   individual user's room from being a disaster. The across-rooms rate is the
+   aggregate ambition and it is now its own slice.
+
+   Two things must be settled in that slice before the rate is a gate again.
+   First, the measurement's variance was never established: it was set from two
+   runs, and rounds 1 and 3 anchored the SAME rug in three of five rooms and
+   scored 16 and 13. Second, the two measures of "is this piece in the design"
+   disagree. The app's own recorded verified_similarity averages about 0.82 and
+   every scored anchor cleared its threshold, while this harness's judge says 13
+   of 19. That gap is the product promise stated exactly, because a shopping
+   list that claims a piece the render did not draw is a list charging for
+   something the picture does not show. Reconciling the two verdicts comes
+   before any eligibility tuning, or the pipeline gets tuned against a judge
+   nobody has validated.
+
    PASS: the room meets the floor, every anchor was judged, and the app claimed
    at least one on the list. FAIL: the room misses the floor, an anchor could
    not be judged (no usable image), the concept has anchors but no list, or the

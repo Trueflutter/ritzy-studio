@@ -15,6 +15,7 @@ export type RecordedCall = {
   columns?: string;
   order: Array<[string, unknown]>;
   limit?: number;
+  range?: [number, number];
   payload?: Record<string, unknown>;
   upsertOptions?: { onConflict?: string; ignoreDuplicates?: boolean };
   single: boolean;
@@ -107,6 +108,14 @@ export function fakeSupabase(respond: Responder, respondStorage: StorageResponde
       },
       limit(count: number) {
         call.limit = count;
+        return builder;
+      },
+      // The catalogue read is paged, because PostgREST answers with at most a
+      // thousand rows however large a `limit` asks for. A responder that
+      // returns its whole fixture on the first page ends the loop, which is
+      // what every fixture here does.
+      range(from: number, to: number) {
+        call.range = [from, to];
         return builder;
       },
       single() {

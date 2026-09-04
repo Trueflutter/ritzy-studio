@@ -629,7 +629,14 @@ function assembleInitialConceptImagePrompt({
             .map((product, index) => `image ${index + 1} of that set is the ${product.roleLabel}`)
             .join(", ")}.`,
           "Put those exact pieces in the room. Keep each one's silhouette, proportions, colour and material as photographed. You may change only where it stands, its angle to the camera, and how the room's light falls on it.",
-          "Do not swap any of them for a similar-looking piece, do not restyle them to suit a palette, and do not leave one out. Design everything else in the room around them, so the finished room and these pieces read as one scheme."
+          "Do not swap any of them for a similar-looking piece, do not restyle them to suit a palette, and do not leave one out. Design everything else in the room around them, so the finished room and these pieces read as one scheme.",
+          // Measured: a room briefed for "a committed terracotta and ochre"
+          // was pinned to a cream sofa and a tan rug, the render kept both
+          // faithfully, and built a neutral room around them. The anchor
+          // instruction is concrete and the palette one is not, so the anchors
+          // quietly became the palette. Kept short because this prompt is
+          // already near its token cap.
+          "These pieces are fixed but they are not the palette. Quiet pieces mean the brief's colour must come from the walls, drapery, art and accessories instead, harder rather than less."
         ].join(" ")
       : null,
     hasInspirationImages

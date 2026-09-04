@@ -31,7 +31,20 @@ export function structuredBriefJson(value: unknown): StructuredBriefJson {
     : {};
 }
 
-export const PRODUCT_MATCHING_CATALOG_LIMIT = 1500;
+// The whole eligible catalogue, not a slice of it. This was 1,500 rows ordered
+// by how recently each was price-checked, which silently hid 1,802 of the 3,302
+// eligible products — 55% of stock — on a criterion that has nothing to do with
+// the room. Measured consequence: a room briefed for "a committed terracotta
+// and ochre" saw ZERO of the catalogue's nine warm-saturated rugs and two of
+// its three warm sofas, so every shortlist it was offered was neutral and the
+// render faithfully built a neutral room.
+//
+// Nothing a model sees is bounded by this number. The visual pass sees the top
+// candidates per role (CANDIDATES_PER_ROLE) and a separate image budget; this
+// only bounds what the pure, local contract filter and scorer read. The cost of
+// raising it is CPU on the server, and the cost of leaving it was the shopper's
+// choice.
+export const PRODUCT_MATCHING_CATALOG_LIMIT = 5000;
 
 // Downscaled data URLs for the candidate images an AI sourcing call will see.
 // Fetched app-side (with retry) so the vision provider never has to download
@@ -202,28 +215,50 @@ export function splitAvoidColorCues(text: string): { cueText: string; avoidColor
 // first. One reader, because a column added to this select has to reach both
 // the anchor pass and sourcing or the two rank from different data and a piece
 // the render was built from is contract-rejected when the list is built.
+// PostgREST answers with at most a thousand rows per request whatever `limit`
+// asks for, so this is PAGED. Before it was, the pipeline read one page and
+// believed it had the catalogue: the constant said 1,500, the API returned
+// 1,000, and 2,300 of the 3,302 eligible products were invisible to every
+// match the product ever made. Nothing failed; the shortlists were simply
+// drawn from a third of the stock, chosen by how recently each row was
+// price-checked.
+const CATALOGUE_PAGE_SIZE = 1000;
+
 export async function loadCatalogueCandidates(
   serviceSupabase: ServiceSupabaseClient
 ): Promise<{ products: ProductRow[]; candidates: ProductMatchCandidate[] }> {
-  const { data, error } = await serviceSupabase
-    .from("products")
-    .select(
-      `
+  const products: ProductRow[] = [];
+
+  while (products.length < PRODUCT_MATCHING_CATALOG_LIMIT) {
+    const { data, error } = await serviceSupabase
+      .from("products")
+      .select(
+        `
       *,
       retailer:retailers(name, status),
       dimensions:product_dimensions(width_cm, depth_cm, height_cm, source_text)
     `
-    )
-    .not("price_aed", "is", null)
-    .not("primary_image_url", "is", null)
-    .order("last_checked_at", { ascending: false, nullsFirst: false })
-    .limit(PRODUCT_MATCHING_CATALOG_LIMIT);
+      )
+      .not("price_aed", "is", null)
+      .not("primary_image_url", "is", null)
+      // Ordered by id as well, so the pages are a partition of the catalogue
+      // rather than overlapping windows: last_checked_at is not unique, and
+      // paging on a non-unique sort silently repeats and skips rows.
+      .order("last_checked_at", { ascending: false, nullsFirst: false })
+      .order("id", { ascending: true })
+      .range(products.length, products.length + CATALOGUE_PAGE_SIZE - 1);
 
-  if (error) {
-    throw new Error(error.message);
+    if (error) {
+      throw new Error(error.message);
+    }
+
+    const page = (data ?? []) as ProductRow[];
+    products.push(...page);
+    if (page.length < CATALOGUE_PAGE_SIZE) {
+      break;
+    }
   }
 
-  const products = (data ?? []) as ProductRow[];
   return {
     products,
     candidates: products

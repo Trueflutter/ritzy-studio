@@ -1,15 +1,17 @@
 import assert from "node:assert/strict";
 
-import { enhancedProductRolesForRoom } from "./product-matching";
+import { enhancedProductRolesForRoom, wantedColorFamilies } from "./product-matching";
 import type { ProductMatchCandidate, RankedProductMatch, RoomProductRole } from "./product-matching";
 import { canonicalRoomTypes } from "./index";
 import {
+  anchorUnderscaledForRole,
   DEFAULT_ANCHOR_LIMIT,
   anchorContradictsBrief,
   anchorSeedFor,
   anchorRolesFromBlueprint,
   anchorSetFromShortlists,
   anchorShortlist,
+  onWantedPalette,
   productFamilyKey,
   rotationOffset
 } from "./anchor-selection";
@@ -333,4 +335,165 @@ const ranked = (overrides: Partial<RankedProductMatch> & { id: string }): Ranked
   );
 }
 
+// --- the colour a brief ASKS FOR leads the shortlist. The contracts enforce
+// what a brief forbids; nothing pulled toward what it wants, so a room briefed
+// "a committed terracotta and ochre... carried across upholstery, rug and art"
+// was offered five white rugs and the render faithfully built a neutral room.
+{
+  const rug = (id: string, name: string, color: string) => ranked({ id, name, color, colorTags: [color.toLowerCase()] });
+  // Ranked order puts the neutrals first, as the catalogue's own scoring does.
+  const candidates = [
+    rug("w1", "Snow Rug Neutral", "White"),
+    rug("w2", "Galeria Lux Rug", "White"),
+    rug("w3", "Urbana Rug", "White"),
+    rug("w4", "Mason Rug", "White"),
+    rug("w5", "Charleen Rug", "White"),
+    rug("r1", "Milas Carpet Ochre", "Ochre"),
+    rug("r2", "Aleem Persian Rug", "Red")
+  ];
+  const wanted = wantedColorFamilies("a committed terracotta and ochre accent, against a warm off-white shell");
+  assert.ok(wanted.includes("orange") && wanted.includes("yellow"), `the brief's colours are read: ${wanted.join(",")}`);
+
+  const shortlist = anchorShortlist({ candidates, wantedColorFamilies: wanted, seed: "room-1", size: 5 });
+  assert.ok(
+    shortlist.some((entry) => entry.id === "r1" || entry.id === "r2"),
+    `a piece that carries the brief reaches the shortlist; got ${shortlist.map((e) => e.id).join(",")}`
+  );
+
+  // The promotion happens BEFORE the cut. Applied after, it reorders five
+  // pieces already chosen, which is no help when the piece that carries the
+  // brief sits below them: every rug that could carry the terracotta was cut
+  // before the promotion could see it.
+  const deep = [...Array.from({ length: 12 }, (_, i) => rug(`n${i}`, `Neutral Rug ${i}`, "White")), rug("late", "Ochre Kilim", "Ochre")];
+  const deepList = anchorShortlist({ candidates: deep, wantedColorFamilies: wanted, seed: "s", size: 5 });
+  assert.ok(deepList.some((e) => e.id === "late"), "a piece ranked below the cut reaches the shortlist");
+
+  // But colour RESERVES places, it does not take them. Letting every on-palette
+  // piece jump every better-ranked one put a rust sofa with a left chaise into
+  // a hall — right colour, and the one silhouette the render has never
+  // reproduced — and the room lost its dining zone with it.
+  const manyColoured = [
+    ...Array.from({ length: 6 }, (_, i) => rug(`c${i}`, `Ochre Rug ${i}`, "Ochre")),
+    ...Array.from({ length: 6 }, (_, i) => rug(`k${i}`, `Neutral Rug ${i}`, "White"))
+  ];
+  const mixed = anchorShortlist({ candidates: manyColoured, wantedColorFamilies: wanted, seed: "s", size: 5 });
+  assert.equal(mixed.length, 5);
+  assert.equal(
+    mixed.filter((entry) => entry.id.startsWith("c")).length,
+    2,
+    `colour takes its reserved places and no more; got ${mixed.map((e) => e.id).join(",")}`
+  );
+  assert.ok(
+    mixed.filter((entry) => entry.id.startsWith("k")).length === 3,
+    "the best-ranked pieces keep the rest of the shortlist"
+  );
+
+  // The shell is not the accent. A brief naming both must not treat every
+  // neutral as on-palette, or the promotion is a no-op — which is what left
+  // nine rust rugs behind five white ones.
+  assert.equal(onWantedPalette(rug("w9", "Snow Rug", "White"), wanted), false);
+  assert.equal(onWantedPalette(rug("r9", "Ochre Rug", "Ochre"), wanted), true);
+
+  // A brief that names only neutrals still gets them: the rule is "prefer the
+  // colour a room would not arrive at by itself", not "prefer saturation".
+  const neutralBrief = wantedColorFamilies("a calm scheme of warm greys and cream");
+  assert.equal(onWantedPalette(rug("g1", "Slate Rug", "Grey"), neutralBrief), true);
+
+  // And a brief with no colour at all promotes nothing.
+  assert.equal(onWantedPalette(rug("x", "Any Rug", "Ochre"), wantedColorFamilies(null)), false);
+}
+
 console.log("anchor selection tests passed");
+
+// Scale is a contract, not a preference. Round 2 of the 2026-09-04 measurement
+// lost a 4-seater dining table in a hall briefed for ten and a 160x230 rug
+// under a full seating group in a 5.2m x 4.2m room. Both were the colour the
+// brief asked for; the render overruled both and anchors kept fell to 13/19.
+{
+  const table = (name: string) => ranked({ id: "t", name, categoryNormalized: "dining_tables" });
+  const diningRole = { category: "dining_tables", label: "dining table" };
+
+  assert.equal(
+    anchorUnderscaledForRole(table("Elmont 4 seater Round Dining table"), diningRole, { diningSeatCount: 10 }),
+    true,
+    "a four-seater cannot anchor a hall the render is told to seat ten"
+  );
+  assert.equal(
+    anchorUnderscaledForRole(table("Cooper 10 Seater Dining Table"), diningRole, { diningSeatCount: 10 }),
+    false
+  );
+  assert.equal(
+    anchorUnderscaledForRole(table("Dolores Ceramic Top Dining Table"), diningRole, { diningSeatCount: 10 }),
+    false,
+    "a table that does not state a seat count is judged elsewhere, not guessed at here"
+  );
+  assert.equal(
+    anchorUnderscaledForRole(table("Elmont 4 seater Round Dining table"), diningRole, {}),
+    false,
+    "no stated seat count in the brief means no constraint to contradict"
+  );
+
+  const carpet = (name: string) => ranked({ id: "r", name, categoryNormalized: "rugs" });
+  const generous = { category: "rugs", label: "generous rug" };
+  const glassGlare = { measurements: { wallLengthCm: 520, roomDepthCm: 420 } };
+
+  assert.equal(
+    anchorUnderscaledForRole(carpet("Home Canvas Milas Carpet 45605A Yellow - 160X230"), generous, glassGlare),
+    true,
+    "a 160x230 rug cannot anchor a seating group in a 5.2m x 4.2m room"
+  );
+  assert.equal(
+    anchorUnderscaledForRole(carpet("Bryn Dhurry 400X500CM"), generous, glassGlare),
+    false
+  );
+  assert.equal(
+    anchorUnderscaledForRole(carpet("Home Canvas Milas Carpet 45605A Yellow - 160X230"), generous, {
+      measurements: { wallLengthCm: 380, roomDepthCm: 300 }
+    }),
+    false,
+    "the same rug is fine in a small apartment; the floor scales with the room"
+  );
+  assert.equal(
+    anchorUnderscaledForRole(carpet("Home Canvas Milas Carpet 45605A Yellow - 160X230"), generous, {}),
+    false,
+    "without the room's measurements there is nothing to be under-scaled against"
+  );
+  assert.equal(
+    anchorUnderscaledForRole(carpet("Home Canvas Milas Carpet 45605A Yellow - 160X230"), { category: "rugs", label: "dining rug" }, glassGlare),
+    false,
+    "only the group-anchoring rug roles carry the floor"
+  );
+
+  // Shape, not just size. Codex, reviewing PR #335: a runner is long enough to
+  // pass any largest-dimension test and is still the wrong object. This is not
+  // hypothetical stock — the catalogue carries 16 rugs at ratio 0.25-0.35, down
+  // to a 60cm short side and up to a 400cm long one.
+  assert.equal(
+    anchorUnderscaledForRole(carpet("Hallway Runner Rug 80x400"), generous, glassGlare),
+    true,
+    "an 80x400 runner cannot anchor a seating group however long it is"
+  );
+  assert.equal(
+    anchorUnderscaledForRole(carpet("Hallway Runner Rug 80x400"), generous, {}),
+    true,
+    "shape disqualifies a runner even with no room measurements to size against"
+  );
+  assert.equal(
+    anchorUnderscaledForRole(carpet("Corridor Rug 60x240"), generous, {}),
+    true
+  );
+  // The threshold sits in an empty band: across the 264 rugs whose names state a
+  // size, runners and narrow rugs stop at 0.53 and area rugs start at 0.65.
+  // Comparing the SHORT side against the size floor instead, as first proposed,
+  // would reject most real stock — the 217 area rugs run from a 120cm short
+  // side, so a 240x340 in a 4.2m room (floor 252) would have been thrown out.
+  assert.equal(
+    anchorUnderscaledForRole(carpet("Harmony Contemporary Transitional Rug 240 x 340"), generous, glassGlare),
+    false,
+    "a legitimate 240x340 area rug survives: its long side clears the floor and its shape is right"
+  );
+  assert.equal(
+    anchorUnderscaledForRole(carpet("Sheena Rug - 300x400 cm"), generous, glassGlare),
+    false
+  );
+}

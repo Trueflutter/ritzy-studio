@@ -73,9 +73,9 @@ assert.match(roomBlueprintDefaultsLanguage("Living & Dining"), /protected circul
 assert.match(roomBlueprintDefaultsLanguage("Living & Dining"), /sofa should face the focal wall/);
 assert.match(roomBlueprintDefaultsLanguage("Living & Dining"), /dining chairs/);
 assert.match(roomBlueprintDefaultsLanguage("Living & Dining"), /centered over-table pendant or chandelier/);
-assert.match(roomBlueprintDefaultsLanguage("Living & Dining"), /do not run the sofa down the long axis of the hall/);
-assert.match(roomBlueprintDefaultsLanguage("Living & Dining"), /opposite side of the sofa from the TV \(behind the sofa back\)/);
-assert.match(roomBlueprintDefaultsLanguage("Living & Dining"), /Mark the boundary with a divider behind the sofa/);
+assert.match(roomDesignLanguage("Living & Dining"), /do not run the sofa down the long axis of the hall/);
+assert.match(roomDesignLanguage("Living & Dining"), /opposite side of the sofa from the TV \(behind the sofa back\)/);
+assert.match(roomDesignLanguage("Living & Dining"), /Mark the boundary with a divider behind the sofa/);
 assert.match(roomSpatialPlacementGuardrailLanguage("living room") ?? "", /different wall or zone/);
 assert.match(roomSpatialPlacementGuardrailLanguage("living room") ?? "", /parallel to the focal wall/);
 assert.match(roomSpatialPlacementGuardrailLanguage("living room") ?? "", /Do not cant or angle the primary sofa diagonally/);
@@ -136,3 +136,10 @@ assert.match(
 );
 
 console.log("interior design language tests passed");
+
+// The hall zoning rule ships once, not twice. roomDesignLanguage and
+// roomBlueprintDefaultsLanguage are both assembled into the same image prompt,
+// so a rule repeated in both burns ~2,800 characters of a 17,000 character
+// budget to tell the model the same thing twice.
+assert.match(roomDesignLanguage("Living & Dining"), /Hall zoning rule/);
+assert.doesNotMatch(roomBlueprintDefaultsLanguage("Living & Dining"), /Hall zoning rule/);

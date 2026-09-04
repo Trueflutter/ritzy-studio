@@ -5,10 +5,12 @@ import {
   anchorSeedFor,
   anchorSetFromShortlists,
   anchorShortlist,
+  anchorUnderscaledForRole,
   buildSpecSourcingPlan,
   enhancedProductRolesForRoom,
   roleOptionKey,
   sourcingRolesFromBlueprint,
+  wantedColorFamilies,
   type ProductMatchCandidate,
   type RankedProductMatch
 } from "@ritzy-studio/domain";
@@ -54,6 +56,14 @@ import type { ServiceSupabaseClient, UserSupabaseClient } from "./supabase-clien
 // photographs stay inside the run's image budget. The pass caps what it will
 // look at as well; this is the fetch budget.
 export const ANCHOR_CANDIDATES_PER_ROLE = 5;
+
+// How deep the anchor pool is built before the shortlist is drawn from it.
+// Deeper than the shortlist on purpose: the pool is ranked, and a brief's
+// colour competes there with freshness and tag overlap, so the piece that
+// actually carries the brief can sit at rank 19 of a category. The shortlist
+// then promotes it to the front. Pure ranking over an in-memory list; no paid
+// call is bounded by this.
+const ANCHOR_POOL_DEPTH = 30;
 
 // How far back "already used this piece" reaches for one owner. Large enough
 // that a shopper doing a whole apartment does not meet the same sofa twice,
@@ -150,6 +160,9 @@ export type ChooseConceptAnchorsInput = {
   };
   styleSlugs: string[];
   measurements: { wall_length_cm: number | null; room_depth_cm: number | null } | null;
+  // The seat count the render is told not to deviate from, when the brief
+  // states one. An anchor table below it is an anchor the render must discard.
+  diningSeatCount?: number | null;
   startedAt: number;
 };
 
@@ -209,6 +222,15 @@ export async function chooseConceptAnchors(
   }
 
   const avoidColorTags = splitAvoidColorCues(input.designBrief.avoid_notes ?? "").avoidColorTags;
+  // What the brief ASKS for, read from its own words. The contracts already
+  // enforce what it forbids; this is the half that was missing, and without it
+  // a room briefed for a committed colour was anchored on whatever the rotation
+  // landed on and the render faithfully built a room around that.
+  const wanted = wantedColorFamilies(
+    input.designBrief.color_notes,
+    input.designBrief.style_notes,
+    input.designBrief.inspiration_notes
+  );
   // Bounded like the catalogue read either side of it, and for the same
   // reason: a degraded pooler hangs rather than failing, and an unbounded hang
   // here runs the concept request past the route limit. Losing the recency
@@ -239,7 +261,7 @@ export async function chooseConceptAnchors(
       ? { wallLengthCm: input.measurements.wall_length_cm, roomDepthCm: input.measurements.room_depth_cm }
       : null,
     avoidColorTags,
-    candidatesPerRole: ANCHOR_CANDIDATES_PER_ROLE * 2
+    candidatesPerRole: ANCHOR_POOL_DEPTH
   });
 
   // No per-role price cap on the anchors. An earlier version gave each role a
@@ -252,12 +274,31 @@ export async function chooseConceptAnchors(
   // own gates, which compare a piece against the WHOLE room rather than a
   // slice of it, so a 50,000 sofa still cannot anchor a 20,000 room. What is
   // gone is the slice.
+  // Scale first, colour second. An under-scaled piece is one the render is
+  // required to overrule, so it is dropped BEFORE the shortlist rather than
+  // ranked inside it: otherwise the colour reservation spends a slot on a piece
+  // that cannot survive the render. If the gate would empty a pool, the pool
+  // keeps its candidates, because a weaker anchor beats no anchor for the role.
+  const scaleContext = {
+    measurements: input.measurements
+      ? { wallLengthCm: input.measurements.wall_length_cm, roomDepthCm: input.measurements.room_depth_cm }
+      : null,
+    diningSeatCount: input.diningSeatCount ?? null
+  };
+
   const shortlists = plan.pools
+    .map((pool) => {
+      const scaled = pool.candidates.filter(
+        (candidate) => !anchorUnderscaledForRole(candidate, pool.role, scaleContext)
+      );
+      return { role: pool.role, candidates: scaled.length > 0 ? scaled : pool.candidates };
+    })
     .map((pool) => ({
       role: pool.role,
       candidates: anchorShortlist({
         candidates: pool.candidates,
         avoidColorTags,
+        wantedColorFamilies: wanted,
         recentAnchorProductIds,
         seed: anchorSeedFor(input.roomId, pool.role.category),
         size: ANCHOR_CANDIDATES_PER_ROLE

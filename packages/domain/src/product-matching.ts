@@ -140,8 +140,14 @@ const colorFamilies: Record<string, string[]> = {
   cream: ["cream", "ivory", "beige", "linen", "oatmeal", "sand", "taupe", "ecru"],
   green: ["green", "olive", "sage", "moss", "forest", "khaki"],
   grey: ["grey", "gray", "charcoal", "slate"],
-  red: ["red", "burgundy", "terracotta", "rust"],
-  white: ["white", "ivory", "cream"]
+  // Terracotta and rust sit in both red and orange on purpose: a brief asking
+  // for one reads as either, and a catalogue row tagged either should answer.
+  orange: ["orange", "terracotta", "rust", "apricot", "coral", "peach"],
+  red: ["red", "burgundy", "terracotta", "rust", "clay", "sienna", "brick"],
+  white: ["white", "ivory", "cream"],
+  // Absent until a room asked for "a committed terracotta and ochre" and the
+  // vocabulary had no word for the second half of it.
+  yellow: ["yellow", "ochre", "mustard", "amber", "honey", "saffron"]
 };
 
 const materialFamilies: Record<string, string[]> = {
@@ -689,6 +695,37 @@ const AVOID_COLOR_PENALTY = 24;
 // Exported so the anchor path uses the same families as sourcing: a colour
 // added to colorFamilies has to reach both, or a brief that forbids beige
 // stops a sourced sand sofa and still lets a sand sofa anchor the render.
+// The colour families a brief ASKS FOR, read from its own prose. The mirror of
+// the avoid list, and the half that was missing: the contracts enforce what a
+// brief forbids, and until now nothing pulled toward what it wants, so a room
+// briefed for "a committed terracotta and ochre" was anchored on a cream sofa
+// and a tan rug and the render faithfully built a neutral room around them.
+export function wantedColorFamilies(...text: ReadonlyArray<string | null | undefined>): string[] {
+  const joined = text.filter((part): part is string => Boolean(part)).join(" ");
+  if (!joined) {
+    return [];
+  }
+  // Briefs are written in prose, and prose pluralises: "warm greys", "deep
+  // blues", "layered creams". The vocabulary is singular, so a plural silently
+  // matched nothing and the brief's own colour went unread.
+  const tokens = tokensFor(joined);
+  for (const token of Array.from(tokens)) {
+    if (token.endsWith("s") && token.length > 3) {
+      tokens.add(token.slice(0, -1));
+    }
+  }
+  return familiesInText(tokens, colorFamilies);
+}
+
+// The families a candidate itself reads as, from the fields the catalogue fills
+// in and from its name, because a colour arrives in a name as often as a tag.
+export function candidateColorFamilies(candidate: ProductMatchCandidate): string[] {
+  return familiesInText(
+    tokensFor([candidate.color, ...candidate.colorTags, candidate.name].filter(Boolean).join(" ")),
+    colorFamilies
+  );
+}
+
 export function avoidColorTokens(avoidColorTags?: ReadonlyArray<string>): Set<string> {
   if (!avoidColorTags || avoidColorTags.length === 0) {
     return new Set<string>();
@@ -763,6 +800,12 @@ export function conceptPaletteMatchingText(palette: ConceptImagePalette) {
   return parts.length > 0 ? parts.join(" ") : null;
 }
 
+// Large enough to reorder a pool cut that neutrals otherwise win on freshness
+// and tag overlap, and smaller than the category and contract signals so colour
+// never buys a piece past a rule about whether it fits the room.
+const WANTED_COLOR_BONUS = 34;
+const WANTED_COLOR_MISS_PENALTY = 22;
+
 function scoreCandidate(
   candidate: ProductMatchCandidate,
   conceptTokens: Set<string>,
@@ -783,6 +826,24 @@ function scoreCandidate(
   if (avoidColorHits.length > 0) {
     score -= AVOID_COLOR_PENALTY;
     warnings.push(`Color (${avoidColorHits.join(", ")}) sits outside the concept palette.`);
+  }
+
+  // The colour a brief ASKS FOR. This ranking decides the pool cut, and until
+  // now it scored only what a brief forbids, so a room briefed for "a committed
+  // terracotta and ochre" ranked its nine rust rugs at 106 and its white ones at
+  // 150 and never saw a warm rug at all. A piece that answers the brief's own
+  // colour is lifted; one that reads as a different colour entirely is nudged
+  // down, and a piece the catalogue gives no colour for is left alone, because
+  // an untagged product is not a wrong one.
+  const wantedFamilies = familiesInText(conceptTokens, colorFamilies);
+  if (wantedFamilies.length > 0) {
+    const families = candidateColorFamilies(candidate);
+    if (families.some((family) => wantedFamilies.includes(family))) {
+      score += WANTED_COLOR_BONUS;
+      reasons.push(`carries the brief's colour (${families.filter((family) => wantedFamilies.includes(family)).join(", ")})`);
+    } else if (families.length > 0) {
+      score -= WANTED_COLOR_MISS_PENALTY;
+    }
   }
 
   if (candidate.categoryNormalized && preferredCategories.includes(candidate.categoryNormalized)) {
@@ -2771,7 +2832,12 @@ function hasSoftNeutralCue(tokens: Set<string>) {
 
 function attributeCueText(role: RoomProductRoleSpec, conceptText: string) {
   const roleSpecificCue = [role.label, role.visualBrief].filter(Boolean).join(" ");
-  return role.visualBrief ? roleSpecificCue : [conceptText, roleSpecificCue].filter(Boolean).join(" ");
+  // The role's own brief leads, because it is the more specific instruction.
+  // But the room's text is no longer DROPPED when the role has one: every spec
+  // role carries a visual brief, so post-approval sourcing was scoring without
+  // the room's palette at all, and a brief naming a colour had no way to reach
+  // the pieces it was naming it for.
+  return [roleSpecificCue, conceptText].filter(Boolean).join(" ");
 }
 
 function silhouetteAttributeScore(roleTokens: Set<string>, candidateTokens: Set<string>) {

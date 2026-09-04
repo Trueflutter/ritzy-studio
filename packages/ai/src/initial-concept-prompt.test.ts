@@ -30,7 +30,12 @@ assert.match(systemPrompt, /Palette and material register:/);
 assert.match(systemPrompt, /Never fall back to a generic beige-brown scheme by default/);
 assert.match(systemPrompt, /cool, dark, saturated, or bold colour, commit to that register fully/);
 assert.match(systemPrompt, /choose ONE deliberate register/);
-assert.match(systemPrompt, /may never appear as a dominant surface/);
+// An avoided colour is barred from the surfaces the DESIGN picks, and the
+// architecture the design does not replace is named as exempt: the dense
+// apartment failed its cool brief on a beige curtain (ours) and a warm wood
+// floor (the room's), and only the first is a mistake.
+assert.match(systemPrompt, /may never appear on a surface the design chooses/);
+assert.match(systemPrompt, /Existing floors and stone are exempt/);
 
 const imagePrompt = buildInitialConceptImagePrompt({
   generationPrompt: "Create a warm living room concept.",
@@ -72,6 +77,12 @@ assert.equal(imagePrompt.includes("Do not invent alternate anchor furniture"), f
   assert.match(anchored, /image 1 of that set is the sofa, image 2 of that set is the rug/);
   assert.match(anchored, /Put those exact pieces in the room/);
   assert.match(anchored, /Do not swap any of them for a similar-looking piece/);
+  // Pinned pieces are not the palette. Measured: a room briefed for a
+  // committed terracotta was pinned to a cream sofa and a tan rug, the render
+  // kept both faithfully, and built a neutral room around them, because the
+  // anchor instruction is concrete and the palette one is not.
+  assert.match(anchored, /These pieces are fixed but they are not the palette/);
+  assert.match(anchored, /walls, drapery, art and accessories/);
 
   // Singular reads as English, because a room can be anchored on one piece.
   const one = buildInitialConceptImagePrompt({
