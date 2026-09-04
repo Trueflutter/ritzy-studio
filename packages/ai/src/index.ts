@@ -59,7 +59,10 @@ import {
   paletteRegisterLanguage,
   productDesignVerificationPrompt,
   productDesignVerificationJsonSchema,
-  productDesignVerificationResponseSchema
+  productDesignVerificationResponseSchema,
+  anchorSetSelectionPrompt,
+  anchorSetSelectionJsonSchema,
+  anchorSetSelectionResponseSchema
 } from "@ritzy-studio/prompts";
 import { createHash, createSign } from "node:crypto";
 import { readFile } from "node:fs/promises";
@@ -191,6 +194,23 @@ export type GenerateInitialConceptInput = {
   roomPhotoReferenceUrl?: string | null;
   roomPhotoBytes: Buffer;
   roomPhotoMimeType: string;
+  // Real catalogue pieces chosen for this room BEFORE the render, passed as
+  // references so the render is built around them.
+  //
+  // Bytes only, and no URL field at all. The caller has already fetched every
+  // one of these through the reference guard, so a URL would add nothing but a
+  // way back to the failure it was added to prevent: a retailer host that
+  // answers the image provider with a resize error costs the render its primary
+  // provider, which was measured at 232 s against a 300 s route limit.
+  anchorProducts?: Array<{
+    roleLabel: string;
+    bytes: Buffer;
+    mimeType: string;
+  }>;
+  // What the caller can still wait for a picture, once everything before the
+  // render has taken its share of the request. Without it the render honours
+  // only the providers' own ceilings, which outlast every route that calls it.
+  imageDeadlineMs?: number;
   // Additional photos of the SAME room from other corners. They give the model
   // real spatial coverage instead of hallucinating occluded walls from one frame.
   additionalRoomPhotos?: Array<{
@@ -532,6 +552,10 @@ type InitialConceptImagePromptInput = {
   generationPrompt: string;
   roomType: string;
   hasInspirationImages?: boolean;
+  // Real catalogue pieces already chosen for this room, supplied as the LAST
+  // reference images. The render is built around them, which is what makes the
+  // shopping list buyable instead of hopeful.
+  anchorProducts?: Array<{ roleLabel: string }>;
   styleSlugs?: string[];
   strictSourceRoomPreservation?: boolean;
   spatialIntent?: SpatialPromptIntent | null;
@@ -590,7 +614,8 @@ function assembleInitialConceptImagePrompt({
   strictSourceRoomPreservation = false,
   spatialIntent = null,
   measurements = null,
-  additionalRoomPhotoCount = 0
+  additionalRoomPhotoCount = 0,
+  anchorProducts = []
 }: InitialConceptImagePromptInput) {
   return [
     generationPrompt,
@@ -598,6 +623,15 @@ function assembleInitialConceptImagePrompt({
     additionalRoomPhotoCount > 0
       ? `The first ${additionalRoomPhotoCount + 1} input images are photos of the SAME room from different corners. Use the FIRST photo's camera perspective as the base image; use the other angles only to understand the room's true walls, openings, and proportions.`
       : "Use the uploaded room photo as the base image.",
+    anchorProducts.length > 0
+      ? [
+          `The LAST ${anchorProducts.length} input ${anchorProducts.length === 1 ? "image is a photograph" : "images are photographs"} of real furniture already chosen for this room: ${anchorProducts
+            .map((product, index) => `image ${index + 1} of that set is the ${product.roleLabel}`)
+            .join(", ")}.`,
+          "Put those exact pieces in the room. Keep each one's silhouette, proportions, colour and material as photographed. You may change only where it stands, its angle to the camera, and how the room's light falls on it.",
+          "Do not swap any of them for a similar-looking piece, do not restyle them to suit a palette, and do not leave one out. Design everything else in the room around them, so the finished room and these pieces read as one scheme."
+        ].join(" ")
+      : null,
     hasInspirationImages
       ? "Use the uploaded inspiration images as style references for palette, materials, atmosphere, and composition. Do not reproduce them exactly."
       : null,
@@ -721,6 +755,75 @@ function assembleFinalGroundedRenderPrompt({
 // longer one sized to the slowest observed legitimate provider (gpt-image-2 at ~140s).
 const DEFAULT_TEXT_TIMEOUT_MS = 90_000;
 const IMAGE_CALL_TIMEOUT_MS = 240_000;
+
+// What the OpenAI image fallback is given when there is room for it, and the
+// window below which it is not started at all. Sized from what the provider
+// actually takes: this module's own note puts gpt-image-2 at roughly 140 s, the
+// repo's bake-off outputs at 132 to 143 s, and the S3b prototype's fallback at
+// 232 s. An earlier 60 s reserve was worse than no fallback at all: it cut the
+// primary's polling window by a minute to buy a window the fallback could not
+// land in, so a render the primary would have returned late became no render.
+export const IMAGE_FALLBACK_RESERVE_MS = 150_000;
+export const IMAGE_FALLBACK_MIN_MS = 120_000;
+
+// What is left of a caller's deadline, capped so no caller can extend the
+// provider ceiling past what this module is willing to wait. NOT floored:
+// flooring it made the primary and the fallback together overrun the caller,
+// which is the failure the deadline exists to prevent. Below the minimum the
+// caller skips the fallback instead.
+export function imageCallTimeoutMs(deadlineMs: number | undefined, startedAt: number, now = Date.now()): number {
+  if (deadlineMs === undefined) {
+    return IMAGE_CALL_TIMEOUT_MS;
+  }
+  return Math.max(0, Math.min(IMAGE_CALL_TIMEOUT_MS, deadlineMs - Math.max(0, now - startedAt)));
+}
+
+// What the result download may take: BOTH the per-hop timeout and the overall
+// one. followGuardedRedirects defaults its overall budget to twice the per-hop
+// value, so a caller passing only timeoutMs hands a redirecting result two
+// windows, and the body read then starts after those. The download is the last
+// stage of the render and has to finish inside the same window as the rest.
+// Null when nothing is left: a floor here, however small, is still a promise
+// the caller did not make. One second past a 285 s budget cannot breach the
+// route on its own, but a helper whose comment says "what is left" and whose
+// code says "at least a second" is one the next reader will trust for the
+// larger number too.
+export function evolinkDownloadBudgetMs(
+  deadline: number,
+  now = Date.now()
+): { timeoutMs: number; overallTimeoutMs: number } | null {
+  const remaining = deadline - now;
+  if (remaining <= 0) {
+    return null;
+  }
+  return { timeoutMs: Math.min(60_000, remaining), overallTimeoutMs: remaining };
+}
+
+// The primary's share of a caller's deadline: everything except what the
+// fallback would need. A fixed fraction was wrong in both directions — two
+// thirds of a 170 s budget left the fallback 58 s against a provider that needs
+// well over twice that, so a stalled primary produced no concept at all where
+// the un-deadlined code produced a slow one.
+//
+// The primary keeps the deadline itself when there is not enough for both. That
+// is the honest trade inside one request: a provider outage then costs the run,
+// which the shopper retries, rather than costing the request, which the platform
+// kills without a catch path and locks them out of retrying for fifteen minutes.
+export function evolinkPollWindowMs(deadlineMs: number | undefined): number | undefined {
+  if (deadlineMs === undefined) {
+    return undefined;
+  }
+  const share = deadlineMs - IMAGE_FALLBACK_RESERVE_MS;
+  // Split only when BOTH halves are usable: the fallback needs a window it can
+  // land in, and the primary must not be cut below half the budget to buy one.
+  // Otherwise the primary keeps the whole deadline, because a fallback that
+  // cannot return is not worth taking time from the provider that can. Under a
+  // concept route's reserve that means no fallback at all, which is the honest
+  // answer: one request cannot hold two renders of this length, and a run that
+  // fails cleanly is retryable where a killed one locks the shopper out.
+  const usableSplit = share >= Math.floor(deadlineMs / 2);
+  return Math.max(EVOLINK_POLL_INTERVAL_MS * 2, usableSplit ? share : deadlineMs);
+}
 // The spec-driven sourcing pass reads the concept image plus up to a few
 // dozen product images across every role of the design in one call; it is
 // the one text call allowed past the 90s default. The route that runs it
@@ -751,11 +854,14 @@ function isOpenAiOwnOrigin(baseUrl: string | undefined): boolean {
   }
 }
 
-export function createOpenAiImageFallbackClient(env: {
-  OPENAI_API_KEY: string;
-  OPENAI_FALLBACK_API_KEY?: string;
-  OPENAI_BASE_URL?: string;
-}): OpenAI {
+export function createOpenAiImageFallbackClient(
+  env: {
+    OPENAI_API_KEY: string;
+    OPENAI_FALLBACK_API_KEY?: string;
+    OPENAI_BASE_URL?: string;
+  },
+  timeoutMs: number = IMAGE_CALL_TIMEOUT_MS
+): OpenAI {
   // A gateway credential (the config that sets OPENAI_BASE_URL) cannot authenticate
   // against api.openai.com; pairing it with the pin would just turn the dead
   // fallback's 404 into a dead fallback's 401. Require a real credential: a
@@ -770,21 +876,74 @@ export function createOpenAiImageFallbackClient(env: {
   return new OpenAI({
     apiKey,
     baseURL: "https://api.openai.com/v1",
-    timeout: IMAGE_CALL_TIMEOUT_MS,
+    timeout: timeoutMs,
     maxRetries: 0
+  });
+}
+
+// The one fallback, shared by every primary. It was pasted per branch, and the
+// copies differed only in a provider name inside an error string, which is how
+// the Gemini copy shipped naming Evolink; a tuning applied to the production
+// branch would have missed the other in the same way.
+async function openAiImageFallback({
+  env,
+  prompt,
+  references,
+  noImageErrorMessage,
+  deadlineMs,
+  startedAt,
+  providerName,
+  fallbackError
+}: {
+  env: Parameters<typeof createOpenAiImageFallbackClient>[0] & { OPENAI_IMAGE_MODEL: string };
+  prompt: string;
+  references: ImageGenerationReference[];
+  noImageErrorMessage: string;
+  deadlineMs: number | undefined;
+  startedAt: number;
+  providerName: string;
+  fallbackError: string;
+}) {
+  const fallbackMs = imageCallTimeoutMs(deadlineMs, startedAt);
+  // Not started at all below the minimum: a window too small to return a
+  // picture only spends the budget the caller still needs to record what it has.
+  if (deadlineMs !== undefined && fallbackMs < IMAGE_FALLBACK_MIN_MS) {
+    throw new Error(
+      `${providerName} image generation failed (${fallbackError}); too little of the request budget remained to try the OpenAI fallback.`
+    );
+  }
+  return generateOpenAiImage({
+    client: createOpenAiImageFallbackClient(env, fallbackMs),
+    prompt,
+    references,
+    model: env.OPENAI_IMAGE_MODEL,
+    noImageErrorMessage
   });
 }
 
 async function generateImageWithConfiguredProvider({
   prompt,
   references,
-  noImageErrorMessage
+  noImageErrorMessage,
+  // How long the caller can wait for a picture. The providers' own ceilings
+  // (300 s of Evolink polling, a 240 s OpenAI call) outlast every route that
+  // uses them, so without this a caller's budget is a number it subtracts
+  // against and nothing honours. A request the platform kills runs no catch
+  // path: its job row stays "running", and the dedupe reads that as a live
+  // generation and refuses the shopper a retry for fifteen minutes.
+  deadlineMs
 }: {
   prompt: string;
   references: ImageGenerationReference[];
   noImageErrorMessage: string;
+  deadlineMs?: number;
 }): Promise<ImageGenerationAttempt> {
   const env = parseServerEnv(process.env);
+  // Taken once, at the top, so every branch measures the caller's deadline from
+  // the same moment. RITZY_IMAGE_PROVIDER defaults to "openai", so the branch
+  // that ignored deadlineMs entirely is the one a preview deploy or a fresh
+  // production project takes.
+  const providerStartedAt = Date.now();
 
   if (env.RITZY_IMAGE_PROVIDER === "evolink") {
     const startedAt = Date.now();
@@ -796,17 +955,22 @@ async function generateImageWithConfiguredProvider({
         model: env.EVOLINK_IMAGE_MODEL,
         apiKey: env.EVOLINK_API_KEY,
         quality: env.EVOLINK_IMAGE_QUALITY,
-        baseUrl: env.EVOLINK_BASE_URL
+        baseUrl: env.EVOLINK_BASE_URL,
+        // Everything except the fallback's reserve, when there is room for both.
+        pollTimeoutMs: evolinkPollWindowMs(deadlineMs)
       });
     } catch (error) {
       const fallbackError = formatImageGenerationError(error);
       try {
-        const fallbackAttempt = await generateOpenAiImage({
-          client: createOpenAiImageFallbackClient(env),
+        const fallbackAttempt = await openAiImageFallback({
+          env,
           prompt,
           references,
-          model: env.OPENAI_IMAGE_MODEL,
-          noImageErrorMessage
+          noImageErrorMessage,
+          deadlineMs,
+          startedAt,
+          providerName: "Evolink",
+          fallbackError
         });
 
         return {
@@ -832,17 +996,24 @@ async function generateImageWithConfiguredProvider({
         references,
         model: env.GEMINI_IMAGE_MODEL,
         projectId: env.GOOGLE_CLOUD_PROJECT,
-        location: env.GOOGLE_CLOUD_LOCATION
+        location: env.GOOGLE_CLOUD_LOCATION,
+        // Every provider is held to the caller's deadline, not to an env
+        // constant of its own; a branch that ignores it is a branch that can
+        // overrun the route.
+        timeoutMs: imageCallTimeoutMs(deadlineMs, providerStartedAt)
       });
     } catch (error) {
       const fallbackError = formatImageGenerationError(error);
       try {
-        const fallbackAttempt = await generateOpenAiImage({
-          client: createOpenAiImageFallbackClient(env),
+        const fallbackAttempt = await openAiImageFallback({
+          env,
           prompt,
           references,
-          model: env.OPENAI_IMAGE_MODEL,
-          noImageErrorMessage
+          noImageErrorMessage,
+          deadlineMs,
+          startedAt,
+          providerName: "Gemini",
+          fallbackError
         });
 
         return {
@@ -859,8 +1030,18 @@ async function generateImageWithConfiguredProvider({
     }
   }
 
+  // Never floored above what is left. A floor here started a two-minute paid
+  // call on a request with forty-five seconds to live, overrunning both the run
+  // budget and the route: the platform then kills it with no catch path, and
+  // the job row is left running.
+  const primaryMs = imageCallTimeoutMs(deadlineMs, providerStartedAt);
+  if (deadlineMs !== undefined && primaryMs < IMAGE_FALLBACK_MIN_MS) {
+    throw new Error(
+      `Too little of the request budget remained to generate an image (${Math.round(primaryMs / 1000)}s left).`
+    );
+  }
   return generateOpenAiImage({
-    client: new OpenAI({ apiKey: env.OPENAI_API_KEY, timeout: IMAGE_CALL_TIMEOUT_MS, maxRetries: 0 }),
+    client: new OpenAI({ apiKey: env.OPENAI_API_KEY, timeout: primaryMs, maxRetries: 0 }),
     prompt,
     references,
     model: env.OPENAI_IMAGE_MODEL,
@@ -925,18 +1106,23 @@ export async function generateGeminiImage({
   references,
   model,
   projectId,
-  location
+  location,
+  timeoutMs
 }: {
   prompt: string;
   references: ImageGenerationReference[];
   model: string;
   projectId?: string;
   location: string;
+  timeoutMs?: number;
 }): Promise<ImageGenerationAttempt> {
   const startedAt = Date.now();
   // The deadline covers EVERYTHING, including the service-account token exchange: a
   // hanging OAuth request must not run outside the Gemini timeout.
-  const deadlineMs = Number(process.env.RITZY_GEMINI_TIMEOUT_MS) || 60_000;
+  // The caller's remaining budget when it gave one, capped by this provider's
+  // own ceiling. An env constant alone is a branch that can outlive its route.
+  const ownCeilingMs = Number(process.env.RITZY_GEMINI_TIMEOUT_MS) || 60_000;
+  const deadlineMs = timeoutMs === undefined ? ownCeilingMs : Math.max(1_000, Math.min(ownCeilingMs, timeoutMs));
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), deadlineMs);
 
@@ -1123,7 +1309,8 @@ async function generateEvolinkImage({
   model,
   apiKey,
   quality,
-  baseUrl
+  baseUrl,
+  pollTimeoutMs
 }: {
   prompt: string;
   references: ImageGenerationReference[];
@@ -1131,6 +1318,7 @@ async function generateEvolinkImage({
   apiKey?: string;
   quality: "1K" | "2K" | "4K";
   baseUrl: string;
+  pollTimeoutMs?: number;
 }): Promise<ImageGenerationAttempt> {
   const apiBase = baseUrl;
   if (!apiKey) {
@@ -1138,6 +1326,10 @@ async function generateEvolinkImage({
   }
 
   const startedAt = Date.now();
+  // One window for the whole exchange: submission, every poll, and the result
+  // download. Computed before the first request so none of them sits outside it.
+  const pollWindowMs = Math.min(EVOLINK_POLL_TIMEOUT_MS, pollTimeoutMs ?? EVOLINK_POLL_TIMEOUT_MS);
+  const deadline = startedAt + pollWindowMs;
   // Prefer real public URLs (small request payloads); inline bytes as data URLs
   // otherwise. Verified live: the API accepts data URLs, so a required
   // reference (the room, the approved concept) can never be silently dropped.
@@ -1160,7 +1352,12 @@ async function generateEvolinkImage({
   const submitResponse = await fetch(`${apiBase}/v1/images/generations`, {
     method: "POST",
     headers,
-    signal: AbortSignal.timeout(Number(process.env.RITZY_EVOLINK_SUBMIT_TIMEOUT_MS) || 30_000),
+    // Bounded by what is left of the poll window, not only by its own constant:
+    // submission, polling and the result download all happen inside the
+    // caller's deadline rather than beside it.
+    signal: AbortSignal.timeout(
+      Math.max(1_000, Math.min(Number(process.env.RITZY_EVOLINK_SUBMIT_TIMEOUT_MS) || 30_000, deadline - Date.now()))
+    ),
     body: JSON.stringify({
       model,
       prompt,
@@ -1179,8 +1376,6 @@ async function generateEvolinkImage({
     );
   }
 
-  const deadline = startedAt + EVOLINK_POLL_TIMEOUT_MS;
-
   while (Date.now() < deadline) {
     await new Promise((resolve) => setTimeout(resolve, EVOLINK_POLL_INTERVAL_MS));
 
@@ -1189,7 +1384,7 @@ async function generateEvolinkImage({
       pollResponse = await fetch(`${apiBase}/v1/tasks/${encodeURIComponent(submitPayload.id)}`, {
         method: "GET",
         headers,
-        signal: AbortSignal.timeout(15_000)
+        signal: AbortSignal.timeout(Math.max(1_000, Math.min(15_000, deadline - Date.now())))
       });
     } catch {
       // One slow or dropped status poll must not abandon a live task; the outer
@@ -1231,7 +1426,7 @@ async function generateEvolinkImage({
       if (sameOriginAsGateway) {
         imageResponse = await fetch(resultUrl, {
           redirect: "manual",
-          signal: AbortSignal.timeout(60_000)
+          signal: AbortSignal.timeout(Math.max(1_000, Math.min(60_000, deadline - Date.now())))
         });
         if (imageResponse.status >= 300 && imageResponse.status < 400) {
           throw new Error("Evolink result URL attempted a redirect; refusing.");
@@ -1241,7 +1436,19 @@ async function generateEvolinkImage({
           configured: process.env.RITZY_REFERENCE_IMAGE_HOSTS,
           supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL
         });
-        const followed = await followGuardedRedirects(resultUrl, { allowlist, timeoutMs: 60_000, method: "GET" });
+        // The result download is inside the caller's window too. It was the last
+        // stage still carrying its own fixed minute, which meant a run could
+        // finish polling on time and then spend two more minutes fetching.
+        const budget = evolinkDownloadBudgetMs(deadline);
+        if (!budget) {
+          throw new Error("Evolink returned a result after the request budget was spent; it was not downloaded.");
+        }
+        const followed = await followGuardedRedirects(resultUrl, {
+          allowlist,
+          timeoutMs: budget.timeoutMs,
+          overallTimeoutMs: budget.overallTimeoutMs,
+          method: "GET"
+        });
         if (!followed.ok) {
           throw new Error(`Evolink result URL refused: ${followed.reason}`);
         }
@@ -1260,7 +1467,11 @@ async function generateEvolinkImage({
         );
       }
 
-      const resultBytes = await readResponseBytesCapped(imageResponse, 30 * 1024 * 1024, 60_000);
+      const readBudget = evolinkDownloadBudgetMs(deadline);
+      if (!readBudget) {
+        throw new Error("Evolink's result body could not be read inside the request budget.");
+      }
+      const resultBytes = await readResponseBytesCapped(imageResponse, 30 * 1024 * 1024, readBudget.timeoutMs);
       if (!resultBytes) {
         throw new Error("Evolink result image exceeded the 30MB download cap or had no body.");
       }
@@ -1288,7 +1499,7 @@ async function generateEvolinkImage({
     }
   }
 
-  throw new Error(`Evolink image generation timed out after ${EVOLINK_POLL_TIMEOUT_MS / 1000} seconds.`);
+  throw new Error(`Evolink image generation timed out after ${Math.round(pollWindowMs / 1000)} seconds.`);
 }
 
 // Downscaled data URL for a vision input; same pipeline as image references.
@@ -1744,6 +1955,246 @@ export async function verifyProductsAgainstConcept(input: {
   };
 }
 
+// The anchor set pass (S3b). One call, before the render, that turns the ranked
+// shortlists for a room's hero roles into one SET of real pieces the render is
+// then built around.
+//
+// It is not a second opinion on the ranking. A scorer judges each role's
+// candidates alone and cannot see that the sofa it ranked first and the rug it
+// ranked first belong to two different rooms; and it can only enforce what the
+// brief forbids, never deliver what the brief asks for. Both of those are
+// properties of the set, which is what this call is shown.
+//
+// Its deadline is its own rather than borrowed from the design check's: it runs
+// inside the concept generation request, ahead of an image generation that can
+// itself take two minutes, so it has to be the cheap part of that budget.
+export const ANCHOR_SET_TIMEOUT_MS = 60_000;
+
+// What one call may see. Five candidates for each of four roles is twenty
+// product photographs beside the room's own; more buys little, because the
+// shortlist is already de-duplicated by product family, and every extra image
+// is context the room photograph has to compete with. Enforced here rather
+// than trusted to the caller, because the caller is what grows.
+export const ANCHOR_SET_MAX_CANDIDATES_PER_ROLE = 5;
+export const ANCHOR_SET_MAX_ROLES = 6;
+
+export type AnchorSetCandidate = {
+  productId: string;
+  name: string;
+  retailerName: string | null;
+  color: string | null;
+  material: string | null;
+  priceAed: number | null;
+  imageDataUrl: string;
+};
+
+export type AnchorSetRoleInput = {
+  roleKey: string;
+  roleLabel: string;
+  category: string;
+  candidates: AnchorSetCandidate[];
+};
+
+export type AnchorSetBriefInput = {
+  roomType: string;
+  styleSlugs?: string[];
+  styleNotes?: string | null;
+  colorNotes?: string | null;
+  inspirationNotes?: string | null;
+  functionalRequirements?: string | null;
+  avoidNotes?: string | null;
+};
+
+export type AnchorSetPick = { roleKey: string; productId: string; reason: string };
+
+export type AnchorSetResult = {
+  promptKey: string;
+  promptVersion: string;
+  model: string;
+  textCostUsd: number | null;
+  picks: AnchorSetPick[];
+  // Answers that did not survive validation. Empty on a healthy call; anything
+  // here means the pass answered for roles the caller then could not use, which
+  // is a protocol problem and not a taste one.
+  dropped: AnchorSetDrop[];
+  setNote: string;
+};
+
+// Everything a shopper typed and everything a retailer published reaches this
+// call inside one JSON block the prompt declares to be data, under untrusted
+// keys. The instruction text beside each image names its role and product id
+// and nothing else, so no catalogue row can address the stylist. Exported so
+// the fencing is pinned where it is applied, not only as a unit.
+export function anchorSetSelectionContent(
+  inputRoles: AnchorSetRoleInput[],
+  brief: AnchorSetBriefInput,
+  roomPhotoUrl: string
+): Array<Record<string, unknown>> {
+  // The caps live here, at the point the payload is built, so they hold for
+  // every caller of this exported builder and not only for selectAnchorSet.
+  const roles = inputRoles
+    .slice(0, ANCHOR_SET_MAX_ROLES)
+    .map((role) => ({ ...role, candidates: role.candidates.slice(0, ANCHOR_SET_MAX_CANDIDATES_PER_ROLE) }));
+
+  const content: Array<Record<string, unknown>> = [
+    {
+      type: "input_text",
+      text: JSON.stringify({
+        untrustedBrief: {
+          roomType: fenceUntrustedText(brief.roomType, 60),
+          styles: (brief.styleSlugs ?? []).slice(0, 8).map((slug) => fenceUntrustedText(slug, 40)).filter(Boolean),
+          style: fenceUntrustedText(brief.styleNotes, 400),
+          colour: fenceUntrustedText(brief.colorNotes, 400),
+          inspiration: fenceUntrustedText(brief.inspirationNotes, 400),
+          function: fenceUntrustedText(brief.functionalRequirements, 400),
+          avoid: fenceUntrustedText(brief.avoidNotes, 400)
+        },
+        roles: roles.map((role) => ({
+          roleKey: role.roleKey,
+          category: fenceUntrustedText(role.category, 60),
+          untrustedRoleLabel: fenceUntrustedText(role.roleLabel),
+          candidates: role.candidates.map((candidate, index) => ({
+            index: index + 1,
+            productId: candidate.productId,
+            untrustedName: fenceUntrustedText(candidate.name),
+            untrustedRetailer: fenceUntrustedText(candidate.retailerName, 60),
+            untrustedColour: fenceUntrustedText(candidate.color, 40),
+            untrustedMaterial: fenceUntrustedText(candidate.material, 60),
+            priceAed: candidate.priceAed
+          }))
+        }))
+      })
+    },
+    { type: "input_text", text: "Image 1: the room as it is today. Every chosen piece has to live in it." },
+    { type: "input_image", image_url: roomPhotoUrl, detail: "high" }
+  ];
+  roles.forEach((role) => {
+    role.candidates.forEach((candidate) => {
+      content.push(
+        { type: "input_text", text: `Role ${role.roleKey}, product id ${candidate.productId}.` },
+        { type: "input_image", image_url: candidate.imageDataUrl, detail: "low" }
+      );
+    });
+  });
+  return content;
+}
+
+export type AnchorSetDrop = AnchorSetPick & { dropped: "not_offered_for_role" | "role_already_answered" | "product_already_used" };
+
+// A pass that names a product for a role it was never offered in, answers twice
+// for one role, or puts one product in two roles has not chosen a set. Each of
+// those picks is dropped rather than failing the whole call, so a confused
+// response degrades to a smaller set instead of a contradictory one.
+//
+// The drops come back with it. A role the stylist DECLINED and a role whose
+// answer we threw away are the same thing to a caller that only sees survivors,
+// and they are not the same thing at all: the first is the pass working, the
+// second is the pass having no effect while still being paid for. A protocol
+// regression that dropped every pick in every room would otherwise look exactly
+// like a stylist that liked nothing.
+export function validateAnchorSetPicks(
+  roles: ReadonlyArray<{ roleKey: string; candidates: ReadonlyArray<{ productId: string }> }>,
+  picks: ReadonlyArray<AnchorSetPick>
+): { kept: AnchorSetPick[]; dropped: AnchorSetDrop[] } {
+  const offered = new Map(
+    roles.map((role) => [role.roleKey, new Set(role.candidates.map((candidate) => candidate.productId))])
+  );
+  const usedRoles = new Set<string>();
+  const usedProducts = new Set<string>();
+  const kept: AnchorSetPick[] = [];
+  const dropped: AnchorSetDrop[] = [];
+  for (const pick of picks) {
+    if (!offered.get(pick.roleKey)?.has(pick.productId)) {
+      dropped.push({ ...pick, dropped: "not_offered_for_role" });
+      continue;
+    }
+    if (usedRoles.has(pick.roleKey)) {
+      dropped.push({ ...pick, dropped: "role_already_answered" });
+      continue;
+    }
+    if (usedProducts.has(pick.productId)) {
+      dropped.push({ ...pick, dropped: "product_already_used" });
+      continue;
+    }
+    usedRoles.add(pick.roleKey);
+    usedProducts.add(pick.productId);
+    kept.push(pick);
+  }
+  return { kept, dropped };
+}
+
+// What the constrained decoder is allowed to name. Deduped, because a role
+// contract can admit a product another role also admits and a JSON Schema enum
+// with a repeated value is invalid; the validator still catches one product
+// answering for two roles. Exported so the dedupe is pinned where it is
+// applied, not only through a call that needs a provider.
+export function anchorSetSelectionEnums(
+  roles: ReadonlyArray<{ roleKey: string; candidates: ReadonlyArray<{ productId: string }> }>
+): { roleKeyEnum: string[]; productIdEnum: string[] } {
+  return {
+    roleKeyEnum: Array.from(new Set(roles.map((role) => role.roleKey))),
+    productIdEnum: Array.from(new Set(roles.flatMap((role) => role.candidates.map((candidate) => candidate.productId))))
+  };
+}
+
+export async function selectAnchorSet(input: {
+  roomPhotoUrl: string;
+  brief: AnchorSetBriefInput;
+  roles: AnchorSetRoleInput[];
+  timeoutMs?: number;
+}): Promise<AnchorSetResult> {
+  // Empty roles are dropped here; the caps are applied by the payload builder,
+  // and this list is trimmed the same way so the schema's enums describe
+  // exactly what the payload shows.
+  const roles = input.roles
+    .filter((role) => role.candidates.length > 0)
+    .slice(0, ANCHOR_SET_MAX_ROLES)
+    .map((role) => ({ ...role, candidates: role.candidates.slice(0, ANCHOR_SET_MAX_CANDIDATES_PER_ROLE) }));
+
+  if (roles.length === 0) {
+    throw new Error("The anchor set pass needs at least one role with candidates.");
+  }
+
+  const env = parseServerEnv(process.env);
+  const client = createTextClient(env);
+  const { model: stageModel, requestParams: stageRequestParams } = stageTextConfig("anchor_set", env.OPENAI_TEXT_MODEL);
+
+  const content = anchorSetSelectionContent(roles, input.brief, input.roomPhotoUrl);
+  const enums = anchorSetSelectionEnums(roles);
+
+  const response = await client.responses.create(
+    {
+      max_output_tokens: 4000,
+      ...stageRequestParams,
+      input: [
+        { role: "system", content: anchorSetSelectionPrompt.system },
+        { role: "user", content: content as never }
+      ],
+      text: {
+        format: {
+          type: "json_schema",
+          name: "ritzy_anchor_set_selection",
+          schema: anchorSetSelectionJsonSchema(enums.roleKeyEnum, enums.productIdEnum),
+          strict: true
+        }
+      }
+    },
+    { timeout: input.timeoutMs ?? ANCHOR_SET_TIMEOUT_MS }
+  );
+
+  const parsed = anchorSetSelectionResponseSchema.parse(JSON.parse(response.output_text));
+  const validated = validateAnchorSetPicks(roles, parsed.picks);
+  return {
+    promptKey: anchorSetSelectionPrompt.key,
+    promptVersion: anchorSetSelectionPrompt.version,
+    model: stageModel,
+    textCostUsd: estimateTextCostUsd(stageModel, response.usage),
+    picks: validated.kept,
+    dropped: validated.dropped,
+    setNote: parsed.setNote
+  };
+}
+
 // S3 image content: exactly the candidates the app fetched a data URL for, in
 // candidate order, at the given detail. A candidate without a provided data
 // URL gets no image, never a raw retailer URL for the provider to download.
@@ -2022,6 +2473,76 @@ function sourcingRoleKey(category: string, roleLabel: string) {
   return `${category}::${roleLabel}`.toLowerCase().replace(/[^a-z0-9:]+/g, "_");
 }
 
+// The images the render is built from, in the order the prompt describes them.
+// Exported because it IS the anchoring mechanism: the prompt tells the model
+// that the last N images are the pieces to keep, so the order, the count and
+// the "required" flags are not incidental to this slice, they are the slice.
+// A change here that silently dropped the anchors would leave every other part
+// of the pipeline intact — the pass paid for, the pieces persisted, the list
+// claiming they are in the design — around a render that never saw them.
+export function initialConceptReferences(
+  input: Pick<
+    GenerateInitialConceptInput,
+    "roomPhotoBytes" | "roomPhotoMimeType" | "roomPhotoUrl" | "roomPhotoReferenceUrl" | "additionalRoomPhotos" | "anchorProducts"
+  >
+): ImageGenerationReference[] {
+  return [
+    {
+      bytes: input.roomPhotoBytes,
+      mimeType: input.roomPhotoMimeType,
+      name: "room",
+      url: publicReferenceUrl(input.roomPhotoReferenceUrl ?? input.roomPhotoUrl),
+      required: true
+    },
+    ...(input.additionalRoomPhotos ?? []).slice(0, 2).map((photo, index) => ({
+      bytes: photo.bytes,
+      mimeType: photo.mimeType,
+      name: `room-angle-${index + 2}`,
+      url: publicReferenceUrl(photo.referenceUrl ?? photo.url)
+    })),
+    // Anchors come last so the prompt can refer to "the last N images", and
+    // each is required: a render that silently dropped one would be a render
+    // of furniture the shopper is not buying.
+    ...(input.anchorProducts ?? []).map((product, index) => ({
+      bytes: product.bytes,
+      mimeType: product.mimeType,
+      name: `anchor-${index + 1}`,
+      // Never a URL. See the input type: these bytes are already fetched and
+      // guarded, and a link is only a way back to the provider fallback.
+      url: null,
+      required: true
+    }))
+  ];
+}
+
+// The prompt and the pictures, built together, because they only work together:
+// the prompt says "the LAST N input images are the pieces to keep" and the
+// references are what makes that sentence true. Split across two call sites,
+// either half could be severed with every test still green — and both were,
+// which is the one failure the rest of the pipeline cannot detect. It keeps
+// paying for the anchor pass, writing concept_anchors, skipping those roles in
+// sourcing and judging them at the anchor bar, around a render that never saw
+// them.
+export function initialConceptImagePayload(
+  input: GenerateInitialConceptInput,
+  generationPrompt: string
+): { prompt: string; references: ImageGenerationReference[] } {
+  return {
+    prompt: buildInitialConceptImagePrompt({
+      generationPrompt,
+      roomType: input.roomType,
+      hasInspirationImages: Boolean(input.inspirationImageUrls?.length),
+      styleSlugs: input.styleSlugs,
+      strictSourceRoomPreservation: localStrictSourceRoomPreservationEnabled(),
+      spatialIntent: input.spatialIntent ?? null,
+      measurements: input.measurements ?? null,
+      additionalRoomPhotoCount: input.additionalRoomPhotos?.length ?? 0,
+      anchorProducts: (input.anchorProducts ?? []).map((product) => ({ roleLabel: product.roleLabel }))
+    }),
+    references: initialConceptReferences(input)
+  };
+}
+
 export async function generateInitialConcept(
   input: GenerateInitialConceptInput
 ): Promise<GenerateInitialConceptResult> {
@@ -2042,6 +2563,13 @@ export async function generateInitialConcept(
     measurements: input.measurements
   };
 
+  // The caller's deadline covers this call as well as the picture. It was
+  // documented as covering "the direction call and the image generation" and
+  // bounded only the second, so a slow direction call pushed the image past the
+  // route limit; the platform kills the request with no catch path and the job
+  // is left "running", which the dedupe reads as a live run and refuses the
+  // shopper a retry for fifteen minutes.
+  const renderStartedAt = Date.now();
   const directionResponse = await client.responses.create({
     max_output_tokens: 24000,
     ...stageRequestParams,
@@ -2111,38 +2639,26 @@ export async function generateInitialConcept(
         strict: true
       }
     }
+  }, {
+    // A third of the render's budget, so a slow direction call cannot eat the
+    // picture's share. Its own 90 s ceiling still applies when the caller sets
+    // no deadline.
+    timeout:
+      input.imageDeadlineMs === undefined ? undefined : Math.max(15_000, Math.floor(input.imageDeadlineMs / 3))
   });
 
   const direction = initialConceptResponseSchema.parse(JSON.parse(directionResponse.output_text));
-  const imagePrompt = buildInitialConceptImagePrompt({
-    generationPrompt: direction.concept.generationPrompt,
-    roomType: input.roomType,
-    hasInspirationImages: Boolean(input.inspirationImageUrls?.length),
-    styleSlugs: input.styleSlugs,
-    strictSourceRoomPreservation: localStrictSourceRoomPreservationEnabled(),
-    spatialIntent: input.spatialIntent ?? null,
-    measurements: input.measurements ?? null,
-    additionalRoomPhotoCount: input.additionalRoomPhotos?.length ?? 0
-  });
+  const { prompt: imagePrompt, references } = initialConceptImagePayload(input, direction.concept.generationPrompt);
 
   const imageResult = await generateImageWithConfiguredProvider({
     prompt: imagePrompt,
-    references: [
-      {
-        bytes: input.roomPhotoBytes,
-        mimeType: input.roomPhotoMimeType,
-        name: "room",
-        url: publicReferenceUrl(input.roomPhotoReferenceUrl ?? input.roomPhotoUrl),
-        required: true
-      },
-      ...(input.additionalRoomPhotos ?? []).slice(0, 2).map((photo, index) => ({
-        bytes: photo.bytes,
-        mimeType: photo.mimeType,
-        name: `room-angle-${index + 2}`,
-        url: publicReferenceUrl(photo.referenceUrl ?? photo.url)
-      }))
-    ],
-    noImageErrorMessage: "OpenAI image generation returned no image data."
+    references,
+    noImageErrorMessage: "OpenAI image generation returned no image data.",
+    // What is left of it after the direction call.
+    deadlineMs:
+      input.imageDeadlineMs === undefined
+        ? undefined
+        : Math.max(0, input.imageDeadlineMs - (Date.now() - renderStartedAt))
   });
 
   return {

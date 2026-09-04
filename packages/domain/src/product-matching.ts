@@ -467,7 +467,8 @@ function isEligibleCandidate(
   }
 
   const effectivePrice = candidate.salePriceAed ?? candidate.priceAed;
-  if (effectivePrice !== null && request.budgetMaxAed && effectivePrice > request.budgetMaxAed) {
+  const ceiling = budgetCeilingAed(request.budgetMaxAed);
+  if (effectivePrice !== null && ceiling !== null && effectivePrice > ceiling) {
     return false;
   }
 
@@ -570,6 +571,26 @@ export function productRolesForRoom(roomType: string) {
   return match?.[1] ?? roomProductRoles.default;
 }
 
+// A budget is a target, not a wall. Ayo's direction, 2026-09-03: "keep budget
+// flexible, plus or minus 20%, that way we give the system some room for
+// creativity. Budgets are never exact."
+//
+// The operative half is the plus. Under budget needs no mechanism; over budget
+// is where a hard line does damage, because the alternative to a piece slightly
+// above the number is usually a worse piece, and the numbers being compared are
+// themselves estimates: a role's share of a room is a weighting we invented, and
+// a catalogue price moves.
+//
+// What this does NOT soften is honesty. A list over the stated budget is
+// recorded as over, with both numbers, so nobody has to infer it.
+export const BUDGET_TOLERANCE = 0.2;
+
+export function budgetCeilingAed(budgetMaxAed: number | null | undefined): number | null {
+  return budgetMaxAed === null || budgetMaxAed === undefined || budgetMaxAed <= 0
+    ? null
+    : budgetMaxAed * (1 + BUDGET_TOLERANCE);
+}
+
 export function enhancedProductRolesForRoom(roomType: string) {
   const match = enhancedRoomProductRoles[enhancedRoomRoleKey(roomType)];
   return match ?? enhancedRoomProductRoles.default;
@@ -664,14 +685,15 @@ export function filterSubstitutionCandidates({
 const RECENTLY_USED_PRODUCT_PENALTY = 30;
 const AVOID_COLOR_PENALTY = 24;
 
-function avoidColorMatches(candidate: ProductMatchCandidate, avoidColorTags?: string[]) {
+// The avoid vocabulary, expanded into colour families, as a set of tokens.
+// Exported so the anchor path uses the same families as sourcing: a colour
+// added to colorFamilies has to reach both, or a brief that forbids beige
+// stops a sourced sand sofa and still lets a sand sofa anchor the render.
+export function avoidColorTokens(avoidColorTags?: ReadonlyArray<string>): Set<string> {
   if (!avoidColorTags || avoidColorTags.length === 0) {
-    return [];
+    return new Set<string>();
   }
-
-  // Expand each avoid tag into its color family when the vocabulary knows it;
-  // tags outside the family map (e.g. "purple") still match as literal tokens.
-  const avoidTokens = new Set(
+  return new Set(
     avoidColorTags
       .flatMap((tag) => tag.toLowerCase().split(/[^a-z]+/))
       .filter(Boolean)
@@ -682,6 +704,16 @@ function avoidColorMatches(candidate: ProductMatchCandidate, avoidColorTags?: st
         return [lower, ...familyMembers];
       })
   );
+}
+
+function avoidColorMatches(candidate: ProductMatchCandidate, avoidColorTags?: string[]) {
+  if (!avoidColorTags || avoidColorTags.length === 0) {
+    return [];
+  }
+
+  // Expand each avoid tag into its color family when the vocabulary knows it;
+  // tags outside the family map (e.g. "purple") still match as literal tokens.
+  const avoidTokens = avoidColorTokens(avoidColorTags);
 
   const candidateColorTokens = [candidate.color ?? "", ...candidate.colorTags]
     .join(" ")
@@ -1302,7 +1334,7 @@ function applyRefreshDiversityToRoleMatches({
   const previousFamilies = new Set(
     relevantHistory
       .map((entry) =>
-        refreshDiversitySignature({
+        productFamilySignature({
           name: entry.productName ?? "",
           retailerName: entry.retailerName ?? null
         })
@@ -1319,14 +1351,14 @@ function applyRefreshDiversityToRoleMatches({
 
   return scored
     .map((candidate) => {
-      const candidateFamily = refreshDiversitySignature(candidate.match);
+      const candidateFamily = productFamilySignature(candidate.match);
       const exactRepeat = previousIds.has(candidate.match.id);
       const familyRepeat = candidateFamily.length > 0 && previousFamilies.has(candidateFamily);
       const hasCloseFreshAlternative = scored.some((alternative) => {
         if (alternative.match.id === candidate.match.id) {
           return false;
         }
-        const alternativeFamily = refreshDiversitySignature(alternative.match);
+        const alternativeFamily = productFamilySignature(alternative.match);
         return (
           !previousIds.has(alternative.match.id) &&
           (alternativeFamily.length === 0 || !previousFamilies.has(alternativeFamily)) &&
@@ -1763,8 +1795,8 @@ function diversityPenalty(candidate: RoleScopedRankedProductMatch, selected: Rol
       nextPenalty += 60;
     }
 
-    const candidateFamily = refreshDiversitySignature(candidate);
-    const selectedFamily = refreshDiversitySignature(selectedCandidate);
+    const candidateFamily = productFamilySignature(candidate);
+    const selectedFamily = productFamilySignature(selectedCandidate);
     if (candidateFamily.length > 0 && candidateFamily === selectedFamily) {
       nextPenalty += 85;
     }
@@ -2126,7 +2158,8 @@ function roleGateRejectionReason(
   const effectivePrice = candidate.salePriceAed ?? candidate.priceAed;
   const roleQuantity = Math.max(1, role.quantity || 1);
   const lineTotal = effectivePrice === null ? null : effectivePrice * roleQuantity;
-  if (lineTotal !== null && request.budgetMaxAed && lineTotal > request.budgetMaxAed) {
+  const lineCeiling = budgetCeilingAed(request.budgetMaxAed);
+  if (lineTotal !== null && lineCeiling !== null && lineTotal > lineCeiling) {
     return "over_budget";
   }
 
@@ -2839,7 +2872,7 @@ function diverseRoleMatches(
   const shortlist = matches.slice(0, Math.max(limit * 4, limit));
 
   for (const candidate of shortlist) {
-    const family = refreshDiversitySignature(candidate.match);
+    const family = productFamilySignature(candidate.match);
 
     if (selected.length === 0) {
       selected.push(candidate);
@@ -2879,7 +2912,14 @@ function diverseRoleMatches(
   return selected;
 }
 
-function refreshDiversitySignature({
+// What makes two catalogue rows "the same piece in another colour": the
+// retailer plus the first two meaningful words of the name, with colour, size
+// and category nouns stripped, so "Beige Cassia 3 Seater Sofa" and "Grey Cassia
+// 3 Seater Sofa" collapse to one family. Exported for anchor shortlists, which
+// need the same judgement and must not grow a weaker second version of it.
+// Returns "" when nothing meaningful survives the strip; a caller that groups
+// by this must treat that as "no family", never as one shared family.
+export function productFamilySignature({
   name,
   retailerName
 }: Pick<RankedProductMatch, "name" | "retailerName"> | { name: string; retailerName?: string | null }) {

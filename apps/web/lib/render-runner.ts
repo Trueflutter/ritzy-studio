@@ -25,6 +25,7 @@ import {
   fetchRemoteImage,
   visionImageDataUrl
 } from "@/lib/render-images";
+import { closeAiJob } from "@/lib/services/close-ai-job";
 import { createServiceClient } from "@/lib/supabase/service";
 
 // Durable executor for the final grounded render. The server action inserts a `queued`
@@ -680,9 +681,7 @@ async function ensureFinalRenderViews({
 
     if (viewsJob) {
       const failed = outcomes.filter((outcome) => !outcome.ok);
-      await serviceSupabase
-        .from("ai_jobs")
-        .update({
+      await closeAiJob(serviceSupabase, viewsJob.id, {
           status: failed.length > 0 ? "failed" : "succeeded",
           completed_at: new Date().toISOString(),
           error_message:
@@ -691,8 +690,7 @@ async function ensureFinalRenderViews({
               : null,
           cost_estimate_usd: evolinkCreditsToUsd(sumOutcomeCredits(outcomes)),
           output_summary: { renderJobId: job.id, outcomes }
-        })
-        .eq("id", viewsJob.id);
+        }, "final render views");
     }
   }
 

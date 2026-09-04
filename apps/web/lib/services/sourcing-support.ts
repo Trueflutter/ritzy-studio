@@ -198,6 +198,40 @@ export function splitAvoidColorCues(text: string): { cueText: string; avoidColor
   };
 }
 
+// The catalogue every paid pipeline ranks against: priced, pictured, freshest
+// first. One reader, because a column added to this select has to reach both
+// the anchor pass and sourcing or the two rank from different data and a piece
+// the render was built from is contract-rejected when the list is built.
+export async function loadCatalogueCandidates(
+  serviceSupabase: ServiceSupabaseClient
+): Promise<{ products: ProductRow[]; candidates: ProductMatchCandidate[] }> {
+  const { data, error } = await serviceSupabase
+    .from("products")
+    .select(
+      `
+      *,
+      retailer:retailers(name, status),
+      dimensions:product_dimensions(width_cm, depth_cm, height_cm, source_text)
+    `
+    )
+    .not("price_aed", "is", null)
+    .not("primary_image_url", "is", null)
+    .order("last_checked_at", { ascending: false, nullsFirst: false })
+    .limit(PRODUCT_MATCHING_CATALOG_LIMIT);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  const products = (data ?? []) as ProductRow[];
+  return {
+    products,
+    candidates: products
+      .map(productToMatchCandidate)
+      .filter((candidate): candidate is ProductMatchCandidate => Boolean(candidate))
+  };
+}
+
 export function productToMatchCandidate(product: ProductRow): ProductMatchCandidate | null {
   if (!product.primary_image_url) {
     return null;

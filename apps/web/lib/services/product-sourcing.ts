@@ -9,6 +9,7 @@ import { configuredTextModel, productSourcingImageBudget } from "@ritzy-studio/c
 import type { Database } from "@ritzy-studio/db";
 import {
   buildShoppingListItemRows,
+  budgetCeilingAed,
   buildSpecSourcingPlan,
   checkCandidateAgainstSpecRole,
   conceptPaletteMatchingText,
@@ -48,17 +49,19 @@ import {
 
 import { readRoomDesignSpec } from "./design-spec";
 import {
-  PRODUCT_MATCHING_CATALOG_LIMIT,
   catalogUnavailableMessage,
+  loadCatalogueCandidates,
   matchToSourcingCandidate,
-  productToMatchCandidate,
   recentlyUsedProductIdsForUser,
   roleScopedShoppingAlternates,
   shoppingListRoleSpecFromRow,
   sourcingCandidateImageDataUrls,
-  splitAvoidColorCues,
-  type ProductRow
+  splitAvoidColorCues
 } from "./sourcing-support";
+import { withTimeout } from "@/lib/with-timeout";
+
+import { closeAiJob } from "./close-ai-job";
+import { claimAnchoredPools, readConceptAnchors, recordAnchorVerification } from "./concept-anchors";
 import type { ServiceSupabaseClient, UserSupabaseClient } from "./supabase-clients";
 import { storageImageDataUrl } from "./storage-images";
 
@@ -89,15 +92,7 @@ async function closeSourcingJob(
   jobId: string,
   payload: Database["public"]["Tables"]["ai_jobs"]["Update"]
 ) {
-  for (let attempt = 0; attempt < 2; attempt += 1) {
-    const { error } = await serviceSupabase.from("ai_jobs").update(payload).eq("id", jobId);
-    if (!error) {
-      return;
-    }
-    if (attempt === 1) {
-      console.error(`Could not close product sourcing job ${jobId} (${payload.status}): ${error.message}`);
-    }
-  }
+  await closeAiJob(serviceSupabase, jobId, payload, "product sourcing");
 }
 
 // The pooled candidate row behind a chosen product id (its name and image).
@@ -111,19 +106,6 @@ function poolCandidateById(pools: SpecRolePool[], productId: string): RoleScoped
   return null;
 }
 
-async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
-  let timer: ReturnType<typeof setTimeout> | null = null;
-  const timeout = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => reject(new Error(message)), timeoutMs);
-  });
-  try {
-    return await Promise.race([promise, timeout]);
-  } finally {
-    if (timer) {
-      clearTimeout(timer);
-    }
-  }
-}
 
 export type GroundProductsInput = {
   userId: string;
@@ -146,6 +128,14 @@ export type SpecSource = "confirmed_spec" | "blueprint_fallback";
 // Six contract-clean candidates per role keep a sixteen-role design's pass
 // inside its deadline while still giving the picker alternates.
 const CANDIDATES_PER_ROLE = 6;
+
+// Why an anchored piece is on the list, when the aesthetic pass recorded no
+// reason of its own. Deliberately NOT the sentence "this piece is in your
+// design": selection_reason sits on a table the list's owner may PATCH, so a
+// claim written there is one a client can forge about their own room. The
+// authority is concept_anchors.verified_similarity, and the badge that says it
+// in the shopper's words should join that, not read this prose.
+const ANCHOR_SELECTION_REASON = "Chosen before the design was drawn, and the room was drawn around it.";
 
 // One sentence a person can read (design system 12.7): the visual pass's own
 // reason for the chosen piece, the ranking's reason for the alternates.
@@ -289,30 +279,10 @@ export async function groundProductsForRoom(
     return { status: "blocked", message: "Product sourcing needs the concept image before it can match catalog pieces." };
   }
 
-  const { data: products = [], error: productsError } = await serviceSupabase
-    .from("products")
-    .select(
-      `
-      *,
-      retailer:retailers(name, status),
-      dimensions:product_dimensions(width_cm, depth_cm, height_cm, source_text)
-    `
-    )
-    .not("price_aed", "is", null)
-    .not("primary_image_url", "is", null)
-    .order("last_checked_at", { ascending: false, nullsFirst: false })
-    .limit(PRODUCT_MATCHING_CATALOG_LIMIT);
-
-  if (productsError) {
-    throw new Error(productsError.message);
-  }
-
-  const candidates = (products ?? [])
-    .map(productToMatchCandidate)
-    .filter((candidate): candidate is ProductMatchCandidate => Boolean(candidate));
+  const { products, candidates } = await loadCatalogueCandidates(serviceSupabase);
 
   if (candidates.length === 0) {
-    return { status: "blocked", message: catalogUnavailableMessage(products ?? []) };
+    return { status: "blocked", message: catalogUnavailableMessage(products) };
   }
 
   // Spend never precedes its audit row, and the palette extraction below is
@@ -430,6 +400,90 @@ export async function groundProductsForRoom(
     avoidColorTags,
     candidatesPerRole: CANDIDATES_PER_ROLE
   });
+  // Anchored concepts (S3b): the hero roles were decided BEFORE this render
+  // existed, and this render was built from their photographs. Sourcing fills
+  // what is left; it does not pay a pass to propose an alternative to a piece
+  // that is already in the picture, and it does not pay a judge to confirm one.
+  const anchorRows = await readConceptAnchors(supabase, { roomId, conceptId });
+  const { anchored, remaining: sourcingPools, unclaimed: unclaimedAnchors } = claimAnchoredPools({
+    pools: plan.pools,
+    anchors: anchorRows,
+    deepen: (pool, productId) => {
+      // The anchor is one known product, so rank exactly that one rather than
+      // rebuilding the catalogue to look for it. Ranking a single candidate
+      // gives it a real attributeScore under the role's own contract; the
+      // score only orders alternates, and the anchor is placed first anyway.
+      const candidate = candidates.find((entry) => entry.id === productId);
+      if (!candidate) {
+        return null;
+      }
+      const rankedFor = (role: SpecSourcingRole) =>
+        buildSpecSourcingPlan({
+          roles: [role],
+          unsourceable: [],
+          candidates: [candidate],
+          roomType: room.room_type,
+          conceptText,
+          budgetMaxAed: project.budget_max_aed,
+          roomMeasurements,
+          avoidColorTags,
+          candidatesPerRole: 1
+        }).pools[0]?.candidates.find((entry) => entry.id === productId) ?? null;
+
+      // The role keeps its own identity and the rest of its options: a lookup
+      // is for FINDING the anchor, never for becoming the list. Ordering is
+      // claimAnchoredPools's job, so it holds for every claim rather than only
+      // for the ones that came through here.
+      const admit = (entry: RoleScopedRankedProductMatch) => ({
+        ...pool,
+        candidates: [entry, ...pool.candidates.filter((existing) => existing.id !== entry.id)]
+      });
+
+      // The ordinary miss: the anchor passes this role's contract but sat below
+      // the cut sized for what the sourcing pass can look at.
+      const underThisRole = rankedFor(pool.role);
+      if (underThisRole) {
+        return admit(underThisRole);
+      }
+
+      // The harder one: the spec role's contract REJECTS the piece the render
+      // was drawn from. Measured on the Al Furjan hall, where the spec read the
+      // Samone 2.5-seater-with-chaise as a "curved modular sectional" and its
+      // own seat contract then refused it, and read the Cooper 10-seater as a
+      // "round dining table". That is the spec's WORDS disagreeing with the
+      // render's PIXELS, and the pixels are what the shopper approved.
+      // Contracts exist to stop a SEARCH returning the wrong kind of object;
+      // this piece was not searched for, it was pinned before the render
+      // existed, and the design check downstream decides whether the render
+      // kept it. So it is admitted on its category alone.
+      // The label is the CATEGORY, not the spec's wording. Passing the spec
+      // label back in would re-derive a seat range and silhouette exclusions
+      // from the very sentence that just refused the piece ("curved modular
+      // sectional sofa" refusing a 2.5-seater-with-chaise), so the fallback
+      // would reject it a second time for the first reason. "Admitted on its
+      // category alone" has to mean the category alone.
+      const categoryRole = sourcingRolesFromBlueprint(
+        [{ category: pool.role.category, label: pool.role.category, quantity: pool.role.quantity, required: true }],
+        room.room_type
+      )[0];
+      const underItsCategory = rankedFor(categoryRole);
+      return underItsCategory ? admit(underItsCategory) : null;
+    }
+  });
+  const anchorOrder = new Map(plan.pools.map((pool, index) => [pool.role.echoKey, index]));
+  // A hall can carry two roles in one category. The anchor claims one of them;
+  // the other must not be offered the same piece, or the pass would pick it
+  // again (it is judging against a render that literally contains it), the list
+  // would carry the sofa twice, the total would charge for it twice, and both
+  // rows would claim to be the piece in the picture. resolveSpecRoleOutcomes
+  // dedupes by product within its own results, and anchored roles do not pass
+  // through it, so the exclusion happens here.
+  const claimedProductIds = new Set(anchored.map((claim) => claim.productId));
+  const openPools = sourcingPools.map((pool) => ({
+    ...pool,
+    candidates: pool.candidates.filter((candidate) => !claimedProductIds.has(candidate.id))
+  }));
+
   const contractRejections = plan.pools.reduce<Record<string, number>>((totals, pool) => {
     for (const [reason, count] of Object.entries(pool.rejectionReasons)) {
       totals[reason] = (totals[reason] ?? 0) + count;
@@ -486,16 +540,16 @@ export async function groundProductsForRoom(
 
   try {
     let outcomes: SpecRoleOutcome[];
-    if (plan.pools.length === 0) {
-      outcomes = openSpecRoleOutcomes(plan.pools, "No visual pass ran for this list.");
+    if (openPools.length === 0) {
+      outcomes = openSpecRoleOutcomes(openPools, "No visual pass ran for this list.");
     } else {
       const poolCandidatesById = new Map<string, RoleScopedRankedProductMatch>();
-      for (const pool of plan.pools) {
+      for (const pool of openPools) {
         for (const candidate of pool.candidates) {
           poolCandidatesById.set(candidate.id, candidate);
         }
       }
-      const imageIds = imageCandidateIdsForPools(plan.pools, imageBudget);
+      const imageIds = imageCandidateIdsForPools(openPools, imageBudget);
       if (imageIds.length > 0) {
         try {
           Object.assign(
@@ -529,7 +583,7 @@ export async function groundProductsForRoom(
             conceptDescription: concept.description,
             conceptImageUrl,
             candidates: Array.from(poolCandidatesById.values()).map(matchToSourcingCandidate),
-            roleCandidatePools: plan.pools.map((pool) => ({
+            roleCandidatePools: openPools.map((pool) => ({
               category: pool.role.category,
               roleLabel: pool.role.echoKey,
               visualBrief: pool.role.visualBrief,
@@ -541,7 +595,7 @@ export async function groundProductsForRoom(
             candidateImageDetail: "low",
             candidateImageDataUrls,
             designSpec: {
-              roles: plan.pools.map((pool) => ({
+              roles: openPools.map((pool) => ({
                 echoKey: pool.role.echoKey,
                 category: pool.role.category,
                 label: pool.role.label,
@@ -557,7 +611,7 @@ export async function groundProductsForRoom(
           "Product visual sourcing timed out."
         );
         outcomes = resolveSpecRoleOutcomes({
-          pools: plan.pools,
+          pools: openPools,
           roleResults: result.roleResults,
           selections: result.selectedProducts
         });
@@ -575,12 +629,43 @@ export async function groundProductsForRoom(
         const message = error instanceof Error ? error.message : "Product visual sourcing failed.";
         console.error("Product visual sourcing failed; falling back to ranking.", error);
         outcomes = openSpecRoleOutcomes(
-          plan.pools,
+          openPools,
           "The visual pass was unavailable, so nothing was checked against the design and nothing was chosen for you; these are the closest catalogue options."
         );
         visualPass = { ...visualPass, used: false, error: message };
       }
     }
+
+    // The anchored roles rejoin here, before the check rather than after it.
+    // They were kept out of the sourcing PASS because there is nothing there to
+    // propose: the render was generated from these photographs. But "generated
+    // from" is not "contains", and measuring it said so — across the five
+    // harness rooms the render kept 15 of 20 anchors at the gate's bar, dropping
+    // a bedside lamp to 0.30 and restyling a red armchair to 0.38. So the claim
+    // that a piece is IN the design is made only after the same independent
+    // judge that governs every other selection has confirmed it. An anchor it
+    // does not confirm opens its role, with the anchor still first among the
+    // options, exactly as an unverified proposal does.
+    // One outcome per claim, unconditionally: claimAnchoredPools only returns a
+    // claim after proving the pool holds the product, so a conditional here
+    // would advertise a silent-drop path that cannot happen and would leave no
+    // trace if it ever did.
+    const anchoredOutcomes: SpecRoleOutcome[] = anchored.map((claim) => ({
+      kind: "selected" as const,
+      role: claim.pool.role,
+      pool: claim.pool,
+      selectedProductId: claim.productId,
+      matchStatus: "strong_match" as const,
+      reason: [ANCHOR_SELECTION_REASON, claim.reason].filter(Boolean).join(" "),
+      mismatchNote: null,
+      similarity: null
+    }));
+    const resolvedPools = [...anchored.map((claim) => claim.pool), ...openPools];
+    // Spec order, so the room still reads sofa, rug, table rather than
+    // everything-anchored-last.
+    outcomes = [...outcomes, ...anchoredOutcomes].sort(
+      (left, right) => (anchorOrder.get(left.role.echoKey) ?? 0) - (anchorOrder.get(right.role.echoKey) ?? 0)
+    );
 
     // The design check (AC 8). The pass proposed a product per role and scored
     // its own work; that self-report is not calibrated, so every proposal is
@@ -605,7 +690,7 @@ export async function groundProductsForRoom(
         // request budget rather than added on top of it.
         const unfetched = proposals
           .filter((outcome) => !imageDataUrls[outcome.selectedProductId])
-          .map((outcome) => poolCandidateById(plan.pools, outcome.selectedProductId))
+          .map((outcome) => poolCandidateById(resolvedPools, outcome.selectedProductId))
           .filter((candidate): candidate is RoleScopedRankedProductMatch => Boolean(candidate));
         if (unfetched.length > 0) {
           try {
@@ -617,7 +702,7 @@ export async function groundProductsForRoom(
         const judged = proposals
           .filter((outcome) => Boolean(imageDataUrls[outcome.selectedProductId]))
           .map((outcome) => {
-            const candidate = poolCandidateById(plan.pools, outcome.selectedProductId);
+            const candidate = poolCandidateById(resolvedPools, outcome.selectedProductId);
             return {
               productId: outcome.selectedProductId,
               productName: candidate?.name ?? "Catalogue product",
@@ -680,6 +765,7 @@ export async function groundProductsForRoom(
         };
         outcomes = applyProductVerification({
           outcomes,
+          anchorProductIds: claimedProductIds,
           verdicts: new Map(
             checked.verdicts.map((verdict) => [verdict.productId, { categoryMatches: verdict.categoryMatches, similarity: verdict.similarity }])
           )
@@ -688,9 +774,36 @@ export async function groundProductsForRoom(
         const message = error instanceof Error ? error.message : "The design check failed.";
         console.error("Product design check failed; nothing is chosen for the shopper.", error);
         verification = { ...verification, used: false, error: message };
-        outcomes = applyProductVerification({ outcomes, verdicts: new Map() });
+        outcomes = applyProductVerification({ outcomes, anchorProductIds: claimedProductIds, verdicts: new Map() });
       }
     }
+
+    // Only an anchor the judge confirmed is still called an anchor. The rest are
+    // on the list as options for an open role, which is the honest state: the
+    // shopper approved a render, and we could not confirm this piece is the one
+    // in it.
+    const keptSimilarityByProduct = new Map(
+      outcomes
+        .filter((outcome): outcome is Extract<SpecRoleOutcome, { kind: "selected" }> => outcome.kind === "selected")
+        .map((outcome) => [outcome.selectedProductId, outcome.verifiedSimilarity ?? 0])
+    );
+    // Every anchor this run claimed gets a verdict, pass or fail. Writing only
+    // the passes let a re-run leave an earlier run's "verified" standing after
+    // this one declined the same piece, and the judge's own variance makes that
+    // an ordinary occurrence rather than an edge case.
+    const anchorVerdicts = [...claimedProductIds].map((productId) => ({
+      productId,
+      similarity: keptSimilarityByProduct.get(productId) ?? null
+    }));
+    const anchoredProductIds = new Set(
+      anchorVerdicts.filter((entry) => entry.similarity !== null).map((entry) => entry.productId)
+    );
+
+    // The verdict goes where only the server can write it. The list's own
+    // is_anchor column and a row's selected status both sit on a table the
+    // owner may PATCH, so a claim the app makes on the shopper's behalf cannot
+    // rest on either, and neither can the design gate.
+    await recordAnchorVerification(serviceSupabase, { conceptId, verdicts: anchorVerdicts });
 
     const resolved = roleOptionsFromOutcomes(outcomes);
     missingRoles = [...plan.missing, ...resolved.missing];
@@ -705,20 +818,48 @@ export async function groundProductsForRoom(
     // cheaper, because "no cheaper option exists" is not a reason to present
     // an over-budget list as if it were within budget.
     const budgetMaxAed = project.budget_max_aed ?? null;
+    // Roles are opened against the tolerated ceiling, not the exact number. A
+    // list a few percent over is a better answer than one whose hero piece was
+    // removed to hit a figure the shopper gave as a guide; a list well over is
+    // still trimmed, dearest first. Both numbers go on the record below.
+    const budgetCeiling = budgetCeilingAed(budgetMaxAed);
     const lineTotalAed = (role: RoleProductOptions, productId: string | undefined) => {
       const option = productId ? role.options.find((candidate) => candidate.id === productId) : undefined;
       return option ? (option.salePriceAed ?? option.priceAed ?? 0) * Math.max(1, role.quantity || 1) : 0;
     };
     const selection = new Map(resolved.selectedProductIdByRole);
     const openedForBudget = new Set<string>();
-    if (budgetMaxAed !== null && budgetMaxAed > 0) {
+    if (budgetCeiling !== null) {
       const byCost = resolved.roleOptions
-        .map((role) => ({ role, key: roleOptionKey(role), total: lineTotalAed(role, resolved.selectedProductIdByRole.get(roleOptionKey(role))) }))
-        .filter((entry) => entry.total > 0)
+        .map((role) => {
+          const selectedId = resolved.selectedProductIdByRole.get(roleOptionKey(role));
+          return {
+            role,
+            key: roleOptionKey(role),
+            total: lineTotalAed(role, selectedId),
+            // A piece the RENDER was built from is not opened for cost. The
+            // shopper approved that picture; taking its sofa off their list to
+            // hit a figure they gave as a guide leaves them a design with a
+            // hole in it, and the piece they were shown is the one they wanted.
+            // The room's total is reported honestly instead, over the stated
+            // figure and marked as such. Ayo, 2026-09-03: "I would never want
+            // to sacrifice quality for that."
+            anchored: selectedId !== undefined && anchoredProductIds.has(selectedId)
+          };
+        })
+        .filter((entry) => entry.total > 0 && !entry.anchored)
         .sort((left, right) => right.total - left.total);
-      let running = byCost.reduce((total, entry) => total + entry.total, 0);
+      // The anchors' cost still counts toward the total; it simply cannot be
+      // removed from it. Opening every other role is the most the budget can do.
+      const anchoredTotal = resolved.roleOptions
+        .map((role) => {
+          const selectedId = resolved.selectedProductIdByRole.get(roleOptionKey(role));
+          return selectedId !== undefined && anchoredProductIds.has(selectedId) ? lineTotalAed(role, selectedId) : 0;
+        })
+        .reduce((total, value) => total + value, 0);
+      let running = byCost.reduce((total, entry) => total + entry.total, anchoredTotal);
       for (const entry of byCost) {
-        if (running <= budgetMaxAed) {
+        if (running <= budgetCeiling) {
           break;
         }
         selection.delete(entry.key);
@@ -790,7 +931,15 @@ export async function groundProductsForRoom(
     if (itemRows.length > 0) {
       const { error: itemError } = await supabase
         .from("shopping_list_items")
-        .insert(itemRows.map((row) => ({ ...row, shopping_list_id: shoppingListId })));
+        .insert(
+          // is_anchor is deliberately NOT written. It sat on a table the list's
+          // owner may PATCH, so it could never carry a claim the app makes on
+          // the shopper's behalf: a client could set it without any design
+          // check having run. The authority is concept_anchors.
+          // verified_similarity, written by the server above, and that is what
+          // the design gate reads and what a badge should join.
+          itemRows.map((row) => ({ ...row, shopping_list_id: shoppingListId }))
+        );
       if (itemError) {
         throw new Error(itemError.message);
       }
@@ -840,6 +989,20 @@ export async function groundProductsForRoom(
             checkSimilarity: entry.checkSimilarity,
             reason: entry.reason
           })),
+          anchors: {
+            // Roles this run did not have to source, because the render was
+            // built from them.
+            claimed: anchoredOutcomes.length,
+            // ...of which the independent judge confirmed the render actually
+            // kept. The gap between these two is the image model dropping or
+            // restyling references, and it is the number to watch.
+            kept: anchoredProductIds.size,
+            // An anchor whose piece the spec role's contracts reject, or whose
+            // category the spec has no role for. Sourced normally instead; a
+            // number that climbs means the spec and the anchors disagree.
+            unclaimed: unclaimedAnchors.length,
+            recorded: anchorRows.length
+          },
           missingRoles: missingRoles.filter((entry) => entry.kind === "missing").map((entry) => entry.label),
           unsourceable: missingRoles.filter((entry) => entry.kind !== "missing").map((entry) => entry.label),
           contractRejections,
@@ -848,7 +1011,12 @@ export async function groundProductsForRoom(
           budgetFit: {
             adjusted: openedForBudget.size > 0,
             budgetMaxAed,
+            // The number the shopper gave, and the number roles are opened
+            // against. A list between the two is deliberate, not a miss, and
+            // both are recorded so nobody has to infer which happened.
+            budgetCeilingAed: budgetCeiling,
             withinBudget: budgetMaxAed === null || budgetMaxAed <= 0 || estimatedTotal <= budgetMaxAed,
+            withinTolerance: budgetCeiling === null || estimatedTotal <= budgetCeiling,
             // Roles opened because the piece that matched the design costs
             // more than the room's budget allows.
             openedForBudget: openedForBudget.size
@@ -1078,19 +1246,11 @@ async function loadRefillContext(
     .limit(1)
     .maybeSingle();
 
-  const { data: products } = await serviceSupabase
-    .from("products")
-    .select(
-      `
-      *,
-      retailer:retailers(name, status),
-      dimensions:product_dimensions(width_cm, depth_cm, height_cm, source_text)
-    `
-    )
-    .not("price_aed", "is", null)
-    .not("primary_image_url", "is", null)
-    .order("last_checked_at", { ascending: false, nullsFirst: false })
-    .limit(PRODUCT_MATCHING_CATALOG_LIMIT);
+  // The same reader sourcing and the anchor pass use. A refill that ranked from
+  // a different column set would re-rank an anchored role against data the
+  // render was not built from, and the piece could drop off or be
+  // contract-rejected on the refill alone.
+  const { candidates } = await loadCatalogueCandidates(serviceSupabase);
 
   const specRole = await specRoleForListRow(serviceSupabase, {
     roomId,
@@ -1101,7 +1261,7 @@ async function loadRefillContext(
     roleLabel: rowLabel
   });
 
-  return { room, project, concept, existingRows, measurements, products, specRole };
+  return { room, project, concept, existingRows, measurements, candidates, specRole };
 }
 
 function rankFreshOptions({
@@ -1109,7 +1269,7 @@ function rankFreshOptions({
   project,
   concept,
   measurements,
-  products,
+  catalogueCandidates,
   category,
   template,
   usedProductIds,
@@ -1120,20 +1280,17 @@ function rankFreshOptions({
   project: { budget_max_aed: number | null };
   concept: { title: string; description: string | null };
   measurements: { wall_length_cm: number | null; room_depth_cm: number | null } | null;
-  products: ProductRow[] | null;
+  catalogueCandidates: ProductMatchCandidate[];
   category: string;
   template: OptionRowTemplate;
   usedProductIds: Set<string>;
   limit: number;
   specRole: SpecSourcingRole | null;
 }): { role: RoomProductRoleSpec; matches: RankedProductMatch[] } {
-  const allCandidates = (products ?? [])
-    .map(productToMatchCandidate)
-    .filter((candidate): candidate is ProductMatchCandidate => Boolean(candidate));
   // Spec-constrained: only contract-clean candidates can refill a spec role.
   const candidates = specRole
-    ? allCandidates.filter((candidate) => checkCandidateAgainstSpecRole(candidate, specRole).ok)
-    : allCandidates;
+    ? catalogueCandidates.filter((candidate) => checkCandidateAgainstSpecRole(candidate, specRole).ok)
+    : catalogueCandidates;
 
   const conceptText = `${concept.title}\n${concept.description ?? ""}`;
   const role =
@@ -1201,7 +1358,7 @@ export async function refreshShoppingOptions(
     project: context.project,
     concept: context.concept,
     measurements: context.measurements,
-    products: context.products as ProductRow[] | null,
+    catalogueCandidates: context.candidates,
     category: input.category,
     template,
     usedProductIds,
@@ -1275,7 +1432,7 @@ export async function findMoreShoppingOptions(
     project: context.project,
     concept: context.concept,
     measurements: context.measurements,
-    products: context.products as ProductRow[] | null,
+    catalogueCandidates: context.candidates,
     category: input.category,
     template,
     usedProductIds,

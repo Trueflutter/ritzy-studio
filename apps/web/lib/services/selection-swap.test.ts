@@ -226,6 +226,11 @@ async function main() {
     assert.ok(itemUpdate, "swap must write the item row");
     assert.equal(itemUpdate?.payload?.product_id, "00000000-0000-4000-8000-000000000002");
     assert.equal(itemUpdate?.payload?.unit_price_aed, 2000);
+    // The anchor claim belongs to the PIECE. Once the piece changes, "this is
+    // in your design" is false, and the design gate reads this flag to decide
+    // what it judges, so a stale true would move the gate as well as mislead
+    // the shopper. A database trigger enforces the same thing.
+    assert.equal(itemUpdate?.payload?.is_anchor, false);
     // The reason is prose about the swap, never a ranking warning dump.
     assert.match(String(itemUpdate?.payload?.selection_reason), /^Swapped in as the cheaper option\./);
     assert.ok(!String(itemUpdate?.payload?.selection_reason).includes("Warning"));

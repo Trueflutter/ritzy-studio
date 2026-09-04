@@ -48,21 +48,61 @@ model (`--model`).
    beige-brown despite a cool/dark/saturated/bold brief, or an incoherent
    default register on a silent brief.
 
-7. **product_consistency** — for a room with a shopping list: every SELECTED
-   product belongs to the approved design. Judged per product against the
-   concept render and the spec role it was selected for: the category must
-   match the role (a floor lamp for a floor-lamp role, never a chandelier; an
-   armchair for a lounge-chair role, never a swing or rocking chair) and the
-   visual similarity to the corresponding object in the render must be at or
-   above the committed threshold: similarity at or above 0.6 (the whole render
-   is shown and the judge names which object it compared against; the spec
-   carries no regions, so there is no crop). Roles the list honestly reports
-   as missing are not failures; a wrong product is.
-   PASS: every selected product was judged and passes. FAIL: any selected
-   product fails, could not be judged (no usable image), or the list exists
-   with nothing selected at all (a design check that chooses nothing is a
-   regression, not a pass).
-   NOT_APPLICABLE only when the concept has no shopping list yet.
+7. **product_consistency** — for a room with a shopping list: every ANCHOR on
+   it belongs to the approved design. Judged per product against the concept
+   render and the spec role it was selected for: the category must match the
+   role (a floor lamp for a floor-lamp role, never a chandelier; an armchair
+   for a lounge-chair role, never a swing or rocking chair) and the visual
+   similarity to the corresponding object in the render must be at or above the
+   committed threshold: similarity at or above 0.6 (the whole render is shown
+   and the judge names which object it compared against; the spec carries no
+   regions, so there is no crop).
+
+   RESTATED 2026-09-03, with slice S3b, on Ayo's decision recorded in
+   `plans/2026-09-01_product-pass-implementation.md` criterion 8. This check
+   used to require every SELECTED product to pass, and S3 measured five ways
+   that the bar is not reachable: the judge is itself a model, two judgements
+   of the same pair differ by up to 0.20 on ambiguous pieces, and a
+   four-retailer catalogue makes most objects in a generated render ambiguous.
+   Tightening the app's bar converted wrong products into empty lists, which
+   this check also failed. The answer was to change what the pipeline does
+   rather than what the gate says: the room's hero pieces are now chosen from
+   live stock BEFORE the render and the render is generated from their
+   photographs, so they match by construction. That is the claim this check
+   now tests, and it is a stronger one, because a failure means the image
+   model dropped a reference it was told to keep.
+
+   Non-anchor selected products are still judged and their pass rate is
+   reported in the notes, but they do not decide the verdict. They are matched
+   to the design rather than built into it, and the honest promise for them is
+   the one the app already makes: a product is presented as chosen only when
+   the design check passed it, and anything else is an open role with its
+   options showing.
+
+   THE FLOOR, set 2026-09-04 after three full measurements (18 of 19 each time):
+   across the rooms at least FIVE IN SIX anchors are kept, and no room keeps
+   fewer than half its own anchors, nor zero. The exact count is printed on
+   every run, because eighteen falling to sixteen is the signal even while the
+   gate passes.
+
+   Five in six, not three in four: three in four of nineteen is fifteen, so a
+   regression losing three anchors would pass a gate that exists to catch it.
+   Sixteen is two pieces below the measurement, which is the judges' own
+   disagreement. Half per room, not three of four: the stricter per-room bar
+   leaves the room sitting at three of four one flaky judgement from failing
+   everything.
+   The check used to ask for every anchor on every room, and the shortfall that
+   wording measured is not the pipeline: two judges scoring the same render and
+   the same product disagree by up to 0.20, and across nineteen anchors they
+   disagree on about three, so unanimity measures their agreement rather than
+   the work. A dropped reference is still a defect; it is one the floor counts.
+
+   PASS: the room meets the floor, every anchor was judged, and the app claimed
+   at least one on the list. FAIL: the room misses the floor, an anchor could
+   not be judged (no usable image), the concept has anchors but no list, or the
+   list claims none of them (a run that stands behind nothing is a regression,
+   not a vacuous pass).
+   NOT_APPLICABLE only when the concept has no shopping list and no anchors.
 
 ## Room matrix
 

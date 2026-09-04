@@ -517,8 +517,12 @@ async function runRoom(model: string, room: ManifestRoom) {
     spec: specs[0] ?? null
   });
 
-  // Criterion 8: every SELECTED product on the concept's shopping list must
-  // belong to the design. NOT_APPLICABLE when the room has no list yet.
+  // Criterion 8, restated with S3b: every ANCHOR on the concept's shopping list
+  // must belong to the design. An anchor is a piece the render was GENERATED
+  // from, so a failure here means the image model dropped a reference it was
+  // told to keep. Non-anchor selected products are judged and reported but do
+  // not decide the verdict; checklist.md carries the reasoning and the history.
+  // NOT_APPLICABLE when the room has no list yet.
   const lists = (await supabaseGet(
     `shopping_lists?room_id=eq.${room.roomId}&concept_id=eq.${hero.id}&select=id,missing_roles&order=updated_at.desc&limit=1`
   )) as Array<{ id: string; missing_roles: unknown }>;
@@ -528,51 +532,162 @@ async function runRoom(model: string, room: ManifestRoom) {
     const items = (await supabaseGet(
       `shopping_list_items?shopping_list_id=eq.${lists[0].id}&status=eq.selected&select=product_id,role_label,category,products(name,primary_image_url)`
     )) as Array<{ product_id: string; role_label: string; category: string; products: { name: string; primary_image_url: string | null } | null }>;
+
+    // The anchors come from concept_anchors, NOT from the list's is_anchor
+    // flag. The flag is only set for anchors the APP's own design check already
+    // passed, so using it as the denominator would make this check report
+    // 15/15 on the run that actually kept 15 of 20, and the gate could then
+    // fail only on judge variance or on total anchor loss. concept_anchors is
+    // the record of what the render was BUILT from, which is the claim under
+    // test.
+    const anchorRows = (await supabaseGet(
+      `concept_anchors?concept_id=eq.${hero.id}&select=product_id,role_label,role_category,verified_similarity,products(name,primary_image_url)`
+    )) as Array<{
+      product_id: string;
+      role_label: string;
+      role_category: string;
+      verified_similarity: number | null;
+      products: { name: string; primary_image_url: string | null } | null;
+    }>;
+    const anchorIds = new Set(anchorRows.map((row) => row.product_id));
+    // What the app went on to CLAIM, reported beside it: the gap between the
+    // two is the anchors the app's own check declined to stand behind, which
+    // is the honest handling of a render that dropped a reference.
+    // Read from the server-owned verdict on concept_anchors, never from the
+    // list. Both shopping_list_items.is_anchor and a row's selected status sit
+    // on a table any room owner can PATCH, so deriving the claim from either
+    // would let the system under test move its own gate.
+    const claimedAnchorIds = new Set(
+      anchorRows.filter((row) => row.verified_similarity !== null).map((row) => row.product_id)
+    );
+    // Every anchor is judged whether or not it reached the list, plus every
+    // other selected product (reported, not gating).
+    const judgeable = [
+      ...anchorRows.map((row) => ({
+        productId: row.product_id,
+        productName: row.products?.name ?? row.product_id,
+        roleLabel: row.role_label,
+        category: row.role_category,
+        imageUrl: row.products?.primary_image_url ?? null
+      })),
+      ...items
+        .filter((item) => !anchorIds.has(item.product_id))
+        .map((item) => ({
+          productId: item.product_id,
+          productName: item.products?.name ?? item.product_id,
+          roleLabel: item.role_label,
+          category: item.category,
+          imageUrl: item.products?.primary_image_url ?? null
+        }))
+    ];
     const withImages = await Promise.all(
-      items.map(async (item) => ({
-        productId: item.product_id,
-        productName: item.products?.name ?? item.product_id,
-        roleLabel: item.role_label,
-        category: item.category,
-        imageDataUrl: item.products?.primary_image_url ? await remoteImageDataUrl(item.products.primary_image_url) : null
+      judgeable.map(async (product) => ({
+        productId: product.productId,
+        productName: product.productName,
+        roleLabel: product.roleLabel,
+        category: product.category,
+        imageDataUrl: product.imageUrl ? await remoteImageDataUrl(product.imageUrl) : null
       }))
     );
-    productImagesUnavailable = withImages.filter((product) => !product.imageDataUrl).map((product) => product.productName);
+    // Only an ANCHOR without a picture can stop this check passing: the render
+    // was built from that picture, so its absence is a real gap. A matched
+    // product with no picture is reported and does not decide the verdict.
+    productImagesUnavailable = withImages
+      .filter((product) => !product.imageDataUrl && anchorIds.has(product.productId))
+      .map((product) => product.productName);
     productVerdicts = await judgeProducts({
       model,
       conceptImage,
       products: withImages.filter((product): product is typeof product & { imageDataUrl: string } => Boolean(product.imageDataUrl)),
       threshold: productConsistencyThreshold()
     });
-    const failed = productVerdicts.filter((product) => product.verdict === "fail");
+    const anchorVerdicts = productVerdicts.filter((product) => anchorIds.has(product.productId));
+    const matchedVerdicts = productVerdicts.filter((product) => !anchorIds.has(product.productId));
+    const failed = anchorVerdicts.filter((product) => product.verdict === "fail");
+    const matchedFailed = matchedVerdicts.filter((product) => product.verdict === "fail");
     const missingRoles = Array.isArray(lists[0].missing_roles) ? (lists[0].missing_roles as Array<{ kind?: string; label?: string }>) : [];
     const missingLabels = missingRoles.filter((entry) => entry.kind === "missing").map((entry) => entry.label);
-    // AC 8 reads "every selected product passes": a product that could not be
-    // judged (no image) is never counted as passing, so the check fails until
-    // every selected product has been seen. And a list that exists with NOTHING
-    // selected cannot pass either: that is the state a broken design check
-    // produces, and calling it not-applicable would let exactly that
-    // regression read as gate-green. Not-applicable is reserved for a concept
-    // with no shopping list at all.
-    const nothingSelected = productVerdicts.length === 0 && productImagesUnavailable.length === 0;
+    // A list with no anchor on it cannot pass. "Every anchor belongs to the
+    // design" is vacuously true of a run that anchored nothing, and that run is
+    // precisely the regression this check exists to catch, so it is a failure
+    // and not a not-applicable. Not-applicable is reserved for a concept with
+    // no shopping list at all.
+    // A hero the pipeline never anchored has no claim to test. A REVISION is
+    // the legitimate case (the revision path does not re-anchor), so it is
+    // not-applicable; anything else means a run anchored nothing, which is the
+    // regression this check exists to catch.
+    // The floor Ayo set on 2026-09-04, after three full measurements showed that
+    // asking for every anchor on every room measures the judges' agreement
+    // rather than the pipeline: two of them scoring the same render and the
+    // same product disagree by up to 0.20.
+    // Per room: half its own anchors, and never zero. The AGGREGATE five-in-six
+    // rule is checked across the rooms at the end, because that is where a rate
+    // belongs. A per-room three-in-four bar would be stricter than the
+    // aggregate and would leave a room sitting at three of four one flaky
+    // judgement from failing the whole gate.
+    const anchorsKept = anchorVerdicts.length - failed.length;
+    const meetsFloor = anchorsKept * 2 >= anchorIds.size && anchorsKept > 0;
+
+    const noAnchors = anchorIds.size === 0;
+    // A list that claims nothing is not a passing list, however well the render
+    // itself did. That condition predates this slice and moving the denominator
+    // to concept_anchors dropped it: a run whose design check chose NOTHING
+    // would have gone gate-green on the strength of anchors the shopper is
+    // never shown. checklist.md states it as "the list carries at least one
+    // anchor AND every anchor passes".
+    const claimsNothing = claimedAnchorIds.size === 0;
     verdicts.push({
       check: "product_consistency",
-      verdict: nothingSelected ? "fail" : failed.length === 0 && productImagesUnavailable.length === 0 ? "pass" : "fail",
-      notes: nothingSelected
-        ? "The list exists but nothing is selected on it, so no product could be judged. A list where the design check chose nothing is not a passing list."
+      verdict: noAnchors
+        ? hero.parent_concept_id
+          ? "not_applicable"
+          : "fail"
+        : meetsFloor && productImagesUnavailable.length === 0 && !claimsNothing
+          ? "pass"
+          : "fail",
+      notes: noAnchors
+        ? hero.parent_concept_id
+          ? "The hero concept is a revision, and revisions are not re-anchored, so there is nothing for this check to test."
+          : "The render was not built from any catalogue piece. The claim this check tests does not exist for this room."
         : [
-            `${productVerdicts.length - failed.length}/${productVerdicts.length} judged products belong to the design`,
+            `anchors: ${anchorsKept}/${anchorIds.size} kept by the render, of which the app claimed ${claimedAnchorIds.size} on the list`,
+            meetsFloor ? null : "BELOW THIS ROOM'S FLOOR (half its anchors, and never zero)",
             failed.length > 0
-              ? `failed: ${failed.map((product) => `${product.productName} (${product.roleLabel}, similarity ${product.similarity.toFixed(2)}, compared with ${product.matchedObject})`).join("; ")}`
+              ? `anchors the render did not keep: ${failed.map((product) => `${product.productName} (${product.roleLabel}, similarity ${product.similarity.toFixed(2)}, compared with ${product.matchedObject})`).join("; ")}`
               : null,
-            productImagesUnavailable.length > 0 ? `NOT judged (image unavailable), so the check cannot pass: ${productImagesUnavailable.join("; ")}` : null,
+            productImagesUnavailable.length > 0 ? `anchors NOT judged (image unavailable), so the check cannot pass: ${productImagesUnavailable.join("; ")}` : null,
+            claimsNothing
+              ? "the list claims NO anchor, so the shopper is shown none of the pieces the render was built from; a list that chooses nothing is not a passing list"
+              : null,
+            // Reported, never gating: these are matched to the design rather
+            // than built into it, and the app already states that difference.
+            matchedVerdicts.length > 0
+              ? `matched products (reported, not gating): ${matchedVerdicts.length - matchedFailed.length}/${matchedVerdicts.length} belong to the design${matchedFailed.length > 0 ? `; below the bar: ${matchedFailed.map((product) => `${product.productName} (${product.similarity.toFixed(2)})`).join("; ")}` : ""}`
+              : null,
             missingLabels.length > 0 ? `honestly missing on the list: ${missingLabels.join("; ")}` : null
           ]
             .filter(Boolean)
             .join(". ")
     });
   } else {
-    verdicts.push({ check: "product_consistency", verdict: "not_applicable", notes: "No shopping list for this concept yet." });
+    // Not-applicable only when the pipeline genuinely has not reached this
+    // room. If the server recorded anchors for the hero concept and the list is
+    // gone, the render WAS built from catalogue pieces and something removed
+    // the evidence: that is a failure, not an absence. shopping_lists is
+    // owner-writable, so an N/A reachable by deleting a row is a gate the
+    // system under test can switch off.
+    const orphanAnchors = (await supabaseGet(
+      `concept_anchors?concept_id=eq.${hero.id}&select=product_id`
+    )) as Array<{ product_id: string }>;
+    verdicts.push(
+      orphanAnchors.length > 0
+        ? {
+            check: "product_consistency",
+            verdict: "fail",
+            notes: `The server recorded ${orphanAnchors.length} anchor(s) for this concept but the room has no shopping list, so what the render was built from cannot be judged.`
+          }
+        : { check: "product_consistency", verdict: "not_applicable", notes: "No shopping list for this concept yet." }
+    );
   }
 
   return { room: room.key, status: "JUDGED" as const, conceptId: hero.id, verdicts, productVerdicts };
@@ -621,6 +736,42 @@ async function main() {
 
   const judged = results.filter((result) => result.status === "JUDGED");
   const skipped = results.length - judged.length;
+  // The floor's first clause is a rate across the rooms, so it is reported
+  // across them rather than only per room.
+  const anchorTotals = judged.reduce(
+    (totals, result) => {
+      const note = result.verdicts.find((verdict) => verdict.check === "product_consistency")?.notes ?? "";
+      const match = note.match(/anchors: (\d+)\/(\d+) kept/);
+      return match
+        ? { kept: totals.kept + Number(match[1]), total: totals.total + Number(match[2]) }
+        : totals;
+    },
+    { kept: 0, total: 0 }
+  );
+  // Only a COMPLETE run can speak to a rate across the rooms. A single-room run
+  // or one with a skipped room reports what it saw and says it cannot judge the
+  // floor; asserting it would let "3/4 — BELOW the floor" stand as a verdict on
+  // a run that measured one room.
+  // A --room run is partial by definition, whatever it judged.
+  const partial = Boolean(onlyRoomId) || skipped > 0 || judged.length < manifest.rooms.length;
+  if (anchorTotals.total > 0 && partial) {
+    console.log(
+      `\nAnchors kept in the rooms that ran: ${anchorTotals.kept}/${anchorTotals.total}. The five-in-six floor is a rate across ALL ${manifest.rooms.length} rooms and is not judged on a partial run.`
+    );
+  } else if (anchorTotals.total > 0) {
+    // Five in six. Three in four of nineteen is fifteen, so it would have
+    // passed a regression losing three anchors — the thing this exists to
+    // catch. Sixteen is two pieces below the measurement, which is the judges'
+    // own disagreement.
+    const meets = anchorTotals.kept * 6 >= anchorTotals.total * 5;
+    console.log(
+      `\nAnchors kept across the rooms: ${anchorTotals.kept}/${anchorTotals.total} — ${meets ? "at or above" : "BELOW"} the five-in-six floor.`
+    );
+    if (!meets) {
+      process.exitCode = 1;
+    }
+  }
+
   console.log(`\nHarness complete: ${judged.length} judged, ${skipped} skipped or errored (model ${model}).`);
   if (skipped > 0) {
     console.log("Skipped rooms are reported above, never silently dropped.");

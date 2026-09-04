@@ -7,12 +7,24 @@ import { buildInitialConceptImagePrompt, INITIAL_CONCEPT_IMAGE_PROMPT_CHAR_BUDGE
 // + full spatial intent + 5 style modules is the heaviest fixed language stack.
 // Concept-first (S2): the catalogue summary no longer exists in this prompt, so the
 // generation prompt is the only variable input the clamp can trim.
+//
+// Anchored concepts (S3b) added a clause the shipped prompt now always carries,
+// naming each anchor's role. The worst case has to carry it too, or this proof
+// covers a shape that no longer ships and the next addition to the fixed
+// language stack passes here while trimming the shopper's concept direction in
+// production.
 const worstCase = {
   generationPrompt: "A warm contemporary living and dining hall concept with layered lighting. "
     .repeat(40)
     .slice(0, 2800),
   roomType: "Living & Dining (combined hall)",
   hasInspirationImages: true,
+  anchorProducts: [
+    { roleLabel: "anchor seating for the conversation group facing the window wall" },
+    { roleLabel: "the eight-seat dining table under the pendant run" },
+    { roleLabel: "the accent lounge chair beside the terrace doors" },
+    { roleLabel: "the large flatweave rug under the conversation group" }
+  ],
   styleSlugs: ["organic-contemporary", "japandi", "quiet-luxury", "scandinavian", "mid-century"],
   strictSourceRoomPreservation: true,
   spatialIntent: {

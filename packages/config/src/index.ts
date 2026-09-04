@@ -176,4 +176,3 @@ export function signupAllowed(
     .filter(Boolean);
   return entries.some((entry) => entry === "*" || entry === normalized || entry === domain);
 }
-

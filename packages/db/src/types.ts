@@ -118,6 +118,83 @@ export type Database = {
           },
         ]
       }
+      concept_anchors: {
+        Row: {
+          concept_id: string
+          created_at: string
+          id: string
+          product_id: string
+          reason: string | null
+          role_category: string
+          role_key: string
+          role_label: string
+          room_id: string
+          selection_job_id: string | null
+          source: string
+          verified_at: string | null
+          verified_similarity: number | null
+        }
+        Insert: {
+          concept_id: string
+          created_at?: string
+          id?: string
+          product_id: string
+          reason?: string | null
+          role_category: string
+          role_key: string
+          role_label: string
+          room_id: string
+          selection_job_id?: string | null
+          source: string
+          verified_at?: string | null
+          verified_similarity?: number | null
+        }
+        Update: {
+          concept_id?: string
+          created_at?: string
+          id?: string
+          product_id?: string
+          reason?: string | null
+          role_category?: string
+          role_key?: string
+          role_label?: string
+          room_id?: string
+          selection_job_id?: string | null
+          source?: string
+          verified_at?: string | null
+          verified_similarity?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "concept_anchors_concept_id_fkey"
+            columns: ["concept_id"]
+            isOneToOne: false
+            referencedRelation: "concepts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "concept_anchors_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "concept_anchors_room_id_fkey"
+            columns: ["room_id"]
+            isOneToOne: false
+            referencedRelation: "rooms"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "concept_anchors_selection_job_id_fkey"
+            columns: ["selection_job_id"]
+            isOneToOne: false
+            referencedRelation: "ai_jobs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       concept_critiques: {
         Row: {
           concept_id: string
@@ -1128,6 +1205,7 @@ export type Database = {
           created_at: string
           dimension_fit_note: string | null
           id: string
+          is_anchor: boolean
           line_total_aed: number | null
           option_rank: number
           product_id: string
@@ -1149,6 +1227,7 @@ export type Database = {
           created_at?: string
           dimension_fit_note?: string | null
           id?: string
+          is_anchor?: boolean
           line_total_aed?: number | null
           option_rank?: number
           product_id: string
@@ -1170,6 +1249,7 @@ export type Database = {
           created_at?: string
           dimension_fit_note?: string | null
           id?: string
+          is_anchor?: boolean
           line_total_aed?: number | null
           option_rank?: number
           product_id?: string

@@ -16,7 +16,8 @@ export const TEXT_STAGES = [
   "spatial_qa",
   "revision_direction",
   "spec_extraction",
-  "product_enrichment"
+  "product_enrichment",
+  "anchor_set"
 ] as const;
 
 export type TextStage = (typeof TEXT_STAGES)[number];
@@ -37,8 +38,14 @@ function stageEnvValue(env: EnvRecord, prefix: string, stage: TextStage): string
 // gate that judges the same question runs on the production vision model; the
 // app has to make that judgement with the same eyes or it will choose pieces
 // the gate then fails. An env override still wins.
+//
+// The anchor set pass is the other one. It decides which real pieces the
+// concept render is built around, so its output is not a row on a list that a
+// shopper can skip past: it is the room's palette. One call per room, once,
+// before anything else is paid for.
 const STAGE_MODEL_DEFAULTS: Partial<Record<TextStage, string>> = {
-  product_verification: "gpt-5.1"
+  product_verification: "gpt-5.1",
+  anchor_set: "gpt-5.1"
 };
 
 export function resolveStageTextModel(stage: TextStage, env: EnvRecord, baseModel: string): string {

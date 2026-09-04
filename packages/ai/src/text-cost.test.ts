@@ -50,3 +50,95 @@ assert.equal(sumImagePlusTextUsd(0.07, 0.005), 0.075);
 assert.equal(sumImagePlusTextUsd(undefined, undefined), null);
 
 console.log("text-cost tests passed");
+
+// --- A caller's image deadline is honoured, floored and capped (S3b).
+{
+  const { imageCallTimeoutMs } = await import("./index");
+  // No deadline: the module's own ceiling stands.
+  assert.equal(imageCallTimeoutMs(undefined, 0), 240_000);
+  // With one: what is left of it, never more than the ceiling.
+  assert.equal(imageCallTimeoutMs(170_000, 0, 0), 170_000);
+  assert.equal(imageCallTimeoutMs(170_000, 0, 100_000), 70_000);
+  assert.equal(imageCallTimeoutMs(400_000, 0, 0), 240_000, "a caller cannot extend the provider ceiling");
+  // NOT floored. Flooring it made the primary and the fallback together
+  // overrun the caller: at the render's own 30 s floor the primary takes 19.8 s
+  // and a 20 s floor on the fallback totals 39.8 s against a 30 s allowance.
+  // The caller skips the fallback below the minimum instead.
+  assert.equal(imageCallTimeoutMs(170_000, 0, 169_000), 1_000);
+  assert.equal(imageCallTimeoutMs(170_000, 0, 200_000), 0);
+
+  // The primary's share, and the two together inside the caller's deadline.
+  const { evolinkPollWindowMs, IMAGE_FALLBACK_MIN_MS } = await import("./index");
+  assert.equal(evolinkPollWindowMs(undefined), undefined, "no deadline, the provider's own ceiling stands");
+  const { IMAGE_FALLBACK_RESERVE_MS } = await import("./index");
+  // The primary keeps everything except what the fallback would need, rather
+  // than a fixed fraction: two thirds of a 195 s budget left the fallback 66 s
+  // against a provider needing well over twice that, so a stalled primary
+  // produced no concept at all where the un-deadlined code produced a slow one.
+  // At a concept route's reserve there is not room for two renders of this
+  // length, so the primary keeps the whole window and the fallback is skipped.
+  assert.equal(evolinkPollWindowMs(195_000), 195_000);
+  // Given a budget that can carry both, the primary keeps everything but the
+  // fallback's reserve.
+  assert.equal(evolinkPollWindowMs(400_000), 400_000 - IMAGE_FALLBACK_RESERVE_MS);
+  assert.ok(evolinkPollWindowMs(1_000)! >= 6_000, "never below a poll round trip");
+
+  // A budget too small to split leaves the primary whole and skips the fallback.
+  assert.equal(evolinkPollWindowMs(90_000), 90_000, "no room for two providers, so one gets it all");
+
+  for (const deadline of [60_000, 90_000, 120_000, 195_000, 400_000]) {
+    const primary = evolinkPollWindowMs(deadline)!;
+    const fallback = imageCallTimeoutMs(deadline, 0, primary);
+    assert.ok(
+      primary + (fallback >= IMAGE_FALLBACK_MIN_MS ? fallback : 0) <= deadline,
+      `both providers fit ${deadline}ms (primary ${primary}, fallback ${fallback})`
+    );
+    // The property, stated directly rather than guarded by itself: whenever the
+    // primary is cut back to make room for a fallback, the room it makes is one
+    // the fallback can land in. Cutting the primary for a window too small to
+    // return is the failure this arithmetic exists to prevent.
+    if (primary < deadline) {
+      assert.ok(
+        fallback >= IMAGE_FALLBACK_MIN_MS,
+        `at ${deadline}ms the primary was cut to ${primary}ms for a fallback window of only ${fallback}ms`
+      );
+    }
+  }
+  // Where the split does happen, the fallback's window is one it can land in.
+  assert.ok(imageCallTimeoutMs(400_000, 0, evolinkPollWindowMs(400_000)!) >= IMAGE_FALLBACK_MIN_MS);
+  // And the primary is never shortened for a fallback that cannot land.
+  assert.equal(evolinkPollWindowMs(195_000), 195_000);
+  // Near the render's floor there is not room for both, so the primary keeps
+  // the deadline and the fallback is skipped rather than started and abandoned.
+  assert.equal(evolinkPollWindowMs(30_000), 30_000);
+  assert.ok(evolinkPollWindowMs(195_000)! >= Math.floor(195_000 / 2), "and never cut below half the budget to buy one");
+  assert.ok(imageCallTimeoutMs(30_000, 0, evolinkPollWindowMs(30_000)!) < IMAGE_FALLBACK_MIN_MS);
+
+  // A primary with too little left is refused rather than started: flooring it
+  // began a two-minute paid call on a request with forty-five seconds to live.
+  assert.ok(imageCallTimeoutMs(45_000, 0, 0) < IMAGE_FALLBACK_MIN_MS);
+  assert.equal(imageCallTimeoutMs(45_000, 0, 0), 45_000, "and the number is what is left, never a floor above it");
+
+  // The result download is the render's last stage and must finish inside the
+  // same window. Both deadlines are given, because the redirect follower
+  // defaults its overall budget to TWICE the per-hop one: passing only the
+  // per-hop value handed a redirecting result two windows, with the body read
+  // starting after those.
+  const { evolinkDownloadBudgetMs } = await import("./index");
+  for (const remaining of [1, 500, 5_000, 40_000, 200_000]) {
+    const budget = evolinkDownloadBudgetMs(remaining, 0)!;
+    assert.ok(budget.overallTimeoutMs <= remaining, `overall fits what is actually left (${remaining})`);
+    assert.ok(budget.timeoutMs <= budget.overallTimeoutMs, "and a hop never outlives the whole download");
+  }
+  assert.deepEqual(evolinkDownloadBudgetMs(200_000, 0), { timeoutMs: 60_000, overallTimeoutMs: 200_000 });
+  assert.deepEqual(evolinkDownloadBudgetMs(40_000, 0), { timeoutMs: 40_000, overallTimeoutMs: 40_000 });
+  // No floor. Half a second left means half a second, not a second: a helper
+  // whose comment says "what is left" and whose code says "at least a second"
+  // is one the next reader will trust for the larger number too.
+  assert.deepEqual(evolinkDownloadBudgetMs(500, 0), { timeoutMs: 500, overallTimeoutMs: 500 });
+  // And nothing left means the download is refused, not attempted.
+  assert.equal(evolinkDownloadBudgetMs(0, 0), null);
+  assert.equal(evolinkDownloadBudgetMs(-5_000, 0), null);
+
+  console.log("image deadline tests passed");
+}

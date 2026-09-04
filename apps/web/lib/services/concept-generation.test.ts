@@ -1,5 +1,10 @@
 import assert from "node:assert/strict";
 
+import type { generateInitialConcept } from "@ritzy-studio/ai";
+import type { RankedProductMatch } from "@ritzy-studio/domain";
+
+import { CONCEPT_RENDER_RESERVE_MS } from "@/lib/concept-run-budget";
+
 import { generateInitialConceptForRoom, hasRequiredRoomSize, selectConcept } from "./concept-generation";
 import { fakeSupabase, type RecordedCall, type Responder } from "./supabase-test-double";
 
@@ -173,6 +178,182 @@ async function main() {
     assert.deepEqual(updates[0].filters, [["room_id", "room-1"]]);
     assert.deepEqual(updates[1].payload, { status: "selected" });
     assert.deepEqual(updates[1].filters, [["id", "concept-2"]]);
+  }
+
+  // --- The success path, which is where the anchors either reach the render or
+  // silently do not. Every other part of the pipeline behaves identically
+  // either way: the pass is paid for, the pieces are persisted, the list claims
+  // them and the harness gates on them. Only this asserts the render saw them.
+  {
+    const anchor = {
+      roleKey: "sofas::blueprint:0:sofas",
+      roleCategory: "sofas",
+      roleLabel: "Sofa",
+      product: { id: "11111111-1111-4111-8111-111111111111", name: "Osvaldo Sofa" } as RankedProductMatch,
+      imageBytes: Buffer.from("sofa-bytes"),
+      imageMimeType: "image/jpeg",
+      source: "aesthetic_pass" as const,
+      reason: "grounds the room"
+    };
+    type RenderInput = Parameters<typeof generateInitialConcept>[0];
+    let renderInput: RenderInput | undefined;
+    const inserts: RecordedCall[] = [];
+    let jobUpdate: RecordedCall | null = null;
+
+    const { client } = fakeSupabase(
+      (call) => {
+        if (call.op === "insert" || call.op === "upsert") inserts.push(call);
+        if (call.table === "rooms") return { data: { id: "room-1", room_type: "Living Room" } };
+        if (call.table === "projects") return { data: { id: "proj-1", budget_max_aed: null } };
+        if (call.table === "design_briefs") return { data: { id: "brief-1", structured_json: {} } };
+        if (call.table === "concepts" && call.op === "insert") return { data: { id: "concept-9" } };
+        if (call.table === "concepts") return { data: null };
+        if (call.table === "room_assets" && call.op === "insert") return { data: { id: "asset-9" } };
+        if (call.table === "room_assets") {
+          return { data: [{ id: "photo-1", storage_path: "u/room-1/p1.jpg", mime_type: "image/jpeg" }] };
+        }
+        return { data: null };
+      },
+      (storageCall) =>
+        storageCall.op === "download"
+          ? { data: new Blob([Buffer.from([1, 2, 3])]) }
+          : { data: { signedUrl: "https://example-project.supabase.co/signed/p1.jpg" } }
+    );
+    const serviceWrites: RecordedCall[] = [];
+    const { client: service } = fakeSupabase(
+      (call) => {
+        if (call.op === "insert" || call.op === "upsert") serviceWrites.push(call);
+        if (call.table === "ai_jobs" && call.op === "insert") return { data: { id: "job-9" } };
+        if (call.table === "ai_jobs" && call.op === "update") jobUpdate = call;
+        return { data: null };
+      },
+      () => ({ data: null })
+    );
+
+    const result = await generateInitialConceptForRoom(
+      { supabase: client, serviceSupabase: service },
+      INPUT,
+      {
+        ensureEntitled: async () => {},
+        defer: () => {},
+        now: () => 0,
+        chooseAnchors: async () => ({
+          anchors: [anchor],
+          status: "chosen",
+          error: null,
+          setNote: "olive and steel",
+          costUsd: 0.012,
+          jobId: "anchor-job-9"
+        }),
+        generateConcept: async (input: RenderInput) => {
+          renderInput = input;
+          return {
+            promptKey: "concept.initial",
+            promptVersion: "test",
+            textModel: "gpt-5-mini",
+            textCostUsd: 0.01,
+            imageProvider: "evolink",
+            imageModel: "gemini",
+            imageLatencySeconds: 38,
+            imageFallbackUsed: false,
+            imageFallbackError: null,
+            imageCreditsUsed: 20,
+            imageBase64: Buffer.from("png").toString("base64"),
+            revisedPrompt: null,
+            analysis: { uncertaintyNotes: [] },
+            concept: { title: "Cool Scandi", rationale: "Calm.", uncertaintyNote: "none", generationPrompt: "p" }
+          } as unknown as Awaited<ReturnType<typeof generateInitialConcept>>;
+        }
+      }
+    );
+
+    assert.deepEqual(result, { status: "generated", conceptId: "concept-9" });
+
+    // The anchors reached the render, as bytes, with no retailer link.
+    assert.equal(renderInput?.anchorProducts?.length, 1);
+    assert.equal(renderInput?.anchorProducts?.[0].roleLabel, "Sofa");
+    assert.equal(renderInput?.anchorProducts?.[0].bytes.toString(), "sofa-bytes");
+    assert.ok(!("referenceUrl" in (renderInput?.anchorProducts?.[0] ?? {})));
+    // And the render was held to what the run could still spare for it. Pinned
+    // to the value, not merely to its presence: this deadline is the only thing
+    // keeping the render inside the route's limit, and `imageDeadlineMs: 1`
+    // satisfies "a number greater than zero" just as well.
+    assert.equal(renderInput?.imageDeadlineMs, CONCEPT_RENDER_RESERVE_MS);
+
+    // The anchors were recorded against the CONCEPT that was just inserted, and
+    // through the SERVICE client: they decide which products skip the visual
+    // pass and the spec contracts, so a client must not be able to author them.
+    assert.equal(
+      inserts.filter((call) => call.table === "concept_anchors").length,
+      0,
+      "not through the user's client"
+    );
+    const anchorInsert = serviceWrites.find((call) => call.table === "concept_anchors");
+    assert.ok(anchorInsert, "the render's anchors are written once the concept exists");
+    const rows = anchorInsert.payload as unknown as Array<Record<string, unknown>>;
+    assert.equal(rows[0].concept_id, "concept-9");
+    assert.equal(rows[0].room_id, "room-1");
+    assert.equal(rows[0].product_id, anchor.product.id);
+    assert.equal(rows[0].source, "aesthetic_pass");
+
+    // Criterion 10's second half: the job record says how the room got here.
+    const summary = (jobUpdate as RecordedCall | null)?.payload?.output_summary as Record<string, unknown>;
+    const anchors = summary?.anchors as Record<string, unknown>;
+    assert.equal(anchors?.status, "chosen");
+    assert.equal(anchors?.selectionJobId, "anchor-job-9");
+    assert.equal(anchors?.selectionCostUsd, 0.012);
+    assert.deepEqual(anchors?.chosen, [
+      { roleKey: anchor.roleKey, productId: anchor.product.id, source: "aesthetic_pass" }
+    ]);
+    // And this job's own cost excludes the pass, which carries its own row.
+    assert.notEqual((jobUpdate as RecordedCall | null)?.payload?.cost_estimate_usd, 0.012);
+  }
+
+  // --- Choosing anchors is best-effort: an unexpected failure there costs the
+  // room its anchors, never its concept (S3b criterion 10). Generation itself
+  // fails afterwards in this environment, which is the point: the job records
+  // THAT failure, not the anchor one, so the anchor throw was swallowed.
+  {
+    const { client } = fakeSupabase(
+      (call) => {
+        if (call.table === "rooms") return { data: { id: "room-1", room_type: "Living Room" } };
+        if (call.table === "projects") return { data: { id: "proj-1", budget_max_aed: null } };
+        if (call.table === "design_briefs") return { data: { id: "brief-1", structured_json: {} } };
+        if (call.table === "concepts") return { data: null };
+        if (call.table === "room_assets") {
+          return { data: [{ id: "photo-1", storage_path: "u/room-1/p1.jpg", mime_type: "image/jpeg" }] };
+        }
+        return { data: null };
+      },
+      (storageCall) =>
+        storageCall.op === "download"
+          ? { data: new Blob([Buffer.from([1, 2, 3])]) }
+          : { data: { signedUrl: "https://example-project.supabase.co/signed/p1.jpg" } }
+    );
+    let failure: RecordedCall | null = null;
+    const { client: service } = fakeSupabase((call) => {
+      if (call.table === "ai_jobs" && call.op === "insert") return { data: { id: "job-1" } };
+      if (call.table === "ai_jobs" && call.op === "update") failure = call;
+      return { data: null };
+    });
+    const result = await generateInitialConceptForRoom(
+      { supabase: client, serviceSupabase: service },
+      INPUT,
+      {
+        ensureEntitled: async () => {},
+        defer: () => {},
+        chooseAnchors: async () => {
+          throw new Error("anchor selection blew up");
+        },
+        now: () => 0
+      }
+    );
+    assert.equal(result.status, "generation_failed");
+    const message = String((failure as RecordedCall | null)?.payload?.error_message ?? "");
+    assert.ok(
+      !message.includes("anchor selection blew up"),
+      `the anchor failure must not be the concept's failure; saw "${message}"`
+    );
   }
 
   // --- hasRequiredRoomSize needs all three dimensions

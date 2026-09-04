@@ -44,5 +44,15 @@ assert.ok(TEXT_STAGES.includes("product_sourcing"));
 assert.ok(TEXT_STAGES.includes("product_verification"));
 assert.ok(TEXT_STAGES.includes("revision_direction"));
 assert.ok(TEXT_STAGES.includes("spec_extraction"));
+assert.ok(TEXT_STAGES.includes("anchor_set"));
+// The anchor set pass decides which real pieces the render is built around, so
+// it runs on the production vision model for the same reason the design check
+// does: its output is the room, not a row on a list.
+assert.equal(resolveStageTextModel("anchor_set", {}, "gpt-5-mini"), "gpt-5.1");
+assert.equal(
+  resolveStageTextModel("anchor_set", { RITZY_TEXT_MODEL_ANCHOR_SET: "gpt-5-mini" }, "gpt-5.1"),
+  "gpt-5-mini",
+  "an env override still wins"
+);
 
 console.log("model-routing tests passed");

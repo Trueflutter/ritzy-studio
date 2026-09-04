@@ -2,11 +2,15 @@ import assert from "node:assert/strict";
 
 import type { ProductMatchCandidate } from "./product-matching";
 import {
+  applyProductVerification,
   checkCandidateAgainstSpecRole,
   missingRolesSchema,
   parseMissingRoles,
   placementStrippedText,
+  sourcingRolesFromBlueprint,
   sourcingRolesFromDesignSpec,
+  type SpecRoleOutcome,
+  type SpecRolePool,
   type SpecSourcingRole
 } from "./spec-sourcing";
 
@@ -589,6 +593,50 @@ assert.deepEqual(parseMissingRoles("garbage"), []);
 assert.deepEqual(parseMissingRoles([{ nope: true }]), []);
 assert.equal(parseMissingRoles(entries).length, 2);
 
+// --- An anchor is held to the gate's bar, a searched product to the app's
+// higher one. The two bars answer different questions: nothing but the judge
+// connects a searched product to the render, so the safe error is to claim
+// less; an anchor has the render's own construction behind it, and measured on
+// the five harness rooms the higher bar left one room claiming NONE of the four
+// anchors the gate then found in its render.
+{
+  const role = sourcingRolesFromBlueprint(
+    [{ category: "sofas", label: "sofa", quantity: 1, required: true }],
+    "Living Room"
+  )[0];
+  const pool = { role, candidates: [], rejectionReasons: {} } as unknown as SpecRolePool;
+  const selected = (productId: string): SpecRoleOutcome => ({
+    kind: "selected",
+    role,
+    pool,
+    selectedProductId: productId,
+    matchStatus: "strong_match",
+    reason: "r",
+    mismatchNote: null,
+    similarity: null
+  });
+  // 0.65 sits between the two bars.
+  const verdicts = new Map([
+    ["anchor", { categoryMatches: true, similarity: 0.65 }],
+    ["searched", { categoryMatches: true, similarity: 0.65 }]
+  ]);
+  const applied = applyProductVerification({
+    outcomes: [selected("anchor"), selected("searched")],
+    verdicts,
+    anchorProductIds: new Set(["anchor"])
+  });
+  assert.equal(applied[0].kind, "selected", "the render was built from this piece; the judge agrees it is there");
+  assert.equal(applied[1].kind, "open", "nothing but the judge connects this one, so it stays the shopper's choice");
+
+  // The anchor's own floor still holds: below the gate's bar it opens too.
+  const belowBoth = applyProductVerification({
+    outcomes: [selected("anchor")],
+    verdicts: new Map([["anchor", { categoryMatches: true, similarity: 0.4 }]]),
+    anchorProductIds: new Set(["anchor"])
+  });
+  assert.equal(belowBoth[0].kind, "open", "an anchor the render did not keep is not claimed either");
+}
+
 console.log("spec-sourcing tests passed");
 
 // ------------------------------------------------------------- plan tests
@@ -1066,7 +1114,69 @@ console.log("spec-sourcing tests passed");
     ok: false,
     reason: "object_kind_mismatch"
   });
-  console.log("spec-sourcing object-kind tests passed");
+  // --- anchor furniture: the render is built from these, so a wrong kind is
+  // the whole scheme rather than one row. Every name below is a real catalogue
+  // row the anchor prototype picked or nearly picked.
+  {
+    const anchorRoles = sourcingRolesFromDesignSpec(
+      {
+        objects: [
+          object("bed", "king bed"),
+          object("rug", "large area rug"),
+          object("sofa", "three-seat sofa"),
+          object("coffee_table", "round coffee table")
+        ]
+      },
+      "Bedroom"
+    ).roles;
+    const named = (category: string, name: string): ProductMatchCandidate => ({ ...base, categoryNormalized: category, name });
+    const bedRole = anchorRoles[0];
+    assert.deepEqual(bedRole.contract.objectKinds, ["bed"]);
+    assert.deepEqual(
+      checkCandidateAgainstSpecRole(named("beds", "Madeira Dark Dresser - Brown - Mango Solid Wood and Steel - Storage"), bedRole),
+      { ok: false, reason: "object_kind_mismatch" },
+      "a dresser the catalogue files under beds can never anchor a bedroom"
+    );
+    assert.deepEqual(checkCandidateAgainstSpecRole(named("beds", "Anastasia King bed Taupe - 180x200 CM"), bedRole), { ok: true });
+
+    const rugRole = anchorRoles[1];
+    assert.deepEqual(
+      checkCandidateAgainstSpecRole(named("rugs", "Elaan Pile Floor Runner - 80X300 CM"), rugRole),
+      { ok: false, reason: "object_kind_mismatch" },
+      "a runner is not a room rug, whatever the catalogue calls it"
+    );
+    assert.deepEqual(checkCandidateAgainstSpecRole(named("rugs", "Fara Dhurry 300X400cm"), rugRole), { ok: true });
+
+    const sofaRole = anchorRoles[2];
+    assert.deepEqual(checkCandidateAgainstSpecRole(named("sofas", "Praia 3-Seater Sofa - Brown"), sofaRole), { ok: true });
+    assert.deepEqual(
+      checkCandidateAgainstSpecRole(named("sofas", "Lantine Walnut Veneer TV Unit, Large Size"), sofaRole),
+      { ok: false, reason: "object_kind_mismatch" }
+    );
+  }
+
+  // A stool is not a dining chair. The catalogue files "Salamanca Stool in Cream
+// Pine" under chairs, and it was anchoring a dining room: the kind comes from
+// the product's own name, never from where the catalogue filed it.
+{
+  const diningChairs = sourcingRolesFromDesignSpec(
+    {
+      id: "s",
+      roomId: "r",
+      conceptId: "c",
+      status: "confirmed",
+      mustPreserve: [],
+      objects: [{ role: "dining_chairs", label: "upholstered dining chairs", quantity: 6, sizeDescriptor: null, capacity: null, paletteMaterials: [] }]
+    } as never,
+    "Dining Room"
+  ).roles[0];
+  const stool = { ...base, id: "st", name: "Salamanca Stool in Cream Pine and Medium Density Fibreboard", categoryNormalized: "chairs" };
+  const chair = { ...base, id: "dc", name: "Oslo Upholstered Dining Chair", categoryNormalized: "chairs" };
+  assert.equal(checkCandidateAgainstSpecRole(stool, diningChairs).ok, false, "a stool cannot seat a dining table");
+  assert.equal(checkCandidateAgainstSpecRole(chair, diningChairs).ok, true);
+}
+
+console.log("spec-sourcing object-kind tests passed");
 }
 
 // --- blueprint fallback roles carry the same contracts

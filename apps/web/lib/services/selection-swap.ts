@@ -320,6 +320,10 @@ export async function substituteProduct(
       category: replacement.categoryNormalized ?? item.category,
       unit_price_aed: unitPrice,
       line_total_aed: lineTotal,
+      // Cleared, though nothing writes it true any more: a row whose product
+      // changed must not carry a claim about the piece that left it, and the
+      // column is still settable by hand from the browser.
+      is_anchor: false,
       // Prose only (12.7); the swap's own reason, not ranking warnings.
       selection_reason: `Swapped in as the ${SWAP_MODE_LABEL[mode]} option. ${alternateProse(replacement, role)}`,
       dimension_fit_note: replacement.dimensionFitNote,
