@@ -118,6 +118,103 @@ export function anchorContradictsBrief(candidate: ProductMatchCandidate, avoidCo
   );
 }
 
+export type AnchorScaleContext = {
+  measurements?: { wallLengthCm: number | null; roomDepthCm: number | null } | null;
+  diningSeatCount?: number | null;
+};
+
+// A piece the RENDER is contractually required to overrule. The image prompt
+// carries the room's real measurements, and where the brief states a dining
+// seat count it carries "do not render a different seat count". Anchor a hall
+// briefed for ten on a four-seater table and the render obeys the brief, draws
+// the right table, and the anchor is simply lost.
+//
+// Measured 2026-09-04, round 2 of the five harness rooms: a 4-seater round
+// dining table anchored a hall briefed for ten, and a 160x230 rug anchored the
+// group-anchoring rug role in a 5.2m x 4.2m room. Both were exactly the colour
+// the brief asked for, and both were overruled; anchors kept fell to 13 of 19,
+// under the five-in-six floor. This is the gate that keeps colour from buying a
+// place scale has already disqualified. It runs BEFORE the shortlist, so an
+// under-scaled piece never reaches the colour reservation at all.
+export function anchorUnderscaledForRole(
+  candidate: ProductMatchCandidate,
+  role: { category: string; label: string },
+  context: AnchorScaleContext
+): boolean {
+  const category = candidate.categoryNormalized || role.category;
+
+  if (category === "dining_tables" && typeof context.diningSeatCount === "number" && context.diningSeatCount > 0) {
+    const seats = statedSeatCount(candidate);
+    // Only a STATED count disqualifies. A table that does not say how many it
+    // seats is judged by the rest of the pipeline, not guessed at here.
+    if (seats !== null && seats < context.diningSeatCount) {
+      return true;
+    }
+  }
+
+  if (category === "rugs" && groupAnchoringRugRole(role.label)) {
+    const shorterSideCm = shorterRoomSide(context.measurements);
+    const largest = largestDimensionCm(candidate);
+    // No measurements means no invented constraint: without the room's numbers
+    // there is nothing to be under-scaled against.
+    if (shorterSideCm !== null && largest !== null) {
+      // A rug anchoring a seating group has to reach under the sofa and the
+      // chairs facing it. Sixty percent of the room's shorter side is what the
+      // kept rugs in this corpus measure; the bounds keep a 3m room from
+      // demanding a 300cm rug and a 7m hall from settling for a doormat.
+      const required = Math.min(300, Math.max(180, Math.round(shorterSideCm * 0.6)));
+      if (largest < required) {
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
+
+function groupAnchoringRugRole(label: string): boolean {
+  const normalized = label.toLowerCase();
+  return normalized.includes("generous") || normalized.includes("zoned") || normalized.includes("foundation");
+}
+
+function shorterRoomSide(measurements: AnchorScaleContext["measurements"]): number | null {
+  const sides = [measurements?.wallLengthCm, measurements?.roomDepthCm].filter(
+    (side): side is number => typeof side === "number" && side > 0
+  );
+  return sides.length > 0 ? Math.min(...sides) : null;
+}
+
+function statedSeatCount(candidate: ProductMatchCandidate): number | null {
+  const text = `${candidate.name} ${candidate.description ?? ""}`.toLowerCase();
+  const match = /(\d{1,2})\s*[-\s]?\s*seater/.exec(text);
+  if (!match) {
+    return null;
+  }
+  const seats = Number.parseInt(match[1] ?? "", 10);
+  return Number.isFinite(seats) && seats > 0 ? seats : null;
+}
+
+// Rugs state their size in the NAME as often as in a dimensions column
+// ("Bryn Dhurry 400X500CM", "Milas Carpet 45605A Yellow - 160X230"), so the
+// structured columns are preferred and the name is the fallback.
+function largestDimensionCm(candidate: ProductMatchCandidate): number | null {
+  const structured = [candidate.dimensions?.widthCm, candidate.dimensions?.depthCm].filter(
+    (value): value is number => typeof value === "number" && value > 0
+  );
+  if (structured.length > 0) {
+    return Math.max(...structured);
+  }
+
+  const named = /(\d{2,3})\s*[xX×]\s*(\d{2,3})/.exec(`${candidate.name} ${candidate.description ?? ""}`);
+  if (!named) {
+    return null;
+  }
+  const sides = [Number.parseInt(named[1] ?? "", 10), Number.parseInt(named[2] ?? "", 10)].filter((value) =>
+    Number.isFinite(value)
+  );
+  return sides.length > 0 ? Math.max(...sides) : null;
+}
+
 // Two products from the same retailer that are the same piece in another colour
 // should not both take a shortlist slot. The judgement is the catalogue's, not
 // this module's: productFamilySignature already strips colour, size and

@@ -4,6 +4,7 @@ import { enhancedProductRolesForRoom, wantedColorFamilies } from "./product-matc
 import type { ProductMatchCandidate, RankedProductMatch, RoomProductRole } from "./product-matching";
 import { canonicalRoomTypes } from "./index";
 import {
+  anchorUnderscaledForRole,
   DEFAULT_ANCHOR_LIMIT,
   anchorContradictsBrief,
   anchorSeedFor,
@@ -403,3 +404,63 @@ const ranked = (overrides: Partial<RankedProductMatch> & { id: string }): Ranked
 }
 
 console.log("anchor selection tests passed");
+
+// Scale is a contract, not a preference. Round 2 of the 2026-09-04 measurement
+// lost a 4-seater dining table in a hall briefed for ten and a 160x230 rug
+// under a full seating group in a 5.2m x 4.2m room. Both were the colour the
+// brief asked for; the render overruled both and anchors kept fell to 13/19.
+{
+  const table = (name: string) => ranked({ id: "t", name, categoryNormalized: "dining_tables" });
+  const diningRole = { category: "dining_tables", label: "dining table" };
+
+  assert.equal(
+    anchorUnderscaledForRole(table("Elmont 4 seater Round Dining table"), diningRole, { diningSeatCount: 10 }),
+    true,
+    "a four-seater cannot anchor a hall the render is told to seat ten"
+  );
+  assert.equal(
+    anchorUnderscaledForRole(table("Cooper 10 Seater Dining Table"), diningRole, { diningSeatCount: 10 }),
+    false
+  );
+  assert.equal(
+    anchorUnderscaledForRole(table("Dolores Ceramic Top Dining Table"), diningRole, { diningSeatCount: 10 }),
+    false,
+    "a table that does not state a seat count is judged elsewhere, not guessed at here"
+  );
+  assert.equal(
+    anchorUnderscaledForRole(table("Elmont 4 seater Round Dining table"), diningRole, {}),
+    false,
+    "no stated seat count in the brief means no constraint to contradict"
+  );
+
+  const carpet = (name: string) => ranked({ id: "r", name, categoryNormalized: "rugs" });
+  const generous = { category: "rugs", label: "generous rug" };
+  const glassGlare = { measurements: { wallLengthCm: 520, roomDepthCm: 420 } };
+
+  assert.equal(
+    anchorUnderscaledForRole(carpet("Home Canvas Milas Carpet 45605A Yellow - 160X230"), generous, glassGlare),
+    true,
+    "a 160x230 rug cannot anchor a seating group in a 5.2m x 4.2m room"
+  );
+  assert.equal(
+    anchorUnderscaledForRole(carpet("Bryn Dhurry 400X500CM"), generous, glassGlare),
+    false
+  );
+  assert.equal(
+    anchorUnderscaledForRole(carpet("Home Canvas Milas Carpet 45605A Yellow - 160X230"), generous, {
+      measurements: { wallLengthCm: 380, roomDepthCm: 300 }
+    }),
+    false,
+    "the same rug is fine in a small apartment; the floor scales with the room"
+  );
+  assert.equal(
+    anchorUnderscaledForRole(carpet("Home Canvas Milas Carpet 45605A Yellow - 160X230"), generous, {}),
+    false,
+    "without the room's measurements there is nothing to be under-scaled against"
+  );
+  assert.equal(
+    anchorUnderscaledForRole(carpet("Home Canvas Milas Carpet 45605A Yellow - 160X230"), { category: "rugs", label: "dining rug" }, glassGlare),
+    false,
+    "only the group-anchoring rug roles carry the floor"
+  );
+}

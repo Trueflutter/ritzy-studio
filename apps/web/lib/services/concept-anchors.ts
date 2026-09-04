@@ -5,6 +5,7 @@ import {
   anchorSeedFor,
   anchorSetFromShortlists,
   anchorShortlist,
+  anchorUnderscaledForRole,
   buildSpecSourcingPlan,
   enhancedProductRolesForRoom,
   roleOptionKey,
@@ -159,6 +160,9 @@ export type ChooseConceptAnchorsInput = {
   };
   styleSlugs: string[];
   measurements: { wall_length_cm: number | null; room_depth_cm: number | null } | null;
+  // The seat count the render is told not to deviate from, when the brief
+  // states one. An anchor table below it is an anchor the render must discard.
+  diningSeatCount?: number | null;
   startedAt: number;
 };
 
@@ -270,7 +274,25 @@ export async function chooseConceptAnchors(
   // own gates, which compare a piece against the WHOLE room rather than a
   // slice of it, so a 50,000 sofa still cannot anchor a 20,000 room. What is
   // gone is the slice.
+  // Scale first, colour second. An under-scaled piece is one the render is
+  // required to overrule, so it is dropped BEFORE the shortlist rather than
+  // ranked inside it: otherwise the colour reservation spends a slot on a piece
+  // that cannot survive the render. If the gate would empty a pool, the pool
+  // keeps its candidates, because a weaker anchor beats no anchor for the role.
+  const scaleContext = {
+    measurements: input.measurements
+      ? { wallLengthCm: input.measurements.wall_length_cm, roomDepthCm: input.measurements.room_depth_cm }
+      : null,
+    diningSeatCount: input.diningSeatCount ?? null
+  };
+
   const shortlists = plan.pools
+    .map((pool) => {
+      const scaled = pool.candidates.filter(
+        (candidate) => !anchorUnderscaledForRole(candidate, pool.role, scaleContext)
+      );
+      return { role: pool.role, candidates: scaled.length > 0 ? scaled : pool.candidates };
+    })
     .map((pool) => ({
       role: pool.role,
       candidates: anchorShortlist({
