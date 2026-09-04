@@ -12,6 +12,7 @@ import { configuredImageModel, configuredImageProvider, visionImageDataUrl } fro
 
 import { generateAndStoreConceptViews } from "./concept-generation";
 import { conceptPrimaryRender, roomImageInputs } from "./room-images";
+import { closeAiJob } from "./close-ai-job";
 import type { ServiceSupabaseClient, UserSupabaseClient } from "./supabase-clients";
 
 // The concept-revision service: a revision is a reference-preserving EDIT of the
@@ -200,9 +201,7 @@ export async function reviseConceptForRoom(
       critique
     });
 
-    await serviceSupabase
-      .from("ai_jobs")
-      .update({
+    await closeAiJob(serviceSupabase, job.id, {
         status: "succeeded",
         completed_at: new Date().toISOString(),
         provider: result.imageProvider,
@@ -222,8 +221,7 @@ export async function reviseConceptForRoom(
           imageFallbackError: result.imageFallbackError ?? null,
           imageCreditsUsed: result.imageCreditsUsed
         }
-      })
-      .eq("id", job.id);
+      }, "concept revision");
 
     const { data: revisedConcept, error: conceptError } = await supabase
       .from("concepts")
@@ -333,9 +331,7 @@ export async function reviseConceptForRoom(
           .eq("id", job.id)
           .maybeSingle();
         if (!jobRowError && jobRow) {
-          await serviceSupabase
-            .from("ai_jobs")
-            .update({
+          await closeAiJob(serviceSupabase, job.id, {
               // Strict merge preserves the honest-null invariant: an unknown image
               // cost stays null instead of being overwritten by the QA text cost.
               cost_estimate_usd: sumUsdCostsStrict(jobRow.cost_estimate_usd, diff.textCostUsd),
@@ -348,8 +344,7 @@ export async function reviseConceptForRoom(
                   model: diff.model
                 }
               }
-            })
-            .eq("id", job.id);
+            }, "concept revision");
         }
       } catch (error) {
         console.error(`Revision visual-diff QA failed (concept ${revisedConcept.id}):`, error);
@@ -369,14 +364,11 @@ export async function reviseConceptForRoom(
       });
     });
   } catch (error) {
-    await serviceSupabase
-      .from("ai_jobs")
-      .update({
+    await closeAiJob(serviceSupabase, job.id, {
         status: "failed",
         completed_at: new Date().toISOString(),
         error_message: error instanceof Error ? error.message : "Concept revision failed."
-      })
-      .eq("id", job.id);
+      }, "concept revision");
 
     return { status: "revision_failed" };
   }

@@ -129,11 +129,13 @@ export type SpecSource = "confirmed_spec" | "blueprint_fallback";
 // inside its deadline while still giving the picker alternates.
 const CANDIDATES_PER_ROLE = 6;
 
-// An anchored row is a different promise from a matched one, and the shopper
-// should read that promise rather than infer it from a badge that does not
-// exist yet. The stylist's own reason follows when it recorded one.
-const ANCHOR_SELECTION_REASON =
-  "This piece is in your design: it was chosen first and the room was drawn around it.";
+// Why an anchored piece is on the list, when the aesthetic pass recorded no
+// reason of its own. Deliberately NOT the sentence "this piece is in your
+// design": selection_reason sits on a table the list's owner may PATCH, so a
+// claim written there is one a client can forge about their own room. The
+// authority is concept_anchors.verified_similarity, and the badge that says it
+// in the shopper's words should join that, not read this prose.
+const ANCHOR_SELECTION_REASON = "Chosen before the design was drawn, and the room was drawn around it.";
 
 // One sentence a person can read (design system 12.7): the visual pass's own
 // reason for the chosen piece, the ranking's reason for the alternates.

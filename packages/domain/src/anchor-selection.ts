@@ -213,4 +213,3 @@ export function anchorSetFromShortlists<T extends RankedProductMatch, R>(
   }
   return picks;
 }
-

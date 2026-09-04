@@ -1415,7 +1415,14 @@ async function generateEvolinkImage({
           configured: process.env.RITZY_REFERENCE_IMAGE_HOSTS,
           supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL
         });
-        const followed = await followGuardedRedirects(resultUrl, { allowlist, timeoutMs: 60_000, method: "GET" });
+        // The result download is inside the caller's window too. It was the last
+        // stage still carrying its own fixed minute, which meant a run could
+        // finish polling on time and then spend two more minutes fetching.
+        const followed = await followGuardedRedirects(resultUrl, {
+          allowlist,
+          timeoutMs: Math.max(1_000, Math.min(60_000, deadline - Date.now())),
+          method: "GET"
+        });
         if (!followed.ok) {
           throw new Error(`Evolink result URL refused: ${followed.reason}`);
         }
@@ -1434,7 +1441,11 @@ async function generateEvolinkImage({
         );
       }
 
-      const resultBytes = await readResponseBytesCapped(imageResponse, 30 * 1024 * 1024, 60_000);
+      const resultBytes = await readResponseBytesCapped(
+        imageResponse,
+        30 * 1024 * 1024,
+        Math.max(1_000, Math.min(60_000, deadline - Date.now()))
+      );
       if (!resultBytes) {
         throw new Error("Evolink result image exceeded the 30MB download cap or had no body.");
       }

@@ -123,10 +123,13 @@ export function conceptRenderTimeoutMs({
   startedAt: number;
   now: number;
   runBudgetMs?: number;
-}): number {
+}): number | null {
   const available = remainingMs(startedAt, now, runBudgetMs) - CONCEPT_PERSIST_RESERVE_MS;
-  // Never below a floor: a render started with seconds left cannot succeed, but
-  // refusing to render at all is worse than trying, because the room then has
-  // no concept while the shopper waited for one.
-  return Math.max(30_000, Math.min(CONCEPT_RENDER_RESERVE_MS, available));
+  // Refused rather than floored. A floor of 30 s "so an attempt beats none"
+  // let a render start at 284 s of a 285 s budget and run to 314 s, past the
+  // route's own limit — and a request the platform kills runs no catch path,
+  // so the job is left running and the shopper is locked out of retrying. A
+  // clean failure they can retry is the better outcome, and the only honest
+  // one available once the time is gone.
+  return available >= CONCEPT_RENDER_FLOOR_MS ? Math.min(CONCEPT_RENDER_RESERVE_MS, available) : null;
 }

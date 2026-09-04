@@ -91,17 +91,22 @@ assert.equal(
   CONCEPT_RENDER_RESERVE_MS,
   "a run that spent its whole anchor allowance still leaves the render its full reserve"
 );
-// Past that, the render gets what is actually left, never more.
-for (const now of [120_000, 200_000, 240_000]) {
+
+// A render the run cannot carry is REFUSED, not floored. A floor let one start
+// at 284 s of a 285 s budget and run to 314 s, past the route's own limit,
+// where the platform kills it with no catch path and the job is left running.
+assert.equal(conceptRenderTimeoutMs({ startedAt: 0, now: 284_000 }), null);
+assert.equal(conceptRenderTimeoutMs({ startedAt: 0, now: 200_000 }), null, "and refused well before that");
+// Whatever it IS given always fits inside the run, persistence included.
+for (const now of [0, 60_000, 120_000, 169_000]) {
   const render = conceptRenderTimeoutMs({ startedAt: 0, now });
-  assert.ok(
-    now + render + CONCEPT_PERSIST_RESERVE_MS <= CONCEPT_RUN_BUDGET_MS || render === 30_000,
-    `the render cannot overrun the run at ${now}ms (got ${render})`
-  );
+  if (render !== null) {
+    assert.ok(
+      now + render + CONCEPT_PERSIST_RESERVE_MS <= CONCEPT_RUN_BUDGET_MS,
+      `the render cannot overrun the run at ${now}ms (got ${render})`
+    );
+  }
 }
-// A render started with seconds left still tries: no concept at all is worse
-// for the shopper than a render that may not finish.
-assert.equal(conceptRenderTimeoutMs({ startedAt: 0, now: 284_000 }), 30_000);
 
 // The provider aborts before the service guard does, so the guard is only ever
 // a backstop and never the thing that leaves a call's spend unrecorded.

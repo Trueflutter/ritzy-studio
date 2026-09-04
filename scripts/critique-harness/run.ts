@@ -657,7 +657,24 @@ async function runRoom(model: string, room: ManifestRoom) {
             .join(". ")
     });
   } else {
-    verdicts.push({ check: "product_consistency", verdict: "not_applicable", notes: "No shopping list for this concept yet." });
+    // Not-applicable only when the pipeline genuinely has not reached this
+    // room. If the server recorded anchors for the hero concept and the list is
+    // gone, the render WAS built from catalogue pieces and something removed
+    // the evidence: that is a failure, not an absence. shopping_lists is
+    // owner-writable, so an N/A reachable by deleting a row is a gate the
+    // system under test can switch off.
+    const orphanAnchors = (await supabaseGet(
+      `concept_anchors?concept_id=eq.${hero.id}&select=product_id`
+    )) as Array<{ product_id: string }>;
+    verdicts.push(
+      orphanAnchors.length > 0
+        ? {
+            check: "product_consistency",
+            verdict: "fail",
+            notes: `The server recorded ${orphanAnchors.length} anchor(s) for this concept but the room has no shopping list, so what the render was built from cannot be judged.`
+          }
+        : { check: "product_consistency", verdict: "not_applicable", notes: "No shopping list for this concept yet." }
+    );
   }
 
   return { room: room.key, status: "JUDGED" as const, conceptId: hero.id, verdicts, productVerdicts };

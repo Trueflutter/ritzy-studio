@@ -1044,9 +1044,12 @@ async function main() {
       anchorCalls3.some((call: RecordedCall) => call.table === "concept_anchors" && call.op === "update"),
       "the design check's verdict is recorded where only the server can write it"
     );
-    // And says it in words, not only in a column, since nothing renders the
-    // column yet. The stylist's own reason follows the promise.
-    assert.match(String(selected?.selection_reason), /^This piece is in your design/);
+    // The row's prose describes the piece; it does NOT assert "this is in your
+    // design". selection_reason sits on a table the list's owner may PATCH, so
+    // a claim written there is one a client can forge about their own room. The
+    // authority is the verdict recorded above, and the badge that says it in the
+    // shopper's words should join that.
+    assert.doesNotMatch(String(selected?.selection_reason), /in your design/);
     assert.match(String(selected?.selection_reason), /grounds the room/);
 
     // Anchored roles rejoin in SPEC order, not appended at the end. sort_order

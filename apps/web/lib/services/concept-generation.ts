@@ -72,7 +72,7 @@ export async function generateAndStoreConceptViews({
 
   // Tracked as an ai_job so silent failures are observable and retryable; the
   // two views generate in parallel to stay well inside the task lifetime.
-  const { data: viewsJob } = await serviceSupabase
+  const { data: viewsJob, error: viewsJobError } = await serviceSupabase
     .from("ai_jobs")
     .insert({
       user_id: userId,
@@ -85,6 +85,16 @@ export async function generateAndStoreConceptViews({
     })
     .select("id")
     .single();
+
+  // No audit row, no paid calls. Two image generations with nowhere to record
+  // what they cost is spend no per-room total can ever see, which is the same
+  // rule the anchor pass follows.
+  if (viewsJobError || !viewsJob) {
+    console.error(
+      `Concept ${conceptId}: could not open the views job (${viewsJobError?.message ?? "no row returned"}); the additional angles were not generated.`
+    );
+    return;
+  }
 
   const outcomes = await Promise.all(
     CONCEPT_VIEW_KEYS.map(async (viewKey) => {
@@ -148,7 +158,7 @@ export async function generateAndStoreConceptViews({
     })
   );
 
-  if (viewsJob) {
+  {
     const failed = outcomes.filter((outcome) => !outcome.ok);
     await closeAiJob(
       serviceSupabase,
@@ -407,13 +417,20 @@ export async function generateInitialConceptForRoom(
       anchorOutcome = null;
     }
 
+    const renderMs = conceptRenderTimeoutMs({ startedAt, now: now() });
+    if (renderMs === null) {
+      throw new Error(
+        "The request had no time left to generate a concept after the steps before it; nothing was charged for a render that could not finish."
+      );
+    }
+
     const result = await generateConcept({
       roomType: room.room_type,
       // What is left for the picture after the anchor work. Held to here
       // because the image providers' own ceilings outlast this route, and a
       // request the platform kills leaves this job "running" and the shopper
       // locked out of a retry for fifteen minutes.
-      imageDeadlineMs: conceptRenderTimeoutMs({ startedAt, now: now() }),
+      imageDeadlineMs: renderMs,
       roomPhotoUrl: roomPhotoDataUrl,
       roomPhotoReferenceUrl: images.signedPhotoUrl,
       // Anchors travel as bytes. The image provider is never handed a retailer
