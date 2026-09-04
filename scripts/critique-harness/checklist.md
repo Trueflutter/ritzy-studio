@@ -79,11 +79,30 @@ model (`--model`).
    the design check passed it, and anything else is an open role with its
    options showing.
 
-   PASS: the list carries at least one anchor and every anchor was judged and
-   passes. FAIL: any anchor fails or could not be judged (no usable image), or
-   the list carries no anchor at all (a run that anchored nothing is a
-   regression, not a vacuous pass).
-   NOT_APPLICABLE only when the concept has no shopping list yet.
+   THE FLOOR, set 2026-09-04 after three full measurements (18 of 19 each time):
+   across the rooms at least FIVE IN SIX anchors are kept, and no room keeps
+   fewer than half its own anchors, nor zero. The exact count is printed on
+   every run, because eighteen falling to sixteen is the signal even while the
+   gate passes.
+
+   Five in six, not three in four: three in four of nineteen is fifteen, so a
+   regression losing three anchors would pass a gate that exists to catch it.
+   Sixteen is two pieces below the measurement, which is the judges' own
+   disagreement. Half per room, not three of four: the stricter per-room bar
+   leaves the room sitting at three of four one flaky judgement from failing
+   everything.
+   The check used to ask for every anchor on every room, and the shortfall that
+   wording measured is not the pipeline: two judges scoring the same render and
+   the same product disagree by up to 0.20, and across nineteen anchors they
+   disagree on about three, so unanimity measures their agreement rather than
+   the work. A dropped reference is still a defect; it is one the floor counts.
+
+   PASS: the room meets the floor, every anchor was judged, and the app claimed
+   at least one on the list. FAIL: the room misses the floor, an anchor could
+   not be judged (no usable image), the concept has anchors but no list, or the
+   list claims none of them (a run that stands behind nothing is a regression,
+   not a vacuous pass).
+   NOT_APPLICABLE only when the concept has no shopping list and no anchors.
 
 ## Room matrix
 

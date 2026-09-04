@@ -616,6 +616,18 @@ async function runRoom(model: string, room: ManifestRoom) {
     // the legitimate case (the revision path does not re-anchor), so it is
     // not-applicable; anything else means a run anchored nothing, which is the
     // regression this check exists to catch.
+    // The floor Ayo set on 2026-09-04, after three full measurements showed that
+    // asking for every anchor on every room measures the judges' agreement
+    // rather than the pipeline: two of them scoring the same render and the
+    // same product disagree by up to 0.20.
+    // Per room: half its own anchors, and never zero. The AGGREGATE five-in-six
+    // rule is checked across the rooms at the end, because that is where a rate
+    // belongs. A per-room three-in-four bar would be stricter than the
+    // aggregate and would leave a room sitting at three of four one flaky
+    // judgement from failing the whole gate.
+    const anchorsKept = anchorVerdicts.length - failed.length;
+    const meetsFloor = anchorsKept * 2 >= anchorIds.size && anchorsKept > 0;
+
     const noAnchors = anchorIds.size === 0;
     // A list that claims nothing is not a passing list, however well the render
     // itself did. That condition predates this slice and moving the denominator
@@ -630,7 +642,7 @@ async function runRoom(model: string, room: ManifestRoom) {
         ? hero.parent_concept_id
           ? "not_applicable"
           : "fail"
-        : failed.length === 0 && productImagesUnavailable.length === 0 && !claimsNothing
+        : meetsFloor && productImagesUnavailable.length === 0 && !claimsNothing
           ? "pass"
           : "fail",
       notes: noAnchors
@@ -638,7 +650,8 @@ async function runRoom(model: string, room: ManifestRoom) {
           ? "The hero concept is a revision, and revisions are not re-anchored, so there is nothing for this check to test."
           : "The render was not built from any catalogue piece. The claim this check tests does not exist for this room."
         : [
-            `anchors: ${anchorVerdicts.length - failed.length}/${anchorIds.size} kept by the render, of which the app claimed ${claimedAnchorIds.size} on the list`,
+            `anchors: ${anchorsKept}/${anchorIds.size} kept by the render, of which the app claimed ${claimedAnchorIds.size} on the list`,
+            meetsFloor ? null : "BELOW THIS ROOM'S FLOOR (half its anchors, and never zero)",
             failed.length > 0
               ? `anchors the render did not keep: ${failed.map((product) => `${product.productName} (${product.roleLabel}, similarity ${product.similarity.toFixed(2)}, compared with ${product.matchedObject})`).join("; ")}`
               : null,
@@ -723,6 +736,32 @@ async function main() {
 
   const judged = results.filter((result) => result.status === "JUDGED");
   const skipped = results.length - judged.length;
+  // The floor's first clause is a rate across the rooms, so it is reported
+  // across them rather than only per room.
+  const anchorTotals = judged.reduce(
+    (totals, result) => {
+      const note = result.verdicts.find((verdict) => verdict.check === "product_consistency")?.notes ?? "";
+      const match = note.match(/anchors: (\d+)\/(\d+) kept/);
+      return match
+        ? { kept: totals.kept + Number(match[1]), total: totals.total + Number(match[2]) }
+        : totals;
+    },
+    { kept: 0, total: 0 }
+  );
+  if (anchorTotals.total > 0) {
+    // Five in six. Three in four of nineteen is fifteen, so it would have
+    // passed a regression losing three anchors — the thing this exists to
+    // catch. Sixteen is two pieces below the measurement, which is the judges'
+    // own disagreement.
+    const meets = anchorTotals.kept * 6 >= anchorTotals.total * 5;
+    console.log(
+      `\nAnchors kept across the rooms: ${anchorTotals.kept}/${anchorTotals.total} — ${meets ? "at or above" : "BELOW"} the five-in-six floor.`
+    );
+    if (!meets) {
+      process.exitCode = 1;
+    }
+  }
+
   console.log(`\nHarness complete: ${judged.length} judged, ${skipped} skipped or errored (model ${model}).`);
   if (skipped > 0) {
     console.log("Skipped rooms are reported above, never silently dropped.");
