@@ -226,10 +226,27 @@ export function anchorShortlist<T extends RankedProductMatch>({
   // the family spread have already removed. Colour decides the order of what
   // survives them, never what survives them.
   const ranked = [...spread, ...overflow];
+  const shortlistSize = Math.max(1, size);
+
+  // Colour RESERVES places in the shortlist; it does not take it over. Letting
+  // every on-palette piece jump every better-ranked one put a rust 2.5-seater
+  // with a left chaise into a hall — the right colour, and the one silhouette
+  // the render has failed to reproduce in every run since this was measured —
+  // and the room lost its dining zone with it. The aesthetic pass exists to
+  // weigh colour against everything else; its job is to be SHOWN a piece that
+  // carries the brief, not to be handed a shortlist that is only those.
+  const reserved = shortlistSize >= 5 ? 2 : 1;
   const onPalette = ranked.filter((candidate) => onWantedPalette(candidate, wantedColorFamilies));
-  const ordered = (
-    onPalette.length === 0 ? ranked : [...onPalette, ...ranked.filter((candidate) => !onPalette.includes(candidate))]
-  ).slice(0, Math.max(1, size));
+  const byRank = ranked.filter((candidate) => !onPalette.includes(candidate));
+  const ordered =
+    onPalette.length === 0
+      ? ranked.slice(0, shortlistSize)
+      : [
+          ...onPalette.slice(0, reserved),
+          ...byRank.slice(0, Math.max(0, shortlistSize - Math.min(reserved, onPalette.length))),
+          // Only if the room has nothing else to offer.
+          ...onPalette.slice(reserved)
+        ].slice(0, shortlistSize);
 
   // Rotation still varies the order WITHIN the shortlist, so two rooms on one
   // brief are not handed the same set in the same order.

@@ -231,8 +231,14 @@ export function globalPhotorealismLanguage() {
 export function sourceRoomPreservationLanguage(roomType: string) {
   const base = [
     "Preserve the uploaded source room as the architectural anchor.",
-    "Keep visible walls, windows, doors, ceiling plane, AC vents, switches, sockets, built-ins, openings, floor boundaries, camera perspective, and residential scale stable.",
-    "Do not invent architectural renovations, change room proportions, or infer exact dimensions unless the user explicitly provides them."
+    // STRUCTURE, not surface. This line used to say "keep visible walls ...
+    // stable", which reads as keeping their FINISH: a room briefed for a cool
+    // register kept its orange brick wall and the palette check correctly said
+    // the room was warm. Ritzy's promise is transforming the look of a room,
+    // and that includes painting it.
+    "Keep the STRUCTURE stable: where walls stand, window and door openings, the ceiling plane, AC vents, switches, sockets, built-in joinery and worktops, floor boundaries, camera perspective, and residential scale.",
+    "Wall and ceiling FINISHES are yours to change when the brief calls for it — paint, wallpaper, panelling, plaster, the treatment of an exposed brick wall. A finish that fights the brief's register should be repainted, not worked around.",
+    "Do not move or add walls, change room proportions, or infer exact dimensions unless the user explicitly provides them."
   ];
 
   if (resolveRoomType(roomType) === "bathroom") {

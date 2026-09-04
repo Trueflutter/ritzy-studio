@@ -364,9 +364,27 @@ const ranked = (overrides: Partial<RankedProductMatch> & { id: string }): Ranked
   // brief sits below them: every rug that could carry the terracotta was cut
   // before the promotion could see it.
   const deep = [...Array.from({ length: 12 }, (_, i) => rug(`n${i}`, `Neutral Rug ${i}`, "White")), rug("late", "Ochre Kilim", "Ochre")];
+  const deepList = anchorShortlist({ candidates: deep, wantedColorFamilies: wanted, seed: "s", size: 5 });
+  assert.ok(deepList.some((e) => e.id === "late"), "a piece ranked below the cut reaches the shortlist");
+
+  // But colour RESERVES places, it does not take them. Letting every on-palette
+  // piece jump every better-ranked one put a rust sofa with a left chaise into
+  // a hall — right colour, and the one silhouette the render has never
+  // reproduced — and the room lost its dining zone with it.
+  const manyColoured = [
+    ...Array.from({ length: 6 }, (_, i) => rug(`c${i}`, `Ochre Rug ${i}`, "Ochre")),
+    ...Array.from({ length: 6 }, (_, i) => rug(`k${i}`, `Neutral Rug ${i}`, "White"))
+  ];
+  const mixed = anchorShortlist({ candidates: manyColoured, wantedColorFamilies: wanted, seed: "s", size: 5 });
+  assert.equal(mixed.length, 5);
+  assert.equal(
+    mixed.filter((entry) => entry.id.startsWith("c")).length,
+    2,
+    `colour takes its reserved places and no more; got ${mixed.map((e) => e.id).join(",")}`
+  );
   assert.ok(
-    anchorShortlist({ candidates: deep, wantedColorFamilies: wanted, seed: "s", size: 5 }).some((e) => e.id === "late"),
-    "a piece ranked below the cut is promoted into the shortlist, not past it"
+    mixed.filter((entry) => entry.id.startsWith("k")).length === 3,
+    "the best-ranked pieces keep the rest of the shortlist"
   );
 
   // The shell is not the accent. A brief naming both must not treat every
