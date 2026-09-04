@@ -88,3 +88,68 @@ cannot.
 MEDIUM: no migration, no new paid call. It changes the paid render's prompt and
 the ranking that feeds it, so it is measured on the harness rather than reasoned
 about.
+
+## Verification (2026-09-04)
+
+Three full runs of the five harness rooms, production judge (gpt-5.1). Room
+and project rows are test data and were reset between runs, as agreed.
+
+| room | anchors kept R1 / R2 / R3 | palette_register R1 / R2 / R3 |
+| --- | --- | --- |
+| alfurjan-living-dining | 4/4, 2/4, 3/4 | PASS, PASS, PASS |
+| cincinnati-bedroom | 3/3, 2/3, 2/3 | PASS, PASS, PASS |
+| stress-dense-apartment | 3/4, 3/4, 4/4 | FAIL, PASS, FAIL |
+| stress-columns | 2/4, 3/4, 2/4 | PASS, PASS, PASS |
+| stress-glass-glare | 4/4, 3/4, 2/4 | PASS, PASS, PASS |
+| **total** | **16/19, 13/19, 13/19** | **4/5, 5/5, 4/5** |
+
+R1 = walls + colour-reservation. R2 = adds cabinet fronts, the named-surface
+avoid rule, and the zoning de-duplication. R3 = adds the anchor scale gate.
+
+1. **Partly met.** palette_register was 3/5 at branch start. stress-columns now
+   passes in every run. stress-dense-apartment passes in one run of three: its
+   remaining failures are an orange brick wall that reappears intermittently and,
+   in its passing run, a single wooden decor tray. Both are render variance on a
+   room whose source photo fights its brief, not a pipeline defect.
+2. **Met.** Nothing that passed at branch start fails now. The Al Furjan
+   regression is closed: 6/6 dimensions pass in R2 and R3.
+3. **NOT met.** 16/19, 13/19, 13/19 against a floor of five in six (15.84/19).
+   Per-room the floor holds in every run: no room below half its anchors, none
+   at zero. It is the across-rooms rate that fails. See "Anchor retention" below.
+4. **Met.** stress-columns is briefed dark saturated and the catalogue cannot
+   supply forest green at scale; the room passes brief_adherence and
+   palette_register in all three runs, carried by wall colour, drapery and
+   joinery finish rather than by product colour.
+5. **Met, and it was AC5 that caught the R2 anchor drop.** anchorUnderscaledForRole
+   runs before the shortlist, so colour cannot reserve a slot for a piece the
+   room's scale rules reject.
+
+### Anchor retention: what the three runs actually show
+
+The drop is not caused by the changes on this branch. R1 predates the scale
+gate and already sat at 16/19, barely over the floor. More importantly, R1 and
+R3 anchored the SAME rug in three of the five rooms and scored 16/19 and 13/19,
+so a large part of the spread is the render reproducing the same reference
+differently on different runs.
+
+Two roles account for nearly every miss, in all three runs: the group-anchoring
+rug (similarity 0.20, 0.20, 0.18) and secondary seating (0.45, 0.40, 0.35). The
+rug misses correlate with FIGURED stock. What the render keeps is plain and
+textured (Plain Plush Solid, Nimi Looselay, Bryn Dhurry, Cosey Modern
+Abstracts); what it loses is figured (Aleem Persian 1200 Reeds, Milas Carpet,
+Oslen Teselya). An image model will not reproduce a specific carpet pattern.
+
+This got more likely, not less, for two reasons that are both improvements:
+fixing the catalogue read took the candidate pool from 975 to 3,233 and
+surfaced far more figured stock, and the colour reservation deliberately
+surfaces saturated pieces, which in rugs usually means patterned ones. The
+scale gate then compounded it in one room: it correctly rejected a 160x230
+carpet in the 5.2m x 4.2m room and the pool's next on-palette rug was a Persian,
+which the render reproduced worse than the undersized one it replaced.
+
+The five-in-six floor was set on runs against the 975-row catalogue. Whether it
+survives contact with the full one is a product decision, not an engineering
+one, and it is Ayo's to make. The engineering option, if the floor is to hold,
+is to make anchor eligibility prefer pieces the render can actually reproduce
+(plain over figured for rugs), on the same principle as "an anchor must have a
+photograph". That is a slice of its own, not a patch to this branch.
