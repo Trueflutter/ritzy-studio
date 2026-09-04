@@ -47,38 +47,6 @@ const ANCHOR_WEIGHT: Record<string, number> = {
 
 export const DEFAULT_ANCHOR_LIMIT = 4;
 
-// What the anchor set may cost, as a share of the room's budget. The render is
-// built from these pieces, so a set the list cannot afford is the worst of both
-// outcomes: the shopper approves a picture whose hero pieces are then opened
-// for budget and chosen for them by nobody.
-//
-// Three quarters, not the half a first pass might suggest: anchors ARE the
-// expensive pieces, and what is left has to buy lighting, side tables and
-// decor rather than another sofa. The first version of this used 0.6 and a
-// hard per-role cap, which priced a 20,000 AED room's sofa at about 4,300 and
-// excluded most of the catalogue's sofas from anchoring anything.
-export const ANCHOR_BUDGET_SHARE = 0.75;
-
-// The share of the anchor budget each role may spend, in proportion to how much
-// of the room it carries. An even split would price a sofa out of a room whose
-// budget a sofa should mostly buy.
-export function anchorRoleBudgets(
-  roles: ReadonlyArray<RoomProductRole>,
-  budgetMaxAed: number | null,
-  share = ANCHOR_BUDGET_SHARE
-): Map<string, number> | null {
-  if (budgetMaxAed === null || budgetMaxAed <= 0 || roles.length === 0) {
-    return null;
-  }
-  const weights = roles.map((role) => ANCHOR_WEIGHT[role.category] ?? 1);
-  const total = weights.reduce((sum, weight) => sum + weight, 0);
-  // The tolerance applies here as much as anywhere: a role's share of a room is
-  // a weighting this module invented, and holding a heuristic to the decimal is
-  // false precision that costs the room its best piece.
-  const anchorBudget = budgetMaxAed * share * (1 + BUDGET_TOLERANCE);
-  return new Map(roles.map((role, index) => [role.category, (anchorBudget * weights[index]) / total]));
-}
-
 // The roles worth anchoring for a room: the heaviest pieces its blueprint
 // names, whether or not the blueprint marks them required. Weight is what
 // matters here, because these are the pieces the RENDER is built around; a
@@ -172,15 +140,11 @@ export function rotationOffset(seed: string, length: number): number {
 
 export type AnchorShortlistInput<T extends RankedProductMatch> = {
   candidates: ReadonlyArray<T>;
-  // The most this role's line may cost. A piece above it is not shortlisted at
-  // all: the render would be built around something the list then opens.
-  maxLineTotalAed?: number | null;
   avoidColorTags?: ReadonlyArray<string>;
   // Products anchored recently, anywhere. Dropped outright: with thousands of
   // rows there is no reason to repeat, and repetition is what made every room
   // look the same.
   recentAnchorProductIds?: ReadonlyArray<string>;
-  quantity?: number;
   // Usually the room id. Rotates the order so two rooms with one brief differ.
   seed: string;
   size?: number;
@@ -190,22 +154,11 @@ export function anchorShortlist<T extends RankedProductMatch>({
   candidates,
   avoidColorTags = [],
   recentAnchorProductIds = [],
-  maxLineTotalAed = null,
-  quantity = 1,
   seed,
   size = 6
 }: AnchorShortlistInput<T>): T[] {
   const recent = new Set(recentAnchorProductIds);
-  // Affordability is as hard a filter as the brief, and for the same reason:
-  // both decide what the RENDER is built around, and a piece the list will not
-  // select is worse than no anchor at all. Unlike recency, neither yields.
-  const affordable =
-    maxLineTotalAed === null
-      ? candidates
-      : candidates.filter(
-          (candidate) => ((candidate.salePriceAed ?? candidate.priceAed ?? 0) * Math.max(1, quantity)) <= maxLineTotalAed
-        );
-  const onBrief = affordable.filter((candidate) => !anchorContradictsBrief(candidate, avoidColorTags));
+  const onBrief = candidates.filter((candidate) => !anchorContradictsBrief(candidate, avoidColorTags));
   const eligible = onBrief.filter((candidate) => !recent.has(candidate.id));
   // If the brief and the recency window leave nothing, the brief wins: an
   // anchor that contradicts it is worse than no anchor, because the render is

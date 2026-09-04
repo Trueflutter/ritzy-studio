@@ -1,7 +1,6 @@
 import { selectAnchorSet, stageTextConfig, type AnchorSetResult } from "@ritzy-studio/ai";
 import { configuredTextModel } from "@ritzy-studio/config";
 import {
-  anchorRoleBudgets,
   anchorRolesFromBlueprint,
   anchorSeedFor,
   anchorSetFromShortlists,
@@ -241,12 +240,16 @@ export async function chooseConceptAnchors(
     candidatesPerRole: ANCHOR_CANDIDATES_PER_ROLE * 2
   });
 
-  // The set has to fit the room, not just each piece the room. Four roles each
-  // priced at the whole budget can produce a render whose every hero piece the
-  // list then opens for cost, which is the worst outcome available: a picture
-  // the shopper approved with nothing in it chosen for them.
-  const roleBudgets = anchorRoleBudgets(anchorRoles, input.budgetMaxAed);
-
+  // No per-role price cap on the anchors. An earlier version gave each role a
+  // weighted share of the room and refused anything above it, which priced a
+  // 20,000 AED room's sofa at about 4,300 and put most of the catalogue out of
+  // reach of anchoring anything. Ayo's direction, 2026-09-03: "I would never
+  // want to sacrifice quality for that."
+  //
+  // The room's figure still reaches these pools through buildSpecSourcingPlan's
+  // own gates, which compare a piece against the WHOLE room rather than a
+  // slice of it, so a 50,000 sofa still cannot anchor a 20,000 room. What is
+  // gone is the slice.
   const shortlists = plan.pools
     .map((pool) => ({
       role: pool.role,
@@ -254,8 +257,6 @@ export async function chooseConceptAnchors(
         candidates: pool.candidates,
         avoidColorTags,
         recentAnchorProductIds,
-        maxLineTotalAed: roleBudgets?.get(pool.role.category) ?? null,
-        quantity: pool.role.quantity,
         seed: anchorSeedFor(input.roomId, pool.role.category),
         size: ANCHOR_CANDIDATES_PER_ROLE
       })

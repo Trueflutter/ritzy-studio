@@ -1441,9 +1441,8 @@ async function main() {
 
   // --- an anchored role the room cannot afford. Budget opening runs
   // most-expensive-first and an anchor is by construction among the heaviest
-  // pieces, so it is often the first selection demoted. That is the right
-  // outcome — the room's total is a promise too — and the row must stop
-  // claiming to be in the design the moment it stops being chosen.
+  // pieces, so it would be the first thing demoted. It is exempt: the design
+  // the shopper approved wins, and the total is reported over instead.
   {
     let insertedRows: Array<Record<string, unknown>> = [];
     // Not userClient(): it answers `projects` before consulting the override,
@@ -1467,7 +1466,7 @@ async function main() {
       },
       (storageCall) => (storageCall.op === "download" ? { data: new Blob([Buffer.from([1, 2, 3])]) } : { data: null })
     );
-    const { client: service } = serviceClient();
+    const { client: service, calls: serviceCallsFor } = serviceClient();
     const result = await groundProductsForRoom(
       { supabase: client, serviceSupabase: service },
       GROUND_INPUT,
@@ -1510,22 +1509,34 @@ async function main() {
     );
 
     assert.equal(result.status, "sourced");
+    // The anchor is the dearest line and would have opened first under the old
+    // rule. It stays: the shopper approved a picture built from this piece, and
+    // taking it off their list to hit a figure they gave as a guide leaves them
+    // a design with a hole in it.
     const chairRows = insertedRows.filter((row) => row.product_id === CHAIR_ID);
-    assert.ok(chairRows.length > 0, "the piece is still offered");
     assert.equal(
       chairRows.filter((row) => row.status === "selected").length,
-      0,
-      "a piece the room cannot afford is not chosen for the shopper"
+      1,
+      "the piece the render was built from is not opened for cost"
     );
-    assert.equal(
-      insertedRows.filter((row) => row.is_anchor === true).length,
-      0,
-      "and an unchosen row does not claim to be in the design"
-    );
-    // The cheaper matched piece keeps its place: opening runs dearest-first.
+    assert.equal(chairRows.find((row) => row.status === "selected")?.is_anchor, true);
+    // The MATCHED piece is what gives way instead. It was found by search, the
+    // render was not built from it, and it is still on the list first among its
+    // role's options for the shopper to take if they want it.
     assert.equal(
       insertedRows.filter((row) => row.product_id === SOFA_ID && row.status === "selected").length,
-      1
+      0,
+      "the searched piece opens, not the one the render was built from"
+    );
+    assert.ok(insertedRows.some((row) => row.product_id === SOFA_ID), "and it is still offered");
+    const summary = terminalJobUpdate(serviceCallsFor)?.payload?.output_summary as {
+      budgetFit: { withinBudget: boolean; withinTolerance: boolean; budgetMaxAed: number };
+      openRoles: Array<{ label: string; reason: string }>;
+    };
+    assert.equal(summary.budgetFit.budgetMaxAed, 6000);
+    assert.ok(
+      summary.openRoles.some((entry) => /above the room's budget/.test(entry.reason)),
+      "and the list says why that role was left to the shopper"
     );
   }
 

@@ -820,10 +820,33 @@ export async function groundProductsForRoom(
     const openedForBudget = new Set<string>();
     if (budgetCeiling !== null) {
       const byCost = resolved.roleOptions
-        .map((role) => ({ role, key: roleOptionKey(role), total: lineTotalAed(role, resolved.selectedProductIdByRole.get(roleOptionKey(role))) }))
-        .filter((entry) => entry.total > 0)
+        .map((role) => {
+          const selectedId = resolved.selectedProductIdByRole.get(roleOptionKey(role));
+          return {
+            role,
+            key: roleOptionKey(role),
+            total: lineTotalAed(role, selectedId),
+            // A piece the RENDER was built from is not opened for cost. The
+            // shopper approved that picture; taking its sofa off their list to
+            // hit a figure they gave as a guide leaves them a design with a
+            // hole in it, and the piece they were shown is the one they wanted.
+            // The room's total is reported honestly instead, over the stated
+            // figure and marked as such. Ayo, 2026-09-03: "I would never want
+            // to sacrifice quality for that."
+            anchored: selectedId !== undefined && anchoredProductIds.has(selectedId)
+          };
+        })
+        .filter((entry) => entry.total > 0 && !entry.anchored)
         .sort((left, right) => right.total - left.total);
-      let running = byCost.reduce((total, entry) => total + entry.total, 0);
+      // The anchors' cost still counts toward the total; it simply cannot be
+      // removed from it. Opening every other role is the most the budget can do.
+      const anchoredTotal = resolved.roleOptions
+        .map((role) => {
+          const selectedId = resolved.selectedProductIdByRole.get(roleOptionKey(role));
+          return selectedId !== undefined && anchoredProductIds.has(selectedId) ? lineTotalAed(role, selectedId) : 0;
+        })
+        .reduce((total, value) => total + value, 0);
+      let running = byCost.reduce((total, entry) => total + entry.total, anchoredTotal);
       for (const entry of byCost) {
         if (running <= budgetCeiling) {
           break;

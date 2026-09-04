@@ -1,14 +1,12 @@
 import assert from "node:assert/strict";
 
-import { BUDGET_TOLERANCE, enhancedProductRolesForRoom } from "./product-matching";
+import { enhancedProductRolesForRoom } from "./product-matching";
 import type { ProductMatchCandidate, RankedProductMatch, RoomProductRole } from "./product-matching";
 import { canonicalRoomTypes } from "./index";
 import {
   DEFAULT_ANCHOR_LIMIT,
   anchorContradictsBrief,
   anchorSeedFor,
-  ANCHOR_BUDGET_SHARE,
-  anchorRoleBudgets,
   anchorRolesFromBlueprint,
   anchorSetFromShortlists,
   anchorShortlist,
@@ -316,49 +314,23 @@ const ranked = (overrides: Partial<RankedProductMatch> & { id: string }): Ranked
   );
 }
 
-// --- the SET has to fit the room, not just each piece the room. Four roles
-// each priced at the whole budget can produce a render whose every hero piece
-// the list then opens for cost: a picture the shopper approved with nothing in
-// it chosen for them.
+// --- price does not narrow what may anchor a room. An earlier version gave
+// each role a weighted slice of the budget and refused anything above it, which
+// priced a 20,000 AED room's sofa at about 4,300. Ayo: "I would never want to
+// sacrifice quality for that." The room's figure still reaches these pools
+// through the sourcing contracts, which compare a piece against the whole room.
 {
-  const roles: RoomProductRole[] = [
-    { category: "sofas", label: "sofa", quantity: 1, required: true },
-    { category: "rugs", label: "rug", quantity: 1, required: true },
-    { category: "coffee_tables", label: "coffee table", quantity: 1, required: true }
-  ];
-  const budgets = anchorRoleBudgets(roles, 20_000)!;
-  // Shares are proportional to how much of the room each piece carries, so a
-  // sofa is not priced out of a room its price should mostly buy.
-  assert.ok(budgets.get("sofas")! > budgets.get("rugs")!);
-  assert.ok(budgets.get("rugs")! > budgets.get("coffee_tables")!);
-  // And the set as a whole stays inside its share of the room, plus the same
-  // tolerance every other budget carries: a role's share is a weighting this
-  // module invented, and holding a heuristic to the decimal costs the room its
-  // best piece.
-  const total = [...budgets.values()].reduce((sum, value) => sum + value, 0);
-  const expected = 20_000 * ANCHOR_BUDGET_SHARE * (1 + BUDGET_TOLERANCE);
-  assert.ok(Math.abs(total - expected) < 0.001, `the anchor set's ceiling is a tolerated share; got ${total}`);
-  assert.ok(total < 20_000, "and still leaves the room something to furnish the rest with");
-  assert.equal(anchorRoleBudgets(roles, null), null, "a room with no budget caps nothing");
-
-  // A piece above its role's share is not shortlisted at all: the render must
-  // not be built around something the list will open.
-  const cheap = ranked({ id: "cheap", name: "Nord Sofa Grey" });
-  cheap.priceAed = 5_000;
   const dear = ranked({ id: "dear", name: "Grande Sofa Grey" });
-  dear.priceAed = 40_000;
+  dear.priceAed = 18_000;
+  const cheap = ranked({ id: "cheap", name: "Nord Sofa Slate" });
+  cheap.priceAed = 3_000;
   assert.deepEqual(
-    anchorShortlist({ candidates: [dear, cheap], maxLineTotalAed: 9_000, seed: "s" }).map((entry) => entry.id),
-    ["cheap"]
+    anchorShortlist({ candidates: [dear, cheap], seed: "s", size: 5 })
+      .map((entry) => entry.id)
+      .sort(),
+    ["cheap", "dear"],
+    "the expensive piece is still eligible to anchor"
   );
-  // Quantity counts: two chairs at 5,000 are a 10,000 line.
-  assert.deepEqual(
-    anchorShortlist({ candidates: [cheap], maxLineTotalAed: 9_000, quantity: 2, seed: "s" }).map((entry) => entry.id),
-    []
-  );
-  // Unlike recency, affordability does not yield: an unaffordable anchor is
-  // worse than no anchor.
-  assert.deepEqual(anchorShortlist({ candidates: [dear], maxLineTotalAed: 9_000, seed: "s" }), []);
 }
 
 console.log("anchor selection tests passed");
