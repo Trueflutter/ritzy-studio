@@ -60,7 +60,8 @@ import {
 } from "./sourcing-support";
 import { withTimeout } from "@/lib/with-timeout";
 
-import { claimAnchoredPools, readConceptAnchors } from "./concept-anchors";
+import { closeAiJob } from "./close-ai-job";
+import { claimAnchoredPools, readConceptAnchors, recordAnchorVerification } from "./concept-anchors";
 import type { ServiceSupabaseClient, UserSupabaseClient } from "./supabase-clients";
 import { storageImageDataUrl } from "./storage-images";
 
@@ -91,15 +92,7 @@ async function closeSourcingJob(
   jobId: string,
   payload: Database["public"]["Tables"]["ai_jobs"]["Update"]
 ) {
-  for (let attempt = 0; attempt < 2; attempt += 1) {
-    const { error } = await serviceSupabase.from("ai_jobs").update(payload).eq("id", jobId);
-    if (!error) {
-      return;
-    }
-    if (attempt === 1) {
-      console.error(`Could not close product sourcing job ${jobId} (${payload.status}): ${error.message}`);
-    }
-  }
+  await closeAiJob(serviceSupabase, jobId, payload, "product sourcing");
 }
 
 // The pooled candidate row behind a chosen product id (its name and image).
@@ -787,12 +780,17 @@ export async function groundProductsForRoom(
     // on the list as options for an open role, which is the honest state: the
     // shopper approved a render, and we could not confirm this piece is the one
     // in it.
-    const anchoredProductIds = new Set(
-      outcomes
-        .filter((outcome): outcome is Extract<SpecRoleOutcome, { kind: "selected" }> => outcome.kind === "selected")
-        .map((outcome) => outcome.selectedProductId)
-        .filter((productId) => claimedProductIds.has(productId))
-    );
+    const verifiedAnchors = outcomes
+      .filter((outcome): outcome is Extract<SpecRoleOutcome, { kind: "selected" }> => outcome.kind === "selected")
+      .filter((outcome) => claimedProductIds.has(outcome.selectedProductId))
+      .map((outcome) => ({ productId: outcome.selectedProductId, similarity: outcome.verifiedSimilarity ?? 0 }));
+    const anchoredProductIds = new Set(verifiedAnchors.map((entry) => entry.productId));
+
+    // The verdict goes where only the server can write it. The list's own
+    // is_anchor column and a row's selected status both sit on a table the
+    // owner may PATCH, so a claim the app makes on the shopper's behalf cannot
+    // rest on either, and neither can the design gate.
+    await recordAnchorVerification(serviceSupabase, { conceptId, verified: verifiedAnchors });
 
     const resolved = roleOptionsFromOutcomes(outcomes);
     missingRoles = [...plan.missing, ...resolved.missing];
@@ -921,14 +919,13 @@ export async function groundProductsForRoom(
       const { error: itemError } = await supabase
         .from("shopping_list_items")
         .insert(
-          itemRows.map((row) => ({
-            ...row,
-            shopping_list_id: shoppingListId,
-            // Two different promises: this piece is in the render, or this
-            // piece was matched to it. Only the first can be made by
-            // construction.
-            is_anchor: row.status === "selected" && anchoredProductIds.has(row.product_id)
-          }))
+          // is_anchor is deliberately NOT written. It sat on a table the list's
+          // owner may PATCH, so it could never carry a claim the app makes on
+          // the shopper's behalf: a client could set it without any design
+          // check having run. The authority is concept_anchors.
+          // verified_similarity, written by the server above, and that is what
+          // the design gate reads and what a badge should join.
+          itemRows.map((row) => ({ ...row, shopping_list_id: shoppingListId }))
         );
       if (itemError) {
         throw new Error(itemError.message);

@@ -320,11 +320,9 @@ export async function substituteProduct(
       category: replacement.categoryNormalized ?? item.category,
       unit_price_aed: unitPrice,
       line_total_aed: lineTotal,
-      // The anchor claim belongs to the PIECE, not to the row. Once the piece
-      // changes, "this is in your design" is false: the render was built from
-      // photographs of the product that just left this row, not of the one
-      // arriving. It is also the flag the design gate reads to decide what it
-      // judges, so a stale true would have it measuring the wrong set.
+      // Cleared, though nothing writes it true any more: a row whose product
+      // changed must not carry a claim about the piece that left it, and the
+      // column is still settable by hand from the browser.
       is_anchor: false,
       // Prose only (12.7); the swap's own reason, not ranking warnings.
       selection_reason: `Swapped in as the ${SWAP_MODE_LABEL[mode]} option. ${alternateProse(replacement, role)}`,

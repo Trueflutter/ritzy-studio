@@ -131,6 +131,8 @@ export type Database = {
           room_id: string
           selection_job_id: string | null
           source: string
+          verified_at: string | null
+          verified_similarity: number | null
         }
         Insert: {
           concept_id: string
@@ -144,6 +146,8 @@ export type Database = {
           room_id: string
           selection_job_id?: string | null
           source: string
+          verified_at?: string | null
+          verified_similarity?: number | null
         }
         Update: {
           concept_id?: string
@@ -157,6 +161,8 @@ export type Database = {
           room_id?: string
           selection_job_id?: string | null
           source?: string
+          verified_at?: string | null
+          verified_similarity?: number | null
         }
         Relationships: [
           {

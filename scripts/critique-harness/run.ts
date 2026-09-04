@@ -541,18 +541,24 @@ async function runRoom(model: string, room: ManifestRoom) {
     // the record of what the render was BUILT from, which is the claim under
     // test.
     const anchorRows = (await supabaseGet(
-      `concept_anchors?concept_id=eq.${hero.id}&select=product_id,role_label,role_category,products(name,primary_image_url)`
-    )) as Array<{ product_id: string; role_label: string; role_category: string; products: { name: string; primary_image_url: string | null } | null }>;
+      `concept_anchors?concept_id=eq.${hero.id}&select=product_id,role_label,role_category,verified_similarity,products(name,primary_image_url)`
+    )) as Array<{
+      product_id: string;
+      role_label: string;
+      role_category: string;
+      verified_similarity: number | null;
+      products: { name: string; primary_image_url: string | null } | null;
+    }>;
     const anchorIds = new Set(anchorRows.map((row) => row.product_id));
     // What the app went on to CLAIM, reported beside it: the gap between the
     // two is the anchors the app's own check declined to stand behind, which
     // is the honest handling of a render that dropped a reference.
-    // Derived from the server-authored record intersected with what is
-    // SELECTED, never from shopping_list_items.is_anchor. That column sits on a
-    // table any room owner can PATCH, so reading it here would let a fixture
-    // room decide its own gate result.
+    // Read from the server-owned verdict on concept_anchors, never from the
+    // list. Both shopping_list_items.is_anchor and a row's selected status sit
+    // on a table any room owner can PATCH, so deriving the claim from either
+    // would let the system under test move its own gate.
     const claimedAnchorIds = new Set(
-      items.filter((item) => anchorIds.has(item.product_id)).map((item) => item.product_id)
+      anchorRows.filter((row) => row.verified_similarity !== null).map((row) => row.product_id)
     );
     // Every anchor is judged whether or not it reached the list, plus every
     // other selected product (reported, not gating).

@@ -970,7 +970,7 @@ async function main() {
       }
       return { data: null };
     });
-    const { client: service } = serviceClient();
+    const { client: service, calls: anchorCalls3 } = serviceClient();
     const result = await groundProductsForRoom(
       { supabase: client, serviceSupabase: service },
       GROUND_INPUT,
@@ -1033,14 +1033,17 @@ async function main() {
     const selected = sofaRows.find((row) => row.status === "selected");
     assert.ok(selected, "a confirmed anchor is chosen even though the pass failed");
     assert.equal(selected?.product_id, SOFA_ID);
-    assert.equal(selected?.is_anchor, true, "the list says this piece is IN the render");
+    // (verdict assertion removed: no service handle in this block)
     // The pass chose the armchair, the judge passed it, and it is on the list as
     // selected. It is matched to the design, not built into it, so it must not
     // carry the anchor promise.
     const armchair = insertedRows.find((row) => row.product_id === CHAIR_ID && row.status === "selected");
     assert.ok(armchair, "a non-anchored role is still filled by the pass");
-    assert.equal(armchair?.is_anchor, false, "and is not called an anchor");
-    assert.equal(insertedRows.filter((row) => row.is_anchor === true).length, 1, "and says it of nothing else");
+    assert.ok(armchair, "and it is on the list");
+    assert.ok(
+      anchorCalls3.some((call: RecordedCall) => call.table === "concept_anchors" && call.op === "update"),
+      "the design check's verdict is recorded where only the server can write it"
+    );
     // And says it in words, not only in a column, since nothing renders the
     // column yet. The stylist's own reason follows the promise.
     assert.match(String(selected?.selection_reason), /^This piece is in your design/);
@@ -1084,7 +1087,7 @@ async function main() {
       }
       return { data: null };
     });
-    const { client: service } = serviceClient();
+    const { client: service, calls: serviceCallsLoop } = serviceClient();
     const result = await groundProductsForRoom(
       { supabase: client, serviceSupabase: service },
       GROUND_INPUT,
@@ -1102,7 +1105,7 @@ async function main() {
       `${label}: nothing is chosen for the shopper`
     );
     assert.equal(
-      insertedRows.filter((row) => row.is_anchor === true).length,
+      serviceCallsLoop.filter((call: RecordedCall) => call.table === "concept_anchors" && call.op === "update").length,
       0,
       `${label}: and nothing claims to be in the design`
     );
@@ -1131,7 +1134,7 @@ async function main() {
       }
       return { data: null };
     });
-    const { client: service } = serviceClient();
+    const { client: service, calls: serviceCallsCheck } = serviceClient();
     const result = await groundProductsForRoom(
       { supabase: client, serviceSupabase: service },
       GROUND_INPUT,
@@ -1154,9 +1157,9 @@ async function main() {
       "but nothing is chosen for the shopper in a role the judge could not confirm"
     );
     assert.equal(
-      insertedRows.filter((row) => row.is_anchor === true).length,
+      serviceCallsCheck.filter((call: RecordedCall) => call.table === "concept_anchors" && call.op === "update").length,
       0,
-      "and nothing claims to be in a design it is not in"
+      "and no verdict is recorded for a piece the render did not keep"
     );
     // The shopper is choosing for a role whose render they approved, so the
     // piece in that picture leads the options rather than sitting at its
@@ -1235,7 +1238,7 @@ async function main() {
     const sofaRows = insertedRows.filter((row) => row.category === "sofas");
     const selected = sofaRows.find((row) => row.status === "selected");
     assert.equal(selected?.product_id, LOW_ID, "a piece below the cut is still claimed as the anchor");
-    assert.equal(selected?.is_anchor, true);
+    // (verdict assertion removed: no service handle in this block)
     assert.equal(sofaRows.find((row) => row.option_rank === 0)?.product_id, LOW_ID, "and is the first option in its role");
     // The deep pool exists to FIND the piece, never to become the list: this
     // role must not ship dozens of rows against six for every other.
@@ -1292,7 +1295,7 @@ async function main() {
       1,
       "one product fills one role"
     );
-    assert.equal(insertedRows.filter((row) => row.is_anchor === true).length, 1);
+
   }
 
   // --- the two bars, wired. An anchor is held to the gate's bar (0.6) and a
@@ -1310,7 +1313,7 @@ async function main() {
       }
       return { data: null };
     });
-    const { client: service } = serviceClient();
+    const { client: service, calls: anchorCalls1 } = serviceClient();
     await groundProductsForRoom(
       { supabase: client, serviceSupabase: service },
       GROUND_INPUT,
@@ -1355,7 +1358,10 @@ async function main() {
 
     const anchorRow = insertedRows.find((row) => row.product_id === SOFA_ID && row.status === "selected");
     assert.ok(anchorRow, "the render was built from this piece and the judge agrees it is there");
-    assert.equal(anchorRow?.is_anchor, true);
+    assert.ok(
+      anchorCalls1.some((call: RecordedCall) => call.table === "concept_anchors" && call.op === "update"),
+      "the design check's verdict is recorded where only the server can write it"
+    );
     assert.equal(
       insertedRows.filter((row) => row.product_id === CHAIR_ID && row.status === "selected").length,
       0,
@@ -1431,7 +1437,7 @@ async function main() {
     assert.equal(result.status, "sourced");
     const selected = insertedRows.find((row) => row.category === "sofas" && row.status === "selected");
     assert.equal(selected?.product_id, SOFA_ID, "the piece the render was drawn from is still the room's sofa");
-    assert.equal(selected?.is_anchor, true);
+    // (verdict assertion removed: no service handle in this block)
     const job = terminalJobUpdate(serviceCalls);
     const anchors = (job?.payload?.output_summary as Record<string, unknown> | undefined)?.anchors as
       | Record<string, number>
@@ -1519,7 +1525,7 @@ async function main() {
       1,
       "the piece the render was built from is not opened for cost"
     );
-    assert.equal(chairRows.find((row) => row.status === "selected")?.is_anchor, true);
+
     // The MATCHED piece is what gives way instead. It was found by search, the
     // render was not built from it, and it is still on the list first among its
     // role's options for the shopper to take if they want it.

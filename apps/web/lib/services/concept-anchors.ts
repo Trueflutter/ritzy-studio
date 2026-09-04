@@ -22,6 +22,8 @@ import {
 import { fetchRemoteImage, visionImageDataUrl } from "@/lib/render-images";
 import { withTimeout } from "@/lib/with-timeout";
 
+import { closeAiJob } from "./close-ai-job";
+
 import { loadCatalogueCandidates, splitAvoidColorCues } from "./sourcing-support";
 import type { ServiceSupabaseClient, UserSupabaseClient } from "./supabase-clients";
 
@@ -385,10 +387,7 @@ export async function chooseConceptAnchors(
   }
 
   const closeJob = async (fields: Record<string, unknown>) => {
-    await serviceSupabase
-      .from("ai_jobs")
-      .update({ completed_at: new Date().toISOString(), ...fields })
-      .eq("id", job.id);
+    await closeAiJob(serviceSupabase, job.id, { completed_at: new Date().toISOString(), ...fields }, "anchor set pass");
   };
 
   let result: AnchorSetResult;
@@ -498,6 +497,38 @@ export async function chooseConceptAnchors(
     costUsd: result.textCostUsd,
     jobId: job.id
   };
+}
+
+// The verdict on whether the render kept an anchor, written where only the
+// server can write it. The list's is_anchor column and a row's selected status
+// both sit on a table the list's owner may PATCH, so neither can carry a claim
+// the app makes on the shopper's behalf, and neither can be what the design
+// gate reads. This can, and is.
+export async function recordAnchorVerification(
+  serviceSupabase: ServiceSupabaseClient,
+  {
+    conceptId,
+    verified
+  }: { conceptId: string; verified: ReadonlyArray<{ productId: string; similarity: number }> }
+) {
+  if (verified.length === 0) {
+    return;
+  }
+  const verifiedAt = new Date().toISOString();
+  await Promise.all(
+    verified.map(async (entry) => {
+      const { error } = await serviceSupabase
+        .from("concept_anchors")
+        .update({ verified_similarity: entry.similarity, verified_at: verifiedAt })
+        .eq("concept_id", conceptId)
+        .eq("product_id", entry.productId);
+      if (error) {
+        console.error(
+          `Concept ${conceptId}: could not record the design check's verdict for anchor ${entry.productId} (${error.message}).`
+        );
+      }
+    })
+  );
 }
 
 // The rows that record what a render was actually built from. Written after the

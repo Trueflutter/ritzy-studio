@@ -975,7 +975,11 @@ async function generateImageWithConfiguredProvider({
         references,
         model: env.GEMINI_IMAGE_MODEL,
         projectId: env.GOOGLE_CLOUD_PROJECT,
-        location: env.GOOGLE_CLOUD_LOCATION
+        location: env.GOOGLE_CLOUD_LOCATION,
+        // Every provider is held to the caller's deadline, not to an env
+        // constant of its own; a branch that ignores it is a branch that can
+        // overrun the route.
+        timeoutMs: imageCallTimeoutMs(deadlineMs, providerStartedAt)
       });
     } catch (error) {
       const fallbackError = formatImageGenerationError(error);
@@ -1005,14 +1009,18 @@ async function generateImageWithConfiguredProvider({
     }
   }
 
+  // Never floored above what is left. A floor here started a two-minute paid
+  // call on a request with forty-five seconds to live, overrunning both the run
+  // budget and the route: the platform then kills it with no catch path, and
+  // the job row is left running.
+  const primaryMs = imageCallTimeoutMs(deadlineMs, providerStartedAt);
+  if (deadlineMs !== undefined && primaryMs < IMAGE_FALLBACK_MIN_MS) {
+    throw new Error(
+      `Too little of the request budget remained to generate an image (${Math.round(primaryMs / 1000)}s left).`
+    );
+  }
   return generateOpenAiImage({
-    client: new OpenAI({
-      apiKey: env.OPENAI_API_KEY,
-      // Whatever is left, floored: this branch has no second provider after it,
-      // so there is no share for it to eat, and an attempt beats none.
-      timeout: Math.max(IMAGE_FALLBACK_MIN_MS, imageCallTimeoutMs(deadlineMs, providerStartedAt)),
-      maxRetries: 0
-    }),
+    client: new OpenAI({ apiKey: env.OPENAI_API_KEY, timeout: primaryMs, maxRetries: 0 }),
     prompt,
     references,
     model: env.OPENAI_IMAGE_MODEL,
@@ -1077,18 +1085,23 @@ export async function generateGeminiImage({
   references,
   model,
   projectId,
-  location
+  location,
+  timeoutMs
 }: {
   prompt: string;
   references: ImageGenerationReference[];
   model: string;
   projectId?: string;
   location: string;
+  timeoutMs?: number;
 }): Promise<ImageGenerationAttempt> {
   const startedAt = Date.now();
   // The deadline covers EVERYTHING, including the service-account token exchange: a
   // hanging OAuth request must not run outside the Gemini timeout.
-  const deadlineMs = Number(process.env.RITZY_GEMINI_TIMEOUT_MS) || 60_000;
+  // The caller's remaining budget when it gave one, capped by this provider's
+  // own ceiling. An env constant alone is a branch that can outlive its route.
+  const ownCeilingMs = Number(process.env.RITZY_GEMINI_TIMEOUT_MS) || 60_000;
+  const deadlineMs = timeoutMs === undefined ? ownCeilingMs : Math.max(1_000, Math.min(ownCeilingMs, timeoutMs));
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), deadlineMs);
 
@@ -1292,6 +1305,10 @@ async function generateEvolinkImage({
   }
 
   const startedAt = Date.now();
+  // One window for the whole exchange: submission, every poll, and the result
+  // download. Computed before the first request so none of them sits outside it.
+  const pollWindowMs = Math.min(EVOLINK_POLL_TIMEOUT_MS, pollTimeoutMs ?? EVOLINK_POLL_TIMEOUT_MS);
+  const deadline = startedAt + pollWindowMs;
   // Prefer real public URLs (small request payloads); inline bytes as data URLs
   // otherwise. Verified live: the API accepts data URLs, so a required
   // reference (the room, the approved concept) can never be silently dropped.
@@ -1314,7 +1331,12 @@ async function generateEvolinkImage({
   const submitResponse = await fetch(`${apiBase}/v1/images/generations`, {
     method: "POST",
     headers,
-    signal: AbortSignal.timeout(Number(process.env.RITZY_EVOLINK_SUBMIT_TIMEOUT_MS) || 30_000),
+    // Bounded by what is left of the poll window, not only by its own constant:
+    // submission, polling and the result download all happen inside the
+    // caller's deadline rather than beside it.
+    signal: AbortSignal.timeout(
+      Math.max(1_000, Math.min(Number(process.env.RITZY_EVOLINK_SUBMIT_TIMEOUT_MS) || 30_000, deadline - Date.now()))
+    ),
     body: JSON.stringify({
       model,
       prompt,
@@ -1333,9 +1355,6 @@ async function generateEvolinkImage({
     );
   }
 
-  const pollWindowMs = Math.min(EVOLINK_POLL_TIMEOUT_MS, pollTimeoutMs ?? EVOLINK_POLL_TIMEOUT_MS);
-  const deadline = startedAt + pollWindowMs;
-
   while (Date.now() < deadline) {
     await new Promise((resolve) => setTimeout(resolve, EVOLINK_POLL_INTERVAL_MS));
 
@@ -1344,7 +1363,7 @@ async function generateEvolinkImage({
       pollResponse = await fetch(`${apiBase}/v1/tasks/${encodeURIComponent(submitPayload.id)}`, {
         method: "GET",
         headers,
-        signal: AbortSignal.timeout(15_000)
+        signal: AbortSignal.timeout(Math.max(1_000, Math.min(15_000, deadline - Date.now())))
       });
     } catch {
       // One slow or dropped status poll must not abandon a live task; the outer
@@ -1386,7 +1405,7 @@ async function generateEvolinkImage({
       if (sameOriginAsGateway) {
         imageResponse = await fetch(resultUrl, {
           redirect: "manual",
-          signal: AbortSignal.timeout(60_000)
+          signal: AbortSignal.timeout(Math.max(1_000, Math.min(60_000, deadline - Date.now())))
         });
         if (imageResponse.status >= 300 && imageResponse.status < 400) {
           throw new Error("Evolink result URL attempted a redirect; refusing.");

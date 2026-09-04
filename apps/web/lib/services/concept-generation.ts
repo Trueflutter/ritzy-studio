@@ -14,6 +14,7 @@ import { CONCEPT_VIEW_KEYS } from "@/lib/render-flags";
 import { configuredImageModel, configuredImageProvider, visionImageDataUrl } from "@/lib/render-images";
 import { normalizeCatalogFirstRoomType } from "@/lib/room-type-normalize";
 
+import { closeAiJob } from "./close-ai-job";
 import { chooseConceptAnchors, persistConceptAnchors, type ConceptAnchorOutcome } from "./concept-anchors";
 import { roomImageInputs } from "./room-images";
 import { likedStyleSlugsFromStructuredBrief } from "./sourcing-support";
@@ -149,9 +150,10 @@ export async function generateAndStoreConceptViews({
 
   if (viewsJob) {
     const failed = outcomes.filter((outcome) => !outcome.ok);
-    await serviceSupabase
-      .from("ai_jobs")
-      .update({
+    await closeAiJob(
+      serviceSupabase,
+      viewsJob.id,
+      {
         // Any missing view is a failed job: partial success must stay visible
         // and retryable by status, not silently ship a one-view concept.
         status: failed.length > 0 ? "failed" : "succeeded",
@@ -159,8 +161,9 @@ export async function generateAndStoreConceptViews({
         error_message: failed.length > 0 ? failed.map((outcome) => `${outcome.viewKey}: ${outcome.error}`).join("; ") : null,
         cost_estimate_usd: evolinkCreditsToUsd(sumOutcomeCredits(outcomes)),
         output_summary: { conceptId, outcomes }
-      })
-      .eq("id", viewsJob.id);
+      },
+      "concept views"
+    );
   }
 }
 
@@ -457,9 +460,10 @@ export async function generateInitialConceptForRoom(
         : null
     });
 
-    await serviceSupabase
-      .from("ai_jobs")
-      .update({
+    await closeAiJob(
+      serviceSupabase,
+      job.id,
+      {
         status: "succeeded",
         completed_at: new Date().toISOString(),
         provider: result.imageProvider,
@@ -497,8 +501,9 @@ export async function generateInitialConceptForRoom(
               }
             : { status: "unavailable", error: "Choosing anchors failed; the concept was generated unanchored." }
         }
-      })
-      .eq("id", job.id);
+      },
+      "initial concept generation"
+    );
 
     const { data: concept, error: conceptError } = await supabase
       .from("concepts")
@@ -589,14 +594,16 @@ export async function generateInitialConceptForRoom(
       });
     });
   } catch (error) {
-    await serviceSupabase
-      .from("ai_jobs")
-      .update({
+    await closeAiJob(
+      serviceSupabase,
+      job.id,
+      {
         status: "failed",
         completed_at: new Date().toISOString(),
         error_message: error instanceof Error ? error.message : "Initial concept generation failed."
-      })
-      .eq("id", job.id);
+      },
+      "initial concept generation"
+    );
 
     return { status: "generation_failed" };
   }

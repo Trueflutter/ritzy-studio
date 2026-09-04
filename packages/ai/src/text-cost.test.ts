@@ -114,5 +114,10 @@ console.log("text-cost tests passed");
   assert.ok(evolinkPollWindowMs(195_000)! >= Math.floor(195_000 / 2), "and never cut below half the budget to buy one");
   assert.ok(imageCallTimeoutMs(30_000, 0, evolinkPollWindowMs(30_000)!) < IMAGE_FALLBACK_MIN_MS);
 
+  // A primary with too little left is refused rather than started: flooring it
+  // began a two-minute paid call on a request with forty-five seconds to live.
+  assert.ok(imageCallTimeoutMs(45_000, 0, 0) < IMAGE_FALLBACK_MIN_MS);
+  assert.equal(imageCallTimeoutMs(45_000, 0, 0), 45_000, "and the number is what is left, never a floor above it");
+
   console.log("image deadline tests passed");
 }
