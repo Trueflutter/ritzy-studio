@@ -153,3 +153,35 @@ one, and it is Ayo's to make. The engineering option, if the floor is to hold,
 is to make anchor eligibility prefer pieces the render can actually reproduce
 (plain over figured for rugs), on the same principle as "an anchor must have a
 photograph". That is a slice of its own, not a patch to this branch.
+
+## Decision (Ayo, 2026-09-04)
+
+Approved: ship this branch on the per-room floor, keep the five-in-six number
+unchanged, and open anchor retention as its own slice.
+
+Acceptance criterion 3 is therefore KNOWINGLY UNMET at merge, deliberately and
+with the number left alone. Reviewers should not treat it as an oversight or
+propose lowering it. The full reasoning lives next to the criterion itself, in
+`scripts/critique-harness/checklist.md` under the product_consistency floor, so
+that it stays with the thing it governs.
+
+The short version: the floor was measured against a catalogue read that could
+see 975 of 3,233 rows. Fixing that read moved the measurement. The per-room half
+of the floor, which is what protects any individual user's room, held in every
+run.
+
+### Next slice, not this branch
+
+1. Reconcile the two verdicts. The app's `verified_similarity` and the harness
+   judge disagree about whether the same anchor is in the same render. Settle
+   which is right before tuning anything against either.
+2. Establish the measurement's variance, so the rate can be a gate again with a
+   known error bar rather than a number taken from two runs.
+3. Only then, anchor eligibility. The intended mechanism is accumulated
+   `verified_similarity`, so the system learns which stock the render reproduces
+   faithfully. Note that the harness deletes anchor rows per run, so this can be
+   validated in production but not from harness data as it stands.
+
+A name-based "prefer plain rugs over figured ones" heuristic was considered and
+rejected as the first move: it would tune the pipeline against an unvalidated
+judge. It stays on the table for step 3.
