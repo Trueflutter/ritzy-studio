@@ -30,7 +30,12 @@ assert.match(systemPrompt, /Palette and material register:/);
 assert.match(systemPrompt, /Never fall back to a generic beige-brown scheme by default/);
 assert.match(systemPrompt, /cool, dark, saturated, or bold colour, commit to that register fully/);
 assert.match(systemPrompt, /choose ONE deliberate register/);
-assert.match(systemPrompt, /may never appear as a dominant surface/);
+// An avoided colour is barred from the surfaces the DESIGN picks, and the
+// architecture the design does not replace is named as exempt: the dense
+// apartment failed its cool brief on a beige curtain (ours) and a warm wood
+// floor (the room's), and only the first is a mistake.
+assert.match(systemPrompt, /may never appear on a surface the design chooses/);
+assert.match(systemPrompt, /Existing floors and stone are exempt/);
 
 const imagePrompt = buildInitialConceptImagePrompt({
   generationPrompt: "Create a warm living room concept.",

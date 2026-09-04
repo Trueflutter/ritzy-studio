@@ -74,8 +74,13 @@ const roomBlueprintLanguage: Record<RitzyRoomType, string> = {
     "Treat the TV and console as residential and elegant: widescreen TV, refined low console or built-in media unit, concealed cable logic, calm styling, and proportionate placement rather than a showroom electronics wall. If TV-first placement is impossible, preserve architecture, state the focal-point assumption in the concept, and avoid sofa-under-TV placement."
   ].join(" "),
   living_dining: [
+    // The zoning guardrail lives in roomLanguage.living_dining and is NOT
+    // repeated here. Both blocks are assembled into the same prompt, so
+    // including it in each sent the model the same seven placement rules
+    // twice: ~2,800 duplicated characters in exactly the worst case the
+    // prompt budget guards, and the budget had been squeezed to four
+    // characters of headroom paying for it.
     "Ritzy combined Living & Dining hall blueprint: plan one open-plan hall with two coordinated zones and a protected circulation spine between them.",
-    combinedHallZoningGuardrail,
     "Living zone: include a TV/media focal wall or declared focal point with a refined media/storage layer, primary sofa or sectional placed on a separate opposite wall/zone or perpendicular adjacent wall when constraints require it, secondary seating, coffee table, generous rug, side tables where space allows, layered lighting, wall art or mirror/wall treatment, cushions, and edited decor.",
     "The TV/media wall and primary sofa must not be on the same wall; the sofa should face the focal wall across the rug and coffee-table zone, stay parallel to the focal wall, remain square to the rug and room grid, and avoid diagonal canting unless the source room makes a square arrangement impossible.",
     "Dining zone: include a correctly scaled dining table, dining chairs, centered over-table pendant or chandelier, realistic pull-out clearance, sideboard/credenza/dining console where wall space allows, restrained table styling, and warm secondary lighting.",
@@ -236,8 +241,15 @@ export function sourceRoomPreservationLanguage(roomType: string) {
     // register kept its orange brick wall and the palette check correctly said
     // the room was warm. Ritzy's promise is transforming the look of a room,
     // and that includes painting it.
-    "Keep the STRUCTURE stable: where walls stand, window and door openings, the ceiling plane, AC vents, switches, sockets, built-in joinery and worktops, floor boundaries, camera perspective, and residential scale.",
-    "Wall and ceiling FINISHES are yours to change when the brief calls for it — paint, wallpaper, panelling, plaster, the treatment of an exposed brick wall. A finish that fights the brief's register should be repainted, not worked around.",
+    // Joinery sits on BOTH lines on purpose. A kitchen cannot move, so its
+    // position and extent are structure. Its cabinet fronts are paint: the
+    // dense-apartment room was briefed cool with no beige and came back with
+    // beige cabinetry, because the first draft of this line fenced off all
+    // joinery as untouchable. Worktops stay structure: respraying fronts is
+    // what a refresh does, replacing a counter is a renovation the shopping
+    // list does not cover.
+    "Keep the STRUCTURE stable: where walls stand, window and door openings, the ceiling plane, AC vents, switches, sockets, worktops, the position and extent of built-in joinery, floor boundaries, camera perspective, and residential scale.",
+    "FINISHES are yours to change when the brief calls for it: wall and ceiling paint, wallpaper, panelling, plaster, cabinet fronts, the treatment of an exposed brick wall. A finish that fights the brief's register should be refinished, not worked around.",
     "Do not move or add walls, change room proportions, or infer exact dimensions unless the user explicitly provides them."
   ];
 
@@ -502,7 +514,7 @@ export function paletteRegisterLanguage() {
     "Never fall back to a generic beige-brown scheme by default. If the brief asks for cool, dark, saturated, or bold colour, commit to that register fully: wall finish, textiles, stone, timber tone, and metal finish all follow it.",
     "If the brief gives no colour direction, choose ONE deliberate register that suits the room's natural light and architecture, and name it in the concept rationale. Register vocabulary used by top-end residential studios: quiet-luxury layered neutrals with a contrast accent; organic-modern textured off-whites with dark timber; warm gallery white with sculptural walnut; soft-Mediterranean plaster with terracotta and olive; new-classic stone, bronze, and deep wood; deep forest green with brass and smoked oak; ink-blue moody study with saddle leather; restful tonal bedroom with one grounded accent.",
     "A register is a commitment: state the two or three dominant hues, the accent, and the materials that carry each of them.",
-    "Colours or materials the user asked to avoid may never appear as a dominant surface.",
+    "Colours the user asked to avoid may never appear on a surface the design chooses: drapery, upholstery, rugs, paint, case goods. Existing floors and stone are exempt.",
     "A committed colour must appear on more than one kind of surface. One accent cushion is not a register."
   ].join("\n");
 }
