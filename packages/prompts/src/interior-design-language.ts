@@ -496,6 +496,7 @@ export function paletteRegisterLanguage() {
     "Never fall back to a generic beige-brown scheme by default. If the brief asks for cool, dark, saturated, or bold colour, commit to that register fully: wall finish, textiles, stone, timber tone, and metal finish all follow it.",
     "If the brief gives no colour direction, choose ONE deliberate register that suits the room's natural light and architecture, and name it in the concept rationale. Register vocabulary used by top-end residential studios: quiet-luxury layered neutrals with a contrast accent; organic-modern textured off-whites with dark timber; warm gallery white with sculptural walnut; soft-Mediterranean plaster with terracotta and olive; new-classic stone, bronze, and deep wood; deep forest green with brass and smoked oak; ink-blue moody study with saddle leather; restful tonal bedroom with one grounded accent.",
     "A register is a commitment: state the two or three dominant hues, the accent, and the materials that carry each of them.",
-    "Colours or materials the user asked to avoid may never appear as a dominant surface."
+    "Colours or materials the user asked to avoid may never appear as a dominant surface.",
+    "A committed colour must appear on more than one kind of surface. One accent cushion is not a register."
   ].join("\n");
 }

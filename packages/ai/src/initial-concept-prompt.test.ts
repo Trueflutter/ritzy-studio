@@ -72,6 +72,12 @@ assert.equal(imagePrompt.includes("Do not invent alternate anchor furniture"), f
   assert.match(anchored, /image 1 of that set is the sofa, image 2 of that set is the rug/);
   assert.match(anchored, /Put those exact pieces in the room/);
   assert.match(anchored, /Do not swap any of them for a similar-looking piece/);
+  // Pinned pieces are not the palette. Measured: a room briefed for a
+  // committed terracotta was pinned to a cream sofa and a tan rug, the render
+  // kept both faithfully, and built a neutral room around them, because the
+  // anchor instruction is concrete and the palette one is not.
+  assert.match(anchored, /These pieces are fixed but they are not the palette/);
+  assert.match(anchored, /walls, drapery, art and accessories/);
 
   // Singular reads as English, because a room can be anchored on one piece.
   const one = buildInitialConceptImagePrompt({
