@@ -281,10 +281,29 @@ function allowedImageUrl(raw: string): URL | null {
   if (url.protocol !== "https:") {
     return null;
   }
-  return IMAGE_HOST_ALLOWLIST.has(url.hostname.toLowerCase()) ? url : null;
+  // Suffix matching, as the app's own reference guard does. Exact matching let
+  // this list hold "danubehome.com" while the catalogue's images live on
+  // assets.danubehome.com and mp-sellers-files.danubehome.com — 1,945 of 3,302
+  // products, 59% of stock, that the gate could never fetch and therefore
+  // counted as "cannot pass". It went unnoticed while the pipeline only read
+  // the freshest thousand rows, which happened to sit on the other hosts.
+  const host = url.hostname.toLowerCase();
+  const allowed = Array.from(IMAGE_HOST_ALLOWLIST).some(
+    (entry) => host === entry || host.endsWith(`.${entry}`)
+  );
+  return allowed ? url : null;
 }
 
+// One retry, because a single transient CDN blip should not decide a room's
+// gate verdict. Measured: a Home Centre image that fetches in a second on any
+// other attempt failed once and took its whole room to FAIL, on a check that
+// treats an unfetchable anchor as one it cannot pass.
 async function remoteImageDataUrl(raw: string): Promise<string | null> {
+  const first = await fetchImageDataUrl(raw);
+  return first ?? (await fetchImageDataUrl(raw));
+}
+
+async function fetchImageDataUrl(raw: string): Promise<string | null> {
   // Up to three hops, each revalidated against the allowlist, so a redirect
   // cannot walk off it.
   let target = allowedImageUrl(raw);
