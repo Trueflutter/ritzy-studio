@@ -119,5 +119,19 @@ console.log("text-cost tests passed");
   assert.ok(imageCallTimeoutMs(45_000, 0, 0) < IMAGE_FALLBACK_MIN_MS);
   assert.equal(imageCallTimeoutMs(45_000, 0, 0), 45_000, "and the number is what is left, never a floor above it");
 
+  // The result download is the render's last stage and must finish inside the
+  // same window. Both deadlines are given, because the redirect follower
+  // defaults its overall budget to TWICE the per-hop one: passing only the
+  // per-hop value handed a redirecting result two windows, with the body read
+  // starting after those.
+  const { evolinkDownloadBudgetMs } = await import("./index");
+  for (const remaining of [500, 5_000, 40_000, 200_000]) {
+    const budget = evolinkDownloadBudgetMs(remaining, 0);
+    assert.ok(budget.overallTimeoutMs <= Math.max(1_000, remaining), `overall fits what is left (${remaining})`);
+    assert.ok(budget.timeoutMs <= budget.overallTimeoutMs, "and a hop never outlives the whole download");
+  }
+  assert.deepEqual(evolinkDownloadBudgetMs(200_000, 0), { timeoutMs: 60_000, overallTimeoutMs: 200_000 });
+  assert.deepEqual(evolinkDownloadBudgetMs(40_000, 0), { timeoutMs: 40_000, overallTimeoutMs: 40_000 });
+
   console.log("image deadline tests passed");
 }

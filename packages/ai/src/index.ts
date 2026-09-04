@@ -778,6 +778,19 @@ export function imageCallTimeoutMs(deadlineMs: number | undefined, startedAt: nu
   return Math.max(0, Math.min(IMAGE_CALL_TIMEOUT_MS, deadlineMs - Math.max(0, now - startedAt)));
 }
 
+// What the result download may take: BOTH the per-hop timeout and the overall
+// one. followGuardedRedirects defaults its overall budget to twice the per-hop
+// value, so a caller passing only timeoutMs hands a redirecting result two
+// windows, and the body read then starts after those. The download is the last
+// stage of the render and has to finish inside the same window as the rest.
+export function evolinkDownloadBudgetMs(deadline: number, now = Date.now()): {
+  timeoutMs: number;
+  overallTimeoutMs: number;
+} {
+  const remaining = Math.max(1_000, deadline - now);
+  return { timeoutMs: Math.min(60_000, remaining), overallTimeoutMs: remaining };
+}
+
 // The primary's share of a caller's deadline: everything except what the
 // fallback would need. A fixed fraction was wrong in both directions — two
 // thirds of a 170 s budget left the fallback 58 s against a provider that needs
@@ -1418,9 +1431,11 @@ async function generateEvolinkImage({
         // The result download is inside the caller's window too. It was the last
         // stage still carrying its own fixed minute, which meant a run could
         // finish polling on time and then spend two more minutes fetching.
+        const budget = evolinkDownloadBudgetMs(deadline);
         const followed = await followGuardedRedirects(resultUrl, {
           allowlist,
-          timeoutMs: Math.max(1_000, Math.min(60_000, deadline - Date.now())),
+          timeoutMs: budget.timeoutMs,
+          overallTimeoutMs: budget.overallTimeoutMs,
           method: "GET"
         });
         if (!followed.ok) {
@@ -1444,7 +1459,7 @@ async function generateEvolinkImage({
       const resultBytes = await readResponseBytesCapped(
         imageResponse,
         30 * 1024 * 1024,
-        Math.max(1_000, Math.min(60_000, deadline - Date.now()))
+        evolinkDownloadBudgetMs(deadline).timeoutMs
       );
       if (!resultBytes) {
         throw new Error("Evolink result image exceeded the 30MB download cap or had no body.");

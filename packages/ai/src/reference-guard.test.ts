@@ -6,7 +6,8 @@ import {
   followGuardedRedirects,
   preflightReferenceImage,
   readResponseBytesCapped,
-  sanitizeReferenceImageUrl
+  sanitizeReferenceImageUrl,
+  type ReferenceFetchImpl
 } from "./reference-guard";
 
 const allowlist = buildReferenceHostAllowlist({
@@ -414,6 +415,36 @@ function mockFetch(routes: Record<string, MockResponse | MockResponse[]>) {
   assert.equal(result.ok, false);
   assert.ok(!result.ok && /deadline/.test(result.reason ?? ""), `reason: ${!result.ok ? result.reason : ""}`);
   assert.ok(Date.now() - startedAt < 2_000);
+}
+
+// --- a redirecting response cannot outlive the caller's window. The overall
+// budget defaults to TWICE the per-hop one, so a caller passing only timeoutMs
+// gets two windows: the Evolink result download did exactly that, and then
+// started reading a body afterwards.
+{
+  const hops: string[] = [];
+  const slowRedirect: ReferenceFetchImpl = async (input) => {
+    hops.push(String(input));
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    // A different target each hop, so the deadline is what stops this and not
+    // the loop guard.
+    return new Response(null, {
+      status: 302,
+      headers: { location: `https://media.homecentre.com/hop-${hops.length}.jpg` }
+    });
+  };
+  const started = Date.now();
+  const result = await followGuardedRedirects("https://media.homecentre.com/a.jpg", {
+    allowlist: buildReferenceHostAllowlist({ supabaseUrl: "https://example-project.supabase.co" }),
+    timeoutMs: 200,
+    overallTimeoutMs: 100,
+    method: "GET",
+    fetchImpl: slowRedirect
+  });
+  assert.equal(result.ok, false);
+  assert.match(String((result as { reason: string }).reason), /deadline/);
+  assert.ok(Date.now() - started < 200, "it gives up inside the overall budget, not the per-hop one");
+  assert.ok(hops.length >= 1);
 }
 
 console.log("reference-guard tests passed");
