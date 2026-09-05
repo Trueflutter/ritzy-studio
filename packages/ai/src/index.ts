@@ -2,12 +2,17 @@ import { parseServerEnv } from "@ritzy-studio/config";
 import type { Database } from "@ritzy-studio/db";
 import {
   buildProductSearchText,
+  type RoomCameraRead,
   productEnrichmentInputSchema,
   productEnrichmentResponseSchema,
   type ProductEnrichmentInput,
   type ProductEnrichmentResponse
 } from "@ritzy-studio/domain";
 import {
+  cameraReadJsonSchema,
+  cameraReadPrompt,
+  cameraReadResponseSchema,
+  type CameraReadResponse,
   clarifyingQuestionsJsonSchema,
   clarifyingQuestionsPrompt,
   clarifyingQuestionsResponseSchema,
@@ -50,6 +55,10 @@ import {
   spatialLayoutLanguage,
   type SpatialPromptIntent,
   styleDesignLanguage,
+  viewConsistencyJsonSchema,
+  viewConsistencyPrompt,
+  viewConsistencyResponseSchema,
+  type ViewConsistencyResponse,
   inspirationAnalysisJsonSchema,
   inspirationAnalysisPrompt,
   inspirationAnalysisResponseSchema,
@@ -339,6 +348,11 @@ export type GenerateFinalGroundedRenderInput = {
   roomPhotoBytes: Buffer;
   roomPhotoMimeType: string;
   roomPhotoUrl?: string | null;
+  // S4: every photograph the shopper gave, the spec's must-preserve list as
+  // the preservation contract, and the attempt's deadline for the image call.
+  additionalRoomPhotos?: Array<{ bytes: Buffer; mimeType: string; url?: string | null }>;
+  mustPreserve?: readonly string[] | null;
+  imageDeadlineMs?: number;
   conceptImageBytes?: Buffer | null;
   conceptImageMimeType?: string | null;
   conceptImageUrl?: string | null;
@@ -2799,6 +2813,8 @@ export async function generateConceptView(
 // completed hero render (which already composites the real purchased products) as the reference and
 // uses truth-separation-aware consistency language so the second/third angles reproduce the exact
 // same products, not a restyle. Camera language is shared with concept views (same room geometry).
+export type ViewReferenceImage = { bytes: Buffer; mimeType: string; url?: string | null };
+
 export type GenerateFinalRenderViewInput = {
   roomType: string;
   viewKey: ConceptViewKey;
@@ -2807,7 +2823,54 @@ export type GenerateFinalRenderViewInput = {
   heroImageBytes: Buffer;
   heroImageMimeType: string;
   heroImageUrl?: string | null;
+  // S4 planned views: the photograph whose camera the view stands at, the
+  // products the view must show, the focal element in words, the roles it is
+  // responsible for, a correction suffix for a regeneration, and the deadline.
+  sourcePhoto?: ViewReferenceImage | null;
+  productReferences?: Array<ViewReferenceImage & { name: string; roleLabel?: string | null }>;
+  focalLabel?: string | null;
+  mustShowLabels?: readonly string[] | null;
+  purpose?: string | null;
+  promptSuffix?: string | null;
+  deadlineMs?: number;
 };
+
+// Reference order for a planned view, which the prompt's sentences depend on:
+// the anchored photograph first (when there is one), the hero second, the
+// products last. The photograph and the hero are required: a URL provider
+// that cannot carry them fails over instead of generating without them.
+export function finalRenderViewReferences(input: {
+  sourcePhoto?: ViewReferenceImage | null;
+  hero: ViewReferenceImage;
+  productReferences?: ReadonlyArray<ViewReferenceImage & { name: string }>;
+}): ImageGenerationReference[] {
+  return [
+    ...(input.sourcePhoto
+      ? [
+          {
+            bytes: input.sourcePhoto.bytes,
+            mimeType: input.sourcePhoto.mimeType,
+            name: "source-photo",
+            url: input.sourcePhoto.url ?? null,
+            required: true
+          }
+        ]
+      : []),
+    {
+      bytes: input.hero.bytes,
+      mimeType: input.hero.mimeType,
+      name: "final-render",
+      url: input.hero.url ?? null,
+      required: true
+    },
+    ...(input.productReferences ?? []).map((product, index) => ({
+      bytes: product.bytes,
+      mimeType: product.mimeType,
+      name: `product-${index + 1}`,
+      url: product.url ?? null
+    }))
+  ];
+}
 
 export type GenerateFinalRenderViewResult = GenerateConceptViewResult;
 
@@ -2854,22 +2917,29 @@ export function buildFinalRenderViewPrompt(input: FinalRenderViewPromptInput) {
 export async function generateFinalRenderView(
   input: GenerateFinalRenderViewInput
 ): Promise<GenerateFinalRenderViewResult> {
-  const env = parseServerEnv(process.env);
-  const client = createTextClient(env);
-  const prompt = buildFinalRenderViewPrompt(input);
+  const productReferences = input.productReferences ?? [];
+  const basePrompt = buildFinalRenderViewPrompt({
+    roomType: input.roomType,
+    viewKey: input.viewKey,
+    conceptTitle: input.conceptTitle,
+    conceptDescription: input.conceptDescription,
+    focalLabel: input.focalLabel ?? null,
+    anchoredToPhoto: Boolean(input.sourcePhoto),
+    productReferenceCount: productReferences.length,
+    mustShowLabels: input.mustShowLabels ?? null,
+    purpose: input.purpose ?? null
+  });
+  const prompt = input.promptSuffix ? `${basePrompt}\n\n${input.promptSuffix}` : basePrompt;
 
   const imageResult = await generateImageWithConfiguredProvider({
     prompt,
-    references: [
-      {
-        bytes: input.heroImageBytes,
-        mimeType: input.heroImageMimeType,
-        name: "final-render",
-        url: input.heroImageUrl ?? null,
-        required: true
-      }
-    ],
-    noImageErrorMessage: "Final render view generation returned no image data."
+    references: finalRenderViewReferences({
+      sourcePhoto: input.sourcePhoto ?? null,
+      hero: { bytes: input.heroImageBytes, mimeType: input.heroImageMimeType, url: input.heroImageUrl ?? null },
+      productReferences
+    }),
+    noImageErrorMessage: "Final render view generation returned no image data.",
+    deadlineMs: input.deadlineMs
   });
 
   return {
@@ -2968,12 +3038,52 @@ export async function extractConceptImagePalette(
   };
 }
 
+export type SpatialQaCameraFacts = {
+  // From the camera read (S4): whether the focal element is in the hero frame
+  // (null when the read could not say, or no focal element is named).
+  focalElementInFrame: boolean | null;
+  focalLabel?: string | null;
+};
+
 export type AssessRenderSpatialQualityInput = {
   // Data URL or fetchable URL of the rendered image.
   imageUrl: string;
   roomType: string;
   spatialIntent?: SpatialPromptIntent | null;
+  cameraFacts?: SpatialQaCameraFacts | null;
+  // Per-request deadline, bounded by the caller to what is left of its attempt.
+  timeoutMs?: number;
 };
+
+export const SPATIAL_QA_TIMEOUT_MS = 60_000;
+
+// The reviewer's context sentence. Exported so the "behind the camera" case,
+// the one Phase 0 shipped on, is pinned without a provider.
+export function spatialQaContext(input: Pick<AssessRenderSpatialQualityInput, "roomType" | "spatialIntent" | "cameraFacts">): string {
+  const focalPoint =
+    input.spatialIntent?.focalPoint && input.spatialIntent.focalPoint !== "unknown" ? input.spatialIntent.focalPoint : null;
+  const focalWords = input.cameraFacts?.focalLabel?.trim() || (focalPoint ? focalPoint.replace(/_/g, " ") : null);
+  const framing =
+    focalPoint && input.cameraFacts
+      ? input.cameraFacts.focalElementInFrame === true
+        ? `The focal element (${focalWords}) is IN FRAME in this view.`
+        : input.cameraFacts.focalElementInFrame === false
+          ? `The focal element (${focalWords}) is BEHIND THE CAMERA in this view: seating that faces the camera is facing it, so do not fail focalOrientation for a wall the camera cannot see.`
+          : `Whether the focal element (${focalWords}) is in frame is not known for this view.`
+      : null;
+  return [
+    `Room type: ${input.roomType}.`,
+    focalPoint
+      ? `The user chose the focal point: ${focalPoint.replace(/_/g, " ")}.`
+      : "Focal point was not specified; judge against the most credible focal point in the image.",
+    framing,
+    input.spatialIntent?.mustKeepClear?.length
+      ? `The user asked to keep clear: ${input.spatialIntent.mustKeepClear.join("; ")}.`
+      : null
+  ]
+    .filter(Boolean)
+    .join(" ");
+}
 
 export type AssessRenderSpatialQualityResult = {
   promptKey: string;
@@ -2990,47 +3100,40 @@ export async function assessRenderSpatialQuality(
   const client = createTextClient(env);
   const { model: stageModel, requestParams: stageRequestParams } = stageTextConfig("spatial_qa", env.OPENAI_TEXT_MODEL);
 
-  const context = [
-    `Room type: ${input.roomType}.`,
-    input.spatialIntent?.focalPoint && input.spatialIntent.focalPoint !== "unknown"
-      ? `The user chose the focal point: ${input.spatialIntent.focalPoint.replace(/_/g, " ")}.`
-      : "Focal point was not specified; judge against the most credible focal point in the image.",
-    input.spatialIntent?.mustKeepClear?.length
-      ? `The user asked to keep clear: ${input.spatialIntent.mustKeepClear.join("; ")}.`
-      : null
-  ]
-    .filter(Boolean)
-    .join(" ");
+  const context = spatialQaContext(input);
 
-  const response = await client.responses.create({
-    max_output_tokens: 4000,
-    ...stageRequestParams,
-    input: [
-      {
-        role: "system",
-        content: renderSpatialQaPrompt.system
-      },
-      {
-        role: "user",
-        content: [
-          { type: "input_text", text: context },
-          {
-            type: "input_image",
-            image_url: input.imageUrl,
-            detail: "high"
-          }
-        ]
+  const response = await client.responses.create(
+    {
+      max_output_tokens: 4000,
+      ...stageRequestParams,
+      input: [
+        {
+          role: "system",
+          content: renderSpatialQaPrompt.system
+        },
+        {
+          role: "user",
+          content: [
+            { type: "input_text", text: context },
+            {
+              type: "input_image",
+              image_url: input.imageUrl,
+              detail: "high"
+            }
+          ]
+        }
+      ],
+      text: {
+        format: {
+          type: "json_schema",
+          name: "ritzy_render_spatial_qa",
+          schema: renderSpatialQaJsonSchema,
+          strict: true
+        }
       }
-    ],
-    text: {
-      format: {
-        type: "json_schema",
-        name: "ritzy_render_spatial_qa",
-        schema: renderSpatialQaJsonSchema,
-        strict: true
-      }
-    }
-  });
+    },
+    { timeout: input.timeoutMs ?? SPATIAL_QA_TIMEOUT_MS }
+  );
 
   const qa = renderSpatialQaResponseSchema.parse(JSON.parse(response.output_text));
 
@@ -3059,6 +3162,209 @@ export function spatialQaCorrectionLanguage(issues: string[]) {
       .map((issue) => `- ${truncateForPrompt(issue, SPATIAL_QA_CORRECTION_ISSUE_MAX_CHARS)}`),
     "Keep the same design direction, palette, and products; only correct the placement, orientation, scale, or artifact problems named above."
   ].join("\n");
+}
+
+// S4: the camera read. One cheap vision call on a hero image that reports the
+// facts the view planner needs; the planner (packages/domain) decides the set.
+export const CAMERA_READ_TIMEOUT_MS = 45_000;
+
+export type ReadRoomCameraFactsInput = {
+  roomType: string;
+  focalPoint: string | null;
+  focalLabel: string | null;
+  heroImageDataUrl: string;
+  photos: Array<{ assetId: string; dataUrl: string }>;
+  keyRoles: Array<{ key: string; label: string }>;
+  timeoutMs?: number;
+};
+
+export type ReadRoomCameraFactsResult = {
+  read: RoomCameraRead;
+  promptKey: string;
+  promptVersion: string;
+  model: string;
+  textCostUsd?: number | null;
+};
+
+export type VisionContentPart =
+  | { type: "input_text"; text: string }
+  | { type: "input_image"; image_url: string; detail: "low" | "high" };
+
+export function cameraReadContent(
+  input: Omit<ReadRoomCameraFactsInput, "timeoutMs">
+): VisionContentPart[] {
+  return [
+    {
+      type: "input_text",
+      text: JSON.stringify({
+        roomType: input.roomType,
+        focalPoint: input.focalPoint,
+        focalLabel: input.focalLabel,
+        keyRoles: input.keyRoles.map((role) => ({ key: role.key, label: fenceUntrustedText(role.label, 120) })),
+        photoAssetIds: input.photos.map((photo) => photo.assetId)
+      })
+    },
+    { type: "input_text", text: "Image 1: the rendered hero view." },
+    { type: "input_image", image_url: input.heroImageDataUrl, detail: "low" },
+    ...input.photos.flatMap<VisionContentPart>((photo) => [
+      { type: "input_text", text: `Photograph ${photo.assetId}.` },
+      { type: "input_image", image_url: photo.dataUrl, detail: "low" }
+    ])
+  ];
+}
+
+// Only the room's own photographs and the listed keys survive, each photo
+// answered once (first answer wins), and a room with no focal element never
+// claims the hero shows one.
+export function normalizeCameraRead(
+  response: CameraReadResponse,
+  bounds: { focalPoint: string | null; photoAssetIds: readonly string[]; roleKeys: readonly string[] }
+): RoomCameraRead {
+  const known = new Set(bounds.photoAssetIds);
+  const keys = new Set(bounds.roleKeys);
+  const seen = new Set<string>();
+  const photos: RoomCameraRead["photos"] = [];
+  for (const photo of response.photos) {
+    if (!known.has(photo.assetId) || seen.has(photo.assetId)) {
+      continue;
+    }
+    seen.add(photo.assetId);
+    photos.push({
+      assetId: photo.assetId,
+      sameRoom: photo.sameRoom,
+      cameraRelativeToHero: photo.cameraRelativeToHero,
+      showsFocalWall: photo.showsFocalWall
+    });
+  }
+  return {
+    source: "vision",
+    hero: {
+      showsFocalElement: bounds.focalPoint ? response.hero.showsFocalElement : null,
+      hiddenRoleKeys: Array.from(new Set(response.hero.hiddenRoleKeys.filter((key) => keys.has(key))))
+    },
+    photos
+  };
+}
+
+export async function readRoomCameraFacts(input: ReadRoomCameraFactsInput): Promise<ReadRoomCameraFactsResult> {
+  const env = parseServerEnv(process.env);
+  const client = createTextClient(env);
+  const { model: stageModel, requestParams: stageRequestParams } = stageTextConfig("camera_read", env.OPENAI_TEXT_MODEL);
+  const photoAssetIds = input.photos.map((photo) => photo.assetId);
+  const roleKeys = input.keyRoles.map((role) => role.key);
+
+  const response = await client.responses.create(
+    {
+      max_output_tokens: 2000,
+      ...stageRequestParams,
+      input: [
+        { role: "system", content: cameraReadPrompt.system },
+        { role: "user", content: cameraReadContent(input) }
+      ],
+      text: {
+        format: {
+          type: "json_schema",
+          name: "ritzy_camera_read",
+          schema: cameraReadJsonSchema({ assetIds: photoAssetIds, roleKeys }),
+          strict: true
+        }
+      }
+    },
+    { timeout: input.timeoutMs ?? CAMERA_READ_TIMEOUT_MS }
+  );
+
+  const parsed = cameraReadResponseSchema.parse(JSON.parse(response.output_text));
+  return {
+    read: normalizeCameraRead(parsed, { focalPoint: input.focalPoint, photoAssetIds, roleKeys }),
+    promptKey: cameraReadPrompt.key,
+    promptVersion: cameraReadPrompt.version,
+    model: stageModel,
+    textCostUsd: estimateTextCostUsd(stageModel, response.usage)
+  };
+}
+
+// S4: the cross-view consistency check. A planned view against the final hero
+// and, when it stands where a photograph was taken, against that photograph.
+export const VIEW_CONSISTENCY_TIMEOUT_MS = 45_000;
+
+export type AssessViewConsistencyInput = {
+  roomType: string;
+  viewKey: ConceptViewKey;
+  heroImageDataUrl: string;
+  viewImageDataUrl: string;
+  anchorPhotoDataUrl: string | null;
+  expectedLabels: string[];
+  hiddenLabels: string[];
+  focalLabel: string | null;
+  timeoutMs?: number;
+};
+
+export type AssessViewConsistencyResult = {
+  check: ViewConsistencyResponse;
+  promptKey: string;
+  promptVersion: string;
+  model: string;
+  textCostUsd?: number | null;
+};
+
+export function viewConsistencyContent(input: Omit<AssessViewConsistencyInput, "timeoutMs">): VisionContentPart[] {
+  return [
+    {
+      type: "input_text",
+      text: JSON.stringify({
+        roomType: input.roomType,
+        viewKey: input.viewKey,
+        expected: input.expectedLabels.map((label) => fenceUntrustedText(label, 160)),
+        heroHidden: input.hiddenLabels.map((label) => fenceUntrustedText(label, 160)),
+        focalLabel: input.focalLabel ? fenceUntrustedText(input.focalLabel, 160) : null,
+        anchoredPhotograph: Boolean(input.anchorPhotoDataUrl)
+      })
+    },
+    { type: "input_text", text: "Image 1: the FINAL hero render." },
+    { type: "input_image", image_url: input.heroImageDataUrl, detail: "high" },
+    { type: "input_text", text: "Image 2: the VIEW to judge." },
+    { type: "input_image", image_url: input.viewImageDataUrl, detail: "high" },
+    ...(input.anchorPhotoDataUrl
+      ? ([
+          { type: "input_text", text: "Image 3: the anchored photograph of the real room, taken from where the view's camera must stand." },
+          { type: "input_image", image_url: input.anchorPhotoDataUrl, detail: "low" }
+        ] as VisionContentPart[])
+      : [])
+  ];
+}
+
+export async function assessViewConsistency(input: AssessViewConsistencyInput): Promise<AssessViewConsistencyResult> {
+  const env = parseServerEnv(process.env);
+  const client = createTextClient(env);
+  const { model: stageModel, requestParams: stageRequestParams } = stageTextConfig("view_consistency", env.OPENAI_TEXT_MODEL);
+
+  const response = await client.responses.create(
+    {
+      max_output_tokens: 3000,
+      ...stageRequestParams,
+      input: [
+        { role: "system", content: viewConsistencyPrompt.system },
+        { role: "user", content: viewConsistencyContent(input) }
+      ],
+      text: {
+        format: {
+          type: "json_schema",
+          name: "ritzy_view_consistency",
+          schema: viewConsistencyJsonSchema,
+          strict: true
+        }
+      }
+    },
+    { timeout: input.timeoutMs ?? VIEW_CONSISTENCY_TIMEOUT_MS }
+  );
+
+  return {
+    check: viewConsistencyResponseSchema.parse(JSON.parse(response.output_text)),
+    promptKey: viewConsistencyPrompt.key,
+    promptVersion: viewConsistencyPrompt.version,
+    model: stageModel,
+    textCostUsd: estimateTextCostUsd(stageModel, response.usage)
+  };
 }
 
 export async function generateConceptRevision(
@@ -3570,6 +3876,51 @@ export async function enrichAndEmbedProduct({
   };
 }
 
+// Reference order for the hero render: every photograph (the first is the
+// camera), the approved concept, then at most `maxProductReferences` products
+// that have an image. The photographs and the concept are required.
+export function finalGroundedRenderReferences(input: {
+  roomPhoto: { bytes: Buffer; mimeType: string; url?: string | null };
+  additionalRoomPhotos?: ReadonlyArray<{ bytes: Buffer; mimeType: string; url?: string | null }>;
+  conceptImage?: { bytes: Buffer; mimeType: string; url?: string | null } | null;
+  products: ReadonlyArray<{ bytes: Buffer; mimeType: string; url?: string | null }>;
+  maxProductReferences?: number;
+}): ImageGenerationReference[] {
+  return [
+    {
+      bytes: input.roomPhoto.bytes,
+      mimeType: input.roomPhoto.mimeType,
+      name: "room",
+      url: input.roomPhoto.url ?? null,
+      required: true
+    },
+    ...(input.additionalRoomPhotos ?? []).slice(0, 2).map((photo, index) => ({
+      bytes: photo.bytes,
+      mimeType: photo.mimeType,
+      name: `room-angle-${index + 2}`,
+      url: photo.url ?? null,
+      required: true
+    })),
+    ...(input.conceptImage
+      ? [
+          {
+            bytes: input.conceptImage.bytes,
+            mimeType: input.conceptImage.mimeType,
+            name: "concept",
+            url: input.conceptImage.url ?? null,
+            required: true
+          }
+        ]
+      : []),
+    ...input.products.slice(0, input.maxProductReferences ?? 8).map((product, index) => ({
+      bytes: product.bytes,
+      mimeType: product.mimeType,
+      name: `product-${index}`,
+      url: product.url ?? null
+    }))
+  ];
+}
+
 export async function generateFinalGroundedRender(
   input: GenerateFinalGroundedRenderInput
 ): Promise<GenerateFinalGroundedRenderResult> {
@@ -3578,15 +3929,14 @@ export async function generateFinalGroundedRender(
   const hasConceptImage = Boolean(input.conceptImageBytes && input.conceptImageMimeType);
   const maxProductReferences =
     process.env.RITZY_AESTHETIC_TASTE_GATE === "1" && process.env.NODE_ENV !== "production" ? 12 : 8;
-  const productReferences = input.products
+  const productImages = input.products
     .filter((product) => product.imageBytes && product.imageMimeType)
-    .slice(0, maxProductReferences)
-    .map((product, index) => ({
+    .map((product) => ({
       bytes: product.imageBytes as Buffer,
       mimeType: product.imageMimeType as string,
-      name: `product-${index}`,
       url: product.imageUrl ?? null
     }));
+  const additionalRoomPhotos = (input.additionalRoomPhotos ?? []).slice(0, 2);
   // The image model has tight prompt-token limits; keep the product summary to
   // the visual facts it can act on. Selection rationales are provenance, not
   // render guidance.
@@ -3613,34 +3963,26 @@ export async function generateFinalGroundedRender(
     hasConceptImage,
     productSummary,
     strictSourceRoomPreservation: localStrictSourceRoomPreservationEnabled(),
-    spatialIntent: input.spatialIntent ?? null
+    spatialIntent: input.spatialIntent ?? null,
+    additionalRoomPhotoCount: additionalRoomPhotos.length,
+    mustPreserve: input.mustPreserve ?? null
   });
   const prompt = input.promptSuffix ? `${basePrompt}\n\n${input.promptSuffix}` : basePrompt;
 
   const imageResult = await generateImageWithConfiguredProvider({
     prompt,
-    references: [
-      {
-        bytes: input.roomPhotoBytes,
-        mimeType: input.roomPhotoMimeType,
-        name: "room",
-        url: input.roomPhotoUrl ?? null,
-        required: true
-      },
-      ...(input.conceptImageBytes && input.conceptImageMimeType
-        ? [
-            {
-              bytes: input.conceptImageBytes,
-              mimeType: input.conceptImageMimeType,
-              name: "concept",
-              url: input.conceptImageUrl ?? null,
-              required: true
-            }
-          ]
-        : []),
-      ...productReferences
-    ],
-    noImageErrorMessage: "OpenAI final render generation returned no image data."
+    references: finalGroundedRenderReferences({
+      roomPhoto: { bytes: input.roomPhotoBytes, mimeType: input.roomPhotoMimeType, url: input.roomPhotoUrl ?? null },
+      additionalRoomPhotos,
+      conceptImage:
+        input.conceptImageBytes && input.conceptImageMimeType
+          ? { bytes: input.conceptImageBytes, mimeType: input.conceptImageMimeType, url: input.conceptImageUrl ?? null }
+          : null,
+      products: productImages,
+      maxProductReferences
+    }),
+    noImageErrorMessage: "OpenAI final render generation returned no image data.",
+    deadlineMs: input.imageDeadlineMs
   });
 
   return {
