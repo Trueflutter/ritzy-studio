@@ -49,14 +49,21 @@ export const FINAL_RENDER_VIEWS_JOB_TYPE = "final_render_views";
 // by the remaining deadline, so a view started here and cut off by the route
 // closes its row failed and is repaired by the next delivery.
 export const VIEW_START_RESERVE_MS = 90_000;
-// A lease outlives the attempt by this much so a delivery that is slow but
-// alive is not reclaimed while it is still writing.
+// A lease outlives its holder's expected work by this much so a delivery that
+// is slow but alive is not reclaimed while it is still writing.
 export const VIEW_LEASE_GRACE_MS = 30_000;
+// A lease is bounded by the VIEW's own worst case (start, one retry, grace),
+// never by the whole attempt: a dead delivery's lease must lapse inside the
+// queue's redelivery cadence, or its views would never be repaired. It is
+// extended by the holder once the generation lands, for the check and a retry.
+export const VIEW_LEASE_MS = VIEW_START_RESERVE_MS + 75_000 + VIEW_LEASE_GRACE_MS;
+export const VIEW_LEASE_EXTENSION_MS = 75_000 + VIEW_LEASE_GRACE_MS;
 
 const SIGNED_URL_TTL_SECONDS = 60 * 30;
 
 export type FinalRenderViewsDeps = {
   now: () => number;
+  sleep: (ms: number) => Promise<void>;
   generateView: (input: GenerateFinalRenderViewInput) => Promise<GenerateFinalRenderViewResult>;
   assessView: (input: AssessViewConsistencyInput) => Promise<AssessViewConsistencyResult>;
   fetchImage: (url: string) => Promise<{ bytes: Buffer; mimeType: string } | null>;
@@ -134,6 +141,7 @@ export async function ensureFinalRenderViews({
 }): Promise<{ complete: boolean }> {
   const deps: FinalRenderViewsDeps = {
     now,
+    sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
     generateView: generateFinalRenderView,
     assessView: assessViewConsistency,
     fetchImage: fetchRemoteImage,
@@ -324,11 +332,41 @@ export async function ensureFinalRenderViews({
       return { kind: "not_terminal", why: "succeeded row without an asset" };
     }
 
-    const nowMs = deps.now();
-    const running = rows.filter((row) => row.status === "running");
+    let nowMs = deps.now();
+    let running = rows.filter((row) => row.status === "running");
     const live = running.find((row) => Number(summaryOf(row.input_summary).leaseUntil ?? 0) > nowMs);
     if (live) {
-      return { kind: "not_terminal", why: "another delivery holds the lease" };
+      // Another delivery holds the lease. If it is alive it will finish; if it
+      // died, its lease lapses within the view's own worst case. Waiting it out
+      // inside this attempt's budget, then reclaiming, is what lets a
+      // redelivery repair a dead delivery's views instead of spending an
+      // attempt on a lease it cannot touch.
+      const waitMs = Number(summaryOf(live.input_summary).leaseUntil) - nowMs + 1_000;
+      if (remainingMs() - waitMs < VIEW_START_RESERVE_MS) {
+        return { kind: "not_terminal", why: "another delivery holds the lease" };
+      }
+      await deps.sleep(waitMs);
+      nowMs = deps.now();
+      const { data: after } = await serviceSupabase
+        .from("ai_jobs")
+        .select("id, status, created_at, input_summary, output_summary")
+        .eq("id", live.id)
+        .maybeSingle();
+      const afterRow = after as ViewCheckRow | null;
+      if (afterRow?.status === "succeeded") {
+        const out = summaryOf(afterRow.output_summary);
+        const assetId = typeof out.assetId === "string" ? out.assetId : null;
+        const outcome = out.outcome as ViewConsistencyOutcome | undefined;
+        if (assetId && outcome) {
+          return { kind: "terminal", outcome, assetId };
+        }
+        return { kind: "not_terminal", why: "succeeded row without an asset" };
+      }
+      if (afterRow?.status === "running" && Number(summaryOf(afterRow.input_summary).leaseUntil ?? 0) > nowMs) {
+        // The holder extended its lease: it is alive and working.
+        return { kind: "not_terminal", why: "another delivery holds the lease" };
+      }
+      running = afterRow?.status === "running" ? [afterRow] : [];
     }
     let recovered: { assetId: string; assetPath: string } | null = null;
     for (const expired of running) {
@@ -362,7 +400,17 @@ export async function ensureFinalRenderViews({
       return { kind: "not_terminal", why: "no time left in this attempt to start the view" };
     }
 
-    const leaseUntil = deadlineAt + VIEW_LEASE_GRACE_MS;
+    const leaseUntil = Math.min(deps.now() + VIEW_LEASE_MS, deadlineAt + VIEW_LEASE_GRACE_MS);
+    const leaseSummary = {
+      renderJobId: job.id,
+      viewKey: view.key,
+      leaseUntil,
+      legacy,
+      sourcePhotoAssetId: view.sourcePhotoAssetId,
+      mustShow: view.mustShow,
+      referenceItemIds: view.referenceItemIds,
+      recoveredAssetId: recovered?.assetId ?? null
+    };
     const { data: lease, error: leaseError } = await serviceSupabase
       .from("ai_jobs")
       .insert({
@@ -372,16 +420,7 @@ export async function ensureFinalRenderViews({
         status: "running",
         provider: "openai",
         model: "view_consistency",
-        input_summary: {
-          renderJobId: job.id,
-          viewKey: view.key,
-          leaseUntil,
-          legacy,
-          sourcePhotoAssetId: view.sourcePhotoAssetId,
-          mustShow: view.mustShow,
-          referenceItemIds: view.referenceItemIds,
-          recoveredAssetId: recovered?.assetId ?? null
-        }
+        input_summary: leaseSummary
       })
       .select("id")
       .single();
@@ -446,10 +485,14 @@ export async function ensureFinalRenderViews({
         if (assetError || !asset) {
           throw new Error(assetError?.message ?? "Final render view asset insert returned no row.");
         }
-        // Recorded before the check so a crash from here leaves a recoverable asset.
+        // Recorded before the check so a crash from here leaves a recoverable
+        // asset, and the lease is extended for the check and a possible retry.
         await serviceSupabase
           .from("ai_jobs")
-          .update({ output_summary: { assetId: asset.id, assetPath } })
+          .update({
+            output_summary: { assetId: asset.id, assetPath },
+            input_summary: { ...leaseSummary, leaseUntil: Math.min(deps.now() + VIEW_LEASE_EXTENSION_MS, deadlineAt + VIEW_LEASE_GRACE_MS) }
+          })
           .eq("id", lease.id)
           .eq("status", "running");
         return { assetId: asset.id, assetPath, bytes, credits: generated.imageCreditsUsed, recovered: false };
@@ -482,33 +525,49 @@ export async function ensureFinalRenderViews({
       deliveryTextCost =
         enforced.textCostUsd === null ? deliveryTextCost : Math.round(((deliveryTextCost ?? 0) + enforced.textCostUsd) * 10_000) / 10_000;
 
-      const { data: closed } = await serviceSupabase
-        .from("ai_jobs")
-        .update({
-          status: "succeeded",
-          completed_at: new Date(deps.now()).toISOString(),
-          cost_estimate_usd: sumImagePlusTextUsd(evolinkCreditsToUsd(enforced.imageCreditsUsed), enforced.textCostUsd),
-          output_summary: {
-            viewKey: view.key,
-            outcome: enforced.outcome,
-            assetId: enforced.image.assetId,
-            assetPath: enforced.image.assetPath,
-            recovered: enforced.image.recovered,
-            regenerated: enforced.regenerated,
-            verdicts: enforced.verdicts,
-            issues: enforced.issues,
-            reason: enforced.reason,
-            error: enforced.error,
-            check: enforced.assessment?.check ?? null,
-            anchoredPhotoAssetId: sourcePhoto ? view.sourcePhotoAssetId : null,
-            productReferenceCount: productReferences.length
-          }
-        })
-        .eq("id", lease.id)
-        .eq("status", "running")
-        .select("id");
-      if (!closed || closed.length === 0) {
-        // Our lease was reclaimed while we worked; the reclaimer's row decides.
+      const closePayload = {
+        status: "succeeded" as const,
+        completed_at: new Date(deps.now()).toISOString(),
+        cost_estimate_usd: sumImagePlusTextUsd(evolinkCreditsToUsd(enforced.imageCreditsUsed), enforced.textCostUsd),
+        output_summary: {
+          viewKey: view.key,
+          outcome: enforced.outcome,
+          assetId: enforced.image.assetId,
+          assetPath: enforced.image.assetPath,
+          recovered: enforced.image.recovered,
+          regenerated: enforced.regenerated,
+          verdicts: enforced.verdicts,
+          issues: enforced.issues,
+          reason: enforced.reason,
+          error: enforced.error,
+          check: enforced.assessment?.check ?? null,
+          anchoredPhotoAssetId: sourcePhoto ? view.sourcePhotoAssetId : null,
+          productReferenceCount: productReferences.length
+        }
+      };
+      // A transient error on the close is retried once, the way closeAiJob
+      // does: only a clean write that matches no row means the lease was
+      // reclaimed by another delivery, whose row then decides.
+      let closed: Array<{ id: string }> | null = null;
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        const { data, error } = await serviceSupabase
+          .from("ai_jobs")
+          .update(closePayload)
+          .eq("id", lease.id)
+          .eq("status", "running")
+          .select("id");
+        if (!error) {
+          closed = data ?? [];
+          break;
+        }
+        console.error(`Final render ${job.id}: closing the check row for ${view.key} failed (${error.message}); retrying once.`);
+      }
+      if (closed === null) {
+        // The row stays running until its lease lapses; the next delivery
+        // reclaims it and checks the recorded asset without regenerating.
+        return { kind: "not_terminal", why: "the check row could not be closed" };
+      }
+      if (closed.length === 0) {
         return { kind: "not_terminal", why: "the lease was reclaimed before the check closed" };
       }
       return { kind: "terminal", outcome: enforced.outcome, assetId: enforced.image.assetId };
@@ -527,7 +586,7 @@ export async function ensureFinalRenderViews({
   };
 
   const states = await Promise.all(plan.views.map((view) => processView(view)));
-  const outcomes: ViewOutcomeSummary = {};
+  let outcomes: ViewOutcomeSummary = {};
   const notTerminal: string[] = [];
   plan.views.forEach((view, index) => {
     const state = states[index];
@@ -537,7 +596,7 @@ export async function ensureFinalRenderViews({
       notTerminal.push(`${view.key}: ${state.why}`);
     }
   });
-  const complete = states.every((state) => state.kind === "terminal");
+  let complete = states.every((state) => state.kind === "terminal");
 
   if (viewsJobId) {
     await closeAiJob(
@@ -555,19 +614,22 @@ export async function ensureFinalRenderViews({
   }
 
   // The asset list: hero, then each planned view's winner that the reveal may
-  // show, in plan order, under the version that was read; a write that
-  // matches no row means another delivery wrote first, so re-read and retry.
-  const orderedViewAssetIds = plan.views
-    .map((view) => outcomes[view.key])
-    .filter((entry): entry is NonNullable<typeof entry> => Boolean(entry) && displayableViewOutcome(entry?.outcome))
-    .map((entry) => entry.assetId);
+  // show, in plan order, under the version that was read. A write that
+  // matches no row means another delivery wrote first: re-read, merge its
+  // recorded outcomes with this delivery's (one succeeded row per key makes
+  // the union conflict-free), recompute the list and the completeness, retry.
+  const orderedAssetIds = (map: ViewOutcomeSummary) =>
+    plan.views
+      .map((view) => map[view.key])
+      .filter((entry): entry is NonNullable<typeof entry> => Boolean(entry) && displayableViewOutcome(entry?.outcome))
+      .map((entry) => entry.assetId);
   let currentSummary = summary;
   for (let attempt = 0; attempt < 3; attempt += 1) {
     const version = typeof currentSummary.viewsVersion === "number" ? currentSummary.viewsVersion : null;
     const update = serviceSupabase
       .from("render_jobs")
       .update({
-        output_asset_ids: [heroAssetId, ...orderedViewAssetIds],
+        output_asset_ids: [heroAssetId, ...orderedAssetIds(outcomes)],
         input_summary: { ...currentSummary, viewsVersion: (version ?? 0) + 1, viewOutcomes: outcomes, viewsComplete: complete }
       })
       .eq("id", job.id)
@@ -588,6 +650,9 @@ export async function ensureFinalRenderViews({
       break;
     }
     currentSummary = summaryOf(fresh.input_summary);
+    const recorded = summaryOf(currentSummary.viewOutcomes) as ViewOutcomeSummary;
+    outcomes = { ...recorded, ...outcomes };
+    complete = plan.views.every((view) => Boolean(outcomes[view.key]));
   }
 
   return { complete };

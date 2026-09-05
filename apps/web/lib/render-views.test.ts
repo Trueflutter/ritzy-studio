@@ -9,7 +9,13 @@ import type {
 import type { ViewPlan } from "@ritzy-studio/domain";
 
 import { FINAL_RENDER_ATTEMPT_BUDGET_MS } from "./render";
-import { ensureFinalRenderViews, RENDER_VIEW_CHECK_JOB_TYPE, VIEW_START_RESERVE_MS, type FinalRenderViewsDeps } from "./render-views";
+import {
+  ensureFinalRenderViews,
+  RENDER_VIEW_CHECK_JOB_TYPE,
+  VIEW_LEASE_MS,
+  VIEW_START_RESERVE_MS,
+  type FinalRenderViewsDeps
+} from "./render-views";
 import { fakeSupabase, type RecordedCall, type StorageCall } from "./services/supabase-test-double";
 
 // S4 step 5 (AC 7): the views phase against the recording double. A lease row
@@ -67,6 +73,9 @@ function scenario(options: {
   viewAssets?: ViewAsset[];
   leaseInsertError?: { code: string; message: string } | null;
   versionMissesBeforeSuccess?: number;
+  // What another delivery recorded, visible only after a version miss.
+  outcomesRecordedByOther?: Record<string, { outcome: string; assetId: string }>;
+  closeErrorsBeforeSuccess?: number;
   viewsVersion?: number | null;
   jobStatus?: string;
   outputAssetIds?: string[];
@@ -76,6 +85,8 @@ function scenario(options: {
     viewAssets: options.viewAssets ?? [],
     inserted: [] as RecordedCall[],
     versionMisses: options.versionMissesBeforeSuccess ?? 0,
+    missed: false,
+    closeErrors: options.closeErrorsBeforeSuccess ?? 0,
     versionWrites: [] as RecordedCall[],
     viewsVersion: options.viewsVersion === undefined ? 0 : options.viewsVersion,
     outputAssetIds: options.outputAssetIds ?? ["asset-hero"],
@@ -93,7 +104,8 @@ function scenario(options: {
       userId: "user-1",
       revealPath: "/projects/proj-1/rooms/room-1/presentation",
       ...(options.plan === null ? {} : { viewPlan: options.plan ?? plan }),
-      ...(state.viewsVersion === null ? {} : { viewsVersion: state.viewsVersion })
+      ...(state.viewsVersion === null ? {} : { viewsVersion: state.viewsVersion }),
+      ...(state.missed && options.outcomesRecordedByOther ? { viewOutcomes: options.outcomesRecordedByOther } : {})
     }
   });
   const items = [
@@ -110,6 +122,8 @@ function scenario(options: {
         state.versionWrites.push(call);
         if (state.versionMisses > 0) {
           state.versionMisses -= 1;
+          state.missed = true;
+          state.viewsVersion = (state.viewsVersion ?? 0) + 1;
           return { data: [] };
         }
         const payload = call.payload as { output_asset_ids?: string[]; input_summary?: { viewsVersion?: number } };
@@ -143,6 +157,10 @@ function scenario(options: {
         return { data: { id } };
       }
       if (call.table === "ai_jobs" && call.op === "select") {
+        const byId = call.filters.find(([column]) => column === "id")?.[1] as string | undefined;
+        if (byId) {
+          return { data: state.checkRows.find((row) => row.id === byId) ?? null };
+        }
         return { data: [...state.checkRows].sort((left, right) => (left.created_at < right.created_at ? 1 : -1)) };
       }
       if (call.table === "ai_jobs" && call.op === "insert") {
@@ -161,13 +179,18 @@ function scenario(options: {
         const id = call.filters.find(([column]) => column === "id")?.[1] as string;
         const requiredStatus = call.filters.find(([column]) => column === "status")?.[1] as string | undefined;
         const row = state.checkRows.find((entry) => entry.id === id);
+        const payload = call.payload as { status?: string; output_summary?: Record<string, unknown>; input_summary?: Record<string, unknown> };
+        if (payload.status === "succeeded" && state.closeErrors > 0) {
+          state.closeErrors -= 1;
+          return { error: { message: "pooler blip" } };
+        }
         if (row && requiredStatus && row.status !== requiredStatus) {
           return { data: [] };
         }
         if (row) {
-          const payload = call.payload as { status?: string; output_summary?: Record<string, unknown> };
           if (payload.status) row.status = payload.status;
           if (payload.output_summary) row.output_summary = { ...(row.output_summary ?? {}), ...payload.output_summary };
+          if (payload.input_summary) row.input_summary = payload.input_summary;
         }
         return { data: [{ id }] };
       }
@@ -249,6 +272,10 @@ function deps(
     probe,
     deps: {
       now: () => probe.clock,
+      sleep: async (ms) => {
+        probe.order.push(`sleep:${ms}`);
+        probe.clock += ms;
+      },
       generateView: async (input) => {
         probe.generations.push(input);
         probe.order.push(`generate:${input.viewKey}`);
@@ -307,7 +334,8 @@ async function main() {
     assert.equal((leases[0].payload as { status: string }).status, "running");
     const leaseSummary = (leases[0].payload as { input_summary: Record<string, unknown> }).input_summary;
     assert.equal(leaseSummary.renderJobId, "job-1");
-    assert.ok(typeof leaseSummary.leaseUntil === "number" && (leaseSummary.leaseUntil as number) > probe.clock);
+    assert.ok(typeof leaseSummary.leaseUntil === "number" && (leaseSummary.leaseUntil as number) > 1_000_000);
+    assert.ok((leaseSummary.leaseUntil as number) <= 1_000_000 + VIEW_LEASE_MS, "a lease is bounded by the view's own worst case, not the attempt");
     assert.deepEqual(probe.order.slice(0, 4).filter((entry) => entry.startsWith("generate")).length, 2);
 
     // Generation inputs: the focal view is anchored to photo-2, carries its
@@ -384,19 +412,42 @@ async function main() {
     });
     const { deps: d, probe } = deps();
     const result = await ensureFinalRenderViews({ serviceSupabase: client as never, renderJobId: "job-1", deadlineAt: now + FINAL_RENDER_ATTEMPT_BUDGET_MS, now: d.now, deps: d });
-    assert.equal(probe.generations.length, 0, "the recovered asset is checked, not regenerated");
-    assert.equal(probe.assessments.length, 1);
-    assert.equal(probe.assessments[0].viewKey, "focal_wide");
+    // focal_wide: the expired lease is reclaimed and its recorded asset is
+    // checked, not regenerated. anchor_detail: the live lease is waited out
+    // inside this attempt's budget, then reclaimed and generated.
+    assert.equal(probe.generations.length, 1, "only the live-lease view is generated");
+    assert.equal(probe.generations[0].viewKey, "anchor_detail");
+    assert.ok(probe.order.some((entry) => entry.startsWith("sleep:")), "the live lease was waited out");
+    assert.equal(probe.assessments.filter((input) => input.viewKey === "focal_wide").length, 1);
     const reclaim = state.calls.find((call) => call.table === "ai_jobs" && call.op === "update" && call.filters.some(([column, value]) => column === "id" && value === "row-dead") && (call.payload as { status?: string }).status === "failed");
     assert.ok(reclaim, "the expired lease was reclaimed");
     assert.ok(reclaim?.filters.some(([column, value]) => column === "status" && value === "running"));
     const reclaimIndex = state.calls.indexOf(reclaim!);
     const firstLeaseInsert = state.calls.findIndex((call) => call.table === "ai_jobs" && call.op === "insert" && (call.payload as { job_type: string }).job_type === RENDER_VIEW_CHECK_JOB_TYPE);
     assert.ok(reclaimIndex < firstLeaseInsert, "reclaim precedes the new lease");
-    assert.equal(state.checkRows.find((row) => row.id === "row-live")?.status, "running", "a live lease is left alone");
-    assert.equal(result.complete, false, "the other delivery's view is not terminal here");
+    assert.equal(state.checkRows.find((row) => row.id === "row-live")?.status, "failed", "the dead holder's lease was reclaimed after it lapsed");
+    assert.equal(result.complete, true, "both views are terminal after the wait");
     const newRow = state.checkRows.find((row) => row.status === "succeeded" && row.input_summary.viewKey === "focal_wide");
     assert.equal(newRow?.output_summary?.assetId, "view-asset-old");
+  }
+
+  // A live lease that the remaining budget cannot outwait is left alone and
+  // the view is not terminal; and a holder that extended its lease while the
+  // waiter slept is recognised as alive.
+  {
+    const now = 1_000_000;
+    const { client, state } = scenario({
+      checkRows: [
+        { id: "row-live", status: "running", created_at: "2026-09-05T10:00:00Z", input_summary: { renderJobId: "job-1", viewKey: "anchor_detail", leaseUntil: now + 100_000 }, output_summary: null },
+        { id: "row-focal", status: "succeeded", created_at: "2026-09-05T10:00:00Z", input_summary: { renderJobId: "job-1", viewKey: "focal_wide" }, output_summary: { outcome: "consistent", assetId: "va-focal" } }
+      ],
+      viewAssets: [{ id: "va-focal", storage_path: "u/room-1/final-job-1-focal_wide-n1.png", view_key: "focal_wide", mime_type: "image/png" }]
+    });
+    const { deps: d, probe } = deps();
+    const result = await ensureFinalRenderViews({ serviceSupabase: client as never, renderJobId: "job-1", deadlineAt: now + 100_000 + VIEW_START_RESERVE_MS - 1, now: d.now, deps: d });
+    assert.equal(probe.generations.length, 0);
+    assert.equal(result.complete, false);
+    assert.equal(state.checkRows.find((row) => row.id === "row-live")?.status, "running");
   }
 
   // (v) Succeeded rows are winners; an unresolved one is excluded from the list;
@@ -474,13 +525,39 @@ async function main() {
     assert.equal(result.complete, false);
   }
 
-  // (ix) The asset-list write that matches no row is retried with a fresh read.
+  // (ix) The asset-list write that matches no row is retried after a fresh
+  // read, merging what the other delivery recorded with this delivery's own
+  // outcomes; the retried payload is recomputed, not re-issued.
   {
-    const { client, state } = scenario({ versionMissesBeforeSuccess: 1 });
+    const { client, state } = scenario({
+      checkRows: [
+        { id: "r-focal", status: "succeeded", created_at: "2026-09-05T10:00:00Z", input_summary: { renderJobId: "job-1", viewKey: "focal_wide" }, output_summary: { outcome: "consistent", assetId: "va-focal" } },
+        { id: "r-live", status: "running", created_at: "2026-09-05T10:01:00Z", input_summary: { renderJobId: "job-1", viewKey: "anchor_detail", leaseUntil: 1_000_000 + 100_000 }, output_summary: null }
+      ],
+      viewAssets: [{ id: "va-focal", storage_path: "u/room-1/final-job-1-focal_wide-n1.png", view_key: "focal_wide", mime_type: "image/png" }],
+      versionMissesBeforeSuccess: 1,
+      outcomesRecordedByOther: { anchor_detail: { outcome: "consistent", assetId: "va-detail-other" } }
+    });
     const { deps: d, probe } = deps();
-    await ensureFinalRenderViews({ serviceSupabase: client as never, renderJobId: "job-1", deadlineAt: probe.clock + FINAL_RENDER_ATTEMPT_BUDGET_MS, now: d.now, deps: d });
+    // Not enough budget to outwait the live lease: this delivery owns only focal_wide.
+    const result = await ensureFinalRenderViews({ serviceSupabase: client as never, renderJobId: "job-1", deadlineAt: probe.clock + 100_000 + VIEW_START_RESERVE_MS - 1, now: d.now, deps: d });
     assert.equal(state.versionWrites.length, 2, "one miss, one retry");
-    assert.equal(state.calls.filter((call) => call.table === "render_jobs" && call.op === "select").length >= 2, true, "the retry re-read the job");
+    const retried = state.versionWrites[1].payload as { output_asset_ids: string[]; input_summary: { viewOutcomes: Record<string, unknown>; viewsComplete: boolean; viewsVersion: number } };
+    assert.deepEqual(retried.output_asset_ids, ["asset-hero", "va-focal", "va-detail-other"], "the other delivery's view is kept");
+    assert.deepEqual(Object.keys(retried.input_summary.viewOutcomes).sort(), ["anchor_detail", "focal_wide"]);
+    assert.equal(retried.input_summary.viewsComplete, true);
+    assert.equal(retried.input_summary.viewsVersion, 2);
+    assert.equal(result.complete, true);
+    assert.ok(state.versionWrites[1].filters.some(([column, value]) => column === "input_summary->>viewsVersion" && value === "1"));
+  }
+
+  // A close that fails once is retried, not read as a reclaim.
+  {
+    const { client, state } = scenario({ closeErrorsBeforeSuccess: 1 });
+    const { deps: d, probe } = deps();
+    const result = await ensureFinalRenderViews({ serviceSupabase: client as never, renderJobId: "job-1", deadlineAt: probe.clock + FINAL_RENDER_ATTEMPT_BUDGET_MS, now: d.now, deps: d });
+    assert.equal(result.complete, true);
+    assert.equal(state.checkRows.filter((row) => row.status === "succeeded").length, 2);
   }
 
   // (x) A generation that throws closes its row failed (freeing the key) and
