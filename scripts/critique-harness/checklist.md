@@ -131,6 +131,49 @@ model (`--model`).
    not a vacuous pass).
    NOT_APPLICABLE only when the concept has no shopping list and no anchors.
 
+8. **final_spatial_plausibility** (S4) — check 1 applied to the FINAL hero
+   render the reveal shows (the newest succeeded render job for the concept,
+   `output_asset_ids[0]`), rather than to the concept. The notes carry the
+   app's own spatial QA outcome (`passed`, `resolved_after_regeneration`,
+   `unresolved`, `unreviewed`), its verdict and whether it regenerated, so the
+   two judges read side by side. NOT_APPLICABLE when no final render exists.
+
+9. **final_view_coverage** (S4) — across the final render's set (hero plus the
+   planned views the reveal shows), every key element of the confirmed spec
+   appears in at least one image, and the primary focal element appears in at
+   least one; the notes name which image shows the focal element. The
+   persisted plan's keys and anchoring are appended to the notes.
+   NOT_APPLICABLE when no final render exists or the set has a single view.
+
+10. **final_view_consistency** (S4) — every planned view is the same finished
+    room as the final hero: same architecture (walls, openings, ceiling,
+    floor), same shared objects (silhouette, colour, material, proportions),
+    nothing invented, and, where the plan anchored the view to one of the
+    room's photographs, the same camera position. The app's own per-view
+    outcomes are appended to the notes. REPORTED this slice, not gating,
+    until its variance is known (the rule the palette check followed).
+    NOT_APPLICABLE when no final render exists or the set has a single view.
+
+### A set of one is not a set
+
+`view_coverage` (check 5) and `final_view_coverage` are judged only on sets of
+two or more images and return NOT_APPLICABLE, never PASS, on a single view.
+The spec is extracted from the hero, so "every spec element appears in at
+least one view" is true of the hero by construction; the check only carries
+meaning across additional views. Until S4 the harness rooms' current concepts
+had no views at all (the evidence runners passed a no-op defer), so every
+earlier `view_coverage` PASS was judged on the hero alone.
+
+### Judge pairs
+
+`product_consistency` prints, for every anchor, the harness similarity beside
+the app's own design-check score for the same concept and product (read from
+the sourcing run's recorded verification verdicts, every judged product, kept
+or not), and counts the anchors on which the two judges disagree across the
+committed 0.6 line. This is the reconciliation the retention slice needs
+before anything is tuned against either judge; the S4 evidence record carries
+the first pairs.
+
 ## Room matrix
 
 Five rooms, spanning the register space so the pipeline is proven off the beige
@@ -153,6 +196,9 @@ never silently dropped.
 - Criterion 10 (views): the TV-lounge spec's view set passes view_coverage.
 - Palette register: every non-control room passes palette_register on the
   production model.
+- S4 (criteria 10 and 11): `final_view_coverage` 5 of 5 and
+  `final_spatial_plausibility` 5 of 5 on the production model;
+  `final_view_consistency` reported, not gating, until its variance is known.
 - Criterion 8 (sourcing fidelity, Gate 1 condition): all five rooms pass
   product_consistency on the production model; the Phase 0 chandelier-for-
   floor-lamp and swing-chair failures are rejected by the sourcing contracts
