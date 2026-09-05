@@ -153,6 +153,7 @@ export * from "./design-spec";
 export * from "./spec-sourcing";
 export * from "./measurement-confidence";
 export * from "./spatial-design-rules";
+export * from "./view-planning";
 export * from "./product-matching-evidence";
 export * from "./product-matching-freshness";
 export * from "./entitlements";
