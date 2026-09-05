@@ -261,3 +261,325 @@ HIGH. `.claude/high-risk-paths` matches `apps/web/lib/render-runner.ts` exactly 
 - Step 2, the camera read's `showsFocalElement: false` means "not in frame" (out of frame or behind the camera), not "behind the camera": the reviewer is told exactly that and asked to judge orientation against the room's geometry, and the code never escalates a focal fail unless the read says the element is in frame (review finding on the read commit; a third read value would over-ask a low-effort model for a distinction the verdict rules do not need).
 - Step 5, the migration's route: the Supabase MCP connector in this session is attached to a different organisation (its only project is an inactive "vertical-video"), so the index was applied to the linked Ritzy project with the CLI (`supabase db query --linked`) on 2026-09-05 and recorded by hand in `supabase_migrations.schema_migrations` as version `20260905124532` (created_by `fable-s4`), matching the file name. While doing so the remote history showed that several earlier local files carry stamps 12 to 15 seconds off their remote versions (for example local `20260904053015` against remote `20260904053027`), a hygiene gap from earlier renames that means a blanket `db push` would try to re-apply them; nothing was pushed, and the alignment is a follow-up for its own small PR.
 - Step 5, the views' start and retry reserves: sized to the primary provider's observed pace (90 seconds to start a view, 75 to retry one, 90 for the hero's retry) rather than the provider ceiling the plan quoted, because at the ceiling a retry could never run inside the inline budget at all (runner review finding). The image call itself is bounded by the remaining deadline, so a view or retry started on the reserve either lands or aborts with the judged image standing.
+- Steps 1 and 4, the planning focal point: in the first evidence run four of the five rooms planned no focal view because their briefs left the focal point unknown (only Al Furjan's brief carries one). The layout rules already assume the TV wall anchors a living room's seating in that case (`parseSpatialIntent` records the assumption), so the loader now hands the planner and the placement review `planningFocalPoint`: the chosen focal point when there is one, otherwise the TV wall only when the room is living-like and the confirmed design carries a TV or a media wall. A lounge designed without one, a bedroom, and a room without a confirmed design still get the pre-S4 set (AC 4), and whether the hero SHOWS the focal element is still never inferred from the spec.
+- Steps 2 and 5, the design vocabulary: the first evidence run left the reverse wide out of three rooms in five, and on two of them the consistency judge had counted a chandelier, a wall-mounted TV and two table lamps as inventions because the hero did not show them, although every one is in the confirmed spec. The plan now persists `designLabels` (every spec piece, sourceable or not, bounded to 40 entries of 160 characters, empty on a plan persisted before it existed) and the check receives it; the prompt is version `2026-09-05.2`; the harness's final-set judge is told the same rule so the two judges stay comparable. The second evidence round below was rendered with both fixes in place.
+
+- Step 4, the stale threshold and a redelivered attempt: staleness is still measured from the job's `created_at`, so a queue redelivery that starts late in the first delivery's window (a retryable failure at, say, 600 seconds, redelivered at 660) runs its own 700 second attempt partly past the 760 second line, and a shopper who clicks "render again" in that overlap can fail the running job under it. The window is narrower than the pre-S4 four minute line and needs a late failure plus a click, but the plan's sentence "the app never reclaims an attempt that is still inside its budget" is not fully met on a redelivery (correctness review). Stamping the attempt's start on the claim write and measuring from it is the fix; it touches the claim payload on the HIGH-risk runner and is left for its own small PR rather than added at the end of this one.
+- Step 1, hidden dining roles on a focal wide: in a combined hall whose wide view is the focal view, the hidden dining roles are recorded under `coverage.uncovered` rather than demanded of a view that cannot show them (a focal wide faces the living zone, a detail crop cannot show the dining zone), so the sentence "every hidden key role is assigned to exactly one planned view's mustShow" holds except for that case, which the plan's Approach already described and `view-planning.test.ts` pins; the harness's coverage check reports the gap when it occurs (correctness review).
+
+## Verification
+
+Each acceptance criterion checked once, on 2026-09-05, on branch
+`fable/s4-render-integrity`. Unit and service suites are the package `test`
+scripts (chained `tsx` files); the evidence rooms are the five harness rooms
+(test data: new `render_jobs`, `ai_jobs` and `room_assets` rows were added, no
+user, project or room row was reset). Two evidence rounds were rendered: round
+1 before the two deviations recorded above (design vocabulary, planning focal
+point), round 2 after them; the judge-variance pair was taken on round 1's
+images, which stayed identical between the two passes.
+
+- AC 1, 2, 3, 4 (planner): `packages/domain` suite, `view-planning.test.ts`
+  ("view planning tests passed"): the TV-lounge fixture with the hero not
+  showing the focal element yields `focal_wide` first, anchored to the
+  eligible photo showing the focal wall, with an unsure or wrong-room photo
+  passed over and named in `photoNotes`; with the hero showing it,
+  `reverse_wide` first anchored to the opposite camera or null; the combined
+  hall assigns the hidden dining roles to the wide view; the one-photo room
+  anchors nothing; every committed fixture (four living rooms, a bedroom, a
+  hall, an office) yields two views, every key role covered exactly once,
+  `anchor_detail` never anchored, references capped at six and eight; the
+  fallback read with a known focal point yields an unanchored `focal_wide`
+  whether or not the spec carries a focal role, and with an unknown one the
+  pre-S4 pair. Added with the deviations: `designLabels` carries every spec
+  piece bounded to 40 by 160, a plan persisted without it reads back as
+  empty, and `planningFocalPoint` follows the layout rules' TV-wall
+  assumption only for a living-like room whose design carries a TV.
+- AC 5, 6 (enforcement): `apps/web` suite, `render-qa.test.ts`: the Phase 0
+  verdict fixture escalates only with the focal element in frame; scale and
+  zoning fails always escalate; regenerate twice renders twice and keeps the
+  first with outcome `unresolved`, regenerate then pass keeps the second as
+  `resolved_after_regeneration`, a throwing assess is `unreviewed` with the
+  render kept, and no time for a retry is `unresolved` with reason
+  `no_time_for_retry` after one render; the view machine mirrors it,
+  including the camera-mismatch regeneration and `unchecked`.
+- AC 7 (views phase): `render-views.test.ts` against the recording double:
+  no camera read row from the views phase; a `running` lease row before every
+  paid call; 23505 on the lease means zero generations and zero checks for
+  that key; a live lease is skipped, an expired one reclaimed by a
+  status-conditional update before any spend; a reclaimed row with an asset
+  is checked without an upload; a succeeded key is untouched; every upload
+  goes to a fresh nonce path with its own asset row; the close is filtered
+  on `status = running` and retried once; `output_asset_ids` is the hero plus
+  the succeeded views in plan order without `unresolved`, written under the
+  version read and recomputed on a miss; `complete` is true with an
+  `unresolved` view and false with an unstarted one (rethrow below the
+  attempt cap in queue mode only); both legacy cases; the views job closes
+  `succeeded` with an unresolved view and `failed` on a thrown generation
+  or an unstarted view.
+- AC 8 (hero path): `render-inputs.test.ts` (three photographs in
+  `created_at` order, the confirmed spec's preservation list, products in
+  render priority order, read errors surfaced as retryable, and, added with
+  the deviation, the assumed TV-wall focal point on a brief that left it
+  unknown) and `render-runner.test.ts` (the success write carrying
+  `spatialQaOutcome`, `cameraRead` and `viewPlan` keyed by asset id, one
+  `render_camera_read` row per judged image, the render call's deadline and
+  the reads' timeouts bounded by the attempt, and the claim, success and
+  failure CAS filters identical to `main`).
+- AC 9 (prompt budget): `packages/ai` suite (`final-grounded-render-prompt`,
+  `final-render-view-prompt`, `initial-concept-prompt-budget`): the worst
+  case keeps eight product lines with dimensions and every bounded preserve
+  entry inside 16,050; budget plus the largest correction suffix stays
+  inside the 17,000 envelope; the multi-photo sentence names the first photo
+  as the camera; the anchored view prompt names the first image as the real
+  room and the second as the design, the unanchored one does not.
+- AC 10 (presentation): `render-notes.test.tsx`: two issues render with the
+  form carrying `retryOf`, `unreviewed` says the review could not run,
+  `passed` renders nothing, one `unresolved` view renders the left-out line
+  once, the 12.9 sentence is the exact string, and `focal_wide` labels come
+  from the shared table. The visual ladder (1440 by 900 and 390 by 844
+  captures scored by the ux-critic) was NOT walked: the presentation route
+  is behind sign-in, the app has no magic-link or code-exchange route the
+  browser could use, and I do not enter persona passwords. The screen's
+  states are pinned by the component test only; the walk is owed at G2.
+- AC 11 (retry): the rule is `finalRenderRetryHonoured` in
+  `apps/web/lib/render.ts`, pinned by `render.test.ts` (honoured only for
+  the named job, only when it succeeded with an `unresolved` or `unreviewed`
+  review; a passed render keeps the redirect). The live check on the walk
+  room was NOT performed, for the same sign-in reason as AC 10.
+- AC 12, 13, 14 (evidence): tables below. The time half of AC 14 is pinned
+  in two places rather than the single end-to-end sequencing case the plan
+  described (tests review): `render-runner.test.ts` pins the exact deadlines
+  (the first render gets the whole budget, the retry gets the budget minus
+  the first render, its read and its QA), the read and QA timeouts at the
+  exact remainder when 30 seconds are left (below every stage default, so a
+  raw default would fail), the no-time case (no read row, no QA call, the
+  render kept `unreviewed`), and the redelivery request on attempt 1 and not
+  on attempt 3 with an incomplete set; `render-views.test.ts` pins that a
+  view's image call is bounded by its lease (below the attempt budget), that
+  a view whose generation left no time is closed `unchecked` without a paid
+  check, and that a view the budget cannot start has no row and leaves
+  `complete` false. A single case that runs the hero, its retry and the real
+  views phase at their provider maxima through one fake clock was not
+  written.
+- AC 15: index and 23505 below; gates below; no dollar sign in added
+  user-visible text (`git diff main -- apps/web/app packages/ui`, the only
+  hit is the test asserting its absence); no em dash in the diff's added
+  lines (`git diff main`, count 0 after commit 6681302's follow-up).
+
+### Hosted index (AC 15)
+
+`pg_indexes` on the linked project, 2026-09-05:
+
+```
+CREATE UNIQUE INDEX ai_jobs_render_view_check_lease_idx ON public.ai_jobs USING btree
+  (((input_summary ->> 'renderJobId'::text)), ((input_summary ->> 'viewKey'::text)))
+  WHERE ((job_type = 'render_view_check'::text) AND (status = ANY (ARRAY['running'::ai_job_status, 'succeeded'::ai_job_status])))
+```
+
+History row: version `20260905124532`, name `render_view_check_lease`,
+created_by `fable-s4`. Live check: a second `running` `render_view_check`
+insert for the same render job and view key was refused with 23505 naming
+`ai_jobs_render_view_check_lease_idx`; a `failed` row freed the key; both
+probe rows were deleted.
+
+### Evidence round 1 (AC 12, 13, 14): before the two deviations
+
+Rendered 13:10 to 13:21 UTC through `runFinalRender` with the local queue
+redelivery loop (deliveryCount 1 to 3, rethrow = redeliver). Every room
+committed in ONE delivery; every hero passed the placement review first
+time; every planned view was generated and judged; every paid call has a
+succeeded `ai_jobs` row with a cost. Only Al Furjan's brief carries a focal
+point, so the focal view was planned nowhere and the reverse wide was left
+out of three rooms: Al Furjan (architecture against the anchored photograph,
+camera "no", and a chandelier the spec carries counted as invented),
+Cincinnati (the windows moved to another wall, pendants not in the spec
+invented), and the glass room (the spec's wall-mounted TV and two table
+lamps counted as invented). Those two false inventions are the design
+vocabulary deviation; the missing focal views are the planning focal point
+deviation.
+
+| room | job | plan (anchored photo) | hero shows focal (read) | app QA | views (app outcome) | shown | wall s | USD |
+|---|---|---|---|---|---|---|---|---|
+| alfurjan-living-dining | 198cc3f7 | reverse_wide (a7736ef8), anchor_detail | true | passed | reverse_wide=unresolved, anchor_detail=consistent | 2 | 152 | 0.47 |
+| cincinnati-bedroom | 122c808a | reverse_wide, anchor_detail | unknown | passed | reverse_wide=unresolved, anchor_detail=resolved_after_regeneration | 2 | 135 | 0.59 |
+| stress-dense-apartment | 4aeaea31 | reverse_wide, anchor_detail | unknown | passed | reverse_wide=resolved_after_regeneration, anchor_detail=consistent | 3 | 147 | 0.46 |
+| stress-columns | ec04f198 | reverse_wide, anchor_detail | unknown | passed | reverse_wide=consistent, anchor_detail=consistent | 3 | 98 | 0.33 |
+| stress-glass-glare | 128d8c45 | reverse_wide, anchor_detail | unknown | passed | reverse_wide=unresolved, anchor_detail=consistent | 2 | 134 | 0.46 |
+
+Harness pass 1 (gpt-5.1):
+
+| room | final_spatial_plausibility | final_view_coverage | final_view_consistency | view_coverage (concept) | product_consistency |
+|---|---|---|---|---|---|
+| alfurjan-living-dining | pass | pass | pass | pass | pass |
+| cincinnati-bedroom | pass | pass | pass | pass | pass |
+| stress-dense-apartment | pass | pass | pass | pass | pass |
+| stress-columns | pass | pass | pass | pass | pass |
+| stress-glass-glare | pass | fail | pass | pass | fail |
+
+- alfurjan-living-dining, coverage: Across hero and anchor_detail views, all key roles are visible: sofa and back console, armchair, nesting coffee tables, area rug, floor lamp, floating media console with TV and vases, dining table and chairs with chandelier, sideboard with arched mirror and decor, dining centerpiece, and window treatments. The TV/media wall focal appears clearly in the hero image, satisfying focal coverage per the persisted plan. [pl
+- cincinnati-bedroom, coverage: Hero shows the bed, nightstands, table lamps, duvet/throw/pillows, large striped rug, low dark dresser with vases and books, drapery on the three tall windows, and ceiling fan with crystal bowl. The anchor_detail view clearly adds coverage of the upholstered bench at the foot of the bed, the square pouf/ottoman, and the brass adjustable floor reading lamp; together, hero + detail show every key role from the plan at 
+- stress-dense-apartment, coverage: Across the hero and two final views, all key spec elements appear: sofa, armchair, rug, nesting coffee tables, media console and TV, pendant, floor lamp, curtains, throw, cushions, wall art, decor bowl, books, and kitchen bowls are visible in at least one image. The sofa/TV wall serves as the primary focal area and is clearly shown in the hero and reverse_wide views. [plan: reverse_wide, anchor_detail]
+- stress-columns, coverage: Across the hero and two final views, all key roles from the spec are visible: sofa, navy armchairs, blue wing swivel chair (in reverse_wide), coffee table, side table, floor lamp, media console + TV, wall sconces, rug, planter, concrete console under stair, corridor artwork, curtains, pillows, and decor objects. The main focal zone, the sofa/coffee-table/TV grouping, appears prominently in all three images (e.g., hero 
+- stress-glass-glare, coverage: Spec keys missing from all views: the low TV console, wall-mounted TV, tall chest/sideboard, wall sconces flanking TV, pendant not clearly visible in detail, media console lamps, curtains/sheers are present, but storage/TV wall elements never appear. Focal element is ambiguous but the sofa and coffee table are clearly covered in both hero and anchor_detail views. [plan: reverse_wide, anchor_detail]
+
+Harness pass 2 (gpt-5.1):
+
+| room | final_spatial_plausibility | final_view_coverage | final_view_consistency | view_coverage (concept) | product_consistency |
+|---|---|---|---|---|---|
+| alfurjan-living-dining | pass | fail | pass | pass | pass |
+| cincinnati-bedroom | pass | pass | pass | pass | pass |
+| stress-dense-apartment | pass | pass | pass | pass | pass |
+| stress-columns | pass | pass | pass | pass | pass |
+| stress-glass-glare | pass | fail | pass | pass | pass |
+
+- alfurjan-living-dining, coverage: Spec key roles include wall-mounted TV, floating media console, sideboard with arched mirror, wall art, and floor-to-ceiling curtains. The anchor_detail view shows sofa, throw, coffee tables, rug, and dining chairs/table but does not show any of: TV, media console, sideboard, mirror, wall art, or curtains; since each key role must appear in at least one view and only the hero shows many of them, the multi-view set fa
+- cincinnati-bedroom, coverage: Hero shows the bed, nightstands, table lamps, duvet, throw, pillows, rug, dresser, vases, books, and layered drapery; the anchor_detail view clearly shows the bench at the foot of the bed, the cube ottoman, and the brass adjustable floor reading lamp. The bed wall focal is visible in both images. Persisted plan keys covered: bed, nightstand, table_lamp, bedding_duvet, throw, pillows, bench, rug, dresser, vases, books
+- stress-dense-apartment, coverage: Across the hero and two additional views, every key spec element is visible: sofa, armchair, rug, nesting coffee tables, small black pedestal side table (clearly shown in anchor_detail view), media console, TV, pendant, floor lamp, curtains, throw, cushions, wall art, decorative bowl, books, and kitchen bowls. The primary focal element (the TV wall with console) appears prominently in the hero and reverse_wide views.
+- stress-columns, coverage: Across hero plus two views, all key spec elements are visible: sofa, navy armchairs, blue wing lounge chair (only in reverse_wide view 1), coffee table, brass side table, floor lamp, media console and TV, wall sconces, rug, planter, concrete console, corridor artworks, navy curtains, pillows, and decor objects. There is no declared single focal token; primary anchors like the sofa and TV wall appear prominently in th
+- stress-glass-glare, coverage: Spec key roles include the media console, wall-mounted TV, dresser/sideboard, floor lamp, pendant, curtains, sheer layer, books, tray with vase, throw blanket, and cushions. Across the hero and detail view, the media console, TV, dresser, and wall sconces are entirely missing, and the coat rack is present but not on the key-role list; focal element is implied to be the seating/coffee table zone, which is shown, but m
+
+Paid rows per room (ai_jobs, all succeeded with a cost):
+- alfurjan-living-dining: render_view_check x2, final_render_views x1, render_camera_read x1; rows without a cost or not succeeded: 0; hero 0.0688
+- cincinnati-bedroom: final_render_views x1, render_view_check x2, render_camera_read x1; rows without a cost or not succeeded: 0; hero 0.0676
+- stress-dense-apartment: final_render_views x1, render_view_check x2, render_camera_read x1; rows without a cost or not succeeded: 0; hero 0.0687
+- stress-columns: final_render_views x1, render_view_check x2, render_camera_read x1; rows without a cost or not succeeded: 0; hero 0.0681
+- stress-glass-glare: final_render_views x1, render_view_check x2, render_camera_read x1; rows without a cost or not succeeded: 0; hero 0.0667
+
+Variance, the same images judged twice by `gpt-5.1`: 2 of 50 verdicts
+flipped, both on a score sitting at the 0.6 line (Al Furjan
+`final_view_coverage` pass to fail, the glass room `product_consistency`
+fail to pass as the Nevis armchair went 0.50 to 0.60). Anchor scores on the
+same image drift by up to 0.20 (Chess side table 0.92 to 0.72, Elmont
+dining table 0.50 to 0.65). Anchors kept across the rooms on identical
+images: 13 of 19 in pass 1, 15 of 19 in pass 2; the glass room sat below
+its own floor (1 of 4) in pass 1 and on it (2 of 4) in pass 2. The
+across-rooms rate stays knowingly unmet, as recorded in the checklist.
+
+### Evidence round 2: after the vocabulary and focal deviations, before the review fixes
+
+Rendered 13:33 to 13:44 UTC on commit 89a6fa3. Fifteen of fifteen planned
+views kept; Al Furjan's hero read said the TV wall was not in frame, so the
+plan was `focal_wide` anchored to Bolaji's photograph 03dcc713 and the
+judge answered camera "yes"; the three living stress rooms worked from the
+assumed TV wall, their reads said the hero shows it, so they kept the
+reverse wide. No harness pass was taken on this round: it was superseded by
+round 3 the same hour.
+
+| room | job | plan (anchored photo) | hero shows focal (read) | app QA | views (app outcome) | shown | wall s | USD |
+|---|---|---|---|---|---|---|---|---|
+| alfurjan-living-dining | 841163bb | focal_wide (03dcc713), anchor_detail | false | passed | focal_wide=consistent, anchor_detail=resolved_after_regeneration | 3 | 141 | 0.46 |
+| cincinnati-bedroom | e6156f84 | reverse_wide, anchor_detail | unknown | passed | reverse_wide=resolved_after_regeneration, anchor_detail=resolved_after_regeneration | 3 | 125 | 0.59 |
+| stress-dense-apartment | 195afc98 | reverse_wide, anchor_detail | true | passed | reverse_wide=consistent, anchor_detail=resolved_after_regeneration | 3 | 144 | 0.46 |
+| stress-columns | aff680ce | reverse_wide, anchor_detail | true | passed | reverse_wide=resolved_after_regeneration, anchor_detail=consistent | 3 | 144 | 0.46 |
+| stress-glass-glare | 509a6678 | reverse_wide, anchor_detail | true | passed | reverse_wide=resolved_after_regeneration, anchor_detail=consistent | 3 | 125 | 0.46 |
+
+### Evidence round 3: the shipped code
+
+Rendered 13:46 to 13:56 UTC on commit e66a6d1 (the code this PR
+ships, apart from documentation). Five of five heroes passed the placement
+review first time in one delivery each; thirteen of fifteen planned views
+were kept. The glass room, whose brief has no focal point, worked from the
+assumed TV wall: its hero read said the TV was not in frame, the plan was
+`focal_wide`, the first attempt was judged inconsistent and the
+regeneration kept, showing the TV console, the wall-mounted TV and the
+sideboard the round 1 judge had counted as inventions. Al Furjan's reverse
+wide was anchored to photograph a7736ef8 again (the one round 1 failed on):
+the retry was judged camera "yes" and kept. The two views left out are
+honest verdicts, not the false ones of round 1: Cincinnati's reverse wide
+added a doorway the hero does not have and pendants the design does not
+carry, twice; the glass room's detail view added a framed artwork outside
+the design vocabulary and missed the expected pendant, twice. Both reveals
+carry the one-line note and show the hero plus the kept view.
+
+| room | job | plan (anchored photo) | hero shows focal (read) | app QA | views (app outcome) | shown | wall s | USD |
+|---|---|---|---|---|---|---|---|---|
+| alfurjan-living-dining | d4950a88 | reverse_wide (a7736ef8), anchor_detail | true | passed | reverse_wide=resolved_after_regeneration, anchor_detail=consistent | 3 | 149 | 0.47 |
+| cincinnati-bedroom | 345912d1 | reverse_wide, anchor_detail | unknown | passed | reverse_wide=unresolved, anchor_detail=consistent | 2 | 138 | 0.46 |
+| stress-dense-apartment | 68269af2 | reverse_wide, anchor_detail | true | passed | reverse_wide=consistent, anchor_detail=consistent | 3 | 100 | 0.33 |
+| stress-columns | fd0f93a7 | reverse_wide, anchor_detail | true | passed | reverse_wide=consistent, anchor_detail=consistent | 3 | 92 | 0.33 |
+| stress-glass-glare | 29cffca5 | focal_wide, anchor_detail | false | passed | focal_wide=resolved_after_regeneration, anchor_detail=unresolved | 2 | 144 | 0.59 |
+
+Harness pass 3 (gpt-5.1, the round 3 images):
+
+| room | final_spatial_plausibility | final_view_coverage | final_view_consistency | view_coverage (concept) | product_consistency |
+|---|---|---|---|---|---|
+| alfurjan-living-dining | pass | fail | pass | pass | pass |
+| cincinnati-bedroom | pass | pass | pass | pass | pass |
+| stress-dense-apartment | pass | pass | pass | pass | pass |
+| stress-columns | pass | pass | fail | fail | pass |
+| stress-glass-glare | pass | fail | pass | pass | fail |
+
+- alfurjan-living-dining, coverage: Key spec elements missing across all three views: the arched brass floor lamp with drum shade is not present anywhere; the velvet throw is absent (only a rust/orange throw appears). Since both are in keyRoleKeys and the plan expected them in view 2 (anchor_detail), coverage fails despite the TV/media wall focal appearing in the hero and reverse_wide. [plan: reverse_wide (anchored), anchor_detail]
+- cincinnati-bedroom, coverage: Across the hero and close-up view, all key spec elements are visible: upholstered bed with low headboard, dark wood cube nightstand, glass table lamp, plush duvet, blush-toned throw, decorative pillows, upholstered bench, large striped rug, low dark walnut dresser with vases and books, accent chair, ottoman, brass floor lamp, ceiling fan with crystal bowl, and layered blackout drapery with sheers. The bed wall and be
+- stress-dense-apartment, coverage: Across the hero and two views, all key roles appear: sofa, armchair, rug, nesting tables, side pedestal table (close-up in anchor_detail), media console, pendant, floor lamp, curtains, throw, cushions, wall art, decor bowl, books, and kitchen bowls are all visible in at least one image. The focal TV/media wall is clearly shown in the hero and reverse_wide views (plan focalToken: focal:tv_media_wall). [plan: reverse_w
+- stress-columns, coverage: Across the hero and both final views, all key spec elements appear at least once: sofa, navy armchairs, blue wing chair, coffee and side tables, floor lamp, media console with TV, wall sconces, rug, planter, concrete console under stair, corridor artwork, navy curtains, pillows, and decor objects are all visible; the focal TV/media wall appears clearly in Final view 1 (reverse_wide). [plan: reverse_wide, anchor_detai
+- stress-glass-glare, coverage: The spec calls for a TV/media wall with a low TV console, wall-mounted TV, tall chest/sideboard to the right, central pendant, table lamps, books, tray, throw blanket, etc. Only the focal_wide view shows the TV, low media console, and sideboard, but the central ceiling pendant and the pair of ceramic table lamps do not appear in either the hero or focal_wide images, so these key elements are uncovered. The primary fo
+
+**The S4 gate bar, read honestly.** `final_spatial_plausibility` is 5 of 5
+on every pass and every round, and the app's own review agreed on all
+fifteen heroes. `final_view_coverage` is NOT met on the shipped code: 3 of
+5 in pass 3 (4 of 5 and 3 of 5 on round 1). The two failures are not the
+planner's: on Al Furjan the detail view was told to show the arched floor
+lamp and the velvet throw, the app's check recorded both as shown, and the
+harness judge says neither appears anywhere (two models disagreeing about
+one image); on the glass room the detail view carrying the pendant and the
+table lamps was excluded for adding a framed artwork outside the design,
+and the pendant was missing from both of its attempts, so the reveal
+honestly shows the hero and the focal view without them. Nothing here is
+tuned or re-rendered to reach the number; the bar stays in the checklist
+as knowingly unmet with this record, the way the across-rooms anchor rate
+is, and the coverage gap belongs to the slice that decides whether a
+missing non-focal piece earns a bounded retry of its own. The judge's own
+variance is part of the reading: the concept-set `view_coverage` on the
+columns room, judged pass in passes 1 and 2 on the same images, failed in
+pass 3 over the finish of a concrete console. `final_view_consistency`
+(reported, not gating) is 4 of 5: the columns room's reverse wide shows the
+blue wing chair and the TV console it was told to show and the hero cannot
+see, and the harness judge counted their presence as an inconsistency even
+with the expected list in front of it; the app's own check said consistent.
+`product_consistency` on the glass room sits at its own floor's edge in
+every pass (1 of 4, 2 of 4, 1 of 4), the same anchors each time.
+
+### Reconciliation (AC 13): harness similarity beside the app's design check
+
+Nineteen anchors on the five rooms (four, three, four, four, four), each
+scored by the production judge in both passes and by the app's own design
+check (the sourcing job's recorded verification verdicts; `declined` means
+the check did not keep the piece). Pairs that disagree across the committed
+0.6 line:
+
+| anchor | room | harness pass 1 | harness pass 2 | app |
+|---|---|---|---|---|
+| Samone 2.5 seater sofa | Al Furjan | 0.95 | 0.90 | declined |
+| Elmont round dining table | Al Furjan | 0.50 | 0.65 | 0.40 |
+| Chess side table | Cincinnati | 0.92 | 0.72 | 0.40 |
+| Stone 4-seater sofa | dense apartment | 0.45 | 0.45 | 0.68 |
+| Myler coffee table | columns | 0.75 | 0.70 | 0.40 |
+| Nevis fabric armchair | glass room | 0.50 | 0.60 | 0.40 |
+
+Four pairs disagree in pass 1 and six in pass 2; the harness scores higher
+on five of the six, the app on one. The thirteen other anchors agree on
+which side of the line they fall (for example Nevis armchair in Al Furjan
+0.95 and 0.95 against 0.90; Sheena rug 0.80 and 0.78 against 0.80). The app
+declines pieces the harness keeps more often than the reverse, so the
+app's list is the more conservative claim; the retention slice owns what
+to do with that.
+
+### Cost and time (AC 14)
+
+Per room, every paid call in the final render path on the `ai_jobs` rows
+(hero render, one camera read, two view checks with their generations, the
+views job): 0.33 to 0.59 USD in round 1 and 0.46 to 0.59 in round 2 against
+the 1.00 ceiling; the hero itself is about 0.07. All image credits were the
+primary provider's. Wall time 98 to 152 seconds per room, one delivery
+each, against the 700 second queue budget. The time constants are pinned
+by `render.test.ts` against the route literals (queue 800, the three page
+routes 300) and by the runner and views cases named under AC 14 above.
+
+### Step 9, not run
+
+The six-anchor measurement was dropped. Its runners reset the five harness
+rooms' current concepts, and those rooms now carry the S4 reveal evidence
+Ayo walks at G2; the two numbers the retention slice said it needed first
+(judge variance, and the harness against the app's design check) are
+recorded above, and the retention slice owns the measurement.
