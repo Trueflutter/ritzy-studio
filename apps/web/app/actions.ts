@@ -44,7 +44,7 @@ import {
   type ProductRow
 } from "@/lib/services/sourcing-support";
 import { createClient } from "@/lib/supabase/server";
-import { finalRenderStaleMs } from "@/lib/render";
+import { finalRenderRetryHonoured, finalRenderStaleMs } from "@/lib/render";
 import { localSkuFidelityModeEnabled } from "@/lib/render-flags";
 import { enqueueFinalRender, runFinalRender } from "@/lib/render-runner";
 import {
@@ -1999,11 +1999,7 @@ export async function generateFinalRenderAction(formData: FormData) {
     }
   }
 
-  const matchingReviewOutcome = ((matchingRenderJob?.input_summary ?? {}) as { spatialQaOutcome?: string }).spatialQaOutcome;
-  const retryHonoured =
-    Boolean(retryOf) &&
-    matchingRenderJob?.id === retryOf &&
-    (matchingReviewOutcome === "unresolved" || matchingReviewOutcome === "unreviewed");
+  const retryHonoured = finalRenderRetryHonoured(retryOf, matchingRenderJob);
   if (
     matchingRenderJob?.status === "succeeded" &&
     (matchingRenderJob.output_asset_ids?.length ?? 0) > 0 &&

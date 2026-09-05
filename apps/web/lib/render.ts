@@ -69,6 +69,25 @@ export function isRenderJobStalled(
 // a redelivery (queue mode) shows up through the views job's status instead.
 export const FINAL_RENDER_VIEWS_WINDOW_MS = FINAL_RENDER_ATTEMPT_BUDGET_MS;
 
+// S4 (AC 11): "render again" on a succeeded render is honoured only for the
+// job the reveal named, and only when its placement review ended unresolved
+// or could not run. A render that passed review keeps the "Final render is
+// ready" redirect, so resubmitting the form cannot re-render a good room for
+// free; the paid re-render path is unchanged.
+export function finalRenderRetryHonoured(
+  retryOf: string | null | undefined,
+  latestJob: { id: string; status: string | null; input_summary: unknown } | null | undefined
+): boolean {
+  if (!retryOf || !latestJob || latestJob.id !== retryOf || latestJob.status !== "succeeded") {
+    return false;
+  }
+  const summary =
+    latestJob.input_summary && typeof latestJob.input_summary === "object"
+      ? (latestJob.input_summary as { spatialQaOutcome?: unknown })
+      : {};
+  return summary.spatialQaOutcome === "unresolved" || summary.spatialQaOutcome === "unreviewed";
+}
+
 export function isWithinFinalRenderViewsWindow(
   createdAt: string | null | undefined,
   now: number = Date.now()

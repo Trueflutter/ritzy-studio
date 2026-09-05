@@ -9,6 +9,7 @@ import {
   FINAL_RENDER_STALE_MS,
   FINAL_RENDER_VIEWS_WINDOW_MS,
   finalRenderAttemptBudgetMs,
+  finalRenderRetryHonoured,
   finalRenderStaleMs,
   isRenderJobStalled,
   isWithinFinalRenderViewsWindow
@@ -83,6 +84,22 @@ assert.equal(isWithinFinalRenderViewsWindow("not-a-date", now), false);
   // isRenderJobStalled honours the execution path.
   assert.equal(isRenderJobStalled("running", iso(FINAL_RENDER_INLINE_BUDGET_MS + 61_000), now, "inline"), true);
   assert.equal(isRenderJobStalled("running", iso(FINAL_RENDER_INLINE_BUDGET_MS + 61_000), now, "queue"), false);
+}
+
+// S4 (AC 11): the retry branch of the render action, as a rule the double
+// cannot host ("use server" module): honoured only for the named job, only
+// when its review ended unresolved or could not run.
+{
+  const job = (outcome: string | null, status = "succeeded") => ({ id: "job-1", status, input_summary: outcome ? { spatialQaOutcome: outcome } : {} });
+  assert.equal(finalRenderRetryHonoured("job-1", job("unresolved")), true);
+  assert.equal(finalRenderRetryHonoured("job-1", job("unreviewed")), true);
+  assert.equal(finalRenderRetryHonoured("job-1", job("passed")), false, "a passed render is not re-rendered by resubmitting");
+  assert.equal(finalRenderRetryHonoured("job-1", job("resolved_after_regeneration")), false);
+  assert.equal(finalRenderRetryHonoured("job-1", job(null)), false);
+  assert.equal(finalRenderRetryHonoured("job-2", job("unresolved")), false, "only the job the reveal named");
+  assert.equal(finalRenderRetryHonoured(null, job("unresolved")), false);
+  assert.equal(finalRenderRetryHonoured("job-1", job("unresolved", "failed")), false);
+  assert.equal(finalRenderRetryHonoured("job-1", null), false);
 }
 
 console.log("render.test.ts: all assertions passed");
