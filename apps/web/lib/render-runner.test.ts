@@ -11,7 +11,6 @@ import type {
 import type { RenderSpatialQaResponse } from "@ritzy-studio/prompts";
 
 import { FINAL_RENDER_ATTEMPT_BUDGET_MS, FINAL_RENDER_INLINE_BUDGET_MS } from "./render";
-import { SPATIAL_QA_RETRY_RESERVE_MS } from "./render-qa";
 import { runFinalRender, type FinalRenderRunnerDeps } from "./render-runner";
 import { fakeSupabase, type RecordedCall, type StorageCall } from "./services/supabase-test-double";
 
