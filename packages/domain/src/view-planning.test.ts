@@ -4,6 +4,7 @@ import type { DesignSpecObject } from "./design-spec";
 import { spatialLayoutModeForRoomType } from "./spatial-design-rules";
 import {
   fallbackCameraRead,
+  focalElementLabel,
   parseViewPlan,
   planViews,
   PLANNED_VIEW_LABELS,
@@ -261,6 +262,17 @@ function input(overrides: Partial<ViewPlanInput>): ViewPlanInput {
       assert.ok(view.referenceItemIds.length <= 6, `${view.key} carries at most six references`);
     }
     assert.ok(plan.heroReferenceItemIds.length <= 8);
+    // The views phase reads mustShowLabels by the index of the focal token in
+    // mustShow: the two arrays are built together, one label per key, and the
+    // focal token's label is the focal element's (tests review).
+    for (const view of plan.views) {
+      assert.equal(view.mustShow.length, view.mustShowLabels.length, `${view.key}: one label per expected key`);
+      const focalIndex = plan.coverage.focalToken ? view.mustShow.indexOf(plan.coverage.focalToken) : -1;
+      if (focalIndex >= 0) {
+        const focalLabel = focalElementLabel(fixture.focalPoint) ?? "";
+        assert.ok(focalLabel.length > 0 && view.mustShowLabels[focalIndex].startsWith(focalLabel), `${view.key}: the focal token carries the focal element's label`);
+      }
+    }
   }
 }
 

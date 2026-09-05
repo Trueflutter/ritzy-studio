@@ -4,7 +4,6 @@ import {
   assessViewConsistency,
   evolinkCreditsToUsd,
   generateFinalRenderView,
-  sumImagePlusTextUsd,
   VIEW_CONSISTENCY_TIMEOUT_MS,
   viewConsistencyCorrectionLanguage,
   type AssessViewConsistencyInput,
@@ -114,6 +113,17 @@ function summaryOf(value: unknown): Record<string, unknown> {
 // The keys the old runner generated, as a plan: hero reference only, no photo
 // anchoring, no expectations. Used for a job whose hero committed before the
 // planner existed.
+// A row's cost: image credits when a generation was made, text cost when a
+// check was; a row that only checked a recovered asset still records its
+// text cost rather than collapsing to null (correctness review).
+function viewCostUsd(imageCredits: number | null, textCostUsd: number | null): number | null {
+  if (imageCredits === null && textCostUsd === null) {
+    return null;
+  }
+  const imageUsd = imageCredits === null ? 0 : (evolinkCreditsToUsd(imageCredits) ?? 0);
+  return Math.round((imageUsd + (textCostUsd ?? 0)) * 10_000) / 10_000;
+}
+
 export function compatibilityViewPlan(): ViewPlan {
   const view = (key: "reverse_wide" | "anchor_detail"): PlannedView => ({
     key,
@@ -221,12 +231,17 @@ export async function ensureFinalRenderViews({
     viewAssets = ((assetRows ?? []) as ViewAssetRow[]).filter((asset) => asset.storage_path.startsWith(viewPrefix));
   }
 
-  const { data: rowData } = await serviceSupabase
+  const { data: rowData, error: rowsError } = await serviceSupabase
     .from("ai_jobs")
     .select("id, status, created_at, input_summary, output_summary")
     .eq("job_type", RENDER_VIEW_CHECK_JOB_TYPE)
     .contains("input_summary", { renderJobId: job.id })
     .order("created_at", { ascending: false });
+  // A failed read of the check rows is not an empty world: the list would be
+  // rewritten without a view another delivery paid for (correctness review).
+  if (rowsError) {
+    throw new Error(`The view check rows could not be read: ${rowsError.message}`);
+  }
   const checkRows = (rowData ?? []) as ViewCheckRow[];
   const rowsFor = (viewKey: string) => checkRows.filter((row) => summaryOf(row.input_summary).viewKey === viewKey);
 
@@ -262,10 +277,16 @@ export async function ensureFinalRenderViews({
     if (roomContext) {
       return roomContext;
     }
-    const { data: room } = await serviceSupabase.from("rooms").select("room_type").eq("id", job.room_id).maybeSingle();
-    const { data: concept } = job.concept_id
+    const { data: room, error: roomError } = await serviceSupabase.from("rooms").select("room_type").eq("id", job.room_id).maybeSingle();
+    if (roomError) {
+      throw new Error(`The room could not be read for the view: ${roomError.message}`);
+    }
+    const { data: concept, error: conceptError } = job.concept_id
       ? await serviceSupabase.from("concepts").select("title, description").eq("id", job.concept_id).maybeSingle()
-      : { data: null };
+      : { data: null, error: null };
+    if (conceptError) {
+      throw new Error(`The concept could not be read for the view: ${conceptError.message}`);
+    }
     roomContext = {
       roomType: room?.room_type ?? "living room",
       conceptTitle: concept?.title ?? "Final render",
@@ -275,12 +296,17 @@ export async function ensureFinalRenderViews({
   };
 
   const loadSourcePhoto = async (assetId: string) => {
-    const { data: asset } = await serviceSupabase
+    const { data: asset, error: assetError } = await serviceSupabase
       .from("room_assets")
       .select("id, storage_path, mime_type")
       .eq("id", assetId)
       .eq("room_id", job.room_id)
       .maybeSingle();
+    // A transient read must not quietly generate an unanchored view under a
+    // plan that says it stands at the photograph (correctness review).
+    if (assetError) {
+      throw new Error(`The anchored photograph could not be read: ${assetError.message}`);
+    }
     if (!asset) {
       return null;
     }
@@ -298,11 +324,14 @@ export async function ensureFinalRenderViews({
     if (itemIds.length === 0) {
       return [];
     }
-    const { data: items } = await serviceSupabase
+    const { data: items, error: itemsError } = await serviceSupabase
       .from("shopping_list_items")
       .select("id, role_label, product:products(id, name, primary_image_url)")
       .eq("shopping_list_id", job.shopping_list_id ?? "")
       .in("id", itemIds);
+    if (itemsError) {
+      throw new Error(`The view's product references could not be read: ${itemsError.message}`);
+    }
     const byId = new Map((items ?? []).map((item) => [item.id, item]));
     const references = await Promise.all(
       itemIds.map(async (itemId) => {
@@ -428,6 +457,9 @@ export async function ensureFinalRenderViews({
     }
 
     if (remainingMs() < VIEW_START_RESERVE_MS) {
+      // Opened even when nothing can start, so the audit shows this delivery
+      // ran and why the set is short (tests review).
+      await ensureViewsJob();
       return { kind: "not_terminal", why: "no time left in this attempt to start the view" };
     }
 
@@ -599,7 +631,7 @@ export async function ensureFinalRenderViews({
       const closePayload = {
         status: "succeeded" as const,
         completed_at: new Date(deps.now()).toISOString(),
-        cost_estimate_usd: sumImagePlusTextUsd(evolinkCreditsToUsd(enforced.imageCreditsUsed), enforced.textCostUsd),
+        cost_estimate_usd: viewCostUsd(enforced.imageCreditsUsed, enforced.textCostUsd),
         output_summary: {
           viewKey: view.key,
           outcome: enforced.outcome,
@@ -656,7 +688,7 @@ export async function ensureFinalRenderViews({
           status: "failed",
           completed_at: new Date(deps.now()).toISOString(),
           error_message: message,
-          cost_estimate_usd: spentCredits === null && spentTextCost === null ? null : sumImagePlusTextUsd(evolinkCreditsToUsd(spentCredits), spentTextCost),
+          cost_estimate_usd: viewCostUsd(spentCredits, spentTextCost),
           output_summary: { viewKey: view.key, imageCreditsUsed: spentCredits, textCostUsd: spentTextCost }
         },
         "final render view"
@@ -686,7 +718,7 @@ export async function ensureFinalRenderViews({
         status: complete ? "succeeded" : "failed",
         completed_at: new Date(deps.now()).toISOString(),
         error_message: complete ? null : Array.from(new Set([...deliveryErrors, ...notTerminal])).join("; "),
-        cost_estimate_usd: sumImagePlusTextUsd(evolinkCreditsToUsd(deliveryCredits), deliveryTextCost),
+        cost_estimate_usd: viewCostUsd(deliveryCredits, deliveryTextCost),
         output_summary: { renderJobId: job.id, outcomes, notTerminal, legacy }
       },
       "final render views"

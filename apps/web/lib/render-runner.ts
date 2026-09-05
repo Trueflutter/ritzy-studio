@@ -244,11 +244,16 @@ export async function runFinalRender(
       throw new FinalRenderValidationError("Final render job is missing its concept.");
     }
 
-    const { data: room } = await serviceSupabase
+    const { data: room, error: roomError } = await serviceSupabase
       .from("rooms")
       .select("id, room_type, project_id")
       .eq("id", job.room_id)
       .maybeSingle();
+    // A failed read is retryable; only a clean miss is the job's own fault
+    // (correctness review; the rule 9a5dc40 set for the loader).
+    if (roomError) {
+      throw new Error(`Final render job's room could not be read: ${roomError.message}`);
+    }
     if (!room) {
       throw new FinalRenderValidationError("Final render job's room no longer exists.");
     }
@@ -256,11 +261,14 @@ export async function runFinalRender(
 
     let userId = typeof inputSummary.userId === "string" ? inputSummary.userId : null;
     if (!userId) {
-      const { data: project } = await serviceSupabase
+      const { data: project, error: projectError } = await serviceSupabase
         .from("projects")
         .select("owner_user_id")
         .eq("id", room.project_id)
         .maybeSingle();
+      if (projectError) {
+        throw new Error(`Final render job's project could not be read: ${projectError.message}`);
+      }
       userId = project?.owner_user_id ?? null;
     }
     if (!userId) {
@@ -305,6 +313,9 @@ export async function runFinalRender(
     // The last completed read is kept outside the assessment so a QA call that throws
     // after a paid, successful read does not cost the plan that read.
     let readAuditUnclosed = false;
+    // A paid read whose audit row could not be closed: its cost rides on the
+    // job's own row whatever the review then does (Codex, rounds 2 and 3).
+    let unclosedReadCostUsd = 0;
     let latestRead: { cameraRead: RoomCameraRead | null; cameraReadError: string | null } = {
       cameraRead: null,
       cameraReadError: null
@@ -313,7 +324,6 @@ export async function runFinalRender(
       const heroDataUrl = await deps.toVisionDataUrl(Buffer.from(render.imageBase64, "base64"), "image/png");
       let cameraRead: RoomCameraRead | null = null;
       let cameraReadError: string | null = null;
-      let unclosedReadCostUsd = 0;
       // No time left means no paid call: the review is recorded as unable to run
       // rather than started against a floor timeout past the deadline.
       if (remainingMs() < MIN_TEXT_CALL_MS) {
@@ -387,9 +397,7 @@ export async function runFinalRender(
         cameraFacts: { focalElementInFrame: facts.focalElementInFrame, focalLabel },
         timeoutMs: Math.max(1_000, Math.min(SPATIAL_QA_TIMEOUT_MS, remainingMs()))
       });
-      const textCostUsd =
-        unclosedReadCostUsd > 0 ? Math.round(((qa.textCostUsd ?? 0) + unclosedReadCostUsd) * 10_000) / 10_000 : (qa.textCostUsd ?? null);
-      return { qa: qa.qa, facts, textCostUsd, cameraRead, cameraReadError, cameraReadAuditUnclosed: readAuditUnclosed };
+      return { qa: qa.qa, facts, textCostUsd: qa.textCostUsd ?? null, cameraRead, cameraReadError, cameraReadAuditUnclosed: readAuditUnclosed };
     };
 
     // Post-render spatial QA: the bounded state machine. A review that cannot run never
@@ -510,7 +518,11 @@ export async function runFinalRender(
           imageCreditsUsed: enforced.imageCreditsUsed,
           spatialQaTextCostUsd: enforced.textCostUsd,
           cameraReadAuditUnclosed: readAuditUnclosed,
-          costEstimateUsd: sumImagePlusTextUsd(evolinkCreditsToUsd(enforced.imageCreditsUsed), enforced.textCostUsd)
+          unclosedReadCostUsd: unclosedReadCostUsd > 0 ? Math.round(unclosedReadCostUsd * 10_000) / 10_000 : null,
+          costEstimateUsd: sumImagePlusTextUsd(
+            evolinkCreditsToUsd(enforced.imageCreditsUsed),
+            unclosedReadCostUsd > 0 ? Math.round(((enforced.textCostUsd ?? 0) + unclosedReadCostUsd) * 10_000) / 10_000 : enforced.textCostUsd
+          )
         }
       })
       .eq("id", job.id)

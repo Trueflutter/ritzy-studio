@@ -11,6 +11,7 @@ import type { ViewPlan } from "@ritzy-studio/domain";
 import { FINAL_RENDER_ATTEMPT_BUDGET_MS } from "./render";
 import {
   ensureFinalRenderViews,
+  FINAL_RENDER_VIEWS_JOB_TYPE,
   RENDER_VIEW_CHECK_JOB_TYPE,
   VIEW_LEASE_EXTENSION_MS,
   VIEW_LEASE_GRACE_MS,
@@ -80,7 +81,10 @@ function scenario(options: {
   outcomesRecordedByOther?: Record<string, { outcome: string; assetId: string }>;
   closeErrorsBeforeSuccess?: number;
   uploadError?: string;
+  checkRowsReadError?: string;
+  sourcePhotoReadError?: string;
   extensionLost?: boolean;
+  bumpLeaseOnReread?: boolean;
   jobReadError?: string;
   listWriteError?: string;
   viewsVersion?: number | null;
@@ -156,6 +160,9 @@ function scenario(options: {
           return { data: { id: "asset-hero", storage_path: "u/room-1/final-job-1-abcd1234.png", mime_type: "image/png" } };
         }
         if (byId === "photo-2") {
+          if (options.sourcePhotoReadError) {
+            return { error: { message: options.sourcePhotoReadError } };
+          }
           return { data: { id: "photo-2", storage_path: "u/room-1/p2.jpg", mime_type: "image/jpeg" } };
         }
         if (byId) {
@@ -172,7 +179,15 @@ function scenario(options: {
       if (call.table === "ai_jobs" && call.op === "select") {
         const byId = call.filters.find(([column]) => column === "id")?.[1] as string | undefined;
         if (byId) {
-          return { data: state.checkRows.find((row) => row.id === byId) ?? null };
+          const row = state.checkRows.find((entry) => entry.id === byId) ?? null;
+          if (row && row.status === "running" && options.bumpLeaseOnReread) {
+            // The holder extended its lease while the waiter slept.
+            return { data: { ...row, input_summary: { ...row.input_summary, leaseUntil: 9_999_999_999_000 } } };
+          }
+          return { data: row };
+        }
+        if (options.checkRowsReadError) {
+          return { error: { message: options.checkRowsReadError } };
         }
         // The phase scopes its read to the render job; the double honours the
         // contains filter so a row of another job is never handed back.
@@ -477,6 +492,12 @@ async function main() {
     assert.equal(result.complete, true, "both views are terminal after the wait");
     const newRow = state.checkRows.find((row) => row.status === "succeeded" && row.input_summary.viewKey === "focal_wide");
     assert.equal(newRow?.output_summary?.assetId, "view-asset-old");
+    // The recovered asset was not generated here, so the row spent text only;
+    // that cost is recorded rather than collapsing to null (correctness review).
+    const recoveredClose = state.calls.find(
+      (call) => call.table === "ai_jobs" && call.op === "update" && (call.payload as { status?: string }).status === "succeeded" && (call.payload as { output_summary?: { assetId?: string } }).output_summary?.assetId === "view-asset-old"
+    );
+    assert.equal((recoveredClose?.payload as { cost_estimate_usd: number | null }).cost_estimate_usd, 0.003, "a text-only row records its text cost");
   }
 
   // A live lease that the remaining budget cannot outwait is left alone and
@@ -624,6 +645,15 @@ async function main() {
     const { deps: d2, probe: p2 } = deps({ checksByKey: { focal_wide: [inconsistent(), inconsistent()], anchor_detail: [consistent()] } });
     const r2 = await ensureFinalRenderViews({ serviceSupabase: twice.client as never, renderJobId: "job-1", deadlineAt: p2.clock + FINAL_RENDER_ATTEMPT_BUDGET_MS, now: d2.now, deps: d2 });
     assert.equal(r2.complete, true);
+    const viewsJobCloseOk = twice.state.calls.find(
+      (call) =>
+        call.table === "ai_jobs" &&
+        call.op === "update" &&
+        (call.payload as { status?: string }).status === "succeeded" &&
+        typeof (call.payload as { output_summary?: { renderJobId?: string; viewKey?: string } }).output_summary?.renderJobId === "string" &&
+        (call.payload as { output_summary?: { viewKey?: string } }).output_summary?.viewKey === undefined
+    );
+    assert.ok(viewsJobCloseOk, "the views job closes succeeded: an unresolved verdict is a verdict, not a failure");
     const focalRow = twice.state.checkRows.find((row) => row.input_summary.viewKey === "focal_wide");
     assert.equal(focalRow?.status, "succeeded");
     assert.equal(focalRow?.output_summary?.outcome, "unresolved");
@@ -718,6 +748,67 @@ async function reviewFindings() {
     );
     assert.equal(state.versionWrites.length, 1, "a DB error is not retried as a version miss");
     assert.equal(state.checkRows.filter((row) => row.status === "succeeded").length, 2, "the views stand on their own rows for the redelivery");
+  }
+
+  // Tests review: a holder that extended its lease while the waiter slept is
+  // alive; the waiter reclaims nothing, generates nothing, and the view is
+  // left not terminal for a later delivery.
+  {
+    const now = 1_000_000;
+    const { client, state } = scenario({
+      bumpLeaseOnReread: true,
+      checkRows: [
+        { id: "row-live", status: "running", created_at: "2026-09-05T10:00:00Z", input_summary: { renderJobId: "job-1", viewKey: "anchor_detail", leaseUntil: now + 10_000 }, output_summary: null },
+        { id: "row-focal", status: "succeeded", created_at: "2026-09-05T10:00:00Z", input_summary: { renderJobId: "job-1", viewKey: "focal_wide" }, output_summary: { viewKey: "focal_wide", assetId: "va-focal", outcome: "consistent" } }
+      ],
+      viewAssets: [{ id: "va-focal", storage_path: "u/room-1/final-job-1-focal_wide-n1.png", view_key: "focal_wide", mime_type: "image/png" }]
+    });
+    const { deps: d, probe } = deps();
+    const result = await ensureFinalRenderViews({ serviceSupabase: client as never, renderJobId: "job-1", deadlineAt: now + 500_000, now: d.now, deps: d });
+    assert.equal(result.complete, false);
+    assert.equal(probe.generations.length, 0, "the live holder's view is not generated again");
+    assert.equal(state.checkRows.find((row) => row.id === "row-live")?.status, "running", "the live holder is not reclaimed");
+    assert.ok(probe.order.some((entry) => entry.startsWith("sleep:")), "the waiter slept out the lease it saw");
+  }
+
+  // Tests review: a delivery that cannot start any view still opens the
+  // views job and closes it failed with the reason, so the audit shows the
+  // delivery ran and why the set is short.
+  {
+    const { client, state } = scenario();
+    const { deps: d, probe } = deps();
+    const result = await ensureFinalRenderViews({ serviceSupabase: client as never, renderJobId: "job-1", deadlineAt: probe.clock + 10_000, now: d.now, deps: d });
+    assert.equal(result.complete, false);
+    assert.equal(probe.generations.length, 0);
+    const viewsJobInsert = inserts(state, FINAL_RENDER_VIEWS_JOB_TYPE);
+    assert.equal(viewsJobInsert.length, 1, "the views job row exists for a delivery that started nothing");
+    const viewsJobClose = state.calls.find(
+      (call) => call.table === "ai_jobs" && call.op === "update" && (call.payload as { status?: string }).status === "failed" && /no time left/.test(String((call.payload as { error_message?: string }).error_message))
+    );
+    assert.ok(viewsJobClose, "the views job closed failed with the reason");
+  }
+
+  // Correctness re-review: a failed read of the check rows throws (the list
+  // must never be rewritten from an empty view of the world); a failed read
+  // of the anchored photograph fails the lease instead of quietly generating
+  // an unanchored view under a plan that says it stands at the photograph.
+  {
+    const { client } = scenario({ checkRowsReadError: "pooler blip" });
+    const { deps: d, probe } = deps();
+    await assert.rejects(
+      ensureFinalRenderViews({ serviceSupabase: client as never, renderJobId: "job-1", deadlineAt: probe.clock + FINAL_RENDER_ATTEMPT_BUDGET_MS, now: d.now, deps: d }),
+      /check rows could not be read/
+    );
+    assert.equal(probe.generations.length, 0);
+  }
+  {
+    const { client, state } = scenario({ sourcePhotoReadError: "pooler blip" });
+    const { deps: d, probe } = deps();
+    const result = await ensureFinalRenderViews({ serviceSupabase: client as never, renderJobId: "job-1", deadlineAt: probe.clock + FINAL_RENDER_ATTEMPT_BUDGET_MS, now: d.now, deps: d });
+    assert.equal(result.complete, false);
+    assert.equal(probe.generations.filter((input) => input.viewKey === "focal_wide").length, 0, "the anchored view is not generated without its photograph");
+    const focalRow = state.checkRows.find((row) => row.input_summary.viewKey === "focal_wide");
+    assert.equal(focalRow?.status, "failed", "the lease closes failed for the next delivery");
   }
 
   // Codex, round 2: the retry generation and its check run inside the

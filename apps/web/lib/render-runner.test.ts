@@ -42,7 +42,7 @@ type World = {
   storageCalls: StorageCall[];
 };
 
-function world(overrides: { jobStatus?: string; successRows?: Array<{ id: string }>; executionPath?: string; aiJobCloseError?: string } = {}) {
+function world(overrides: { jobStatus?: string; successRows?: Array<{ id: string }>; executionPath?: string; aiJobCloseError?: string; roomReadError?: string } = {}) {
   const state: World = {
     jobStatus: overrides.jobStatus ?? "queued",
     successRows: overrides.successRows ?? [{ id: "job-1" }],
@@ -103,6 +103,9 @@ function world(overrides: { jobStatus?: string; successRows?: Array<{ id: string
         return { data: [{ id: "job-1" }] };
       }
       if (call.table === "rooms" && call.op === "select") {
+        if (overrides.roomReadError) {
+          return { error: { message: overrides.roomReadError } };
+        }
         return { data: { id: "room-1", room_type: "Living Room", project_id: "proj-1" } };
       }
       if (call.table === "concepts") {
@@ -441,7 +444,41 @@ async function main() {
     const summary = (updates(state, "succeeded")[0].payload as { input_summary: Record<string, unknown> }).input_summary;
     assert.equal(summary.cameraReadAuditUnclosed, true);
     assert.equal(summary.costEstimateUsd, 0.3071, "the hero, the QA and the unclosed read's 0.003");
+    assert.equal(summary.unclosedReadCostUsd, 0.003);
     assert.equal((summary.cameraRead as { source: string }).source, "vision", "the read itself is kept");
+  }
+  // Codex, round 3: the same unclosed read, and then the QA throws. The read's
+  // cost still rides on the job (no assessment carries it).
+  {
+    const { client, state } = world({ aiJobCloseError: "db down" });
+    const { deps: d, probe } = deps(client);
+    d.assessQa = async (input) => {
+      probe.qas.push(input);
+      throw new Error("qa timed out");
+    };
+    await runFinalRender({ renderJobId: "job-1", attempt: { mode: "queue", deliveryCount: 1 } }, d);
+    const summary = (updates(state, "succeeded")[0].payload as { input_summary: Record<string, unknown> }).input_summary;
+    assert.equal(summary.spatialQaOutcome, "unreviewed");
+    assert.equal(summary.cameraReadAuditUnclosed, true);
+    assert.equal(summary.unclosedReadCostUsd, 0.003);
+    assert.equal(summary.costEstimateUsd, 0.2971, "the hero's credits plus the unclosed read, no QA cost");
+  }
+
+  // Tests review: an incomplete set in inline mode does not rethrow; there is
+  // no queue to redeliver and the reveal shows what exists.
+  {
+    const { client } = world({ executionPath: "inline" });
+    const { deps: d } = deps(client, { viewsComplete: false });
+    await runFinalRender({ renderJobId: "job-1", attempt: { mode: "inline" } }, d);
+  }
+
+  // Correctness re-review: a failed room read is retryable (rethrown, no
+  // terminal write), never the non-retryable "room no longer exists".
+  {
+    const { client, state } = world({ roomReadError: "rooms read failed" });
+    const { deps: d } = deps(client);
+    await assert.rejects(runFinalRender({ renderJobId: "job-1", attempt: { mode: "queue", deliveryCount: 1 } }, d), /rooms read failed/);
+    assert.equal(updates(state, "failed").length, 0, "no terminal write for a transient read");
   }
 
   // D. Inline mode, the render throws: the failure write, filtered on running,
