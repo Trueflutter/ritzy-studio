@@ -22,7 +22,13 @@ import {
 } from "@ritzy-studio/domain";
 
 import { configuredImageModel, configuredImageProvider, fetchRemoteImage, visionImageDataUrl } from "@/lib/render-images";
-import { enforceViewConsistency, type ViewConsistencyOutcome } from "@/lib/render-qa";
+import {
+  addCost,
+  addCredits,
+  enforceViewConsistency,
+  MIN_TEXT_CALL_MS,
+  type ViewConsistencyOutcome
+} from "@/lib/render-qa";
 import { closeAiJob } from "@/lib/services/close-ai-job";
 import type { ServiceSupabaseClient } from "@/lib/services/supabase-clients";
 
@@ -152,11 +158,16 @@ export async function ensureFinalRenderViews({
   };
   const remainingMs = () => Math.max(0, deadlineAt - deps.now());
 
-  const { data: job } = await serviceSupabase
+  // A failed read is never "nothing to repair": it throws, and the queue
+  // redelivers below the attempt cap (correctness review; the runner's rule).
+  const { data: job, error: jobError } = await serviceSupabase
     .from("render_jobs")
-    .select("id, room_id, concept_id, status, output_asset_ids, input_summary")
+    .select("id, room_id, concept_id, shopping_list_id, status, output_asset_ids, input_summary")
     .eq("id", renderJobId)
     .maybeSingle();
+  if (jobError) {
+    throw new Error(`The final render job could not be read for its views: ${jobError.message}`);
+  }
 
   const heroAssetId = job?.output_asset_ids?.[0];
   if (!job || job.status !== "succeeded" || !heroAssetId) {
@@ -167,10 +178,16 @@ export async function ensureFinalRenderViews({
   const summary = summaryOf(job.input_summary);
   let userId = typeof summary.userId === "string" ? summary.userId : null;
   if (!userId) {
-    const { data: room } = await serviceSupabase.from("rooms").select("project_id").eq("id", job.room_id).maybeSingle();
-    const { data: project } = room
+    const { data: room, error: roomError } = await serviceSupabase.from("rooms").select("project_id").eq("id", job.room_id).maybeSingle();
+    if (roomError) {
+      throw new Error(`The room could not be read for the render's views: ${roomError.message}`);
+    }
+    const { data: project, error: projectError } = room
       ? await serviceSupabase.from("projects").select("owner_user_id").eq("id", room.project_id).maybeSingle()
-      : { data: null };
+      : { data: null, error: null };
+    if (projectError) {
+      throw new Error(`The project could not be read for the render's views: ${projectError.message}`);
+    }
     userId = project?.owner_user_id ?? null;
   }
   if (!userId) {
@@ -186,13 +203,21 @@ export async function ensureFinalRenderViews({
   const focalLabel = focalElementLabel(focalPoint);
   const heroHiddenLabels = Array.from(new Set(plan.views.flatMap((view) => view.mustShowLabels)));
 
-  const { data: assetRows } = await serviceSupabase
-    .from("room_assets")
-    .select("id, storage_path, view_key, mime_type")
-    .eq("room_id", job.room_id)
-    .eq("asset_type", "final_render")
-    .not("view_key", "is", null);
-  const viewAssets = ((assetRows ?? []) as ViewAssetRow[]).filter((asset) => asset.storage_path.startsWith(viewPrefix));
+  // Only a legacy job (no persisted plan) has deterministic-path assets to
+  // adopt; every other delivery skips the scan (simplification review).
+  let viewAssets: ViewAssetRow[] = [];
+  if (legacy) {
+    const { data: assetRows, error: assetRowsError } = await serviceSupabase
+      .from("room_assets")
+      .select("id, storage_path, view_key, mime_type")
+      .eq("room_id", job.room_id)
+      .eq("asset_type", "final_render")
+      .not("view_key", "is", null);
+    if (assetRowsError) {
+      throw new Error(`The legacy view assets could not be read: ${assetRowsError.message}`);
+    }
+    viewAssets = ((assetRows ?? []) as ViewAssetRow[]).filter((asset) => asset.storage_path.startsWith(viewPrefix));
+  }
 
   const { data: rowData } = await serviceSupabase
     .from("ai_jobs")
@@ -213,6 +238,7 @@ export async function ensureFinalRenderViews({
       .from("room_assets")
       .select("id, storage_path, mime_type")
       .eq("id", heroAssetId)
+      .eq("room_id", job.room_id)
       .maybeSingle();
     if (!heroAsset) {
       throw new Error("Final render hero asset no longer exists.");
@@ -251,6 +277,7 @@ export async function ensureFinalRenderViews({
       .from("room_assets")
       .select("id, storage_path, mime_type")
       .eq("id", assetId)
+      .eq("room_id", job.room_id)
       .maybeSingle();
     if (!asset) {
       return null;
@@ -272,6 +299,7 @@ export async function ensureFinalRenderViews({
     const { data: items } = await serviceSupabase
       .from("shopping_list_items")
       .select("id, role_label, product:products(id, name, primary_image_url)")
+      .eq("shopping_list_id", job.shopping_list_id ?? "")
       .in("id", itemIds);
     const byId = new Map((items ?? []).map((item) => [item.id, item]));
     const references = await Promise.all(
@@ -402,6 +430,11 @@ export async function ensureFinalRenderViews({
     }
 
     const leaseUntil = Math.min(deps.now() + VIEW_LEASE_MS, deadlineAt + VIEW_LEASE_GRACE_MS);
+    // The image call is bounded by the lease as well as the attempt: a provider
+    // slower than the lease would otherwise still be generating when a later
+    // delivery reclaims the lease and pays for the same view again (Codex).
+    let leaseUntilMs = leaseUntil;
+    const leaseRemainingMs = () => Math.max(0, leaseUntilMs - deps.now() - VIEW_LEASE_GRACE_MS);
     const leaseSummary = {
       renderJobId: job.id,
       viewKey: view.key,
@@ -434,6 +467,8 @@ export async function ensureFinalRenderViews({
     }
     await ensureViewsJob();
 
+    let spentCredits: number | null = null;
+    let spentTextCost: number | null = null;
     try {
       const hero = await loadHero();
       const context = await loadRoomContext();
@@ -461,8 +496,11 @@ export async function ensureFinalRenderViews({
           mustShowLabels: view.mustShowLabels,
           purpose: view.purpose,
           promptSuffix,
-          deadlineMs: remainingMs()
+          deadlineMs: Math.min(remainingMs(), leaseRemainingMs())
         });
+        // Counted the moment the provider answered: an upload or asset insert
+        // that fails after this still closes the row with the spend (Codex).
+        spentCredits = addCredits(spentCredits, generated.imageCreditsUsed);
         const bytes = Buffer.from(generated.imageBase64, "base64");
         const assetPath = `${viewPrefix}${view.key}-${deps.nonce()}.png`;
         const { error: uploadError } = await serviceSupabase.storage
@@ -488,14 +526,16 @@ export async function ensureFinalRenderViews({
         }
         // Recorded before the check so a crash from here leaves a recoverable
         // asset, and the lease is extended for the check and a possible retry.
+        const extendedUntil = Math.min(deps.now() + VIEW_LEASE_EXTENSION_MS, deadlineAt + VIEW_LEASE_GRACE_MS);
         await serviceSupabase
           .from("ai_jobs")
           .update({
             output_summary: { assetId: asset.id, assetPath },
-            input_summary: { ...leaseSummary, leaseUntil: Math.min(deps.now() + VIEW_LEASE_EXTENSION_MS, deadlineAt + VIEW_LEASE_GRACE_MS) }
+            input_summary: { ...leaseSummary, leaseUntil: extendedUntil }
           })
           .eq("id", lease.id)
           .eq("status", "running");
+        leaseUntilMs = extendedUntil;
         return { assetId: asset.id, assetPath, bytes, credits: generated.imageCreditsUsed, recovered: false };
       };
 
@@ -504,9 +544,14 @@ export async function ensureFinalRenderViews({
       // carrier pieces), never the bare one, or the verdict's "focal
       // expectation missing" comparison could never match (review finding).
       const focalIndex = plan.coverage.focalToken ? view.mustShow.indexOf(plan.coverage.focalToken) : -1;
-      const viewFocalLabel = focalIndex >= 0 ? (view.mustShowLabels[focalIndex] ?? focalLabel) : focalLabel;
+      // A view not carrying the focal token is not judged against the focal
+      // element at all (a detail crop cannot show the TV wall).
+      const viewFocalLabel = focalIndex >= 0 ? (view.mustShowLabels[focalIndex] ?? focalLabel) : null;
 
       const assess = async (image: ViewImage) => {
+        if (remainingMs() < MIN_TEXT_CALL_MS) {
+          throw new Error("No time left in the attempt to check the view.");
+        }
         const result = await deps.assessView({
           roomType: context.roomType,
           viewKey: view.key,
@@ -519,6 +564,7 @@ export async function ensureFinalRenderViews({
           focalLabel: viewFocalLabel,
           timeoutMs: Math.max(1_000, Math.min(VIEW_CONSISTENCY_TIMEOUT_MS, remainingMs()))
         });
+        spentTextCost = addCost(spentTextCost, result.textCostUsd ?? null);
         return { check: result.check, textCostUsd: result.textCostUsd ?? null };
       };
 
@@ -584,10 +630,19 @@ export async function ensureFinalRenderViews({
       const message = error instanceof Error ? error.message : "Final render view generation failed.";
       console.error(`Final render view generation failed (${view.key}, render ${job.id}):`, error);
       deliveryErrors.push(`${view.key}: ${message}`);
+      // The spend up to the failure stays on the audit row and in the views job.
+      deliveryCredits = spentCredits === null ? deliveryCredits : (deliveryCredits ?? 0) + spentCredits;
+      deliveryTextCost = spentTextCost === null ? deliveryTextCost : Math.round(((deliveryTextCost ?? 0) + spentTextCost) * 10_000) / 10_000;
       await closeAiJob(
         serviceSupabase,
         lease.id,
-        { status: "failed", completed_at: new Date(deps.now()).toISOString(), error_message: message },
+        {
+          status: "failed",
+          completed_at: new Date(deps.now()).toISOString(),
+          error_message: message,
+          cost_estimate_usd: spentCredits === null && spentTextCost === null ? null : sumImagePlusTextUsd(evolinkCreditsToUsd(spentCredits), spentTextCost),
+          output_summary: { viewKey: view.key, imageCreditsUsed: spentCredits, textCostUsd: spentTextCost }
+        },
         "final render view"
       );
       return { kind: "not_terminal", why: message };
@@ -643,18 +698,27 @@ export async function ensureFinalRenderViews({
       })
       .eq("id", job.id)
       .eq("status", "succeeded");
-    const { data: written } = await (version === null
+    const { data: written, error: writeError } = await (version === null
       ? update.is("input_summary->>viewsVersion", null)
       : update.eq("input_summary->>viewsVersion", String(version))
     ).select("id");
+    // A DB error is not "another delivery wrote first": every view is terminal
+    // on its own row, so a redelivery recomputes and rewrites the list
+    // (correctness review).
+    if (writeError) {
+      throw new Error(`The final render's asset list could not be written: ${writeError.message}`);
+    }
     if (written && written.length > 0) {
       break;
     }
-    const { data: fresh } = await serviceSupabase
+    const { data: fresh, error: freshError } = await serviceSupabase
       .from("render_jobs")
       .select("id, room_id, concept_id, status, output_asset_ids, input_summary")
       .eq("id", job.id)
       .maybeSingle();
+    if (freshError) {
+      throw new Error(`The final render job could not be re-read after a version miss: ${freshError.message}`);
+    }
     if (!fresh || fresh.status !== "succeeded") {
       break;
     }

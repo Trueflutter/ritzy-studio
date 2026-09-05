@@ -212,6 +212,7 @@ function deps(
     qaVerdicts?: RenderSpatialQaResponse[];
     renderCostMs?: number;
     renderThrows?: boolean;
+    readThrowsOnCall?: number;
     showsFocalElement?: boolean;
     viewsComplete?: boolean;
   } = {}
@@ -237,6 +238,9 @@ function deps(
       readCamera: async (input) => {
         probe.reads.push(input);
         probe.clock += 3_000;
+        if (options.readThrowsOnCall === probe.reads.length) {
+          throw new Error("read timed out");
+        }
         return cameraRead(options.showsFocalElement ?? true);
       },
       assessQa: async (input) => {
@@ -336,6 +340,11 @@ async function main() {
     assert.equal(summary.spatialQaRegenerated, true);
     assert.equal(summary.imageCreditsUsed, 40);
     assert.deepEqual(summary.spatialQaVerdicts, ["regenerate", "pass"]);
+    // The deadlines are exact, not merely under the budget (tests review): the
+    // first render gets the whole attempt, the retry what the first render
+    // (20 s), its read (3 s) and its QA (5 s) left.
+    assert.equal(probe.renders[0].imageDeadlineMs, FINAL_RENDER_ATTEMPT_BUDGET_MS);
+    assert.equal(probe.renders[1].imageDeadlineMs, FINAL_RENDER_ATTEMPT_BUDGET_MS - 28_000);
   }
 
   // C. No time for a retry: a render that consumes the whole budget leaves a
@@ -345,15 +354,17 @@ async function main() {
     const { client, state } = world();
     const { deps: d, probe } = deps(client, {
       qaVerdicts: [regenerateQa],
-      renderCostMs: FINAL_RENDER_ATTEMPT_BUDGET_MS - SPATIAL_QA_RETRY_RESERVE_MS + 1_000
+      renderCostMs: FINAL_RENDER_ATTEMPT_BUDGET_MS - 30_000
     });
     await runFinalRender({ renderJobId: "job-1", attempt: { mode: "queue", deliveryCount: 1 } }, d);
     assert.equal(probe.renders.length, 1);
     const summary = (updates(state, "succeeded")[0].payload as { input_summary: Record<string, unknown> }).input_summary;
     assert.equal(summary.spatialQaOutcome, "unresolved");
     assert.equal(summary.spatialQaReason, "no_time_for_retry");
-    assert.ok(probe.reads[0].timeoutMs !== undefined && probe.reads[0].timeoutMs <= SPATIAL_QA_RETRY_RESERVE_MS);
-    assert.ok(probe.qas[0].timeoutMs !== undefined && probe.qas[0].timeoutMs <= SPATIAL_QA_RETRY_RESERVE_MS);
+    // Thirty seconds were left at the read; the read took three (tests review:
+    // the bound is below every stage default, so a raw default would fail).
+    assert.equal(probe.reads[0].timeoutMs, 30_000);
+    assert.equal(probe.qas[0].timeoutMs, 27_000);
   }
 
   // Review fixes. Inline mode can retry: a fast hero with a regenerate verdict
@@ -384,6 +395,39 @@ async function main() {
     const plan = summary.viewPlan as { views: Array<{ key: string; sourcePhotoAssetId: string | null }> };
     assert.equal(plan.views[0].key, "reverse_wide");
     assert.equal(plan.views[0].sourcePhotoAssetId, "photo-2");
+  }
+
+  // Codex finding: no time left after the hero means no paid text call at all.
+  // The read row is never opened, the QA never called, the render is kept
+  // unreviewed with the reason in the error.
+  {
+    const { client, state } = world();
+    const { deps: d, probe } = deps(client, { renderCostMs: FINAL_RENDER_ATTEMPT_BUDGET_MS + 1_000 });
+    await runFinalRender({ renderJobId: "job-1", attempt: { mode: "queue", deliveryCount: 1 } }, d);
+    assert.equal(probe.reads.length, 0);
+    assert.equal(probe.qas.length, 0);
+    assert.equal(state.calls.filter((call) => call.table === "ai_jobs" && call.op === "insert").length, 0, "no audit row without a call");
+    const summary = (updates(state, "succeeded")[0].payload as { input_summary: Record<string, unknown> }).input_summary;
+    assert.equal(summary.spatialQaOutcome, "unreviewed");
+    assert.match(String(summary.spatialQaError), /No time left/);
+    assert.equal((summary.cameraRead as { source: string }).source, "fallback");
+  }
+
+  // Correctness review: the plan is made from the read that judged the KEPT
+  // render. The kept render's read failed and the discarded retry's read
+  // succeeded; the plan uses the fallback, never the retry's facts.
+  {
+    const { client, state } = world();
+    const { deps: d, probe } = deps(client, { qaVerdicts: [regenerateQa, regenerateQa], readThrowsOnCall: 1 });
+    await runFinalRender({ renderJobId: "job-1", attempt: { mode: "queue", deliveryCount: 1 } }, d);
+    assert.equal(probe.reads.length, 2);
+    const summary = (updates(state, "succeeded")[0].payload as { input_summary: Record<string, unknown> }).input_summary;
+    assert.equal(summary.spatialQaOutcome, "unresolved", "both verdicts regenerate: the first render is kept");
+    assert.equal((summary.cameraRead as { source: string }).source, "fallback", "the retry's read judged another image");
+    assert.match(String(summary.cameraReadError), /read timed out/);
+    const plan = summary.viewPlan as { views: Array<{ key: string; sourcePhotoAssetId: string | null }> };
+    assert.equal(plan.views[0].key, "focal_wide", "a fallback read with a known focal point plans the focal view");
+    assert.equal(plan.views[0].sourcePhotoAssetId, null);
   }
 
   // D. Inline mode, the render throws: the failure write, filtered on running,

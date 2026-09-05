@@ -321,7 +321,6 @@ export default async function PresentationPage({
             {reviewFlagged ? (
               <RenderReviewNote
                 correctedAttemptJudged={correctedAttemptJudged}
-                error={latestRenderSummary.spatialQaError ?? null}
                 issues={reviewIssues}
                 outcome={reviewOutcome}
                 reason={latestRenderSummary.spatialQaReason ?? null}

@@ -21,8 +21,6 @@ export const FINAL_RENDER_INLINE_BUDGET_MS = 255_000;
 // Persistence, asset writes and revalidation after the last paid call.
 export const FINAL_RENDER_ATTEMPT_RESERVE_MS = 40_000;
 
-export type FinalRenderExecutionPath = "queue" | "inline" | "inline-fallback";
-
 export function finalRenderAttemptBudgetMs(executionPath: string | null | undefined): number {
   return executionPath === "inline" || executionPath === "inline-fallback"
     ? FINAL_RENDER_INLINE_BUDGET_MS

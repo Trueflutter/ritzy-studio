@@ -81,6 +81,7 @@ async function main() {
     roomType: "Living Room",
     conceptId: "concept-1",
     selectedShoppingItemIds: ["item-lamp", "item-sofa"],
+    shoppingListId: "list-1",
     fetchImage: async (url) => {
       fetched.push(url);
       return { bytes: Buffer.from(url), mimeType: "image/jpeg" };
@@ -106,6 +107,8 @@ async function main() {
   // Products in render priority order: the sofa outranks the lamp whatever
   // the list's sort order said.
   assert.deepEqual(loaded.products.map((entry) => entry.itemId), ["item-sofa", "item-lamp"]);
+  const itemsQuery = calls.find((call) => call.table === "shopping_list_items");
+  assert.ok(itemsQuery?.filters.some(([column, value]) => column === "shopping_list_id" && value === "list-1"), "items are read inside the job's own list (security review)");
   assert.equal(loaded.products[0].specKey, "0:sofa");
   assert.equal(loaded.products[0].dimensions, "W 200 cm x D 90 cm x H 80 cm");
   assert.deepEqual(fetched, ["https://cdn.example.com/p-sofa.jpg", "https://cdn.example.com/p-lamp.jpg"]);
@@ -148,6 +151,7 @@ async function main() {
     roomType: "Living Room",
     conceptId: "concept-1",
     selectedShoppingItemIds: ["item-lamp", "item-sofa"],
+    shoppingListId: "list-1",
     fetchImage: async () => null
   });
   assert.equal(single.spec, null, "only a confirmed spec is a contract");
@@ -185,6 +189,7 @@ async function main() {
     roomType: "Living Room",
     conceptId: "concept-1",
     selectedShoppingItemIds: ["item-lamp", "item-sofa"],
+    shoppingListId: "list-1",
     fetchImage: async () => null
   });
   assert.equal(assumed.spatialIntent.focalPoint, "unknown", "the brief itself is not rewritten");
@@ -217,7 +222,7 @@ async function reviewFixes() {
     ).client;
   for (const table of ["room_design_specs", "shopping_list_items", "design_briefs", "concepts"]) {
     await assert.rejects(
-      loadFinalRenderInputs({ serviceSupabase: erroring(table), roomId: "room-1", roomType: "Living Room", conceptId: "concept-1", selectedShoppingItemIds: ["item-sofa"], fetchImage: async () => null }),
+      loadFinalRenderInputs({ serviceSupabase: erroring(table), roomId: "room-1", roomType: "Living Room", conceptId: "concept-1", selectedShoppingItemIds: ["item-sofa"], shoppingListId: "list-1", fetchImage: async () => null }),
       (error: unknown) => error instanceof Error && !(error instanceof FinalRenderInputError) && /read failed/.test(error.message),
       `an errored ${table} read surfaces as a retryable error`
     );

@@ -103,6 +103,7 @@ export async function loadFinalRenderInputs({
   roomType,
   conceptId,
   selectedShoppingItemIds,
+  shoppingListId,
   fetchImage
 }: {
   serviceSupabase: ServiceSupabaseClient;
@@ -110,6 +111,9 @@ export async function loadFinalRenderInputs({
   roomType: string;
   conceptId: string;
   selectedShoppingItemIds: string[];
+  // The job's own list. The item ids travel on the job row, which its room owner can
+  // edit, so the service client never reads outside that list (security review).
+  shoppingListId: string | null;
   fetchImage: FetchProductImage;
 }): Promise<LoadedFinalRenderInputs> {
   // Every read below distinguishes a failed read from an empty one: a pooler
@@ -218,6 +222,7 @@ export async function loadFinalRenderInputs({
       )
     `
     )
+    .eq("shopping_list_id", shoppingListId ?? "")
     .in("id", selectedShoppingItemIds)
     .order("sort_order", { ascending: true });
   if (itemsError) {

@@ -1,4 +1,4 @@
-import { DESIGN_SPEC_LIMITS, designSpecMustPreserveSchema, designSpecObjectsSchema } from "@ritzy-studio/domain";
+import { DESIGN_SPEC_LIMITS, designSpecMustPreserveSchema, designSpecObjectsSchema, roomCameraReadSchema } from "@ritzy-studio/domain";
 import { z } from "zod";
 
 export {
@@ -260,22 +260,9 @@ export const cameraReadPrompt = {
   ].join("\n")
 } as const;
 
-export const cameraReadResponseSchema = z.object({
-  hero: z.object({
-    showsFocalElement: z.boolean().nullable(),
-    hiddenRoleKeys: z.array(z.string().min(1).max(80)).max(40)
-  }),
-  photos: z
-    .array(
-      z.object({
-        assetId: z.string().min(1).max(80),
-        sameRoom: z.enum(["yes", "unsure", "no"]),
-        cameraRelativeToHero: z.enum(["same", "opposite", "left", "right", "unknown"]),
-        showsFocalWall: z.boolean()
-      })
-    )
-    .max(6)
-});
+// The model's answer is the domain's camera read without its provenance
+// field: one schema, so a value added to one cannot be missed by the other.
+export const cameraReadResponseSchema = roomCameraReadSchema.omit({ source: true });
 
 export type CameraReadResponse = z.infer<typeof cameraReadResponseSchema>;
 

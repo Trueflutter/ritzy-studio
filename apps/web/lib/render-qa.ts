@@ -99,14 +99,14 @@ export type EnforceSpatialQaResult<R, A extends SpatialQaAssessment> = {
   textCostUsd: number | null;
 };
 
-function addCredits(total: number | null, next: number | null): number | null {
+export function addCredits(total: number | null, next: number | null): number | null {
   if (typeof next !== "number" || !Number.isFinite(next)) {
     return total;
   }
   return (total ?? 0) + next;
 }
 
-function addCost(total: number | null, next: number | null | undefined): number | null {
+export function addCost(total: number | null, next: number | null | undefined): number | null {
   if (typeof next !== "number" || !Number.isFinite(next)) {
     return total;
   }
@@ -287,6 +287,10 @@ export type ViewConsistencyAssessment = {
 
 // An image call at the observed pace plus a check, on the same reasoning.
 export const VIEW_RETRY_RESERVE_MS = 75_000;
+// Below this, a paid text call is not started at all: the provider client
+// floors its timeout at one second, so a call made with no time left would
+// spend after the attempt's deadline (Codex finding).
+export const MIN_TEXT_CALL_MS = 5_000;
 
 export type EnforceViewConsistencyInput<R, A extends ViewConsistencyAssessment> = {
   generate: (promptSuffix: string | null) => Promise<R>;

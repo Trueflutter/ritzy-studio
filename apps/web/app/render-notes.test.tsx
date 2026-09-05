@@ -33,7 +33,6 @@ const unresolved = renderToStaticMarkup(
   <RenderReviewNote
     outcome="unresolved"
     issues={["The sofa faces away from the TV wall.", "The rug floats away from the seating."]}
-    error={null}
     correctedAttemptJudged
   >
     <button data-testid="render-again">Render again</button>
@@ -48,7 +47,7 @@ assert.equal(unresolved.includes("$"), false);
 // Unresolved with ONE recorded verdict (no time for a retry, or the retry
 // never produced a judged image): the note must not claim a correction.
 const noRetry = renderToStaticMarkup(
-  <RenderReviewNote outcome="unresolved" issues={["The rug floats away from the seating."]} error={null} reason="no_time_for_retry">
+  <RenderReviewNote outcome="unresolved" issues={["The rug floats away from the seating."]} reason="no_time_for_retry">
     <button data-testid="render-again">Render again</button>
   </RenderReviewNote>
 );
@@ -57,7 +56,7 @@ assert.ok(/did not pass our placement review/.test(noRetry));
 assert.ok(/no time left in this attempt/.test(noRetry));
 assert.ok(/data-testid="render-again"/.test(noRetry));
 const retryFailed = renderToStaticMarkup(
-  <RenderReviewNote outcome="unresolved" issues={["The rug floats away from the seating."]} error="provider 503" />
+  <RenderReviewNote outcome="unresolved" issues={["The rug floats away from the seating."]} />
 );
 assert.equal(/corrected it once/.test(retryFailed), false);
 assert.ok(/A correction could not be completed/.test(retryFailed));
@@ -65,7 +64,7 @@ assert.equal(retryFailed.includes("provider 503"), false);
 
 // Unreviewed: the note says the review could not run, with no findings to list.
 const unreviewed = renderToStaticMarkup(
-  <RenderReviewNote outcome="unreviewed" issues={[]} error="provider timed out">
+  <RenderReviewNote outcome="unreviewed" issues={[]}>
     <button data-testid="render-again">Render again</button>
   </RenderReviewNote>
 );
@@ -74,8 +73,8 @@ assert.ok(/data-testid="render-again"/.test(unreviewed));
 assert.equal(unreviewed.includes("provider timed out"), false, "provider errors are not shopper copy");
 
 // Passed and resolved: no note at all.
-assert.equal(renderToStaticMarkup(<RenderReviewNote outcome="passed" issues={[]} error={null} />), "");
-assert.equal(renderToStaticMarkup(<RenderReviewNote outcome="resolved_after_regeneration" issues={["fixed"]} error={null} />), "");
+assert.equal(renderToStaticMarkup(<RenderReviewNote outcome="passed" issues={[]} />), "");
+assert.equal(renderToStaticMarkup(<RenderReviewNote outcome="resolved_after_regeneration" issues={["fixed"]} />), "");
 
 // Left-out angles: one line, once; nothing when none.
 assert.equal(renderToStaticMarkup(<ViewsLeftOutNote count={0} />), "");

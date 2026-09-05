@@ -72,11 +72,6 @@ export const roomCameraReadSchema = z.object({
 
 export type RoomCameraRead = z.infer<typeof roomCameraReadSchema>;
 
-export function parseRoomCameraRead(value: unknown): RoomCameraRead | null {
-  const parsed = roomCameraReadSchema.safeParse(value);
-  return parsed.success ? parsed.data : null;
-}
-
 export function fallbackCameraRead(photos: ReadonlyArray<{ assetId: string }>): RoomCameraRead {
   return {
     source: "fallback",
@@ -302,6 +297,12 @@ export function planningFocalPoint(
 function composeFocalLabel(focalLabel: string, carrierLabels: readonly string[]): string {
   const carriers = unique(carrierLabels);
   return carriers.length > 0 ? `${focalLabel} (${carriers.join(", ")})` : focalLabel;
+}
+
+// The key roles the camera read is asked about: the same list the planner
+// covers, so a hidden key the read reports is always one the plan knows.
+export function viewPlanKeyRoles(input: Pick<ViewPlanInput, "spec" | "roomType" | "products">): Array<{ key: string; label: string }> {
+  return keyRolesFor({ ...input, focalPoint: null, heroPhotoAssetId: null, photos: [], cameraRead: null }).keyRoles.map(({ key, label }) => ({ key, label }));
 }
 
 export function planViews(input: ViewPlanInput): ViewPlan {

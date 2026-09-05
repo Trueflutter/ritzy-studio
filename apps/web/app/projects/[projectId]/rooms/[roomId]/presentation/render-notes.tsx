@@ -23,9 +23,9 @@ export function RenderDisclaimer({ className }: { className?: string }) {
 
 export type RenderReviewOutcome = "passed" | "resolved_after_regeneration" | "unresolved" | "unreviewed" | string | null | undefined;
 
-// The review note. Provider errors stay in the job row (the `error` prop is
-// accepted and deliberately never rendered); the shopper reads what the
-// review found, or that it could not run, and what to do.
+// The review note. Provider errors stay in the job row and never reach the
+// shopper; the note reads what the review found, or that it could not run,
+// and what to do.
 export function RenderReviewNote({
   outcome,
   issues,
@@ -35,7 +35,6 @@ export function RenderReviewNote({
 }: {
   outcome: RenderReviewOutcome;
   issues: readonly string[];
-  error?: string | null;
   // True only when a corrected render was produced AND judged (two recorded
   // verdicts); the headline may claim a correction only then.
   correctedAttemptJudged?: boolean;

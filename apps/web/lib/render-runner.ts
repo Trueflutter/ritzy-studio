@@ -20,15 +20,20 @@ import {
   fallbackCameraRead,
   focalElementLabel,
   planViews,
-  sourcingRolesFromDesignSpec,
   type RoomCameraRead,
-  type ViewPlan
+  type ViewPlan,
+  viewPlanKeyRoles
 } from "@ritzy-studio/domain";
 
 import { finalRenderAttemptBudgetMs } from "@/lib/render";
 import { fetchRemoteImage, visionImageDataUrl } from "@/lib/render-images";
 import { FinalRenderInputError, loadFinalRenderInputs, type LoadedFinalRenderInputs } from "@/lib/render-inputs";
-import { enforceSpatialQa, type SpatialQaAssessment, type SpatialQaOutcome } from "@/lib/render-qa";
+import {
+  enforceSpatialQa,
+  MIN_TEXT_CALL_MS,
+  type SpatialQaAssessment,
+  type SpatialQaOutcome
+} from "@/lib/render-qa";
 import { ensureFinalRenderViews } from "@/lib/render-views";
 import { closeAiJob } from "@/lib/services/close-ai-job";
 import type { ServiceSupabaseClient } from "@/lib/services/supabase-clients";
@@ -145,7 +150,6 @@ type FinalRenderJobInputSummary = {
 type HeroAssessment = SpatialQaAssessment & {
   cameraRead: RoomCameraRead | null;
   cameraReadError: string | null;
-  cameraReadCostUsd: number | null;
 };
 
 export async function runFinalRender(
@@ -263,6 +267,7 @@ export async function runFinalRender(
     let loaded: LoadedFinalRenderInputs;
     try {
       loaded = await loadFinalRenderInputs({
+        shoppingListId: job.shopping_list_id,
         serviceSupabase,
         roomId: job.room_id,
         roomType: room.room_type,
@@ -275,9 +280,13 @@ export async function runFinalRender(
     }
 
     const focalLabel = focalElementLabel(loaded.focalPoint);
-    const keyRoles = loaded.spec
-      ? sourcingRolesFromDesignSpec(loaded.spec, room.room_type).roles.map((role) => ({ key: role.specKey, label: role.specLabel }))
-      : loaded.products.map((product) => ({ key: product.specKey ?? product.itemId, label: product.roleLabel }));
+    // One list feeds the read and the plan, so a hidden key the read reports
+    // is always one the planner knows (simplification review).
+    const keyRoles = viewPlanKeyRoles({
+      spec: loaded.spec,
+      roomType: room.room_type,
+      products: loaded.products.map((product) => ({ itemId: product.itemId, specKey: product.specKey, category: product.category, label: product.roleLabel }))
+    });
     const photoDataUrls = await Promise.all(
       loaded.photos.map(async (photo) => ({ assetId: photo.assetId, dataUrl: await deps.toVisionDataUrl(photo.bytes, photo.mimeType) }))
     );
@@ -300,7 +309,11 @@ export async function runFinalRender(
       const heroDataUrl = await deps.toVisionDataUrl(Buffer.from(render.imageBase64, "base64"), "image/png");
       let cameraRead: RoomCameraRead | null = null;
       let cameraReadError: string | null = null;
-      let cameraReadCostUsd: number | null = null;
+      // No time left means no paid call: the review is recorded as unable to run
+      // rather than started against a floor timeout past the deadline.
+      if (remainingMs() < MIN_TEXT_CALL_MS) {
+        throw new Error("No time left in the attempt for the placement review; the render is kept unreviewed.");
+      }
       const { data: readJob, error: readJobError } = await serviceSupabase
         .from("ai_jobs")
         .insert({
@@ -328,7 +341,6 @@ export async function runFinalRender(
             timeoutMs: Math.max(1_000, Math.min(CAMERA_READ_TIMEOUT_MS, remainingMs()))
           });
           cameraRead = read.read;
-          cameraReadCostUsd = read.textCostUsd ?? null;
           await closeAiJob(
             serviceSupabase,
             readJob.id,
@@ -354,6 +366,9 @@ export async function runFinalRender(
       }
       latestRead = { cameraRead, cameraReadError };
       const facts = { focalElementInFrame: cameraRead?.hero.showsFocalElement ?? null };
+      if (remainingMs() < MIN_TEXT_CALL_MS) {
+        throw new Error("No time left in the attempt for the placement review after the camera read; the render is kept unreviewed.");
+      }
       const qa = await deps.assessQa({
         imageUrl: heroDataUrl,
         roomType: room.room_type,
@@ -361,7 +376,7 @@ export async function runFinalRender(
         cameraFacts: { focalElementInFrame: facts.focalElementInFrame, focalLabel },
         timeoutMs: Math.max(1_000, Math.min(SPATIAL_QA_TIMEOUT_MS, remainingMs()))
       });
-      return { qa: qa.qa, facts, textCostUsd: qa.textCostUsd ?? null, cameraRead, cameraReadError, cameraReadCostUsd };
+      return { qa: qa.qa, facts, textCostUsd: qa.textCostUsd ?? null, cameraRead, cameraReadError };
     };
 
     // Post-render spatial QA: the bounded state machine. A review that cannot run never
@@ -384,8 +399,13 @@ export async function runFinalRender(
     // last read that completed (it judged the render that was kept). A missing read (the
     // call failed, or its audit row could not be opened) is the conservative fallback,
     // never an inference.
-    const cameraRead = enforced.assessment?.cameraRead ?? latestRead.cameraRead ?? fallbackCameraRead(loaded.photos);
-    const cameraReadError = enforced.assessment?.cameraReadError ?? latestRead.cameraReadError;
+    // When the kept render was assessed, only ITS read may plan (a discarded
+    // retry's read judged another image); when no assessment exists, the last
+    // read that completed judged the kept render (correctness review).
+    const cameraRead = enforced.assessment
+      ? (enforced.assessment.cameraRead ?? fallbackCameraRead(loaded.photos))
+      : (latestRead.cameraRead ?? fallbackCameraRead(loaded.photos));
+    const cameraReadError = enforced.assessment ? enforced.assessment.cameraReadError : latestRead.cameraReadError;
     const viewPlan: ViewPlan = planViews({
       roomType: room.room_type,
       focalPoint: loaded.focalPoint,

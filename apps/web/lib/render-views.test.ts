@@ -12,6 +12,7 @@ import { FINAL_RENDER_ATTEMPT_BUDGET_MS } from "./render";
 import {
   ensureFinalRenderViews,
   RENDER_VIEW_CHECK_JOB_TYPE,
+  VIEW_LEASE_GRACE_MS,
   VIEW_LEASE_MS,
   VIEW_START_RESERVE_MS,
   type FinalRenderViewsDeps
@@ -77,6 +78,9 @@ function scenario(options: {
   // What another delivery recorded, visible only after a version miss.
   outcomesRecordedByOther?: Record<string, { outcome: string; assetId: string }>;
   closeErrorsBeforeSuccess?: number;
+  uploadError?: string;
+  jobReadError?: string;
+  listWriteError?: string;
   viewsVersion?: number | null;
   jobStatus?: string;
   outputAssetIds?: string[];
@@ -117,10 +121,16 @@ function scenario(options: {
   const { client, calls, storageCalls } = fakeSupabase(
     (call) => {
       if (call.table === "render_jobs" && call.op === "select") {
+        if (options.jobReadError) {
+          return { error: { message: options.jobReadError } };
+        }
         return { data: jobRow() };
       }
       if (call.table === "render_jobs" && call.op === "update") {
         state.versionWrites.push(call);
+        if (options.listWriteError) {
+          return { error: { message: options.listWriteError } };
+        }
         if (state.versionMisses > 0) {
           state.versionMisses -= 1;
           state.missed = true;
@@ -162,7 +172,13 @@ function scenario(options: {
         if (byId) {
           return { data: state.checkRows.find((row) => row.id === byId) ?? null };
         }
-        return { data: [...state.checkRows].sort((left, right) => (left.created_at < right.created_at ? 1 : -1)) };
+        // The phase scopes its read to the render job; the double honours the
+        // contains filter so a row of another job is never handed back.
+        const wanted = call.contains.find(([column]) => column === "input_summary")?.[1] as Record<string, unknown> | undefined;
+        const scoped = state.checkRows.filter(
+          (row) => !wanted || Object.entries(wanted).every(([key, value]) => (row.input_summary as Record<string, unknown>)[key] === value)
+        );
+        return { data: [...scoped].sort((left, right) => (left.created_at < right.created_at ? 1 : -1)) };
       }
       if (call.table === "ai_jobs" && call.op === "insert") {
         state.inserted.push(call);
@@ -206,7 +222,9 @@ function scenario(options: {
         ? { data: new Blob([Buffer.from(storageCall.path)]) }
         : storageCall.op === "createSignedUrl"
           ? { data: { signedUrl: `https://project.supabase.co/signed/${storageCall.path}` } }
-          : { data: null }
+          : storageCall.op === "upload" && options.uploadError
+            ? { error: { message: options.uploadError } }
+            : { data: null }
   );
   state.calls = calls;
   state.storageCalls = storageCalls;
@@ -263,6 +281,7 @@ function deps(
     // would be consumed in arrival order.
     checksByKey?: Record<string, Array<AssessViewConsistencyResult | Error>>;
     generateThrows?: boolean;
+    generateCostMs?: number;
   } = {}
 ): { deps: FinalRenderViewsDeps; probe: Probe } {
   const probe: Probe = { generations: [], assessments: [], clock: 1_000_000, order: [] };
@@ -280,7 +299,7 @@ function deps(
       generateView: async (input) => {
         probe.generations.push(input);
         probe.order.push(`generate:${input.viewKey}`);
-        probe.clock += 20_000;
+        probe.clock += options.generateCostMs ?? 20_000;
         if (options.generateThrows) {
           throw new Error("provider down");
         }
@@ -347,7 +366,15 @@ async function main() {
     assert.equal(focal?.productReferences?.length, 2);
     assert.deepEqual(focal?.mustShowLabels, ["the TV and media wall (wall-mounted TV)", "low media console"]);
     assert.equal(focal?.focalLabel, "the TV and media wall");
-    assert.ok(focal?.deadlineMs !== undefined && focal.deadlineMs <= FINAL_RENDER_ATTEMPT_BUDGET_MS);
+    assert.ok(
+      focal?.deadlineMs !== undefined && focal.deadlineMs <= VIEW_LEASE_MS - VIEW_LEASE_GRACE_MS && focal.deadlineMs < FINAL_RENDER_ATTEMPT_BUDGET_MS,
+      "a view's image call is bounded by its lease, not by the attempt (Codex finding)"
+    );
+    const viewCloses = state.calls.filter(
+      (call) => call.table === "ai_jobs" && call.op === "update" && typeof (call.payload as { output_summary?: { viewKey?: string } }).output_summary?.viewKey === "string" && (call.payload as { status?: string }).status === "succeeded"
+    );
+    assert.equal(viewCloses.length, 2);
+    assert.ok(viewCloses.every((call) => call.filters.some(([column, value]) => column === "status" && value === "running")), "every close is filtered on status = running");
     assert.deepEqual(
       probe.assessments.find((input) => input.viewKey === "focal_wide")?.designLabels,
       plan.designLabels,
@@ -361,7 +388,7 @@ async function main() {
       "the TV and media wall (wall-mounted TV)",
       "the focal label the judge sees is the composed expected entry"
     );
-    assert.equal(probe.assessments.find((input) => input.viewKey === "anchor_detail")?.focalLabel, "the TV and media wall");
+    assert.equal(probe.assessments.find((input) => input.viewKey === "anchor_detail")?.focalLabel, null, "a view not carrying the focal token is not judged against it");
     const detail = probe.generations.find((input) => input.viewKey === "anchor_detail");
     assert.equal(detail?.sourcePhoto ?? null, null);
     assert.equal(detail?.productReferences?.length, 0, "a product without an image is not a reference");
@@ -625,8 +652,85 @@ async function focalMissingOverrulesTheJudge() {
   assert.equal((focalClose?.payload as { output_summary: { outcome: string } }).output_summary.outcome, "resolved_after_regeneration");
 }
 
+// Review findings on the audit trail and the scope of the phase's reads.
+async function reviewFindings() {
+  // A succeeded row of ANOTHER render job under the same key is never adopted:
+  // the read is scoped to this job (tests review, contains filter).
+  {
+    const { client, state } = scenario({
+      checkRows: [
+        {
+          id: "row-other-job",
+          status: "succeeded",
+          created_at: "2026-09-05T00:00:00Z",
+          input_summary: { renderJobId: "job-2", viewKey: "focal_wide", leaseUntil: 0 },
+          output_summary: { viewKey: "focal_wide", assetId: "asset-of-job-2", outcome: "consistent" }
+        }
+      ]
+    });
+    const { deps: d, probe } = deps();
+    await ensureFinalRenderViews({ serviceSupabase: client as never, renderJobId: "job-1", deadlineAt: probe.clock + FINAL_RENDER_ATTEMPT_BUDGET_MS, now: d.now, deps: d });
+    assert.ok(probe.generations.some((input) => input.viewKey === "focal_wide"), "the focal view is generated, not adopted from another job");
+    assert.ok(!state.outputAssetIds.includes("asset-of-job-2"), "another job's asset never enters this job's list");
+  }
+
+  // A paid generation whose upload fails still closes its row with the spend
+  // (Codex finding): the credits are counted the moment the provider answered.
+  {
+    const { client, state } = scenario({ uploadError: "bucket down" });
+    const { deps: d, probe } = deps();
+    await ensureFinalRenderViews({ serviceSupabase: client as never, renderJobId: "job-1", deadlineAt: probe.clock + FINAL_RENDER_ATTEMPT_BUDGET_MS, now: d.now, deps: d });
+    const failedCloses = state.calls.filter(
+      (call) => call.table === "ai_jobs" && call.op === "update" && (call.payload as { status?: string }).status === "failed" && typeof (call.payload as { output_summary?: { viewKey?: string } }).output_summary?.viewKey === "string"
+    );
+    assert.equal(failedCloses.length, 2, "both views failed at upload");
+    for (const close of failedCloses) {
+      const payload = close.payload as { cost_estimate_usd: number | null; output_summary: { imageCreditsUsed: number | null } };
+      assert.ok(payload.output_summary.imageCreditsUsed !== null && payload.output_summary.imageCreditsUsed > 0, "the spend is on the failed row");
+      assert.ok(payload.cost_estimate_usd !== null && payload.cost_estimate_usd > 0, "the failed row carries its cost");
+    }
+    assert.equal(probe.assessments.length, 0, "nothing was checked");
+  }
+
+  // Correctness review: a failed read or a failed list write is never read as
+  // "nothing to do"; both throw so the queue redelivers and repairs.
+  {
+    const { client } = scenario({ jobReadError: "pooler blip" });
+    const { deps: d, probe } = deps();
+    await assert.rejects(
+      ensureFinalRenderViews({ serviceSupabase: client as never, renderJobId: "job-1", deadlineAt: probe.clock + FINAL_RENDER_ATTEMPT_BUDGET_MS, now: d.now, deps: d }),
+      /pooler blip/
+    );
+    assert.equal(probe.generations.length, 0);
+  }
+  {
+    const { client, state } = scenario({ listWriteError: "pooler blip" });
+    const { deps: d, probe } = deps();
+    await assert.rejects(
+      ensureFinalRenderViews({ serviceSupabase: client as never, renderJobId: "job-1", deadlineAt: probe.clock + FINAL_RENDER_ATTEMPT_BUDGET_MS, now: d.now, deps: d }),
+      /asset list could not be written/
+    );
+    assert.equal(state.versionWrites.length, 1, "a DB error is not retried as a version miss");
+    assert.equal(state.checkRows.filter((row) => row.status === "succeeded").length, 2, "the views stand on their own rows for the redelivery");
+  }
+
+  // No time left after the generation means no paid check: the view is
+  // recorded unchecked rather than checked against a floor timeout (Codex).
+  {
+    const { client, state } = scenario();
+    const { deps: d, probe } = deps({ generateCostMs: VIEW_START_RESERVE_MS + 10_000 });
+    await ensureFinalRenderViews({ serviceSupabase: client as never, renderJobId: "job-1", deadlineAt: probe.clock + VIEW_START_RESERVE_MS + 5_000, now: d.now, deps: d });
+    assert.equal(probe.assessments.length, 0, "no check call was made with no time left");
+    const closes = state.calls.filter(
+      (call) => call.table === "ai_jobs" && call.op === "update" && (call.payload as { status?: string }).status === "succeeded" && typeof (call.payload as { output_summary?: { viewKey?: string } }).output_summary?.viewKey === "string"
+    );
+    assert.ok(closes.length >= 1 && closes.every((call) => (call.payload as { output_summary: { outcome: string } }).output_summary.outcome === "unchecked"));
+  }
+}
+
 main()
   .then(focalMissingOverrulesTheJudge)
+  .then(reviewFindings)
   .then(() => {
     console.log("render-views tests passed");
   })
