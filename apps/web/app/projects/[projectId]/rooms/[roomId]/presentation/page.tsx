@@ -181,6 +181,8 @@ export default async function PresentationPage({
     spatialQaOutcome?: string;
     spatialQaIssues?: string[];
     spatialQaError?: string | null;
+    spatialQaVerdicts?: string[];
+    spatialQaReason?: string | null;
     viewOutcomes?: unknown;
   }) ?? {};
   // The placement review's outcome on the kept hero (S4): unresolved after the
@@ -191,6 +193,9 @@ export default async function PresentationPage({
   const reviewIssues = Array.isArray(latestRenderSummary.spatialQaIssues)
     ? latestRenderSummary.spatialQaIssues.filter((issue): issue is string => typeof issue === "string")
     : [];
+  // A correction may be claimed only when a corrected render was judged: two
+  // recorded verdicts. One verdict means the retry never ran or was never judged.
+  const correctedAttemptJudged = (latestRenderSummary.spatialQaVerdicts?.length ?? 0) >= 2;
   const viewsLeftOut = leftOutViewCount(latestRenderSummary.viewOutcomes);
   const isRenderStalled = isRenderJobStalled(
     renderJobStatus,
@@ -314,7 +319,13 @@ export default async function PresentationPage({
             </p>
             <RenderDisclaimer />
             {reviewFlagged ? (
-              <RenderReviewNote error={latestRenderSummary.spatialQaError ?? null} issues={reviewIssues} outcome={reviewOutcome}>
+              <RenderReviewNote
+                correctedAttemptJudged={correctedAttemptJudged}
+                error={latestRenderSummary.spatialQaError ?? null}
+                issues={reviewIssues}
+                outcome={reviewOutcome}
+                reason={latestRenderSummary.spatialQaReason ?? null}
+              >
                 <FinalRenderForm
                   canRequestRender={canRequestRender}
                   conceptId={selectedConcept?.id ?? null}

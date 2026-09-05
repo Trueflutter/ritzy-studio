@@ -27,12 +27,14 @@ assert.ok(disclaimer.includes(SKU_RENDER_DISCLAIMER));
 assert.equal((disclaimer.match(/data-testid="sku-render-disclaimer"/g) ?? []).length, 1);
 assert.ok(/italic/.test(disclaimer), "italic display type, per 12.9");
 
-// Unresolved: both findings listed, the retry slot rendered.
+// Unresolved after a judged correction: both findings listed, the retry slot
+// rendered, and the headline may say the render was corrected once.
 const unresolved = renderToStaticMarkup(
   <RenderReviewNote
     outcome="unresolved"
     issues={["The sofa faces away from the TV wall.", "The rug floats away from the seating."]}
     error={null}
+    correctedAttemptJudged
   >
     <button data-testid="render-again">Render again</button>
   </RenderReviewNote>
@@ -40,8 +42,26 @@ const unresolved = renderToStaticMarkup(
 assert.ok(unresolved.includes("The sofa faces away from the TV wall."));
 assert.ok(unresolved.includes("The rug floats away from the seating."));
 assert.ok(/data-testid="render-again"/.test(unresolved), "the render-again form is mounted inside the note");
-assert.ok(/placement review/i.test(unresolved));
+assert.ok(/We corrected it once/.test(unresolved));
 assert.equal(unresolved.includes("$"), false);
+
+// Unresolved with ONE recorded verdict (no time for a retry, or the retry
+// never produced a judged image): the note must not claim a correction.
+const noRetry = renderToStaticMarkup(
+  <RenderReviewNote outcome="unresolved" issues={["The rug floats away from the seating."]} error={null} reason="no_time_for_retry">
+    <button data-testid="render-again">Render again</button>
+  </RenderReviewNote>
+);
+assert.equal(/corrected it once/.test(noRetry), false, "no correction is claimed for a single verdict");
+assert.ok(/did not pass our placement review/.test(noRetry));
+assert.ok(/no time left in this attempt/.test(noRetry));
+assert.ok(/data-testid="render-again"/.test(noRetry));
+const retryFailed = renderToStaticMarkup(
+  <RenderReviewNote outcome="unresolved" issues={["The rug floats away from the seating."]} error="provider 503" />
+);
+assert.equal(/corrected it once/.test(retryFailed), false);
+assert.ok(/A correction could not be completed/.test(retryFailed));
+assert.equal(retryFailed.includes("provider 503"), false);
 
 // Unreviewed: the note says the review could not run, with no findings to list.
 const unreviewed = renderToStaticMarkup(
