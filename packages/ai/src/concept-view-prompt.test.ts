@@ -43,4 +43,16 @@ assert.match(diningReverse, /opposite side of the dining table/);
 
 assert.match(conceptViewConsistencyLanguage(), /identical physical room/);
 
+// S4: the closed vocabulary gained a focal wide view. The concept stage keeps
+// its two fixed keys, but the shared camera language must answer for the new
+// key so the final render's views can use it.
+const focalPrompt = buildConceptViewPrompt({
+  roomType: "living room",
+  viewKey: "focal_wide",
+  conceptTitle: "Quiet Luxury Living",
+  focalLabel: "the TV and media wall"
+});
+assert.match(focalPrompt, /the TV and media wall/);
+assert.match(focalPrompt, /THE SAME designed room/);
+
 console.log("concept view prompt assembly tests passed");

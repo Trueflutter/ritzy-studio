@@ -8,7 +8,7 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "tsx src/product-enrichment.test.ts && tsx src/interior-design-language.test.ts"
+    "test": "tsx src/product-enrichment.test.ts && tsx src/interior-design-language.test.ts && tsx src/render-review-prompts.test.ts"
   },
   "dependencies": {
     "@ritzy-studio/domain": "workspace:*",

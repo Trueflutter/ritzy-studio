@@ -57,6 +57,10 @@ import {
   productMetadataEnrichmentPrompt,
   type ConceptProductSourcingResponse,
   paletteRegisterLanguage,
+  photoAnchoredViewLanguage,
+  preservationContractLanguage,
+  roomPhotoSetLanguage,
+  viewProductReferenceLanguage,
   productDesignVerificationPrompt,
   productDesignVerificationJsonSchema,
   productDesignVerificationResponseSchema,
@@ -668,14 +672,18 @@ function truncateForPrompt(value: string, maxChars: number) {
 }
 
 // Same Evolink ~4000-token submit cap as the initial concept prompt, but the
-// render path appends a spatial-QA retry suffix (up to ~1.5k chars) AFTER this
-// builder runs, so the build budget leaves that headroom: 15k chars ≈ 3.4k tokens
-// at the audited 5.27 chars/token, ≈ 3.9k with a max suffix at the pessimistic
-// 4.4 ratio — under the cap either way.
-export const FINAL_GROUNDED_RENDER_PROMPT_CHAR_BUDGET = 15_000;
-const FINAL_RENDER_PRODUCT_SUMMARY_FLOOR_CHARS = 1_500;
+// render path appends a spatial-QA retry suffix AFTER this builder runs, so the
+// build budget leaves that headroom. S4 raised the build budget to 16k and
+// capped the suffix (spatialQaCorrectionLanguage) so that budget plus the
+// largest suffix stays inside the 17k envelope the concept prompt is proven
+// against (initial-concept-prompt-budget.test.ts, 5.27 chars/token audited,
+// 4.4 pessimistic). final-grounded-render-prompt.test.ts pins both halves.
+// Measured 2026-09-05: the production skeleton for a combined hall is 11,407
+// characters; eight full product lines 2,279; the bounded preservation block
+// under 800; the photo-set sentence 226; concept notes at most 400.
+export const FINAL_GROUNDED_RENDER_PROMPT_CHAR_BUDGET = 16_050;
 
-export function buildFinalGroundedRenderPrompt(input: {
+export type FinalGroundedRenderPromptInput = {
   roomType: string;
   conceptTitle: string;
   conceptDescription?: string | null;
@@ -683,21 +691,26 @@ export function buildFinalGroundedRenderPrompt(input: {
   productSummary: string;
   spatialIntent?: SpatialPromptIntent | null;
   strictSourceRoomPreservation?: boolean;
-}) {
+  // S4: every photograph goes to the render (the first stays the camera), and
+  // the confirmed spec's must-preserve list rides as a bounded contract.
+  additionalRoomPhotoCount?: number;
+  mustPreserve?: readonly string[] | null;
+};
+
+export function buildFinalGroundedRenderPrompt(input: FinalGroundedRenderPromptInput) {
   let current = { ...input };
   let prompt = assembleFinalGroundedRenderPrompt(current);
 
-  // Give back the overflow from the product summary first (entries are already
-  // priority-ordered, so truncation drops the tail, never the anchors), then from
-  // the concept description. Iterative because each trim changes the assembled
-  // length non-linearly.
-  for (let pass = 0; pass < 4 && prompt.length > FINAL_GROUNDED_RENDER_PROMPT_CHAR_BUDGET; pass++) {
-    const overflow = prompt.length - FINAL_GROUNDED_RENDER_PROMPT_CHAR_BUDGET;
-    if (current.productSummary.length - overflow > FINAL_RENDER_PRODUCT_SUMMARY_FLOOR_CHARS) {
-      current = {
-        ...current,
-        productSummary: truncateForPrompt(current.productSummary, current.productSummary.length - overflow)
-      };
+  // Give back the overflow from the product summary first, by dropping WHOLE
+  // trailing lines (entries are priority-ordered, so the tail goes first and
+  // the anchors last; a character cut collapsed the numbered list into one
+  // run-on line), then from the concept description. The bounded preservation
+  // contract is never trimmed. Iterative because each trim changes the
+  // assembled length non-linearly.
+  for (let pass = 0; pass < 24 && prompt.length > FINAL_GROUNDED_RENDER_PROMPT_CHAR_BUDGET; pass++) {
+    const lines = current.productSummary.split("\n");
+    if (lines.length > 1) {
+      current = { ...current, productSummary: lines.slice(0, -1).join("\n") };
     } else if (current.conceptDescription) {
       current = { ...current, conceptDescription: null };
     } else {
@@ -709,6 +722,11 @@ export function buildFinalGroundedRenderPrompt(input: {
   return prompt;
 }
 
+function ordinalImage(index: number) {
+  const words = ["first", "second", "third", "fourth", "fifth", "sixth"];
+  return words[index - 1] ? `${words[index - 1]} input image` : `input image ${index}`;
+}
+
 function assembleFinalGroundedRenderPrompt({
   roomType,
   conceptTitle,
@@ -716,22 +734,19 @@ function assembleFinalGroundedRenderPrompt({
   hasConceptImage,
   productSummary,
   strictSourceRoomPreservation = false,
-  spatialIntent = null
-}: {
-  roomType: string;
-  conceptTitle: string;
-  conceptDescription?: string | null;
-  hasConceptImage?: boolean;
-  productSummary: string;
-  spatialIntent?: SpatialPromptIntent | null;
-  strictSourceRoomPreservation?: boolean;
-}) {
+  spatialIntent = null,
+  additionalRoomPhotoCount = 0,
+  mustPreserve = null
+}: FinalGroundedRenderPromptInput) {
+  const photoCount = Math.max(0, additionalRoomPhotoCount) + 1;
+  const conceptImageIndex = photoCount + 1;
   return [
     finalGroundedRenderPrompt.system,
     "",
     "Ritzy final render language:",
     sourceRoomPreservationLanguage(roomType),
     strictSourceRoomPreservation ? strictSourceRoomPreservationLanguage() : null,
+    preservationContractLanguage(mustPreserve ?? []),
     roomDesignLanguage(roomType),
     roomSpatialPlacementGuardrailLanguage(roomType),
     spatialLayoutLanguage(roomType, spatialIntent),
@@ -741,8 +756,11 @@ function assembleFinalGroundedRenderPrompt({
     "",
     `Selected concept: ${conceptTitle}`,
     conceptDescription ? `Concept notes: ${conceptDescription}` : null,
+    roomPhotoSetLanguage(photoCount),
     hasConceptImage
-      ? "The second input image is the approved concept image. Preserve its overall design intent, but replace invented concept items with selected catalog products where product references are provided."
+      ? photoCount > 1
+        ? `Input image ${conceptImageIndex} is the approved concept image. Preserve its overall design intent, but replace invented concept items with selected catalog products where product references are provided.`
+        : "The second input image is the approved concept image. Preserve its overall design intent, but replace invented concept items with selected catalog products where product references are provided."
       : null,
     "",
     "Selected catalog products, in current reference order:",
@@ -2719,11 +2737,16 @@ export function buildConceptViewPrompt(input: {
   conceptTitle: string;
   conceptDescription?: string | null;
   conceptGenerationPrompt?: string | null;
+  focalLabel?: string | null;
+  mustShowLabels?: readonly string[] | null;
 }) {
   return [
     conceptViewConsistencyLanguage(),
     "",
-    conceptViewCameraLanguage(input.roomType, input.viewKey),
+    conceptViewCameraLanguage(input.roomType, input.viewKey, {
+      focalLabel: input.focalLabel ?? null,
+      mustShowLabels: input.mustShowLabels ?? null
+    }),
     "",
     `Approved concept: ${input.conceptTitle}`,
     input.conceptDescription ? `Concept notes: ${input.conceptDescription}` : null,
@@ -2790,16 +2813,33 @@ export type GenerateFinalRenderViewResult = GenerateConceptViewResult;
 
 export const FINAL_RENDER_VIEW_PROMPT_VERSION = "final-render-view.2026-07-13.1";
 
-export function buildFinalRenderViewPrompt(input: {
+export type FinalRenderViewPromptInput = {
   roomType: string;
   viewKey: ConceptViewKey;
   conceptTitle: string;
   conceptDescription?: string | null;
-}) {
+  // S4 planned views: the focal element in words, whether the view stands
+  // where one of the shopper's photographs was taken (reference order is then
+  // photograph, hero, products), how many product photographs follow, and the
+  // roles the view is responsible for showing.
+  focalLabel?: string | null;
+  anchoredToPhoto?: boolean;
+  productReferenceCount?: number;
+  mustShowLabels?: readonly string[] | null;
+  purpose?: string | null;
+};
+
+export function buildFinalRenderViewPrompt(input: FinalRenderViewPromptInput) {
   return [
+    input.anchoredToPhoto ? photoAnchoredViewLanguage() : null,
     finalRenderViewConsistencyLanguage(),
     "",
-    conceptViewCameraLanguage(input.roomType, input.viewKey),
+    conceptViewCameraLanguage(input.roomType, input.viewKey, {
+      focalLabel: input.focalLabel ?? null,
+      mustShowLabels: input.mustShowLabels ?? null
+    }),
+    input.purpose ? `Purpose of this view: ${input.purpose}` : null,
+    viewProductReferenceLanguage(input.productReferenceCount ?? 0),
     "",
     `Room design: ${input.conceptTitle}`,
     input.conceptDescription ? `Design notes: ${input.conceptDescription}` : null,
@@ -3005,10 +3045,18 @@ export async function assessRenderSpatialQuality(
 
 // Corrective language appended to an image prompt when spatial QA asked for a
 // regeneration; the issues come straight from the QA verdict.
+// Capped (S4): at most four issues of 160 characters, so the suffix appended
+// after the budgeted builder has a known maximum and the envelope test can
+// pin build budget plus suffix inside the provider cap.
+export const SPATIAL_QA_CORRECTION_MAX_ISSUES = 4;
+export const SPATIAL_QA_CORRECTION_ISSUE_MAX_CHARS = 160;
+
 export function spatialQaCorrectionLanguage(issues: string[]) {
   return [
     "A design review of the previous attempt found these placement problems; fix every one of them this time:",
-    ...issues.map((issue) => `- ${issue}`),
+    ...issues
+      .slice(0, SPATIAL_QA_CORRECTION_MAX_ISSUES)
+      .map((issue) => `- ${truncateForPrompt(issue, SPATIAL_QA_CORRECTION_ISSUE_MAX_CHARS)}`),
     "Keep the same design direction, palette, and products; only correct the placement, orientation, scale, or artifact problems named above."
   ].join("\n");
 }
@@ -3557,8 +3605,10 @@ export async function generateFinalGroundedRender(
   const basePrompt = buildFinalGroundedRenderPrompt({
     roomType: input.roomType,
     conceptTitle: input.conceptTitle,
+    // 400 (was 600): the concept image is the design truth; the notes only
+    // keep the direction in words, and the budget measurement needs the room.
     conceptDescription: input.conceptDescription
-      ? truncateForPrompt(input.conceptDescription, 600)
+      ? truncateForPrompt(input.conceptDescription, 400)
       : input.conceptDescription,
     hasConceptImage,
     productSummary,

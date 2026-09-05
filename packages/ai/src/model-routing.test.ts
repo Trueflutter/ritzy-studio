@@ -55,4 +55,16 @@ assert.equal(
   "an env override still wins"
 );
 
+// S4: the camera read and the view consistency check are cheap facts, one
+// call per image judged; they default to the cheapest adequate model at low
+// effort whatever the base model is, and an env override still wins.
+assert.ok(TEXT_STAGES.includes("camera_read"));
+assert.ok(TEXT_STAGES.includes("view_consistency"));
+assert.equal(resolveStageTextModel("camera_read", {}, "gpt-5.1"), "gpt-5-mini");
+assert.equal(resolveStageTextModel("view_consistency", {}, "gpt-5.1"), "gpt-5-mini");
+assert.equal(resolveStageTextModel("camera_read", { RITZY_TEXT_MODEL_CAMERA_READ: "gpt-5.1" }, "gpt-5-mini"), "gpt-5.1");
+assert.equal(resolveStageTextEffort("camera_read", {}), "low");
+assert.equal(resolveStageTextEffort("view_consistency", {}), "low");
+assert.equal(resolveStageTextEffort("view_consistency", { RITZY_TEXT_EFFORT_VIEW_CONSISTENCY: "high" }), "high");
+
 console.log("model-routing tests passed");

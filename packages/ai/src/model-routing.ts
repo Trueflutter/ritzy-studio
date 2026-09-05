@@ -17,7 +17,9 @@ export const TEXT_STAGES = [
   "revision_direction",
   "spec_extraction",
   "product_enrichment",
-  "anchor_set"
+  "anchor_set",
+  "camera_read",
+  "view_consistency"
 ] as const;
 
 export type TextStage = (typeof TEXT_STAGES)[number];
@@ -43,9 +45,16 @@ function stageEnvValue(env: EnvRecord, prefix: string, stage: TextStage): string
 // concept render is built around, so its output is not a row on a list that a
 // shopper can skip past: it is the room's palette. One call per room, once,
 // before anything else is paid for.
+//
+// The camera read and the view consistency check (S4) go the other way: one
+// call per image judged, facts rather than taste, and they run whatever the
+// base model is, so they pin the cheapest adequate model rather than inherit
+// a production base. An env override still wins.
 const STAGE_MODEL_DEFAULTS: Partial<Record<TextStage, string>> = {
   product_verification: "gpt-5.1",
-  anchor_set: "gpt-5.1"
+  anchor_set: "gpt-5.1",
+  camera_read: "gpt-5-mini",
+  view_consistency: "gpt-5-mini"
 };
 
 export function resolveStageTextModel(stage: TextStage, env: EnvRecord, baseModel: string): string {
@@ -59,7 +68,9 @@ export function resolveStageTextModel(stage: TextStage, env: EnvRecord, baseMode
 // on the list, while a hasty proposal costs nothing, because the check
 // rejects it. So the pass buys speed and the check buys care.
 const STAGE_EFFORT_DEFAULTS: Partial<Record<TextStage, TextEffort>> = {
-  product_sourcing: "low"
+  product_sourcing: "low",
+  camera_read: "low",
+  view_consistency: "low"
 };
 
 // Only a reasoning model accepts the parameter at all. A stage default that
