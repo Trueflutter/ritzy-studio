@@ -1,3 +1,5 @@
+import type { PlannedViewKey } from "@ritzy-studio/domain";
+
 export type RitzyRoomType =
   | "living"
   | "living_dining"
@@ -354,7 +356,9 @@ export function spatialLayoutLanguage(roomType: string, intent?: SpatialPromptIn
   return parts.length > 0 ? parts.join(" ") : null;
 }
 
-export type ConceptViewKey = "reverse_wide" | "anchor_detail";
+// The closed vocabulary of additional views lives in the domain (S4 view
+// planner); the concept stage keeps using its first two keys.
+export type ConceptViewKey = PlannedViewKey;
 
 // Subjects for the anchor_detail view. Each is deliberately a PORTION of the room's anchor
 // group, not the group itself: the hero is already a wide establishing shot of the full
@@ -375,13 +379,17 @@ const anchorDetailLanguage: Record<RitzyRoomType, string> = {
   default: "one corner of the room's main furniture group and its styling"
 };
 
+// {origin} is where the first camera stood: "the first photo" for a view
+// derived from the hero alone, "the hero render" for a view anchored to one of
+// the shopper's photographs (whose camera is then the FIRST input image, so
+// "the first photo" would tell the camera to look at its own position).
 const reverseWideLanguage: Record<RitzyRoomType, string> = {
   living:
-    "The camera now stands at the far end of the room near the window or focal wall, looking back across the seating group toward the wall the first photo was taken from, so the previously unseen side of the room is now visible.",
+    "The camera now stands at the far end of the room near the window or focal wall, looking back across the seating group toward the wall {origin} was taken from, so the previously unseen side of the room is now visible.",
   living_dining:
-    "The camera now stands in the dining zone, looking back across the divider and the living seating group toward where the first photo was taken, so the dining table, its chairs, and the zone boundary are now the foreground and the living zone reads beyond them.",
+    "The camera now stands in the dining zone, looking back across the divider and the living seating group toward where {origin} was taken, so the dining table, its chairs, and the zone boundary are now the foreground and the living zone reads beyond them.",
   dining:
-    "The camera now stands on the opposite side of the dining table from the first photo, looking back across the table toward the previously unseen side of the room, with the sideboard or serving wall now visible.",
+    "The camera now stands on the opposite side of the dining table from {origin}, looking back across the table toward the previously unseen side of the room, with the sideboard or serving wall now visible.",
   bedroom:
     "The camera now stands beside the window or the wall facing the bed, looking back at the bed wall straight on, so the full headboard composition and both bedside tables are visible.",
   bathroom:
@@ -389,17 +397,59 @@ const reverseWideLanguage: Record<RitzyRoomType, string> = {
   office:
     "The camera now stands behind or beside the desk position, looking back toward the entry side of the room, so the desk setup is seen from its other side and the previously unseen wall is visible.",
   default:
-    "The camera now stands at the opposite end of the room, looking back toward where the first photo was taken, so the previously unseen side of the room is visible."
+    "The camera now stands at the opposite end of the room, looking back toward where {origin} was taken, so the previously unseen side of the room is visible."
 };
 
-export function conceptViewCameraLanguage(roomType: string, viewKey: ConceptViewKey) {
-  const resolved = resolveRoomType(roomType);
+// The focal wide view (S4): a wide angle that faces the room's focal element,
+// planned when the hero camera cannot show it (the Phase 0 room's TV wall
+// backed the hero camera). {focal} is the brief's focal element in words.
+const focalWideLanguage: Record<RitzyRoomType, string> = {
+  living:
+    "The camera now stands across the room from {focal}, at standing eye height, looking straight at it with the seating group in the foreground facing it, so {focal}, the pieces on and beside it, and the seating that addresses it are all in frame.",
+  living_dining:
+    "The camera now stands across the living zone from {focal}, at standing eye height, looking straight at it with the sofa in the foreground facing it, so {focal}, the media layer beside it, and the seating that addresses it are all in frame.",
+  dining:
+    "The camera now stands at the end of the table facing {focal}, at standing eye height, so {focal} and the chairs nearest it are all in frame.",
+  bedroom:
+    "The camera now stands at the foot of the bed facing {focal}, at standing eye height, so {focal}, both bedside tables and the bedding are all in frame.",
+  bathroom:
+    "The camera now faces {focal} straight on, at standing eye height, so it and the fixtures beside it are all in frame.",
+  office:
+    "The camera now stands across the room facing {focal}, at standing eye height, so {focal}, the task chair and the storage beside it are all in frame.",
+  default:
+    "The camera now stands across the room facing {focal}, at standing eye height, so {focal} and everything that faces it are all in frame."
+};
 
-  if (viewKey === "reverse_wide") {
-    return reverseWideLanguage[resolved];
+export type ViewCameraOptions = {
+  // The brief's focal element in words ("the TV and media wall"); only the
+  // focal wide view reads it.
+  focalLabel?: string | null;
+  // Roles the planned view is responsible for showing that the hero may not.
+  mustShowLabels?: readonly string[] | null;
+  // The view stands where one of the shopper's photographs was taken, which
+  // is then the first input image; the reverse language names its origin
+  // accordingly.
+  anchoredToPhoto?: boolean;
+};
+
+export function conceptViewCameraLanguage(roomType: string, viewKey: ConceptViewKey, options: ViewCameraOptions = {}) {
+  const resolved = resolveRoomType(roomType);
+  const mustShow =
+    options.mustShowLabels && options.mustShowLabels.length > 0
+      ? ` This view must clearly show: ${options.mustShowLabels.join(", ")}.`
+      : "";
+
+  if (viewKey === "focal_wide") {
+    const focal = options.focalLabel?.trim() || "the room's focal wall";
+    return `${focalWideLanguage[resolved].replaceAll("{focal}", focal)}${mustShow}`;
   }
 
-  return `The camera moves in for a tight detail vignette of ${anchorDetailLanguage[resolved]}, at seated eye height, with the subject filling the frame, a shallow natural depth of field, and realistic perspective. Crop well inside the full furniture group so most of the room falls out of frame; do not re-compose the whole furniture group or the whole room — this is an intimate detail study of materials, texture, and styling.`;
+  if (viewKey === "reverse_wide") {
+    const origin = options.anchoredToPhoto ? "the hero render" : "the first photo";
+    return `${reverseWideLanguage[resolved].replaceAll("{origin}", origin)}${mustShow}`;
+  }
+
+  return `The camera moves in for a tight detail vignette of ${anchorDetailLanguage[resolved]}, at seated eye height, with the subject filling the frame, a shallow natural depth of field, and realistic perspective. Crop well inside the full furniture group so most of the room falls out of frame; do not re-compose the whole furniture group or the whole room: this is an intimate detail study of materials, texture, and styling.${mustShow}`;
 }
 
 export function conceptViewConsistencyLanguage() {
@@ -421,11 +471,64 @@ export function finalRenderViewConsistencyLanguage() {
   return [
     "The reference image is the final rendered room, already furnished with the exact products the client selected. Produce another photograph of THE SAME finished room.",
     "Every purchasable piece — the sofa and seating, tables, rug pattern, lighting fixtures, media unit, art, mirrors, curtains, and decor — must be reproduced identically to the reference image: same silhouette, color, material, and proportions.",
-    "Do not substitute, recolor, restyle, add, or remove any product; do not invent nicer alternatives or extra decor.",
+    "Do not substitute, recolor, restyle or remove any product, and do not add any product other than the ones this view is told to show (whose photographs follow when they are given); do not invent nicer alternatives or extra decor.",
     "Keep the same architecture: the same walls, window and door positions, ceiling, and flooring as the reference image, seen from the new camera position with physically plausible perspective.",
     "Keep the same lighting mood, daylight direction, and warm layered lighting as the reference image.",
     "This must read as a second photograph of the identical finished room taken moments later, not a new design, a restyle, or a variation."
   ].join(" ");
+}
+
+// A planned view anchored to one of the shopper's own photographs (S4): the
+// photograph is the truth for walls, openings and proportions from this
+// camera; the finished render is the truth for the design. Reference order is
+// fixed by the caller: photograph first, hero second, products last.
+export function photoAnchoredViewLanguage() {
+  return [
+    "The first input image is a photograph of the real room taken from where this view's camera stands: its walls, openings, ceiling, floor and proportions are the truth for this angle, and the view must be composed from that exact camera position and direction.",
+    "The second input image is the finished design of the same room from another camera: reproduce its furniture, materials, colours, lighting mood and styling in the photographed room, seen from the photograph's camera. Do not redesign, restyle or move anything."
+  ].join(" ");
+}
+
+export function viewProductReferenceLanguage(count: number) {
+  if (count <= 0) {
+    return null;
+  }
+  return count === 1
+    ? "The last input image is a photograph of the exact product this view must show; reproduce its silhouette, colour, material and proportions."
+    : `The last ${count} input images are photographs of the exact products this view must show; reproduce each one's silhouette, colour, material and proportions.`;
+}
+
+// The final render's photo set (S4 step 13): every photograph the shopper gave
+// goes to the render, the first one's camera stays the base.
+export function roomPhotoSetLanguage(totalPhotos: number) {
+  if (totalPhotos <= 1) {
+    return null;
+  }
+  return `The first ${totalPhotos} input images are photos of the SAME room from different corners. Use the FIRST photo's camera perspective as the base image; use the other angles only to understand the room's true walls, openings, and proportions.`;
+}
+
+// The spec's must-preserve list as a bounded prompt block. Bounded here so the
+// render budget can be proven against a known worst case: the schema allows
+// sixteen entries of two hundred characters, which no prompt can carry. Six
+// of a hundred and ten was measured against the production skeleton
+// (11,407 characters for a combined hall) with eight full product lines: the
+// walk room's confirmed list carries five entries.
+export const PRESERVATION_CONTRACT_MAX_ENTRIES = 6;
+export const PRESERVATION_CONTRACT_ENTRY_MAX_CHARS = 110;
+
+export function preservationContractLanguage(entries: readonly string[]) {
+  const bounded = entries
+    .map((entry) => entry.replace(/\s+/g, " ").trim())
+    .filter((entry) => entry.length > 0)
+    .slice(0, PRESERVATION_CONTRACT_MAX_ENTRIES)
+    .map((entry) => (entry.length <= PRESERVATION_CONTRACT_ENTRY_MAX_CHARS ? entry : `${entry.slice(0, PRESERVATION_CONTRACT_ENTRY_MAX_CHARS - 1)}…`));
+  if (bounded.length === 0) {
+    return null;
+  }
+  return [
+    "Preservation contract (confirmed by the homeowner; these never change):",
+    ...bounded.map((entry) => `- ${entry}`)
+  ].join("\n");
 }
 
 function resolveStyleSlugs(styleSlugs: string[]) {

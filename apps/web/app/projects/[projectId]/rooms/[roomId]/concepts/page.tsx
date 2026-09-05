@@ -1,3 +1,4 @@
+import { plannedViewCaption } from "@ritzy-studio/domain";
 import {
   DecorativeRule,
   JourneyNav,
@@ -157,10 +158,6 @@ export default async function ConceptsPage({
   const earlierConcepts = conceptsWithImages.filter((concept) => concept.id !== heroConcept?.id);
   const canGenerate = Boolean(designBrief && roomPhoto);
 
-  const viewCaptions: Record<string, string> = {
-    reverse_wide: "From the other end of the room",
-    anchor_detail: "The anchor group, up close"
-  };
   const { data: heroViewAssets = [] } = heroConcept
     ? await supabase
         .from("room_assets")
@@ -178,7 +175,7 @@ export default async function ConceptsPage({
       return {
         id: asset.id,
         viewKey: asset.view_key ?? "",
-        caption: viewCaptions[asset.view_key ?? ""] ?? "Another view",
+        caption: plannedViewCaption(asset.view_key),
         signedUrl: data?.signedUrl ?? null
       };
     })

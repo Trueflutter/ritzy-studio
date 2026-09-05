@@ -143,3 +143,38 @@ console.log("interior design language tests passed");
 // budget to tell the model the same thing twice.
 assert.match(roomDesignLanguage("Living & Dining"), /Hall zoning rule/);
 assert.doesNotMatch(roomBlueprintDefaultsLanguage("Living & Dining"), /Hall zoning rule/);
+
+// S4: planned view language. The focal wide view names the focal element per
+// room type; a photo-anchored view is told which image is the real room and
+// which is the design; the final render can name its photo set and carry the
+// spec's preservation contract, bounded.
+{
+  const { conceptViewCameraLanguage, photoAnchoredViewLanguage, preservationContractLanguage, roomPhotoSetLanguage, viewProductReferenceLanguage, PRESERVATION_CONTRACT_MAX_ENTRIES, PRESERVATION_CONTRACT_ENTRY_MAX_CHARS } = await import("./interior-design-language");
+
+  const focal = conceptViewCameraLanguage("Living Room", "focal_wide", { focalLabel: "the TV and media wall" });
+  assert.match(focal, /the TV and media wall/);
+  assert.match(focal, /seating/);
+  const focalNoLabel = conceptViewCameraLanguage("Bedroom", "focal_wide");
+  assert.match(focalNoLabel, /focal wall/);
+  const reverse = conceptViewCameraLanguage("Living Room", "reverse_wide", { mustShowLabels: ["low media console", "large abstract painting"] });
+  assert.match(reverse, /looking back across the seating group/);
+  assert.match(reverse, /This view must clearly show: low media console, large abstract painting\./);
+  assert.equal(conceptViewCameraLanguage("Living Room", "reverse_wide").includes("must clearly show"), false);
+
+  assert.match(photoAnchoredViewLanguage(), /first input image is a photograph of the real room/);
+  assert.match(photoAnchoredViewLanguage(), /second input image/);
+  assert.match(viewProductReferenceLanguage(2) ?? "", /last 2 input images/);
+  assert.match(viewProductReferenceLanguage(1) ?? "", /last input image/);
+
+  assert.equal(roomPhotoSetLanguage(1), null);
+  assert.match(roomPhotoSetLanguage(3) ?? "", /first 3 input images are photos of the SAME room/);
+
+  assert.equal(preservationContractLanguage([]), null);
+  const long = "x".repeat(300);
+  const contract = preservationContractLanguage(Array.from({ length: 12 }, (_, index) => `${index} ${long}`)) ?? "";
+  assert.match(contract, /Preservation contract/);
+  const lines = contract.split("\n").filter((line) => line.startsWith("- "));
+  assert.equal(lines.length, PRESERVATION_CONTRACT_MAX_ENTRIES);
+  assert.ok(lines.every((line) => line.length <= PRESERVATION_CONTRACT_ENTRY_MAX_CHARS + 2));
+  assert.ok(contract.length <= 800, `bounded block, got ${contract.length}`);
+}

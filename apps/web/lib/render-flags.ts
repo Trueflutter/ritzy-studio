@@ -1,5 +1,3 @@
-import { productReferenceOrderingV2Enabled as configProductReferenceOrderingV2Enabled } from "@ritzy-studio/config";
-
 import type { ConceptViewKey } from "@ritzy-studio/ai";
 
 // Render-path feature flags and shared constants. Extracted from app/actions.ts so the durable
@@ -8,10 +6,6 @@ import type { ConceptViewKey } from "@ritzy-studio/ai";
 export const LOCAL_SKU_FIDELITY_RENDER_REFERENCE_LIMIT = 12;
 
 export const CONCEPT_VIEW_KEYS: ConceptViewKey[] = ["reverse_wide", "anchor_detail"];
-
-export function productReferenceOrderingV2Enabled() {
-  return configProductReferenceOrderingV2Enabled();
-}
 
 function localAestheticTasteGateEnabled() {
   return process.env.RITZY_AESTHETIC_TASTE_GATE === "1";

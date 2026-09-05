@@ -44,7 +44,7 @@ import {
   type ProductRow
 } from "@/lib/services/sourcing-support";
 import { createClient } from "@/lib/supabase/server";
-import { FINAL_RENDER_STALE_MS } from "@/lib/render";
+import { finalRenderRetryHonoured, finalRenderStaleMs } from "@/lib/render";
 import { localSkuFidelityModeEnabled } from "@/lib/render-flags";
 import { enqueueFinalRender, runFinalRender } from "@/lib/render-runner";
 import {
@@ -1820,6 +1820,10 @@ export async function generateFinalRenderAction(formData: FormData) {
   const roomId = String(formData.get("roomId") ?? "");
   const conceptId = String(formData.get("conceptId") ?? "");
   const shoppingListId = String(formData.get("shoppingListId") ?? "");
+  // S4: the reveal's render-again for a succeeded job whose placement review
+  // stayed unresolved or could not run. Honoured only for that job and only
+  // in that state; a passed render cannot be re-rendered by resubmitting.
+  const retryOf = String(formData.get("retryOf") ?? "").trim() || null;
   const redirectPath = `/projects/${projectId}/rooms/${roomId}/product-matching`;
   const supabase = await createClient();
   const {
@@ -1958,7 +1962,8 @@ export async function generateFinalRenderAction(formData: FormData) {
 
   if (matchingRenderJob?.status === "running" || matchingRenderJob?.status === "queued") {
     const startedAt = matchingRenderJob.created_at ? Date.parse(matchingRenderJob.created_at) : Date.now();
-    const isStale = Number.isFinite(startedAt) && Date.now() - startedAt > FINAL_RENDER_STALE_MS;
+    const executionPath = ((matchingRenderJob.input_summary ?? {}) as { executionPath?: string }).executionPath;
+    const isStale = Number.isFinite(startedAt) && Date.now() - startedAt > finalRenderStaleMs(executionPath);
 
     if (!isStale) {
       redirect(
@@ -1994,10 +1999,12 @@ export async function generateFinalRenderAction(formData: FormData) {
     }
   }
 
+  const retryHonoured = finalRenderRetryHonoured(retryOf, matchingRenderJob);
   if (
     matchingRenderJob?.status === "succeeded" &&
     (matchingRenderJob.output_asset_ids?.length ?? 0) > 0 &&
-    !commerceUnlocked
+    !commerceUnlocked &&
+    !retryHonoured
   ) {
     redirect(`${revealPathForRenderJob(matchingRenderJob.id)}&message=${encodeURIComponent("Final render is ready.")}`);
   }
@@ -2013,7 +2020,8 @@ export async function generateFinalRenderAction(formData: FormData) {
     // lookup and survive even if the room/project rows change later.
     userId: user.id,
     revealPath,
-    executionPath: executionMode
+    executionPath: executionMode,
+    ...(retryHonoured && matchingRenderJob ? { retryOfRenderJobId: matchingRenderJob.id } : {})
   };
   const { data: renderJob, error: renderJobError } = await supabase
     .from("render_jobs")
