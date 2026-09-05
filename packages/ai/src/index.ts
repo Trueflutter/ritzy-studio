@@ -3061,11 +3061,18 @@ export const SPATIAL_QA_TIMEOUT_MS = 60_000;
 // The reviewer's context sentence. Exported so the "behind the camera" case,
 // the one Phase 0 shipped on, is pinned without a provider.
 export function spatialQaContext(input: Pick<AssessRenderSpatialQualityInput, "roomType" | "spatialIntent" | "cameraFacts">): string {
-  const focalPoint =
+  const chosenFocalPoint =
     input.spatialIntent?.focalPoint && input.spatialIntent.focalPoint !== "unknown" ? input.spatialIntent.focalPoint : null;
-  const focalWords = input.cameraFacts?.focalLabel?.trim() || (focalPoint ? focalPoint.replace(/_/g, " ") : null);
+  // The planning focal point reaches the reviewer through the camera facts'
+  // label: when the brief left the focal point unknown and the confirmed
+  // design carries a TV, the planner assumes the TV wall (the layout rules'
+  // own assumption), and the reviewer must be told the same thing, framed as
+  // an assumption, or it picks its own focal point and fails seating that
+  // faces a wall the read knows is behind the camera (review finding).
+  const assumedFocalWords = !chosenFocalPoint ? input.cameraFacts?.focalLabel?.trim() || null : null;
+  const focalWords = input.cameraFacts?.focalLabel?.trim() || (chosenFocalPoint ? chosenFocalPoint.replace(/_/g, " ") : null);
   const framing =
-    focalPoint && input.cameraFacts
+    (chosenFocalPoint || assumedFocalWords) && input.cameraFacts
       ? input.cameraFacts.focalElementInFrame === true
         ? `The focal element (${focalWords}) is IN FRAME in this view.`
         : input.cameraFacts.focalElementInFrame === false
@@ -3074,9 +3081,11 @@ export function spatialQaContext(input: Pick<AssessRenderSpatialQualityInput, "r
       : null;
   return [
     `Room type: ${input.roomType}.`,
-    focalPoint
-      ? `The user chose the focal point: ${focalPoint.replace(/_/g, " ")}.`
-      : "Focal point was not specified; judge against the most credible focal point in the image.",
+    chosenFocalPoint
+      ? `The user chose the focal point: ${chosenFocalPoint.replace(/_/g, " ")}.`
+      : assumedFocalWords
+        ? `The user did not specify a focal point; the design assumes ${assumedFocalWords} anchors the seating (the confirmed design carries it), so judge orientation against that assumption.`
+        : "Focal point was not specified; judge against the most credible focal point in the image.",
     framing,
     input.spatialIntent?.mustKeepClear?.length
       ? `The user asked to keep clear: ${input.spatialIntent.mustKeepClear.join("; ")}.`

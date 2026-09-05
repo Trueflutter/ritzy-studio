@@ -499,6 +499,13 @@ export async function ensureFinalRenderViews({
         return { assetId: asset.id, assetPath, bytes, credits: generated.imageCreditsUsed, recovered: false };
       };
 
+      // The focal label as the judge sees and echoes it: the composed entry the
+      // plan put in this view's expected list (the focal element with its
+      // carrier pieces), never the bare one, or the verdict's "focal
+      // expectation missing" comparison could never match (review finding).
+      const focalIndex = plan.coverage.focalToken ? view.mustShow.indexOf(plan.coverage.focalToken) : -1;
+      const viewFocalLabel = focalIndex >= 0 ? (view.mustShowLabels[focalIndex] ?? focalLabel) : focalLabel;
+
       const assess = async (image: ViewImage) => {
         const result = await deps.assessView({
           roomType: context.roomType,
@@ -509,7 +516,7 @@ export async function ensureFinalRenderViews({
           expectedLabels: view.mustShowLabels,
           hiddenLabels: heroHiddenLabels,
           designLabels: plan.designLabels,
-          focalLabel,
+          focalLabel: viewFocalLabel,
           timeoutMs: Math.max(1_000, Math.min(VIEW_CONSISTENCY_TIMEOUT_MS, remainingMs()))
         });
         return { check: result.check, textCostUsd: result.textCostUsd ?? null };
@@ -521,7 +528,7 @@ export async function ensureFinalRenderViews({
         correction: viewConsistencyCorrectionLanguage,
         remainingMs,
         creditsOf: (image) => image.credits,
-        focalLabel
+        focalLabel: viewFocalLabel
       });
       deliveryCredits = enforced.imageCreditsUsed === null ? deliveryCredits : (deliveryCredits ?? 0) + enforced.imageCreditsUsed;
       deliveryTextCost =

@@ -353,6 +353,15 @@ async function main() {
       plan.designLabels,
       "the consistency judge holds the design vocabulary"
     );
+    // Review finding: the judge is handed, and hands back, the composed
+    // focal label the plan put in this view's expected list; the verdict's
+    // own comparison must see the same string, not the bare element label.
+    assert.equal(
+      probe.assessments.find((input) => input.viewKey === "focal_wide")?.focalLabel,
+      "the TV and media wall (wall-mounted TV)",
+      "the focal label the judge sees is the composed expected entry"
+    );
+    assert.equal(probe.assessments.find((input) => input.viewKey === "anchor_detail")?.focalLabel, "the TV and media wall");
     const detail = probe.generations.find((input) => input.viewKey === "anchor_detail");
     assert.equal(detail?.sourcePhoto ?? null, null);
     assert.equal(detail?.productReferences?.length, 0, "a product without an image is not a reference");
@@ -592,7 +601,32 @@ async function main() {
   }
 }
 
+// Review finding, the behaviour: a judge that says "consistent" while
+// listing the composed focal label as missing is overruled by the code-side
+// verdict, so the focal view is regenerated once and kept when the retry
+// shows the focal wall.
+async function focalMissingOverrulesTheJudge() {
+  const { client, state } = scenario();
+  const missingFocal = consistent({ expectedMissing: ["the TV and media wall (wall-mounted TV)"], expectedShown: ["low media console"] });
+  const { deps: d, probe } = deps({ checksByKey: { focal_wide: [missingFocal, consistent()], anchor_detail: [consistent()] } });
+  const result = await ensureFinalRenderViews({
+    serviceSupabase: client as never,
+    renderJobId: "job-1",
+    deadlineAt: probe.clock + FINAL_RENDER_ATTEMPT_BUDGET_MS,
+    now: d.now,
+    deps: d
+  });
+  assert.equal(result.complete, true);
+  assert.equal(probe.generations.filter((input) => input.viewKey === "focal_wide").length, 2, "the focal view is regenerated once");
+  assert.equal(probe.generations.filter((input) => input.viewKey === "anchor_detail").length, 1);
+  const focalClose = state.calls.find(
+    (call) => call.table === "ai_jobs" && call.op === "update" && (call.payload as { output_summary?: { viewKey?: string; outcome?: string } }).output_summary?.viewKey === "focal_wide"
+  );
+  assert.equal((focalClose?.payload as { output_summary: { outcome: string } }).output_summary.outcome, "resolved_after_regeneration");
+}
+
 main()
+  .then(focalMissingOverrulesTheJudge)
   .then(() => {
     console.log("render-views tests passed");
   })

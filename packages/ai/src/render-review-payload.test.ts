@@ -86,6 +86,21 @@ import {
     /not known/i
   );
   assert.match(spatialQaContext({ roomType: "living room", spatialIntent: null, cameraFacts: null }), /Focal point was not specified/);
+  // The assumed path (review finding): a brief that left the focal point
+  // unknown, a design that carries a TV. The reviewer is told the assumption
+  // and the framing, and never that the user chose it.
+  const assumed = spatialQaContext({
+    roomType: "living room",
+    spatialIntent: { focalPoint: "unknown" },
+    cameraFacts: { focalElementInFrame: false, focalLabel: "the TV and media wall" }
+  });
+  assert.match(assumed, /the design assumes the TV and media wall anchors the seating/);
+  assert.match(assumed, /NOT IN FRAME/);
+  assert.doesNotMatch(assumed, /The user chose/);
+  assert.match(
+    spatialQaContext({ roomType: "living room", spatialIntent: { focalPoint: "unknown" }, cameraFacts: { focalElementInFrame: null, focalLabel: null } }),
+    /Focal point was not specified/
+  );
 }
 
 // The view check: hero, view, then the anchored photograph when there is one;
