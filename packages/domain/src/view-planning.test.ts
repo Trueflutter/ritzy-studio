@@ -332,6 +332,50 @@ function input(overrides: Partial<ViewPlanInput>): ViewPlanInput {
   assert.deepEqual(overflow.views.map((view) => view.key), ["reverse_wide", "anchor_detail"]);
 }
 
+// Review fixes on the first increment. The focal view carries the selected
+// focal products as references even when the read did not list them as
+// hidden; a read-echoed id the room does not own never anchors; and a plan
+// with the longest labels the spec allows still round-trips its schema.
+{
+  const plan = planViews(
+    input({
+      cameraRead: read({
+        hero: { showsFocalElement: false, hiddenRoleKeys: [] },
+        photos: [
+          { assetId: "photo-1", sameRoom: "yes", cameraRelativeToHero: "same", showsFocalWall: false },
+          { assetId: "ghost", sameRoom: "yes", cameraRelativeToHero: "opposite", showsFocalWall: true },
+          { assetId: "photo-2", sameRoom: "yes", cameraRelativeToHero: "left", showsFocalWall: true }
+        ]
+      })
+    })
+  );
+  assert.equal(plan.views[0].key, "focal_wide");
+  assert.ok(plan.views[0].referenceItemIds.includes("item-console"), "the focal role's product rides with the focal view");
+  assert.ok(!plan.views[0].mustShow.includes("5:media_console"), "but the hero still owns the role");
+  assert.equal(plan.views[0].sourcePhotoAssetId, "photo-2", "a foreign id is never an anchor");
+  assert.ok(plan.views[0].photoNotes.some((note) => note.startsWith("ghost:") && /not one of the room's photographs/.test(note)));
+
+  const longest = "x".repeat(120);
+  const longSpec = {
+    objects: [
+      object("tv", longest),
+      object("media_console", longest),
+      object("media_unit", longest),
+      object("sofa", longest),
+      object("side_table", longest)
+    ]
+  };
+  const longPlan = planViews(
+    input({
+      spec: longSpec,
+      products: [],
+      cameraRead: read({ hero: { showsFocalElement: false, hiddenRoleKeys: ["3:sofa", "4:side_table"] } })
+    })
+  );
+  assert.ok(longPlan.views.flatMap((view) => view.mustShowLabels).every((label) => label.length <= 160));
+  assert.deepEqual(parseViewPlan(JSON.parse(JSON.stringify(longPlan))), longPlan, "the longest labels still round-trip");
+}
+
 // Focal vocabulary: raw spec roles, unsourceable ones included, so a TV counts.
 assert.equal(specRoleMatchesFocal("tv", "tv_media_wall"), true);
 assert.equal(specRoleMatchesFocal("media_console", "tv_media_wall"), true);

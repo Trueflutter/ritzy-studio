@@ -256,6 +256,21 @@ function unique<T>(values: readonly T[]): T[] {
   return Array.from(new Set(values));
 }
 
+// mustShowLabels entries are capped by the persisted plan's schema; a label
+// the planner emits must always parse back, or the views phase would read
+// the plan as legacy and quietly drop the focal view.
+export const VIEW_LABEL_MAX_CHARS = 160;
+
+function boundedLabel(value: string): string {
+  const collapsed = value.replace(/\s+/g, " ").trim();
+  return collapsed.length <= VIEW_LABEL_MAX_CHARS ? collapsed : `${collapsed.slice(0, VIEW_LABEL_MAX_CHARS - 1)}…`;
+}
+
+function composeFocalLabel(focalLabel: string, carrierLabels: readonly string[]): string {
+  const carriers = unique(carrierLabels);
+  return carriers.length > 0 ? `${focalLabel} (${carriers.join(", ")})` : focalLabel;
+}
+
 export function planViews(input: ViewPlanInput): ViewPlan {
   const heroCap = input.heroReferenceCap ?? HERO_REFERENCE_CAP;
   const layoutMode = spatialLayoutModeForRoomType(input.roomType);
@@ -276,11 +291,17 @@ export function planViews(input: ViewPlanInput): ViewPlan {
   // the TV wall in front of the camera.
   const focalCoveredByHero = focalToken === null || read.hero.showsFocalElement === true;
 
-  const eligiblePhotos = read.photos.filter(
+  // Only the room's own photographs can anchor: a read that echoes an id the
+  // job does not own would otherwise send the views phase after an asset row
+  // that does not exist.
+  const ownedIds = new Set(input.photos.map((photo) => photo.assetId));
+  const knownPhotos = read.photos.filter((photo) => ownedIds.has(photo.assetId));
+  const foreignPhotos = read.photos.filter((photo) => !ownedIds.has(photo.assetId));
+  const eligiblePhotos = knownPhotos.filter(
     (photo) => photo.assetId !== input.heroPhotoAssetId && photo.sameRoom === "yes"
   );
   const photoNoteFor = (photo: RoomCameraRead["photos"][number], reason: string) => `${photo.assetId}: ${reason}`;
-  const nonHeroPhotos = read.photos.filter((photo) => photo.assetId !== input.heroPhotoAssetId);
+  const nonHeroPhotos = knownPhotos.filter((photo) => photo.assetId !== input.heroPhotoAssetId);
   const unreadPhotos = input.photos.filter(
     (photo) => photo.assetId !== input.heroPhotoAssetId && !read.photos.some((entry) => entry.assetId === photo.assetId)
   );
@@ -321,19 +342,29 @@ export function planViews(input: ViewPlanInput): ViewPlan {
   for (const photo of unreadPhotos) {
     notes.push(`${photo.assetId}: not covered by the camera read`);
   }
+  for (const photo of foreignPhotos) {
+    notes.push(photoNoteFor(photo, "not one of the room's photographs; ignored"));
+  }
 
   const wideMustShow = [...(wideKey === "focal_wide" && focalToken ? [focalToken] : []), ...hiddenLarge];
   const wideMustShowLabels = [
-    ...(wideKey === "focal_wide" && focalLabel
-      ? [focalCarrierLabels.length > 0 ? `${focalLabel} (${unique(focalCarrierLabels).join(", ")})` : focalLabel]
-      : []),
-    ...hiddenLarge.map((key) => roleByKey.get(key)!.label)
+    ...(wideKey === "focal_wide" && focalLabel ? [boundedLabel(composeFocalLabel(focalLabel, focalCarrierLabels))] : []),
+    ...hiddenLarge.map((key) => boundedLabel(roleByKey.get(key)!.label))
   ];
 
+  // The focal view exists to show the focal wall, so the products the shopper
+  // selected for the focal roles (the media console, the bed) ride with it as
+  // references even when the read did not list them as hidden. They stay out
+  // of mustShow so every role is still owned by exactly one view.
+  const focalCarrierKeys =
+    wideKey === "focal_wide"
+      ? keyRoles.filter((role) => specRoleMatchesFocal(role.specRole, input.focalPoint)).map((role) => role.key)
+      : [];
   const primaryCategories = PRIMARY_CATEGORY_BY_LAYOUT[layoutMode] ?? PRIMARY_CATEGORY_BY_LAYOUT.unknown;
   const primary = input.products.find((product) => primaryCategories.includes(product.category)) ?? null;
   const wideReferences = unique([
     ...input.products.filter((product) => product.specKey && wideMustShow.includes(product.specKey)).map((p) => p.itemId),
+    ...input.products.filter((product) => product.specKey && focalCarrierKeys.includes(product.specKey)).map((p) => p.itemId),
     ...(primary ? [primary.itemId] : [])
   ]).slice(0, VIEW_REFERENCE_CAP);
 
@@ -369,7 +400,7 @@ export function planViews(input: ViewPlanInput): ViewPlan {
       purpose: "A close detail of the main furniture group's materials, texture and styling.",
       sourcePhotoAssetId: null,
       mustShow: hiddenSmall,
-      mustShowLabels: hiddenSmall.map((key) => roleByKey.get(key)!.label),
+      mustShowLabels: hiddenSmall.map((key) => boundedLabel(roleByKey.get(key)!.label)),
       referenceItemIds: unique([...detailFromRoles, ...detailFromCategories]).slice(0, VIEW_REFERENCE_CAP),
       photoNotes: []
     });
