@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 
 import {
+  categoryFor,
   normalizeCategory,
   normalizeProductCandidate,
   parseAedPrice,
@@ -34,6 +35,33 @@ assert.equal(normalizeCategory("Living > Coffee & Side Tables > Coffee Tables"),
 assert.equal(normalizeCategory("https://www.chattelsandmore.com/en/category/living-room/storage-and-home-office/desks"), "desks");
 assert.equal(normalizeCategory("https://www.chattelsandmore.com/en/category/bedroom/nightstands"), "side_tables");
 assert.equal(normalizeCategory("Decorative Object"), "decor");
+
+// Danube's accessory tree, 2026-09-05. These labels had no needle, so 433
+// usable products were invisible to every role query while decor was the
+// thinnest category in the catalogue.
+assert.equal(normalizeCategory("Candle Holders"), "decor");
+assert.equal(normalizeCategory("LED & Lanterns"), "decor");
+assert.equal(normalizeCategory("Figurines"), "decor");
+assert.equal(normalizeCategory("Clocks"), "decor");
+assert.equal(normalizeCategory("Bowls & Trays"), "decor");
+assert.equal(normalizeCategory("Indoor Wall Lights"), "lighting");
+assert.equal(normalizeCategory("Chest of Drawers"), "storage");
+assert.equal(normalizeCategory("Furniture > Living Room > Shoe Racks"), "storage");
+assert.equal(normalizeCategory("Serving Trolleys"), "storage");
+
+// Order still decides: a candle-styled chandelier is a light, not an ornament,
+// because the earlier "chandelier" needle wins over the appended "candle".
+assert.equal(normalizeCategory("Candle Chandeliers"), "lighting");
+
+// Left unmapped on purpose. A dining SET fills one blueprint role and leaves
+// the other to buy the same chairs twice; architectural and outdoor fixtures
+// are not furnishing, and mapping them to lighting would let a downlight fill
+// a floor-lamp role.
+assert.equal(normalizeCategory("Dining Set"), null);
+assert.equal(normalizeCategory("Furniture > Dining Room > Dining Sets"), null);
+assert.equal(normalizeCategory("Down Lights"), null);
+assert.equal(normalizeCategory("Panel Lights"), null);
+assert.equal(normalizeCategory("Garden Lights & Spike Lights"), null);
 assert.equal(normalizeCategory("Wall Art"), "wall_art");
 assert.equal(normalizeCategory("Rugs & Carpets"), "rugs");
 assert.equal(normalizeCategory("Furniture > Living Room > TV & Media Units"), "storage");
@@ -67,3 +95,94 @@ assert.equal(normalized.images.length, 2);
 assert.equal(normalized.dimensions?.width_cm, 210);
 
 console.log("normalization tests passed");
+
+// The retailer's category can name a RANGE rather than an object. When it
+// resolves to nothing, the product's own name is consulted: Danube files
+// "Brayden Tall Bookcase" under "Furniture > Modular > Modular Living >
+// Brayden", and the old `retailerCategory ?? name` never looked at the name
+// when a category was present.
+{
+  const collectionShelved = normalizeProductCandidate({
+    canonicalUrl: "https://www.danubehome.com/ae/en/p/brayden-tall-bookcase-wide-1",
+    name: "Brayden Tall Bookcase With Glass Doors - Compact",
+    retailerCategory: "Furniture > Modular > Modular Living > Brayden",
+    priceText: "AED 1,299"
+  } as never);
+  assert.equal(collectionShelved.product.category_normalized, "storage");
+  assert.equal(collectionShelved.product.category_raw, "Furniture > Modular > Modular Living > Brayden");
+}
+
+// The name fallback must not overturn a deliberate exclusion. A dining SET
+// names both a table and its chairs, so consulting the name files it as one or
+// the other and the shopper buys the chairs twice.
+assert.equal(categoryFor("Dining Set", "Bavaria 1+2 High Dining Table Set - Cream/Beige"), null);
+assert.equal(categoryFor("Dining Set", "Derin 1+8-Seater Dining Set with Swivel Chair-Grey/Beige"), null);
+assert.equal(categoryFor("Down Lights", "Aria Recessed Downlight 12W Warm White"), null);
+// But an UNINFORMATIVE category still falls through to the name.
+assert.equal(categoryFor("Furniture > Modular > Modular Living > Brayden", "Brayden Tall Bookcase - Wide"), "storage");
+assert.equal(categoryFor(null, "Aleem Persian Rug - Red - 250x350 cm"), "rugs");
+// And a category that resolves is never second-guessed by the name.
+assert.equal(categoryFor("Candle Holders", "Mirabella Metal Candle Holder on Walnut Table Base"), "decor");
+
+// Codex, reviewing PR #336. Both were real, and both were mine.
+
+// 1. The exclusion has to hold however we reach the name. Guarding only the
+// retailer category left the rule bypassable by a product that HAS no retailer
+// category, which is the same double-buy arrived at by a different road.
+assert.equal(categoryFor(null, "Derin 1+8-Seater Dining Set with Swivel Chair"), null);
+assert.equal(categoryFor("", "Amilica 6-Seater Dining Set"), null);
+// "Bavaria 1+2 High Dining Table Set" does not contain "dining set", so one
+// needle was not enough for the names this will actually meet.
+assert.equal(categoryFor(null, "Bavaria 1+2 High Dining Table Set - Cream/Beige"), null);
+// But a nest of tables is ONE purchase filling ONE role, and must survive.
+assert.equal(categoryFor(null, "Dott Sintered Stone Top Coffee Table - Set of 2"), "coffee_tables");
+
+// 2. First-needle-wins means the SPECIFIC needle must precede the general one.
+// A candle-styled sconce is a light, not an ornament.
+assert.equal(normalizeCategory("Candle Wall Lights"), "lighting");
+assert.equal(normalizeCategory("Lantern Wall Lights"), "lighting");
+assert.equal(normalizeCategory("Indoor Wall Lights"), "lighting");
+assert.equal(normalizeCategory("Candle Chandeliers"), "lighting");
+// And the decor needles still do their job when nothing more specific applies.
+assert.equal(normalizeCategory("Candle Holders"), "decor");
+assert.equal(normalizeCategory("LED & Lanterns"), "decor");
+
+// Found while auditing what the backfill had already written to the shared
+// catalogue: 52 chandeliers and ceramic table lamps were stored as `beds`,
+// because their retailer category is "Bedroom Chandeliers" and an older map
+// ordering matched "bed" before "chandelier". Today's ordering is correct, and
+// this pins it so it cannot regress.
+assert.equal(normalizeCategory("Bedroom Chandeliers"), "lighting");
+assert.equal(normalizeCategory("Bedroom Wall Lights"), "lighting");
+// Chasing that one turned up 28 more the stale check could not see, because
+// today's map was wrong in the same direction: a dresser is storage, and
+// "Bedroom > Dressers" was answering bed-role queries.
+assert.equal(normalizeCategory("Bedroom > Dressers"), "storage");
+assert.equal(normalizeCategory("https://2xlhome.com/ae-en/furniture/bedroom/bedroom-storage/dressers-1"), "storage");
+// "bed" still wins whenever nothing more specific does, which is its job.
+assert.equal(normalizeCategory("Beds"), "beds");
+assert.equal(normalizeCategory("Bedroom Furniture > Beds"), "beds");
+assert.equal(normalizeCategory("Furniture > Bedroom > Beds > King Beds"), "beds");
+assert.equal(normalizeCategory("Kids Bed"), "beds");
+assert.equal(normalizeCategory("Bedroom > Beds > Upholstered Beds"), "beds");
+// And the needles that were always meant to beat it still do.
+assert.equal(normalizeCategory("Sofa Beds"), "sofas");
+assert.equal(normalizeCategory("Bedside Tables"), "side_tables");
+assert.equal(normalizeCategory("Bedroom > Nightstands"), "side_tables");
+
+// Codex round 3 on PR #336. The exclusion ran AFTER normalizeCategory, so a
+// label that resolves on a different needle skipped it entirely: "Dining Table
+// Set" matched "dining table" and became dining_tables, letting a bundled set
+// fill the table role while the blueprint sourced the chairs separately. No
+// such label is in the catalogue today; the point is that one appearing must
+// not quietly reintroduce the double-buy.
+assert.equal(categoryFor("Dining Table Set", "Bavaria 1+2 High Dining Table Set"), null);
+assert.equal(categoryFor("Furniture > Dining Room > Dining Table Sets", "Brookside 1+8-Seater Stone Top Dining Set"), null);
+assert.equal(normalizeCategory("Dining Table Set"), "dining_tables"); // the needle still matches
+// The labels that ARE in the catalogue keep their answers. A real dining table
+// is still a dining table, and must not be swept up by the exclusion.
+assert.equal(categoryFor("Dining Tables", "Cooper 10 Seater Dining Table"), "dining_tables");
+assert.equal(categoryFor("Furniture > Dining Room > Dining Tables", "Dolores 10-Seater Ceramic Top Dining Table"), "dining_tables");
+assert.equal(categoryFor("Dining Chairs", "Amilica Dining Chair"), "chairs");
+assert.equal(categoryFor("Dining Set", "Amilica 6-Seater Dining Set"), null);
+assert.equal(categoryFor("Furniture > Dining Room > Dining Sets", "Amilica 6-Seater Dining Set"), null);

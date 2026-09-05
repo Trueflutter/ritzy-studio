@@ -21,6 +21,7 @@
     "ingest:marinahome:dry-run": "tsx src/cli.ts marinahome --dry-run",
     "ingest:theone:dry-run": "tsx src/cli.ts theone --dry-run",
     "typecheck": "tsc --noEmit",
+    "backfill:categories": "tsx src/backfill-categories.ts",
     "test": "tsx src/normalization.test.ts && tsx src/catalog-counts.test.ts && tsx src/cli.test.ts && tsx src/runner.test.ts && tsx src/adapters/homecentre.test.ts && tsx src/adapters/danube.test.ts && tsx src/adapters/chattels.test.ts && tsx src/adapters/twoxl.test.ts && tsx src/adapters/panhome.test.ts && tsx src/adapters/homesrus.test.ts && tsx src/adapters/ikea.test.ts && tsx src/adapters/marinahome.test.ts && tsx src/adapters/theone.test.ts"
   },
   "dependencies": {
