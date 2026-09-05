@@ -3165,6 +3165,18 @@ export function spatialQaCorrectionLanguage(issues: string[]) {
   ].join("\n");
 }
 
+// Correction language for a planned view that the consistency check judged
+// not to be the same room; capped like the spatial suffix.
+export function viewConsistencyCorrectionLanguage(issues: string[]) {
+  return [
+    "A review of the previous attempt found these differences from the finished room; fix every one of them this time:",
+    ...issues
+      .slice(0, SPATIAL_QA_CORRECTION_MAX_ISSUES)
+      .map((issue) => `- ${truncateForPrompt(issue, SPATIAL_QA_CORRECTION_ISSUE_MAX_CHARS)}`),
+    "Keep the same camera position, architecture, products, materials and lighting; only correct the differences named above."
+  ].join("\n");
+}
+
 // S4: the camera read. One cheap vision call on a hero image that reports the
 // facts the view planner needs; the planner (packages/domain) decides the set.
 export const CAMERA_READ_TIMEOUT_MS = 45_000;

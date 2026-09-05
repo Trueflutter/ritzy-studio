@@ -12,6 +12,7 @@ export type RecordedCall = {
   gte: Array<[string, unknown]>;
   lt: Array<[string, unknown]>;
   in: Array<[string, unknown]>;
+  is: Array<[string, unknown]>;
   columns?: string;
   order: Array<[string, unknown]>;
   limit?: number;
@@ -46,6 +47,7 @@ export function fakeSupabase(respond: Responder, respondStorage: StorageResponde
       gte: [],
       lt: [],
       in: [],
+      is: [],
       order: [],
       single: false
     };
@@ -100,6 +102,10 @@ export function fakeSupabase(respond: Responder, respondStorage: StorageResponde
       },
       in(column: string, value: unknown) {
         call.in.push([column, value]);
+        return builder;
+      },
+      is(column: string, value: unknown) {
+        call.is.push([column, value]);
         return builder;
       },
       order(column: string, options?: unknown) {
