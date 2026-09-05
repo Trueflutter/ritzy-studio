@@ -291,6 +291,12 @@ export async function runFinalRender(
 
     // The camera read on a hero image, on its own audit row (no row, no call), then the
     // spatial QA told what the read found. Both bounded by what is left of the attempt.
+    // The last completed read is kept outside the assessment so a QA call that throws
+    // after a paid, successful read does not cost the plan that read.
+    let latestRead: { cameraRead: RoomCameraRead | null; cameraReadError: string | null } = {
+      cameraRead: null,
+      cameraReadError: null
+    };
     const assessHero = async (render: GenerateFinalGroundedRenderResult): Promise<HeroAssessment> => {
       const heroDataUrl = await deps.toVisionDataUrl(Buffer.from(render.imageBase64, "base64"), "image/png");
       let cameraRead: RoomCameraRead | null = null;
@@ -347,6 +353,7 @@ export async function runFinalRender(
           );
         }
       }
+      latestRead = { cameraRead, cameraReadError };
       const facts = { focalElementInFrame: cameraRead?.hero.showsFocalElement ?? null };
       const qa = await deps.assessQa({
         imageUrl: heroDataUrl,
@@ -374,9 +381,12 @@ export async function runFinalRender(
       console.error("Final render spatial QA failed; shipping unreviewed render.", enforced.error);
     }
 
-    // The view plan, from the KEPT hero's read. A missing read (the call failed, or its
-    // audit row could not be opened) is the conservative fallback, never an inference.
-    const cameraRead = enforced.assessment?.cameraRead ?? fallbackCameraRead(loaded.photos);
+    // The view plan, from the KEPT hero's read; when the review could not run, from the
+    // last read that completed (it judged the render that was kept). A missing read (the
+    // call failed, or its audit row could not be opened) is the conservative fallback,
+    // never an inference.
+    const cameraRead = enforced.assessment?.cameraRead ?? latestRead.cameraRead ?? fallbackCameraRead(loaded.photos);
+    const cameraReadError = enforced.assessment?.cameraReadError ?? latestRead.cameraReadError;
     const viewPlan: ViewPlan = planViews({
       roomType: room.room_type,
       focalPoint: loaded.focalPoint,
@@ -458,8 +468,9 @@ export async function runFinalRender(
           spatialQaError: enforced.error,
           spatialQaVerdicts: enforced.verdicts,
           cameraRead,
-          cameraReadError: enforced.assessment?.cameraReadError ?? null,
+          cameraReadError,
           viewPlan,
+          viewsVersion: 0,
           attemptBudgetMs: deadlineAt - attemptStartedAt,
           // render_jobs has no cost column; the hero's spend (including any discarded QA
           // regen) is recorded here and the views' spend on the final_render_views ai_job.

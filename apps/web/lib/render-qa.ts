@@ -68,11 +68,13 @@ export type SpatialQaAssessment = {
   textCostUsd?: number | null;
 };
 
-// What a retry must be able to afford before it is started: an image call,
-// a camera read and a QA call. Derived from the image ceiling (240 s) plus
-// the two reads' timeouts; a retry started with less would be killed by the
-// route instead of judged.
-export const SPATIAL_QA_RETRY_RESERVE_MS = 240_000 + 45_000 + 60_000;
+// What a retry must be able to afford before it is started: an image call at
+// the primary provider's observed pace (20 to 60 s) plus the camera read and
+// the QA. Sized to the observed pace, not the provider ceiling: the image
+// call itself is bounded by the remaining deadline, so a retry started with
+// this much left either lands or aborts and the judged first render stands.
+// Sized to the ceiling it could never run inside the inline budget at all.
+export const SPATIAL_QA_RETRY_RESERVE_MS = 90_000;
 
 export type EnforceSpatialQaInput<R, A extends SpatialQaAssessment> = {
   render: (promptSuffix: string | null) => Promise<R>;
@@ -283,8 +285,8 @@ export type ViewConsistencyAssessment = {
   textCostUsd?: number | null;
 };
 
-// An image call plus a check.
-export const VIEW_RETRY_RESERVE_MS = 240_000 + 45_000;
+// An image call at the observed pace plus a check, on the same reasoning.
+export const VIEW_RETRY_RESERVE_MS = 75_000;
 
 export type EnforceViewConsistencyInput<R, A extends ViewConsistencyAssessment> = {
   generate: (promptSuffix: string | null) => Promise<R>;

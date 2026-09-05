@@ -356,6 +356,36 @@ async function main() {
     assert.ok(probe.qas[0].timeoutMs !== undefined && probe.qas[0].timeoutMs <= SPATIAL_QA_RETRY_RESERVE_MS);
   }
 
+  // Review fixes. Inline mode can retry: a fast hero with a regenerate verdict
+  // renders twice inside the inline budget. And a QA call that throws after a
+  // successful camera read keeps that read for the plan, persisting the QA
+  // error rather than a phantom read error.
+  {
+    const { client, state } = world({ executionPath: "inline" });
+    const { deps: d, probe } = deps(client, { qaVerdicts: [regenerateQa, passQa] });
+    await runFinalRender({ renderJobId: "job-1", attempt: { mode: "inline" } }, d);
+    assert.equal(probe.renders.length, 2, "inline mode still gets its one bounded regeneration");
+    const summary = (updates(state, "succeeded")[0].payload as { input_summary: Record<string, unknown> }).input_summary;
+    assert.equal(summary.spatialQaOutcome, "resolved_after_regeneration");
+  }
+  {
+    const { client, state } = world();
+    const { deps: d, probe } = deps(client);
+    d.assessQa = async (input) => {
+      probe.qas.push(input);
+      throw new Error("qa timed out");
+    };
+    await runFinalRender({ renderJobId: "job-1", attempt: { mode: "queue", deliveryCount: 1 } }, d);
+    const summary = (updates(state, "succeeded")[0].payload as { input_summary: Record<string, unknown> }).input_summary;
+    assert.equal(summary.spatialQaOutcome, "unreviewed");
+    assert.match(String(summary.spatialQaError), /qa timed out/);
+    assert.equal((summary.cameraRead as { source: string }).source, "vision", "the paid read survives the QA failure");
+    assert.equal(summary.cameraReadError, null);
+    const plan = summary.viewPlan as { views: Array<{ key: string; sourcePhotoAssetId: string | null }> };
+    assert.equal(plan.views[0].key, "reverse_wide");
+    assert.equal(plan.views[0].sourcePhotoAssetId, "photo-2");
+  }
+
   // D. Inline mode, the render throws: the failure write, filtered on running,
   // carries the message; nothing rethrows; the inline budget applied.
   {
