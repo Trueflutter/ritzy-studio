@@ -379,13 +379,17 @@ const anchorDetailLanguage: Record<RitzyRoomType, string> = {
   default: "one corner of the room's main furniture group and its styling"
 };
 
+// {origin} is where the first camera stood: "the first photo" for a view
+// derived from the hero alone, "the hero render" for a view anchored to one of
+// the shopper's photographs (whose camera is then the FIRST input image, so
+// "the first photo" would tell the camera to look at its own position).
 const reverseWideLanguage: Record<RitzyRoomType, string> = {
   living:
-    "The camera now stands at the far end of the room near the window or focal wall, looking back across the seating group toward the wall the first photo was taken from, so the previously unseen side of the room is now visible.",
+    "The camera now stands at the far end of the room near the window or focal wall, looking back across the seating group toward the wall {origin} was taken from, so the previously unseen side of the room is now visible.",
   living_dining:
-    "The camera now stands in the dining zone, looking back across the divider and the living seating group toward where the first photo was taken, so the dining table, its chairs, and the zone boundary are now the foreground and the living zone reads beyond them.",
+    "The camera now stands in the dining zone, looking back across the divider and the living seating group toward where {origin} was taken, so the dining table, its chairs, and the zone boundary are now the foreground and the living zone reads beyond them.",
   dining:
-    "The camera now stands on the opposite side of the dining table from the first photo, looking back across the table toward the previously unseen side of the room, with the sideboard or serving wall now visible.",
+    "The camera now stands on the opposite side of the dining table from {origin}, looking back across the table toward the previously unseen side of the room, with the sideboard or serving wall now visible.",
   bedroom:
     "The camera now stands beside the window or the wall facing the bed, looking back at the bed wall straight on, so the full headboard composition and both bedside tables are visible.",
   bathroom:
@@ -393,7 +397,7 @@ const reverseWideLanguage: Record<RitzyRoomType, string> = {
   office:
     "The camera now stands behind or beside the desk position, looking back toward the entry side of the room, so the desk setup is seen from its other side and the previously unseen wall is visible.",
   default:
-    "The camera now stands at the opposite end of the room, looking back toward where the first photo was taken, so the previously unseen side of the room is visible."
+    "The camera now stands at the opposite end of the room, looking back toward where {origin} was taken, so the previously unseen side of the room is visible."
 };
 
 // The focal wide view (S4): a wide angle that faces the room's focal element,
@@ -403,7 +407,7 @@ const focalWideLanguage: Record<RitzyRoomType, string> = {
   living:
     "The camera now stands across the room from {focal}, at standing eye height, looking straight at it with the seating group in the foreground facing it, so {focal}, the pieces on and beside it, and the seating that addresses it are all in frame.",
   living_dining:
-    "The camera now stands across the living zone from {focal}, at standing eye height, looking straight at it with the sofa in the foreground facing it, so {focal}, the media layer beside it, and the seating that addresses it are all in frame, with the dining zone out of frame behind the camera.",
+    "The camera now stands across the living zone from {focal}, at standing eye height, looking straight at it with the sofa in the foreground facing it, so {focal}, the media layer beside it, and the seating that addresses it are all in frame.",
   dining:
     "The camera now stands at the end of the table facing {focal}, at standing eye height, so {focal} and the chairs nearest it are all in frame.",
   bedroom:
@@ -422,6 +426,10 @@ export type ViewCameraOptions = {
   focalLabel?: string | null;
   // Roles the planned view is responsible for showing that the hero may not.
   mustShowLabels?: readonly string[] | null;
+  // The view stands where one of the shopper's photographs was taken, which
+  // is then the first input image; the reverse language names its origin
+  // accordingly.
+  anchoredToPhoto?: boolean;
 };
 
 export function conceptViewCameraLanguage(roomType: string, viewKey: ConceptViewKey, options: ViewCameraOptions = {}) {
@@ -437,7 +445,8 @@ export function conceptViewCameraLanguage(roomType: string, viewKey: ConceptView
   }
 
   if (viewKey === "reverse_wide") {
-    return `${reverseWideLanguage[resolved]}${mustShow}`;
+    const origin = options.anchoredToPhoto ? "the hero render" : "the first photo";
+    return `${reverseWideLanguage[resolved].replaceAll("{origin}", origin)}${mustShow}`;
   }
 
   return `The camera moves in for a tight detail vignette of ${anchorDetailLanguage[resolved]}, at seated eye height, with the subject filling the frame, a shallow natural depth of field, and realistic perspective. Crop well inside the full furniture group so most of the room falls out of frame; do not re-compose the whole furniture group or the whole room: this is an intimate detail study of materials, texture, and styling.${mustShow}`;
@@ -462,7 +471,7 @@ export function finalRenderViewConsistencyLanguage() {
   return [
     "The reference image is the final rendered room, already furnished with the exact products the client selected. Produce another photograph of THE SAME finished room.",
     "Every purchasable piece — the sofa and seating, tables, rug pattern, lighting fixtures, media unit, art, mirrors, curtains, and decor — must be reproduced identically to the reference image: same silhouette, color, material, and proportions.",
-    "Do not substitute, recolor, restyle, add, or remove any product; do not invent nicer alternatives or extra decor.",
+    "Do not substitute, recolor, restyle or remove any product, and do not add any product other than the ones this view is told to show (whose photographs follow when they are given); do not invent nicer alternatives or extra decor.",
     "Keep the same architecture: the same walls, window and door positions, ceiling, and flooring as the reference image, seen from the new camera position with physically plausible perspective.",
     "Keep the same lighting mood, daylight direction, and warm layered lighting as the reference image.",
     "This must read as a second photograph of the identical finished room taken moments later, not a new design, a restyle, or a variation."

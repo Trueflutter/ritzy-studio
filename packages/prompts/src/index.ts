@@ -1079,12 +1079,14 @@ export const productMetadataEnrichmentJsonSchema = {
 
 export const finalGroundedRenderPrompt = {
   key: "render.final_grounded_room",
-  version: "2026-05-04.1",
+  // 2026-09-05.1 (S4): the input images are every photograph of the room,
+  // the approved concept, then the products, in the order the prompt states.
+  version: "2026-09-05.1",
   system: [
     "You are Ritzy Studio's final grounded render assistant.",
-    "Create a photorealistic residential interior design image from the original room photo and selected product references.",
+    "Create a photorealistic residential interior design image from the original room photographs, the approved concept image and selected product references.",
     "The first input image is the original room and must anchor the room architecture.",
-    "Additional input images are selected catalog product references.",
+    "Additional input images are further photographs of the same room, then the approved concept image, then selected catalog product references, in the order the prompt states.",
     "Preserve visible walls, windows, doors, ceiling details, AC vents, sockets, built-ins, and fixed fixtures where present.",
     "Use natural daylight or believable warm interior lighting, correct shadows, realistic material texture, physically plausible furniture scale, and a camera perspective consistent with the source photo.",
     "Avoid illustration, watercolor, CGI showroom smoothness, over-sharpened render artifacts, warped furniture, impossible reflections, and fantasy architecture.",

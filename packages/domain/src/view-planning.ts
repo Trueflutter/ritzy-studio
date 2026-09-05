@@ -306,15 +306,25 @@ export function planViews(input: ViewPlanInput): ViewPlan {
     (photo) => photo.assetId !== input.heroPhotoAssetId && !read.photos.some((entry) => entry.assetId === photo.assetId)
   );
 
-  const hiddenLarge = hiddenKeys.filter((key) => {
-    const role = roleByKey.get(key)!;
-    return !SMALL_SCALE_CATEGORIES.has(role.category) || (layoutMode === "living_plus_dining" && isDiningRole(role));
-  });
-  const hiddenSmall = hiddenKeys.filter((key) => !hiddenLarge.includes(key));
-
   // The wide view: focal when the hero does not carry the focal element,
   // reverse otherwise. Anchored to an eligible photograph when one fits.
   const wideKey: PlannedViewKey = focalCoveredByHero ? "reverse_wide" : "focal_wide";
+
+  // In a combined hall the dining roles ride the REVERSE wide, whose camera
+  // stands in the dining zone. A focal wide faces the living zone's focal
+  // wall and cannot promise the dining zone; hidden dining roles are then
+  // reported as uncovered rather than demanded of a view that cannot show
+  // them (the harness's coverage check reports the gap).
+  const isCombinedDining = (role: KeyRole) => layoutMode === "living_plus_dining" && isDiningRole(role);
+  const hiddenDiningOffFocal = hiddenKeys.filter((key) => wideKey === "focal_wide" && isCombinedDining(roleByKey.get(key)!));
+  const hiddenLarge = hiddenKeys.filter((key) => {
+    const role = roleByKey.get(key)!;
+    if (hiddenDiningOffFocal.includes(key)) {
+      return false;
+    }
+    return !SMALL_SCALE_CATEGORIES.has(role.category) || isCombinedDining(role);
+  });
+  const hiddenSmall = hiddenKeys.filter((key) => !hiddenLarge.includes(key) && !hiddenDiningOffFocal.includes(key));
   let anchor: RoomCameraRead["photos"][number] | null = null;
   const notes: string[] = [];
   if (wideKey === "focal_wide") {

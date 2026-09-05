@@ -238,12 +238,20 @@ function input(overrides: Partial<ViewPlanInput>): ViewPlanInput {
     for (const key of plan.coverage.keyRoleKeys) {
       const inHero = plan.coverage.heroCovers.includes(key);
       const inViews = plan.views.filter((view) => view.mustShow.includes(key)).length;
+      const uncovered = plan.coverage.uncovered.includes(key);
       assert.ok(
-        (inHero && inViews === 0) || (!inHero && inViews === 1),
-        `${key} must be covered by the hero or exactly one view (hero=${inHero}, views=${inViews})`
+        (inHero && inViews === 0 && !uncovered) || (!inHero && inViews === 1 && !uncovered) || (!inHero && inViews === 0 && uncovered),
+        `${key} must be covered by the hero, by exactly one view, or reported uncovered (hero=${inHero}, views=${inViews}, uncovered=${uncovered})`
       );
     }
-    assert.equal(plan.coverage.uncovered.length, 0, `nothing left uncovered in ${fixture.roomType}`);
+    // The one honest gap: a combined hall whose hero hides both the focal
+    // wall and the dining zone gets a focal wide that cannot show the dining
+    // roles; they are reported, never demanded of the wrong camera.
+    const expectedUncovered =
+      plan.views[0].key === "focal_wide" && /dining/i.test(fixture.roomType)
+        ? plan.coverage.keyRoleKeys.filter((key) => !plan.coverage.heroCovers.includes(key) && /dining/.test(key))
+        : [];
+    assert.deepEqual(plan.coverage.uncovered, expectedUncovered, `uncovered roles in ${fixture.roomType}`);
     for (const view of plan.views) {
       if (view.key === "anchor_detail") {
         assert.equal(view.sourcePhotoAssetId, null, "the detail view is a crop, never photo-anchored");

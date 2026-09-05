@@ -2899,7 +2899,8 @@ export function buildFinalRenderViewPrompt(input: FinalRenderViewPromptInput) {
     "",
     conceptViewCameraLanguage(input.roomType, input.viewKey, {
       focalLabel: input.focalLabel ?? null,
-      mustShowLabels: input.mustShowLabels ?? null
+      mustShowLabels: input.mustShowLabels ?? null,
+      anchoredToPhoto: Boolean(input.anchoredToPhoto)
     }),
     input.purpose ? `Purpose of this view: ${input.purpose}` : null,
     viewProductReferenceLanguage(input.productReferenceCount ?? 0),

@@ -16,7 +16,8 @@ const reversePrompt = buildFinalRenderViewPrompt({
 assert.match(reversePrompt, /THE SAME finished room/);
 assert.match(reversePrompt, /exact products the client selected/);
 assert.match(reversePrompt, /reproduced identically/);
-assert.match(reversePrompt, /Do not substitute, recolor, restyle, add, or remove any product/);
+assert.match(reversePrompt, /Do not substitute, recolor, restyle or remove any product/);
+assert.match(reversePrompt, /do not add any product other than the ones this view is told to show/);
 // Shares the concept-view camera language (same room geometry, new angle).
 assert.match(reversePrompt, /looking back across the seating group/);
 assert.match(reversePrompt, /Room design: Cognac Calm Living/);
@@ -61,6 +62,23 @@ assert.match(anchoredFocal, /the TV and media wall/);
 assert.match(anchoredFocal, /last 2 input images/);
 assert.match(anchoredFocal, /This view must clearly show: the TV and media wall \(wall-mounted TV, low media console\), large abstract painting\./);
 assert.match(anchoredFocal, /THE SAME finished room/);
+
+// Review fix: an ANCHORED reverse view must not tell the camera to look toward
+// "the first photo", which is now the anchored photograph, its own position.
+const anchoredReverse = buildFinalRenderViewPrompt({
+  roomType: "living room",
+  viewKey: "reverse_wide",
+  conceptTitle: "Cognac Calm Living",
+  anchoredToPhoto: true,
+  productReferenceCount: 0
+});
+assert.match(anchoredReverse, /first input image is a photograph of the real room/);
+assert.equal(anchoredReverse.includes("the first photo"), false);
+assert.match(anchoredReverse, /toward the wall the hero render was taken from/);
+assert.match(
+  buildFinalRenderViewPrompt({ roomType: "Living & Dining", viewKey: "reverse_wide", conceptTitle: "Hall", anchoredToPhoto: true, productReferenceCount: 0 }),
+  /toward where the hero render was taken/
+);
 
 const unanchored = buildFinalRenderViewPrompt({
   roomType: "living room",
