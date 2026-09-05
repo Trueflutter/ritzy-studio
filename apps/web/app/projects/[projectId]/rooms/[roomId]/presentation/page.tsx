@@ -7,6 +7,7 @@ import {
   StudioHeader,
   SubmitButton
 } from "@ritzy-studio/ui";
+import { plannedViewLabel } from "@ritzy-studio/domain";
 import Image from "next/image";
 import { notFound, redirect } from "next/navigation";
 
@@ -16,6 +17,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
 
 import { RenderExpectationNote } from "../render-expectation-note";
+import { leftOutViewCount, RenderDisclaimer, RenderReviewNote, ViewsLeftOutNote } from "./render-notes";
 import { RenderRefresh } from "./render-refresh";
 import { UnlockShoppingListCta } from "./unlock-shopping-list-cta";
 
@@ -36,16 +38,6 @@ const renderRevealPhases = [
   "Tuning daylight and material warmth",
   "Preparing the final reveal"
 ];
-
-const renderViewLabels: Record<string, string> = {
-  reverse_wide: "Reverse angle",
-  anchor_detail: "Detail view"
-};
-
-// The hero render carries no view_key; additional angles do. Labels are room-type agnostic.
-function renderViewLabel(viewKey: string | null): string {
-  return (viewKey && renderViewLabels[viewKey]) || "Alternate angle";
-}
 
 export default async function PresentationPage({
   params,
@@ -172,7 +164,8 @@ export default async function PresentationPage({
     const { data: signed } = await serviceSupabase.storage
       .from("generated-renders")
       .createSignedUrl(asset.storage_path, 60 * 60);
-    return signed?.signedUrl ? { url: signed.signedUrl, label: renderViewLabel(asset.view_key) } : null;
+    // The hero carries no view_key; planned angles do, and one table names them.
+    return signed?.signedUrl ? { url: signed.signedUrl, label: plannedViewLabel(asset.view_key) } : null;
   };
   const heroRenderView = renderAssetIds[0] ? await signRenderAsset(renderAssetIds[0]) : null;
   const additionalRenderViews = (await Promise.all(renderAssetIds.slice(1).map(signRenderAsset))).filter(
@@ -183,7 +176,22 @@ export default async function PresentationPage({
   // A render whose in-request after() task never completed can sit in `running` indefinitely.
   // Once it is stalled, stop showing the progress spinner (which would poll forever) and fall
   // through to the retry affordance, which will fail the stale job and start a fresh render.
-  const latestRenderSummary = ((latestRenderJob?.input_summary ?? {}) as { executionPath?: string }) ?? {};
+  const latestRenderSummary = ((latestRenderJob?.input_summary ?? {}) as {
+    executionPath?: string;
+    spatialQaOutcome?: string;
+    spatialQaIssues?: string[];
+    spatialQaError?: string | null;
+    viewOutcomes?: unknown;
+  }) ?? {};
+  // The placement review's outcome on the kept hero (S4): unresolved after the
+  // one bounded regeneration, or a review that could not run, is shown with
+  // its findings and a working render-again, never presented as finished.
+  const reviewOutcome = latestRenderSummary.spatialQaOutcome ?? null;
+  const reviewFlagged = reviewOutcome === "unresolved" || reviewOutcome === "unreviewed";
+  const reviewIssues = Array.isArray(latestRenderSummary.spatialQaIssues)
+    ? latestRenderSummary.spatialQaIssues.filter((issue): issue is string => typeof issue === "string")
+    : [];
+  const viewsLeftOut = leftOutViewCount(latestRenderSummary.viewOutcomes);
   const isRenderStalled = isRenderJobStalled(
     renderJobStatus,
     latestRenderJob?.created_at,
@@ -304,6 +312,21 @@ export default async function PresentationPage({
             <p className="mt-[14px] font-body text-caption-tight font-medium uppercase tracking-[0.28em] text-ink-on-dark-muted print:text-ink-muted">
               Final render · hero view
             </p>
+            <RenderDisclaimer />
+            {reviewFlagged ? (
+              <RenderReviewNote error={latestRenderSummary.spatialQaError ?? null} issues={reviewIssues} outcome={reviewOutcome}>
+                <FinalRenderForm
+                  canRequestRender={canRequestRender}
+                  conceptId={selectedConcept?.id ?? null}
+                  projectId={projectId}
+                  retryOf={latestRenderJob?.id ?? null}
+                  roomId={roomId}
+                  selectedIds={selectedItemIds}
+                  shoppingListId={shoppingList?.id ?? null}
+                  tone="ink"
+                />
+              </RenderReviewNote>
+            ) : null}
           </>
         ) : (
           <div className="aspect-[3/2] border border-line bg-page text-ink">
@@ -373,6 +396,8 @@ export default async function PresentationPage({
             ))}
           </div>
         ) : null}
+        {finalRenderUrl && additionalRenderViews.length > 0 ? <RenderDisclaimer /> : null}
+        {finalRenderUrl ? <ViewsLeftOutNote count={viewsLeftOut} /> : null}
       </div>
 
       {/* paper section — direction + the commerce gate breaks the ink */}
@@ -391,9 +416,7 @@ export default async function PresentationPage({
                 "Select a concept and generate a final render before sharing this presentation."}
             </p>
             <p className="mt-5 max-w-[60ch] font-display text-body-l italic leading-[1.6] text-ink-muted">
-              {commerceUnlocked
-                ? "The render is a best-effort visual composition and may not exactly reproduce every selected piece. Retailer links and product details live on the shopping list."
-                : "The render is a best-effort visual composition based on your selected pieces. Retailer links and product details live on the shopping list."}
+              Retailer links and product details live on the shopping list.
             </p>
           </div>
         </div>
@@ -431,7 +454,9 @@ function FinalRenderForm({
   projectId,
   roomId,
   selectedIds,
-  shoppingListId
+  shoppingListId,
+  retryOf = null,
+  tone = "paper"
 }: {
   canRequestRender: boolean;
   conceptId: string | null;
@@ -439,14 +464,19 @@ function FinalRenderForm({
   roomId: string;
   selectedIds: string[];
   shoppingListId: string | null;
+  // The succeeded job this submission renders again (S4): the action accepts it
+  // only for a job whose placement review stayed unresolved or could not run.
+  retryOf?: string | null;
+  tone?: "paper" | "ink";
 }) {
   const button = (
     <SubmitButton
-      className="mt-8"
+      className={tone === "ink" ? "mt-6" : "mt-8"}
       disabled={!canRequestRender || conceptId === null || shoppingListId === null}
       pendingLabel="Generating render..."
+      variant={tone === "ink" ? "paper" : undefined}
     >
-      Generate render
+      {retryOf ? "Render again" : "Generate render"}
     </SubmitButton>
   );
 
@@ -461,6 +491,7 @@ function FinalRenderForm({
       <input name="conceptId" type="hidden" value={conceptId} />
       <input name="shoppingListId" type="hidden" value={shoppingListId} />
       <input name="selectedItemIds" type="hidden" value={selectedIds.join(",")} />
+      {retryOf ? <input name="retryOf" type="hidden" value={retryOf} /> : null}
       {button}
     </form>
   );

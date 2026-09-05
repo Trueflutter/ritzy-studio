@@ -1820,6 +1820,10 @@ export async function generateFinalRenderAction(formData: FormData) {
   const roomId = String(formData.get("roomId") ?? "");
   const conceptId = String(formData.get("conceptId") ?? "");
   const shoppingListId = String(formData.get("shoppingListId") ?? "");
+  // S4: the reveal's render-again for a succeeded job whose placement review
+  // stayed unresolved or could not run. Honoured only for that job and only
+  // in that state; a passed render cannot be re-rendered by resubmitting.
+  const retryOf = String(formData.get("retryOf") ?? "").trim() || null;
   const redirectPath = `/projects/${projectId}/rooms/${roomId}/product-matching`;
   const supabase = await createClient();
   const {
@@ -1995,10 +1999,16 @@ export async function generateFinalRenderAction(formData: FormData) {
     }
   }
 
+  const matchingReviewOutcome = ((matchingRenderJob?.input_summary ?? {}) as { spatialQaOutcome?: string }).spatialQaOutcome;
+  const retryHonoured =
+    Boolean(retryOf) &&
+    matchingRenderJob?.id === retryOf &&
+    (matchingReviewOutcome === "unresolved" || matchingReviewOutcome === "unreviewed");
   if (
     matchingRenderJob?.status === "succeeded" &&
     (matchingRenderJob.output_asset_ids?.length ?? 0) > 0 &&
-    !commerceUnlocked
+    !commerceUnlocked &&
+    !retryHonoured
   ) {
     redirect(`${revealPathForRenderJob(matchingRenderJob.id)}&message=${encodeURIComponent("Final render is ready.")}`);
   }
@@ -2014,7 +2024,8 @@ export async function generateFinalRenderAction(formData: FormData) {
     // lookup and survive even if the room/project rows change later.
     userId: user.id,
     revealPath,
-    executionPath: executionMode
+    executionPath: executionMode,
+    ...(retryHonoured && matchingRenderJob ? { retryOfRenderJobId: matchingRenderJob.id } : {})
   };
   const { data: renderJob, error: renderJobError } = await supabase
     .from("render_jobs")
