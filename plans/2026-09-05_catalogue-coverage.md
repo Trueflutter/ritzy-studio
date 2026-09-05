@@ -154,3 +154,21 @@ that neither of us had seen.
    | beds | 384 | 304 |
 
    The catalogue is now self-consistent: a second `--stale` pass reports zero.
+
+## Review round 3 (Codex on PR #336)
+
+Valid, and taken. The exclusion ran AFTER `normalizeCategory`, so a label that
+resolved on some other needle skipped it: `categoryFor("Dining Table Set", ...)`
+matched the `dining table` needle and returned `dining_tables`, which would let
+a bundled set fill the table role while the blueprint sourced the chairs
+separately.
+
+No such label is in the catalogue today, so this was latent rather than live.
+Taken anyway on two grounds: the exclusion is a statement about the OBJECT and
+should not depend on which needle happens to match first, and this is ingestion
+code that S8 will run nightly, so a retailer adding the label later would
+silently reintroduce the double-buy.
+
+Verified against the live catalogue rather than assumed: after the reordering,
+`--stale` reports 0 and the NULL pass still resolves 0 of the 74 deliberate
+exclusions. Nothing in the catalogue changes; the fix is purely defensive.

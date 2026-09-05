@@ -257,6 +257,17 @@ export function isDeliberatelyUnmappedCategory(value: string | null | undefined)
 // retailer's own category when it resolves, otherwise the product name, unless
 // the retailer's category is one we recognise and decline to map.
 export function categoryFor(retailerCategory: string | null | undefined, name: string): string | null {
+  // The exclusion comes FIRST, because it is a statement about the object and
+  // cannot depend on which needle happens to match. "Dining Table Set" resolves
+  // to dining_tables on the "dining table" needle before any exclusion is
+  // consulted, which would let a bundled set fill the table role while the
+  // blueprint goes on sourcing the chairs separately. No such label is in the
+  // catalogue today, and Danube adding one tomorrow should not quietly
+  // reintroduce the double-buy. Codex caught it on PR #336.
+  if (isDeliberatelyUnmappedCategory(retailerCategory)) {
+    return null;
+  }
+
   const fromCategory = normalizeCategory(retailerCategory);
   if (fromCategory) {
     return fromCategory;
@@ -268,7 +279,7 @@ export function categoryFor(retailerCategory: string | null | undefined, name: s
   // Swivel Chair")` returned `chairs`, which is the double-buy the exclusion
   // exists to prevent, arrived at by a different road. Codex caught it on
   // PR #336.
-  if (isDeliberatelyUnmappedCategory(retailerCategory) || isDeliberatelyUnmappedCategory(name)) {
+  if (isDeliberatelyUnmappedCategory(name)) {
     return null;
   }
   return normalizeCategory(name);

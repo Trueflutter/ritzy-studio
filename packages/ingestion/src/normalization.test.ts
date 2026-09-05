@@ -169,3 +169,20 @@ assert.equal(normalizeCategory("Bedroom > Beds > Upholstered Beds"), "beds");
 assert.equal(normalizeCategory("Sofa Beds"), "sofas");
 assert.equal(normalizeCategory("Bedside Tables"), "side_tables");
 assert.equal(normalizeCategory("Bedroom > Nightstands"), "side_tables");
+
+// Codex round 3 on PR #336. The exclusion ran AFTER normalizeCategory, so a
+// label that resolves on a different needle skipped it entirely: "Dining Table
+// Set" matched "dining table" and became dining_tables, letting a bundled set
+// fill the table role while the blueprint sourced the chairs separately. No
+// such label is in the catalogue today; the point is that one appearing must
+// not quietly reintroduce the double-buy.
+assert.equal(categoryFor("Dining Table Set", "Bavaria 1+2 High Dining Table Set"), null);
+assert.equal(categoryFor("Furniture > Dining Room > Dining Table Sets", "Brookside 1+8-Seater Stone Top Dining Set"), null);
+assert.equal(normalizeCategory("Dining Table Set"), "dining_tables"); // the needle still matches
+// The labels that ARE in the catalogue keep their answers. A real dining table
+// is still a dining table, and must not be swept up by the exclusion.
+assert.equal(categoryFor("Dining Tables", "Cooper 10 Seater Dining Table"), "dining_tables");
+assert.equal(categoryFor("Furniture > Dining Room > Dining Tables", "Dolores 10-Seater Ceramic Top Dining Table"), "dining_tables");
+assert.equal(categoryFor("Dining Chairs", "Amilica Dining Chair"), "chairs");
+assert.equal(categoryFor("Dining Set", "Amilica 6-Seater Dining Set"), null);
+assert.equal(categoryFor("Furniture > Dining Room > Dining Sets", "Amilica 6-Seater Dining Set"), null);
