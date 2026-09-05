@@ -158,7 +158,41 @@ async function main() {
   assert.equal(single.products[0].imageBytes, null, "a product without a fetchable image still renders by name");
 }
 
+// Review fix: a failed read is never "nothing on record". An errored spec or
+// items read throws a plain error (retried by the queue), not the
+// deterministic input error that fails the job at once.
+async function reviewFixes() {
+  const { FinalRenderInputError } = await import("./render-inputs");
+  const erroring = (table: string) =>
+    fakeSupabase(
+      (call) => {
+        if (call.table === table) {
+          return { error: { message: `${table} read failed` } };
+        }
+        if (call.table === "room_assets") {
+          return { data: [{ id: "photo-1", storage_path: "u/room-1/p1.jpg", mime_type: "image/jpeg", created_at: "2026-09-01T10:00:00Z" }] };
+        }
+        if (call.table === "concepts") {
+          return { data: { id: "concept-1", title: "Quiet Lounge", description: null, primary_image_asset: null } };
+        }
+        if (call.table === "shopping_list_items") {
+          return { data: [{ id: "item-sofa", category: "sofas", role_label: "sofa", selection_reason: null, unit_price_aed: 1, sort_order: 1, spec_key: "0:sofa", product: { id: "p", name: "Sofa", description: null, primary_image_url: null, retailer: { name: "R", status: "active" }, dimensions: [] } }] };
+        }
+        return { data: null };
+      },
+      (storageCall) => (storageCall.op === "download" ? { data: new Blob([Buffer.from("x")]) } : { data: null })
+    ).client;
+  for (const table of ["room_design_specs", "shopping_list_items", "design_briefs", "concepts"]) {
+    await assert.rejects(
+      loadFinalRenderInputs({ serviceSupabase: erroring(table), roomId: "room-1", roomType: "Living Room", conceptId: "concept-1", selectedShoppingItemIds: ["item-sofa"], fetchImage: async () => null }),
+      (error: unknown) => error instanceof Error && !(error instanceof FinalRenderInputError) && /read failed/.test(error.message),
+      `an errored ${table} read surfaces as a retryable error`
+    );
+  }
+}
+
 main()
+  .then(reviewFixes)
   .then(() => {
     console.log("render-inputs tests passed");
   })

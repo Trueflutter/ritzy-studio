@@ -111,12 +111,18 @@ export async function loadFinalRenderInputs({
   selectedShoppingItemIds: string[];
   fetchImage: FetchProductImage;
 }): Promise<LoadedFinalRenderInputs> {
-  const { data: concept } = await serviceSupabase
+  // Every read below distinguishes a failed read from an empty one: a pooler
+  // blip must surface (and be retried by the queue), never read as "the
+  // concept is gone" or "no contract on record".
+  const { data: concept, error: conceptError } = await serviceSupabase
     .from("concepts")
     .select("id, title, description, primary_image_asset:room_assets!concepts_primary_image_asset_id_fkey(*)")
     .eq("id", conceptId)
     .eq("room_id", roomId)
     .maybeSingle();
+  if (conceptError) {
+    throw new Error(conceptError.message);
+  }
   if (!concept) {
     throw new FinalRenderInputError("Final render job's concept no longer exists.");
   }
@@ -124,13 +130,16 @@ export async function loadFinalRenderInputs({
   // Every photograph of the room, the first as the camera. Ordered by
   // created_at until S5 gives the slots a stored order; plans reference the
   // photographs by asset id, so that change cannot mislabel them.
-  const { data: photoRows } = await serviceSupabase
+  const { data: photoRows, error: photoError } = await serviceSupabase
     .from("room_assets")
     .select("*")
     .eq("room_id", roomId)
     .eq("asset_type", "room_photo")
     .order("created_at", { ascending: true })
     .limit(3);
+  if (photoError) {
+    throw new Error(photoError.message);
+  }
   const photoAssets = photoRows ?? [];
   if (photoAssets.length === 0) {
     throw new FinalRenderInputError("Final render job's room photo no longer exists.");
@@ -184,16 +193,19 @@ export async function loadFinalRenderInputs({
 
   // Only a CONFIRMED spec is a contract. An extracted one the shopper never
   // confirmed, or a row that does not parse, carries no preservation list.
-  const { data: specRow } = await serviceSupabase
+  const { data: specRow, error: specError } = await serviceSupabase
     .from("room_design_specs")
     .select("*")
     .eq("room_id", roomId)
     .eq("concept_id", conceptId)
     .maybeSingle();
+  if (specError) {
+    throw new Error(specError.message);
+  }
   const parsedSpec = specRow ? parseRoomDesignSpecRow(specRow) : null;
   const spec = parsedSpec?.status === "confirmed" ? parsedSpec : null;
 
-  const { data: items = [] } = await serviceSupabase
+  const { data: items = [], error: itemsError } = await serviceSupabase
     .from("shopping_list_items")
     .select(
       `
@@ -207,6 +219,9 @@ export async function loadFinalRenderInputs({
     )
     .in("id", selectedShoppingItemIds)
     .order("sort_order", { ascending: true });
+  if (itemsError) {
+    throw new Error(itemsError.message);
+  }
   const selectedItems = (items ?? []).filter((item) => item.product);
   if (selectedItems.length === 0) {
     throw new FinalRenderInputError("Final render job's selected products no longer exist.");
@@ -239,13 +254,16 @@ export async function loadFinalRenderInputs({
     })
   );
 
-  const { data: designBrief } = await serviceSupabase
+  const { data: designBrief, error: briefError } = await serviceSupabase
     .from("design_briefs")
     .select("structured_json")
     .eq("room_id", roomId)
     .order("updated_at", { ascending: false })
     .limit(1)
     .maybeSingle();
+  if (briefError) {
+    throw new Error(briefError.message);
+  }
   const spatialIntent = parseSpatialIntent(designBrief?.structured_json, roomType);
   const focalPoint = spatialIntent.focalPoint && spatialIntent.focalPoint !== "unknown" ? spatialIntent.focalPoint : null;
   const heroReferenceCap = localSkuFidelityModeEnabled(roomType) ? LOCAL_SKU_FIDELITY_RENDER_REFERENCE_LIMIT : 8;
