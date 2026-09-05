@@ -131,21 +131,21 @@ model (`--model`).
    not a vacuous pass).
    NOT_APPLICABLE only when the concept has no shopping list and no anchors.
 
-8. **final_spatial_plausibility** (S4) — check 1 applied to the FINAL hero
+8. **final_spatial_plausibility** (S4): check 1 applied to the FINAL hero
    render the reveal shows (the newest succeeded render job for the concept,
    `output_asset_ids[0]`), rather than to the concept. The notes carry the
    app's own spatial QA outcome (`passed`, `resolved_after_regeneration`,
    `unresolved`, `unreviewed`), its verdict and whether it regenerated, so the
    two judges read side by side. NOT_APPLICABLE when no final render exists.
 
-9. **final_view_coverage** (S4) — across the final render's set (hero plus the
+9. **final_view_coverage** (S4): across the final render's set (hero plus the
    planned views the reveal shows), every key element of the confirmed spec
    appears in at least one image, and the primary focal element appears in at
    least one; the notes name which image shows the focal element. The
    persisted plan's keys and anchoring are appended to the notes.
    NOT_APPLICABLE when no final render exists or the set has a single view.
 
-10. **final_view_consistency** (S4) — every planned view is the same finished
+10. **final_view_consistency** (S4): every planned view is the same finished
     room as the final hero: same architecture (walls, openings, ceiling,
     floor), same shared objects (silhouette, colour, material, proportions),
     nothing invented, and, where the plan anchored the view to one of the

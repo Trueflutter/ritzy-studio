@@ -186,7 +186,7 @@ export async function runFinalRender(
   const remainingMs = () => Math.max(0, deadlineAt - deps.now());
 
   // A succeeded job on redelivery means the hero committed but the delivery died before (or
-  // during) the planned views — repair ONLY what is missing. The views phase is idempotent
+  // during) the planned views: repair ONLY what is missing. The views phase is idempotent
   // (attempt-unique view paths, lease rows per view, recomputed output_asset_ids), so a
   // duplicate delivery after full success is a no-op.
   if (job.status === "succeeded") {
