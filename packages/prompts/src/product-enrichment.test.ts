@@ -100,3 +100,38 @@ assert.equal(
 );
 
 console.log("product enrichment prompt tests passed");
+
+// One malformed id must not cost a room every verified pick it earned.
+// Observed 2026-09-05: the model returned a non-UUID productId, the whole
+// response failed to parse, and product-sourcing's only answer to a parse error
+// is to discard the visual pass and fall back to ranking. The room went from
+// five chosen pieces to three. Longer candidate lists make this MORE likely, so
+// it gets worse as the catalogue grows, not better.
+{
+  const good = {
+    productId: "00000000-0000-4000-8000-000000000001",
+    category: "sofas",
+    roleLabel: "anchor seating",
+    quantity: 1,
+    matchStatus: "strong_match",
+    visualMatchReason: "Matches the boucle sofa in the render.",
+    mismatchNote: null
+  };
+  const parsed = conceptProductSourcingResponseSchema.parse({
+    selectedProducts: [good, { ...good, productId: "not-a-uuid" }, { ...good, productId: "00000000-0000-4000-8000-000000000002" }],
+    roleResults: [{ category: "sofas", roleLabel: "anchor seating", status: "strong_match", productId: good.productId, note: null }]
+  });
+  assert.equal(parsed.selectedProducts.length, 2, "the two valid selections survive the one that did not");
+  assert.deepEqual(
+    parsed.selectedProducts.map((selection) => selection.productId),
+    ["00000000-0000-4000-8000-000000000001", "00000000-0000-4000-8000-000000000002"]
+  );
+
+  // The element schema is unchanged: a bad entry is DROPPED, never repaired,
+  // and a field that must be present still has to be.
+  const missingReason = conceptProductSourcingResponseSchema.parse({
+    selectedProducts: [{ ...good, visualMatchReason: "short" }],
+    roleResults: [{ category: "sofas", roleLabel: "anchor seating", status: "strong_match", productId: good.productId, note: null }]
+  });
+  assert.equal(missingReason.selectedProducts.length, 0);
+}

@@ -700,6 +700,21 @@ export const specProductSourcingPrompt = {
   ].join("\n")
 } as const;
 
+// An array that discards elements failing `schema` instead of failing itself.
+// The element schema stays strict: this changes what happens to ONE bad entry,
+// never what counts as a valid one.
+function droppingInvalid<T extends z.ZodTypeAny>(schema: T, max: number) {
+  return z
+    .array(z.unknown())
+    .max(max)
+    .transform((items) =>
+      items.flatMap((item) => {
+        const parsed = schema.safeParse(item);
+        return parsed.success ? [parsed.data as z.infer<T>] : [];
+      })
+    );
+}
+
 export const conceptProductSelectionSchema = z.object({
   productId: z.uuid(),
   category: z.string().min(2).max(80),
@@ -739,8 +754,21 @@ export const conceptProductRoleResultSchema = z.object({
 // were read by nothing; a response that truncates against them loses the whole
 // paid pass.
 export const conceptProductSourcingResponseSchema = z.object({
-  selectedProducts: z.array(conceptProductSelectionSchema).max(30),
-  roleResults: z.array(conceptProductRoleResultSchema).min(1).max(30)
+  // Lenient per ELEMENT, strict per field. One malformed entry used to fail the
+  // whole array, and the caller's only response to a parse error is to throw
+  // away the entire visual pass and fall back to ranking: a room lost every one
+  // of its verified picks because the model returned one id that was not a
+  // UUID. Observed 2026-09-05, right after the catalogue read widened, which is
+  // the direction of travel — longer candidate lists make a malformed id more
+  // likely, not less.
+  //
+  // Dropping the bad entries is the same choice validateAnchorSetPicks already
+  // makes for anchors, and it stays honest: a dropped selection is a role
+  // nothing was chosen for, which the shopper already sees as "needs your
+  // choice", and a dropped roleResult is backfilled downstream as a pool the
+  // model returned no valid status for.
+  selectedProducts: droppingInvalid(conceptProductSelectionSchema, 30),
+  roleResults: droppingInvalid(conceptProductRoleResultSchema, 30)
 });
 
 export const conceptProductSourcingJsonSchema = {
