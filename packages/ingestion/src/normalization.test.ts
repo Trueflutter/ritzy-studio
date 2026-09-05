@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 
 import {
+  categoryFor,
   normalizeCategory,
   normalizeProductCandidate,
   parseAedPrice,
@@ -34,6 +35,33 @@ assert.equal(normalizeCategory("Living > Coffee & Side Tables > Coffee Tables"),
 assert.equal(normalizeCategory("https://www.chattelsandmore.com/en/category/living-room/storage-and-home-office/desks"), "desks");
 assert.equal(normalizeCategory("https://www.chattelsandmore.com/en/category/bedroom/nightstands"), "side_tables");
 assert.equal(normalizeCategory("Decorative Object"), "decor");
+
+// Danube's accessory tree, 2026-09-05. These labels had no needle, so 433
+// usable products were invisible to every role query while decor was the
+// thinnest category in the catalogue.
+assert.equal(normalizeCategory("Candle Holders"), "decor");
+assert.equal(normalizeCategory("LED & Lanterns"), "decor");
+assert.equal(normalizeCategory("Figurines"), "decor");
+assert.equal(normalizeCategory("Clocks"), "decor");
+assert.equal(normalizeCategory("Bowls & Trays"), "decor");
+assert.equal(normalizeCategory("Indoor Wall Lights"), "lighting");
+assert.equal(normalizeCategory("Chest of Drawers"), "storage");
+assert.equal(normalizeCategory("Furniture > Living Room > Shoe Racks"), "storage");
+assert.equal(normalizeCategory("Serving Trolleys"), "storage");
+
+// Order still decides: a candle-styled chandelier is a light, not an ornament,
+// because the earlier "chandelier" needle wins over the appended "candle".
+assert.equal(normalizeCategory("Candle Chandeliers"), "lighting");
+
+// Left unmapped on purpose. A dining SET fills one blueprint role and leaves
+// the other to buy the same chairs twice; architectural and outdoor fixtures
+// are not furnishing, and mapping them to lighting would let a downlight fill
+// a floor-lamp role.
+assert.equal(normalizeCategory("Dining Set"), null);
+assert.equal(normalizeCategory("Furniture > Dining Room > Dining Sets"), null);
+assert.equal(normalizeCategory("Down Lights"), null);
+assert.equal(normalizeCategory("Panel Lights"), null);
+assert.equal(normalizeCategory("Garden Lights & Spike Lights"), null);
 assert.equal(normalizeCategory("Wall Art"), "wall_art");
 assert.equal(normalizeCategory("Rugs & Carpets"), "rugs");
 assert.equal(normalizeCategory("Furniture > Living Room > TV & Media Units"), "storage");
@@ -67,3 +95,31 @@ assert.equal(normalized.images.length, 2);
 assert.equal(normalized.dimensions?.width_cm, 210);
 
 console.log("normalization tests passed");
+
+// The retailer's category can name a RANGE rather than an object. When it
+// resolves to nothing, the product's own name is consulted: Danube files
+// "Brayden Tall Bookcase" under "Furniture > Modular > Modular Living >
+// Brayden", and the old `retailerCategory ?? name` never looked at the name
+// when a category was present.
+{
+  const collectionShelved = normalizeProductCandidate({
+    canonicalUrl: "https://www.danubehome.com/ae/en/p/brayden-tall-bookcase-wide-1",
+    name: "Brayden Tall Bookcase With Glass Doors - Compact",
+    retailerCategory: "Furniture > Modular > Modular Living > Brayden",
+    priceText: "AED 1,299"
+  } as never);
+  assert.equal(collectionShelved.product.category_normalized, "storage");
+  assert.equal(collectionShelved.product.category_raw, "Furniture > Modular > Modular Living > Brayden");
+}
+
+// The name fallback must not overturn a deliberate exclusion. A dining SET
+// names both a table and its chairs, so consulting the name files it as one or
+// the other and the shopper buys the chairs twice.
+assert.equal(categoryFor("Dining Set", "Bavaria 1+2 High Dining Table Set - Cream/Beige"), null);
+assert.equal(categoryFor("Dining Set", "Derin 1+8-Seater Dining Set with Swivel Chair-Grey/Beige"), null);
+assert.equal(categoryFor("Down Lights", "Aria Recessed Downlight 12W Warm White"), null);
+// But an UNINFORMATIVE category still falls through to the name.
+assert.equal(categoryFor("Furniture > Modular > Modular Living > Brayden", "Brayden Tall Bookcase - Wide"), "storage");
+assert.equal(categoryFor(null, "Aleem Persian Rug - Red - 250x350 cm"), "rugs");
+// And a category that resolves is never second-guessed by the name.
+assert.equal(categoryFor("Candle Holders", "Mirabella Metal Candle Holder on Walnut Table Base"), "decor");

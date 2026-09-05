@@ -93,7 +93,39 @@ const categoryMap = new Map<string, string>([
   ["cushion", "decor"],
   ["vase", "decor"],
   ["decor", "decor"],
-  ["décor", "decor"]
+  ["décor", "decor"],
+
+  // Danube Home's accessory and lighting tree, 2026-09-05. 433 usable products
+  // sat uncategorised because these labels had no needle, and they are exactly
+  // the styling stock a finished room needs: decor was the thinnest category in
+  // the catalogue at 111 products while 233 candle holders, figurines, bowls,
+  // trays, clocks and lanterns were invisible to every role query.
+  //
+  // Appended deliberately. Matching is first-needle-wins over insertion order,
+  // so a "Candle Chandelier" still resolves to lighting on the earlier
+  // "chandelier" needle rather than to decor on "candle" here.
+  ["candle", "decor"],
+  ["lantern", "decor"],
+  ["figurine", "decor"],
+  ["clock", "decor"],
+  ["bowls and tray", "decor"],
+  ["wall light", "lighting"],
+  ["chest of drawer", "storage"],
+  ["shoe rack", "storage"],
+  ["serving trolley", "storage"]
+
+  // NOT mapped, on purpose:
+  //   Dining sets (59). A "6-Seater Dining Set" is a table and its chairs sold
+  //   as one line. The dining blueprint carries a dining_tables role AND a
+  //   chairs role, so mapping sets to either fills one role and leaves the
+  //   other to buy the same chairs again. Sourcing has no concept of a product
+  //   satisfying two roles at once; until it does, a visible double-buy is
+  //   worse than 59 invisible products.
+  //   Down/panel/spot/fan lights (7) and garden lights (1). Architectural and
+  //   outdoor fixtures, not furnishing. Mapping them to lighting would let a
+  //   recessed downlight fill a "floor or table lighting" role, which is the
+  //   chandelier-for-a-floor-lamp failure the sourcing contracts exist to stop.
+  //   Kitchen trolleys (4), bathmats (1), kids accessories (1).
 ]);
 
 export function normalizeProductCandidate(input: RawProductCandidate): NormalizedProductRecord {
@@ -113,7 +145,13 @@ export function normalizeProductCandidate(input: RawProductCandidate): Normalize
       description: nullableText(parsed.description),
       external_sku: nullableText(parsed.externalSku),
       category_raw: nullableText(parsed.retailerCategory),
-      category_normalized: normalizeCategory(parsed.retailerCategory ?? parsed.name),
+      // The retailer's own category first, then the NAME as a fallback. Danube
+      // files some stock under a collection path ("Furniture > Modular >
+      // Modular Living > Brayden") that names the range rather than the object,
+      // and `retailerCategory ?? name` never consulted the name when a category
+      // was present, so seven "Brayden Tall Bookcase" rows stayed uncategorised
+      // while the word bookcase sat in every one of their names.
+      category_normalized: categoryFor(parsed.retailerCategory, parsed.name),
       price_aed: price,
       sale_price_aed: salePrice,
       currency: normalizeCurrency(parsed.currency, parsed.priceText, parsed.salePriceText),
@@ -160,6 +198,48 @@ export function normalizeCurrency(...values: Array<string | null | undefined>) {
   }
 
   return "AED";
+}
+
+// Labels we RECOGNISE and deliberately decline to map. This is not the same as
+// a category we simply do not know, and the difference decides whether the name
+// fallback runs: that fallback exists for an UNINFORMATIVE retailer category (a
+// collection path like "Furniture > Modular > Modular Living > Brayden"), never
+// to overturn an exclusion made on purpose.
+//
+// Without this, the fallback quietly undid the dining-set decision. "Bavaria
+// 1+2 High Dining Table Set" resolved to dining_tables on the words "dining
+// table" in its name, and "Derin 1+8-Seater Dining Set with Swivel Chair"
+// resolved to chairs on the word "chair" — a table-and-eight-chairs set filed
+// as a chairs row, which is the double-buy the exclusion exists to prevent.
+const deliberatelyUnmapped = [
+  "dining set",
+  "down light",
+  "panel light",
+  "spot light",
+  "fan light",
+  "garden light",
+  "kitchen trolley",
+  "bathmat",
+  "kids accessor"
+];
+
+export function isDeliberatelyUnmappedCategory(value: string | null | undefined): boolean {
+  if (!value) {
+    return false;
+  }
+  const lower = value.toLowerCase().replace(/&/g, "and").replace(/[-_]/g, " ").replace(/\s+/g, " ");
+  return deliberatelyUnmapped.some((needle) => lower.includes(needle));
+}
+
+// The category a product should carry, from the best text available: the
+// retailer's own category when it resolves, otherwise the product name, unless
+// the retailer's category is one we recognise and decline to map.
+export function categoryFor(retailerCategory: string | null | undefined, name: string): string | null {
+  const fromCategory = normalizeCategory(retailerCategory);
+  if (fromCategory) {
+    return fromCategory;
+  }
+  return isDeliberatelyUnmappedCategory(retailerCategory) ? null : normalizeCategory(name);
 }
 
 export function normalizeCategory(value: string | null | undefined): string | null {
