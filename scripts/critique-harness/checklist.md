@@ -153,6 +153,10 @@ model (`--model`).
     outcomes are appended to the notes. REPORTED this slice, not gating,
     until its variance is known (the rule the palette check followed).
     NOT_APPLICABLE when no final render exists or the set has a single view.
+    The judge is shown each anchored view's photograph beside it; it is never
+    shown the app's own verdicts (those are joined to the notes in code
+    afterwards), so the two judges stay independent. A listed view whose
+    image cannot be read FAILS the set checks by name; it is never dropped.
 
 ### A set of one is not a set
 

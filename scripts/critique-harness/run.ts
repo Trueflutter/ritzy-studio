@@ -216,20 +216,25 @@ async function judgeRoom({
   return (JSON.parse(text) as { verdicts: CheckVerdict[] }).verdicts;
 }
 
+// The judge sees the images, the spec and the plan's INTENT (which view is
+// which, whether it stands at a photograph, what it was asked to show), and
+// nothing the app itself concluded: the app's verdicts are joined to the
+// notes in code afterwards, the way product_consistency pairs its scores, or
+// the two judges would agree by construction.
 async function judgeFinalSet({
   model,
   room,
   spec,
   heroImage,
   views,
-  appOutcomes
+  planIntent
 }: {
   model: string;
   room: ManifestRoom;
   spec: Record<string, unknown> | null;
   heroImage: string;
-  views: Array<{ key: string; image: string; appOutcome: string | null }>;
-  appOutcomes: Record<string, unknown>;
+  views: Array<{ key: string; image: string; anchorPhoto: string | null; mustShow: string[] }>;
+  planIntent: unknown;
 }): Promise<CheckVerdict[]> {
   const checklist = readFileSync(path.join(process.cwd(), "scripts/critique-harness/checklist.md"), "utf8");
   const content: Array<Record<string, unknown>> = [
@@ -240,10 +245,13 @@ async function judgeFinalSet({
         spec,
         checksRequested: FINAL_CHECKS,
         checklistDefinitions: checklist,
-        // The app's own verdicts, given as context to compare against, never as
-        // instructions: the judge decides from the images.
-        appVerdictsForComparison: appOutcomes,
-        viewKeys: views.map((view) => view.key)
+        plan: planIntent,
+        views: views.map((view, index) => ({
+          image: index + 2,
+          key: view.key,
+          anchoredToPhotograph: Boolean(view.anchorPhoto),
+          expectedToShow: view.mustShow
+        }))
       })
     },
     { type: "input_text", text: "Image 1: the FINAL hero render the reveal shows." },
@@ -254,6 +262,12 @@ async function judgeFinalSet({
       { type: "input_text", text: `Final view ${index + 1} (${view.key}). Judge final_view_coverage across the hero and every view, and final_view_consistency for each view against the hero.` },
       { type: "input_image", image_url: view.image, detail: "low" }
     );
+    if (view.anchorPhoto) {
+      content.push(
+        { type: "input_text", text: `The photograph of the real room that final view ${index + 1} (${view.key}) was anchored to: its camera position and architecture are the truth for that view.` },
+        { type: "input_image", image_url: view.anchorPhoto, detail: "low" }
+      );
+    }
   });
   const response = await fetch("https://api.openai.com/v1/responses", {
     method: "POST",
@@ -662,33 +676,48 @@ async function runRoom(model: string, room: ManifestRoom) {
       `room_assets?id=in.(${finalJob.output_asset_ids.join(",")})&asset_type=eq.final_render&select=id,storage_path,view_key`
     )) as Array<{ id: string; storage_path: string; view_key: string | null }>;
     const byId = new Map(finalAssets.map((asset) => [asset.id, asset]));
-    const ordered = finalJob.output_asset_ids.map((id) => byId.get(id)).filter((asset): asset is NonNullable<typeof asset> => Boolean(asset));
-    const heroAsset = ordered[0];
+    // The hero is strictly output_asset_ids[0], never the next readable asset:
+    // promoting a view into the hero slot would judge the wrong image.
+    const heroAsset = byId.get(finalJob.output_asset_ids[0]) ?? null;
     const heroImage = heroAsset ? await storageDataUrl("generated-renders", heroAsset.storage_path) : null;
     const summary = finalJob.input_summary ?? {};
     const viewOutcomes = (summary.viewOutcomes ?? {}) as Record<string, { outcome?: string }>;
     const checkRows = (await supabaseGet(
       `ai_jobs?job_type=eq.render_view_check&input_summary->>renderJobId=eq.${finalJob.id}&order=created_at.desc&select=status,input_summary,output_summary`
     )) as Array<{ status: string; input_summary: Record<string, unknown>; output_summary: Record<string, unknown> | null }>;
-    const views = (
-      await Promise.all(
-        ordered.slice(1).map(async (asset) => {
-          const image = await storageDataUrl("generated-renders", asset.storage_path);
-          const key = asset.view_key ?? "unknown";
-          return image ? { key, image, appOutcome: viewOutcomes[key]?.outcome ?? null } : null;
-        })
-      )
-    ).filter((view): view is NonNullable<typeof view> => view !== null);
-    const plan = (summary.viewPlan ?? null) as { views?: Array<{ key: string; sourcePhotoAssetId: string | null; mustShowLabels: string[] }>; coverage?: unknown } | null;
+    const plan = (summary.viewPlan ?? null) as {
+      views?: Array<{ key: string; sourcePhotoAssetId: string | null; mustShowLabels: string[] }>;
+      coverage?: unknown;
+    } | null;
+    const planViewByKey = new Map((plan?.views ?? []).map((view) => [view.key, view]));
+    // Every listed view is read; one that cannot be read is named, never
+    // dropped, because the set judged must be the set the reveal shows.
+    const listedViews = finalJob.output_asset_ids.slice(1);
+    const unreadable: string[] = [];
+    const views: Array<{ key: string; image: string; anchorPhoto: string | null; mustShow: string[] }> = [];
+    for (const assetId of listedViews) {
+      const asset = byId.get(assetId);
+      const image = asset ? await storageDataUrl("generated-renders", asset.storage_path) : null;
+      const key = asset?.view_key ?? `unknown (${assetId.slice(0, 8)})`;
+      if (!image) {
+        unreadable.push(key);
+        continue;
+      }
+      const planned = asset?.view_key ? planViewByKey.get(asset.view_key) : undefined;
+      let anchorPhoto: string | null = null;
+      if (planned?.sourcePhotoAssetId) {
+        const photoRows = (await supabaseGet(`room_assets?id=eq.${planned.sourcePhotoAssetId}&select=storage_path`)) as Array<{ storage_path: string }>;
+        anchorPhoto = photoRows[0] ? await storageDataUrl("room-assets", photoRows[0].storage_path) : null;
+      }
+      views.push({ key, image, anchorPhoto, mustShow: planned?.mustShowLabels ?? [] });
+    }
     const appOutcomes = {
       spatialQaOutcome: summary.spatialQaOutcome ?? null,
       spatialQaVerdict: summary.spatialQaVerdict ?? null,
       spatialQaIssues: summary.spatialQaIssues ?? [],
       spatialQaRegenerated: summary.spatialQaRegenerated ?? null,
       cameraRead: summary.cameraRead ?? null,
-      plan: plan
-        ? { views: plan.views?.map((view) => ({ key: view.key, anchoredToPhoto: Boolean(view.sourcePhotoAssetId), mustShow: view.mustShowLabels })), coverage: plan.coverage }
-        : "legacy (no plan; fixed keys from the hero alone)",
+      viewsComplete: summary.viewsComplete ?? null,
       viewOutcomes,
       viewChecks: checkRows.map((row) => ({
         status: row.status,
@@ -698,30 +727,41 @@ async function runRoom(model: string, room: ManifestRoom) {
         regenerated: row.output_summary?.regenerated ?? null
       }))
     };
-    finalContext = { renderJobId: finalJob.id, createdAt: finalJob.created_at, viewKeys: views.map((view) => view.key), ...appOutcomes };
-    if (heroImage) {
-      finalVerdicts = await judgeFinalSet({ model, room, spec: specs[0] ?? null, heroImage, views, appOutcomes });
+    const planIntent = plan
+      ? { views: plan.views?.map((view) => ({ key: view.key, anchoredToPhoto: Boolean(view.sourcePhotoAssetId), expectedToShow: view.mustShowLabels })), coverage: plan.coverage }
+      : "legacy (no plan; fixed keys from the hero alone)";
+    finalContext = { renderJobId: finalJob.id, createdAt: finalJob.created_at, listedViews: listedViews.length, judgedViewKeys: views.map((view) => view.key), unreadableViews: unreadable, plan: planIntent, ...appOutcomes };
+    const listedViewCount = listedViews.length;
+    if (!heroImage) {
+      finalVerdicts = FINAL_CHECKS.map((check) => ({ check, verdict: "fail" as const, notes: "The final render's hero image (output_asset_ids[0]) could not be read from storage." }));
+    } else if (unreadable.length > 0) {
+      finalVerdicts = FINAL_CHECKS.map((check) => ({
+        check,
+        verdict: check === "final_spatial_plausibility" ? ("not_applicable" as const) : ("fail" as const),
+        notes: `A listed final view could not be read from storage (${unreadable.join(", ")}), so the set the reveal shows could not be judged as a set.`
+      }));
+    } else {
+      finalVerdicts = await judgeFinalSet({ model, room, spec: specs[0] ?? null, heroImage, views, planIntent });
+      const incomplete = appOutcomes.viewsComplete === false ? " The app records the planned views as NOT complete for this job." : "";
       for (const verdict of finalVerdicts) {
-        if (verdict.check === "final_view_coverage" && views.length === 0) {
+        if (verdict.check === "final_view_coverage" && listedViewCount === 0) {
           verdict.verdict = "not_applicable";
-          verdict.notes = `The final render has a single view (the hero); coverage is judged on sets of two or more. ${verdict.notes}`;
+          verdict.notes = `The final render lists a single view (the hero); coverage is judged on sets of two or more.${incomplete} ${verdict.notes}`;
         }
-        if (verdict.check === "final_view_consistency" && views.length === 0) {
+        if (verdict.check === "final_view_consistency" && listedViewCount === 0) {
           verdict.verdict = "not_applicable";
-          verdict.notes = `No additional final views to judge. ${verdict.notes}`;
+          verdict.notes = `No additional final views listed.${incomplete} ${verdict.notes}`;
         }
         if (verdict.check === "final_spatial_plausibility") {
           verdict.notes = `${verdict.notes} [app spatialQaOutcome: ${String(appOutcomes.spatialQaOutcome)}, verdict: ${String(appOutcomes.spatialQaVerdict)}, regenerated: ${String(appOutcomes.spatialQaRegenerated)}]`;
         }
         if (verdict.check === "final_view_consistency") {
-          verdict.notes = `${verdict.notes} [app view outcomes: ${views.map((view) => `${view.key}=${view.appOutcome ?? "none"}`).join(", ") || "none"}]`;
+          verdict.notes = `${verdict.notes} [app view outcomes: ${views.map((view) => `${view.key}=${viewOutcomes[view.key]?.outcome ?? "none"}`).join(", ") || "none"}]${incomplete}`;
         }
         if (verdict.check === "final_view_coverage") {
-          verdict.notes = `${verdict.notes} [plan: ${plan?.views?.map((view) => `${view.key}${view.sourcePhotoAssetId ? " (anchored)" : ""}`).join(", ") ?? "legacy"}]`;
+          verdict.notes = `${verdict.notes} [plan: ${plan?.views?.map((view) => `${view.key}${view.sourcePhotoAssetId ? " (anchored)" : ""}`).join(", ") ?? "legacy"}]${incomplete}`;
         }
       }
-    } else {
-      finalVerdicts = FINAL_CHECKS.map((check) => ({ check, verdict: "fail" as const, notes: "The final render's hero image could not be read from storage." }));
     }
   } else {
     finalVerdicts = FINAL_CHECKS.map((check) => ({ check, verdict: "not_applicable" as const, notes: "No final render exists for this concept yet." }));
@@ -764,11 +804,16 @@ async function runRoom(model: string, room: ManifestRoom) {
     // The app's own design-check score for each anchor, from the sourcing
     // run that judged this concept (every judged product, kept or not), so
     // the two judges' numbers can be read as pairs.
+    // The newest sourcing run whose design check actually RAN (a run that
+    // timed out before it, or was swept, carries no verdicts and would print
+    // every anchor as unscored while an earlier run's scores still drive the
+    // claim). Its job id is printed so the pair can be traced.
     const sourcingJobs = (await supabaseGet(
-      `ai_jobs?job_type=eq.product_visual_sourcing&input_summary->>conceptId=eq.${hero.id}&order=created_at.desc&limit=1&select=output_summary`
-    )) as Array<{ output_summary: { verification?: { verdicts?: Array<{ productId: string; similarity: number }> } } | null }>;
+      `ai_jobs?job_type=eq.product_visual_sourcing&input_summary->>conceptId=eq.${hero.id}&order=created_at.desc&limit=5&select=id,output_summary`
+    )) as Array<{ id: string; output_summary: { verification?: { used?: boolean; verdicts?: Array<{ productId: string; similarity: number }> } } | null }>;
+    const scoredRun = sourcingJobs.find((job) => job.output_summary?.verification?.used === true) ?? null;
     const appScores = new Map(
-      (sourcingJobs[0]?.output_summary?.verification?.verdicts ?? []).map((verdict) => [verdict.productId, verdict.similarity])
+      (scoredRun?.output_summary?.verification?.verdicts ?? []).map((verdict) => [verdict.productId, verdict.similarity])
     );
     // What the app went on to CLAIM, reported beside it: the gap between the
     // two is the anchors the app's own check declined to stand behind, which
@@ -898,7 +943,9 @@ async function runRoom(model: string, room: ManifestRoom) {
               ? `matched products (reported, not gating): ${matchedVerdicts.length - matchedFailed.length}/${matchedVerdicts.length} belong to the design${matchedFailed.length > 0 ? `; below the bar: ${matchedFailed.map((product) => `${product.productName} (${product.similarity.toFixed(2)})`).join("; ")}` : ""}`
               : null,
             missingLabels.length > 0 ? `honestly missing on the list: ${missingLabels.join("; ")}` : null,
-            pairs.length > 0 ? `judge pairs (harness / app): ${pairs.join(" | ")}; disagree across ${threshold}: ${disagreements} of ${pairs.length}` : null
+            pairs.length > 0
+              ? `judge pairs (harness / app${scoredRun ? `, app scores from sourcing job ${scoredRun.id.slice(0, 8)}` : ", no scored sourcing run"}): ${pairs.join(" | ")}; disagree across ${threshold}: ${disagreements} of ${pairs.length}`
+              : null
           ]
             .filter(Boolean)
             .join(". ")
