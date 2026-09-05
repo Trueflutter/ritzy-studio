@@ -106,3 +106,51 @@ list fill rate are the same problem seen from two ends.
 - The one Arabic-language category label (`أثاث > غرفة المعيشة > الطاولات
   الجانبية`) suggests the Danube adapter occasionally captures the localised
   category. One row today; worth a look if it grows.
+
+## Review round 2 (Codex on PR #336)
+
+Two findings, both valid, both mine, and chasing the second turned up a third
+that neither of us had seen.
+
+1. **The deliberate exclusion was bypassable by a product with no retailer
+   category.** The guard only checked `category_raw`, so `categoryFor(null,
+   "Derin 1+8-Seater Dining Set with Swivel Chair")` returned `chairs` — the
+   same double-buy, reached by a different road. The exclusion now holds however
+   the name is reached. It also needed a second needle: "Bavaria 1+2 High Dining
+   Table Set" does not contain "dining set". Deliberately NOT a bare "table
+   set", because "Dott Sintered Stone Top Coffee Table - Set of 2" is a nest of
+   tables, one purchase filling one role.
+
+2. **Generic decor needles shadowed wall lights.** "Candle Wall Lights" resolved
+   to `decor`. I had reasoned correctly about "Candle Chandeliers" (chandelier
+   sits earlier, so lighting wins), written a comment explaining why the bug
+   could not happen, and then created it one line below by appending "wall
+   light" after "candle".
+
+3. **Found by auditing what the backfill had already written: 80 rows were
+   miscategorised, none of them by this PR.** `category_normalized` is a cache
+   of a pure function of `category_raw`, so re-deriving it corrects a stale
+   cache rather than destroying authored data. The script gained a `--stale`
+   mode for exactly this, which never blanks a category: a row is rewritten only
+   when the resolver produces a different, non-null value.
+
+   - 52 chandeliers and ceramic table lamps stored as `beds` ("Bedroom
+     Chandeliers", from an older map ordering)
+   - 7 canvas wall-art pieces stored as `decor`
+   - 28 dressers stored as `beds` — invisible to the first stale pass, because
+     today's map was wrong in the same direction
+
+   The root cause of the bed ones is that `["bed", "beds"]` is a three-letter
+   needle sitting mid-map, and first-needle-wins made it beat every more
+   specific needle placed after it: bedroom, bedside, bedding and sofa bed all
+   contain it. It now sits LAST, so it wins only when nothing more specific
+   does. A bed-role query was answering with lighting and storage, and 14% of
+   the `beds` category was not beds.
+
+   | category | at PR open | after this round |
+   | --- | --- | --- |
+   | storage | 406 | 434 |
+   | lighting | 354 | 406 |
+   | beds | 384 | 304 |
+
+   The catalogue is now self-consistent: a second `--stale` pass reports zero.

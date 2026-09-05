@@ -123,3 +123,49 @@ assert.equal(categoryFor("Furniture > Modular > Modular Living > Brayden", "Bray
 assert.equal(categoryFor(null, "Aleem Persian Rug - Red - 250x350 cm"), "rugs");
 // And a category that resolves is never second-guessed by the name.
 assert.equal(categoryFor("Candle Holders", "Mirabella Metal Candle Holder on Walnut Table Base"), "decor");
+
+// Codex, reviewing PR #336. Both were real, and both were mine.
+
+// 1. The exclusion has to hold however we reach the name. Guarding only the
+// retailer category left the rule bypassable by a product that HAS no retailer
+// category, which is the same double-buy arrived at by a different road.
+assert.equal(categoryFor(null, "Derin 1+8-Seater Dining Set with Swivel Chair"), null);
+assert.equal(categoryFor("", "Amilica 6-Seater Dining Set"), null);
+// "Bavaria 1+2 High Dining Table Set" does not contain "dining set", so one
+// needle was not enough for the names this will actually meet.
+assert.equal(categoryFor(null, "Bavaria 1+2 High Dining Table Set - Cream/Beige"), null);
+// But a nest of tables is ONE purchase filling ONE role, and must survive.
+assert.equal(categoryFor(null, "Dott Sintered Stone Top Coffee Table - Set of 2"), "coffee_tables");
+
+// 2. First-needle-wins means the SPECIFIC needle must precede the general one.
+// A candle-styled sconce is a light, not an ornament.
+assert.equal(normalizeCategory("Candle Wall Lights"), "lighting");
+assert.equal(normalizeCategory("Lantern Wall Lights"), "lighting");
+assert.equal(normalizeCategory("Indoor Wall Lights"), "lighting");
+assert.equal(normalizeCategory("Candle Chandeliers"), "lighting");
+// And the decor needles still do their job when nothing more specific applies.
+assert.equal(normalizeCategory("Candle Holders"), "decor");
+assert.equal(normalizeCategory("LED & Lanterns"), "decor");
+
+// Found while auditing what the backfill had already written to the shared
+// catalogue: 52 chandeliers and ceramic table lamps were stored as `beds`,
+// because their retailer category is "Bedroom Chandeliers" and an older map
+// ordering matched "bed" before "chandelier". Today's ordering is correct, and
+// this pins it so it cannot regress.
+assert.equal(normalizeCategory("Bedroom Chandeliers"), "lighting");
+assert.equal(normalizeCategory("Bedroom Wall Lights"), "lighting");
+// Chasing that one turned up 28 more the stale check could not see, because
+// today's map was wrong in the same direction: a dresser is storage, and
+// "Bedroom > Dressers" was answering bed-role queries.
+assert.equal(normalizeCategory("Bedroom > Dressers"), "storage");
+assert.equal(normalizeCategory("https://2xlhome.com/ae-en/furniture/bedroom/bedroom-storage/dressers-1"), "storage");
+// "bed" still wins whenever nothing more specific does, which is its job.
+assert.equal(normalizeCategory("Beds"), "beds");
+assert.equal(normalizeCategory("Bedroom Furniture > Beds"), "beds");
+assert.equal(normalizeCategory("Furniture > Bedroom > Beds > King Beds"), "beds");
+assert.equal(normalizeCategory("Kids Bed"), "beds");
+assert.equal(normalizeCategory("Bedroom > Beds > Upholstered Beds"), "beds");
+// And the needles that were always meant to beat it still do.
+assert.equal(normalizeCategory("Sofa Beds"), "sofas");
+assert.equal(normalizeCategory("Bedside Tables"), "side_tables");
+assert.equal(normalizeCategory("Bedroom > Nightstands"), "side_tables");

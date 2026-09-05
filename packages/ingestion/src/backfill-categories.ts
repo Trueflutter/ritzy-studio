@@ -17,13 +17,29 @@
 // never deletes a row, and touches no other column. Re-running it is a no-op.
 // That matters: `products` is shared with production and is additive-only.
 //
+// A second, narrower job shares this script because it is the same operation:
+// --stale re-derives rows whose stored category DISAGREES with today's map.
+// `category_normalized` is a cache of a pure function of `category_raw`, so
+// re-deriving it corrects a stale cache rather than destroying authored data.
+// It found 52 chandeliers and ceramic table lamps filed as `beds` (their
+// retailer category is "Bedroom Chandeliers", and an older map ordering matched
+// "bed" before "chandelier"), plus 7 canvas wall-art pieces filed as `decor`.
+// That is 14% of the `beds` category answering bed-role queries with lighting.
+//
+// --stale never blanks a category: a row is only rewritten when the resolver
+// produces a DIFFERENT, non-null value.
+//
 // Usage, from the repo root:
 //   pnpm --filter @ritzy-studio/ingestion backfill:categories
 //   pnpm --filter @ritzy-studio/ingestion backfill:categories -- --apply
+//   pnpm --filter @ritzy-studio/ingestion backfill:categories -- --stale
+//   pnpm --filter @ritzy-studio/ingestion backfill:categories -- --stale --apply
 //
 // Without --apply it reports exactly what it would write, and writes nothing.
 
 import { createClient } from "@supabase/supabase-js";
+
+import type { Database } from "@ritzy-studio/db";
 
 import { categoryFor, normalizeCategory } from "./normalization";
 
@@ -32,7 +48,59 @@ import { categoryFor, normalizeCategory } from "./normalization";
 // repeats and skips rows.
 const PAGE_SIZE = 1000;
 
-type Row = { id: string; name: string; category_raw: string | null };
+type Row = { id: string; name: string; category_raw: string | null; category_normalized?: string | null };
+
+// Rows whose stored category disagrees with what today's resolver derives.
+async function restaleRows(
+  supabase: ReturnType<typeof createClient<Database>>,
+  apply: boolean
+) {
+  const rows: Row[] = [];
+  for (;;) {
+    const { data, error } = await supabase
+      .from("products")
+      .select("id, name, category_raw, category_normalized")
+      .not("category_normalized", "is", null)
+      .order("id", { ascending: true })
+      .range(rows.length, rows.length + PAGE_SIZE - 1);
+    if (error) throw new Error(error.message);
+    const page = (data ?? []) as Row[];
+    rows.push(...page);
+    if (page.length < PAGE_SIZE) break;
+  }
+
+  const stale = rows.flatMap((row) => {
+    const derived = categoryFor(row.category_raw, row.name);
+    // Never blank a category. A row the resolver no longer recognises keeps
+    // whatever it has; only a different, positive answer rewrites one.
+    if (!derived || derived === row.category_normalized) return [];
+    return [{ id: row.id, from: row.category_normalized ?? "(none)", to: derived }];
+  });
+
+  const pairs = new Map<string, number>();
+  for (const entry of stale) pairs.set(`${entry.from} -> ${entry.to}`, (pairs.get(`${entry.from} -> ${entry.to}`) ?? 0) + 1);
+  console.log(`categorised rows read: ${rows.length}`);
+  console.log(`stale against today's map: ${stale.length}\n`);
+  for (const [pair, count] of [...pairs].sort((a, b) => b[1] - a[1])) {
+    console.log(`  ${String(count).padStart(4)}  ${pair}`);
+  }
+
+  if (!apply) {
+    console.log("\nDRY RUN. Nothing written. Add --apply to write.");
+    return;
+  }
+  let written = 0;
+  for (const entry of stale) {
+    const { error } = await supabase
+      .from("products")
+      .update({ category_normalized: entry.to })
+      .eq("id", entry.id)
+      .eq("category_normalized", entry.from);
+    if (error) throw new Error(`${entry.id}: ${error.message}`);
+    written += 1;
+  }
+  console.log(`\nrewrote ${written} stale categories.`);
+}
 
 function loadEnv() {
   for (const path of [".env.local", "../../.env.local", "apps/web/.env.local"]) {
@@ -51,7 +119,7 @@ export async function backfillCategories({ apply }: { apply: boolean }) {
   if (!url || !key) {
     throw new Error("NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set.");
   }
-  const supabase = createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } });
+  const supabase = createClient<Database>(url, key, { auth: { persistSession: false, autoRefreshToken: false } });
 
   const rows: Row[] = [];
   for (;;) {
@@ -122,7 +190,21 @@ export async function backfillCategories({ apply }: { apply: boolean }) {
   return { read: rows.length, resolved: resolved.length, written };
 }
 
-backfillCategories({ apply: process.argv.includes("--apply") }).catch((error) => {
+const applyFlag = process.argv.includes("--apply");
+const run = process.argv.includes("--stale")
+  ? (async () => {
+      loadEnv();
+      const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+      const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+      if (!url || !key) throw new Error("NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set.");
+      return restaleRows(
+        createClient<Database>(url, key, { auth: { persistSession: false, autoRefreshToken: false } }),
+        applyFlag
+      );
+    })()
+  : backfillCategories({ apply: applyFlag });
+
+run.catch((error) => {
   console.error(error instanceof Error ? error.message : error);
   process.exitCode = 1;
 });
