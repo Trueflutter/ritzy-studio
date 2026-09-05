@@ -5,6 +5,7 @@ import {
   finalGroundedRenderReferences,
   finalRenderViewReferences,
   normalizeCameraRead,
+  normalizeViewConsistency,
   spatialQaContext,
   viewConsistencyContent
 } from ".";
@@ -74,7 +75,7 @@ import {
 {
   assert.match(
     spatialQaContext({ roomType: "living room", spatialIntent: { focalPoint: "tv_media_wall" }, cameraFacts: { focalElementInFrame: false, focalLabel: "the TV and media wall" } }),
-    /BEHIND THE CAMERA/
+    /NOT IN FRAME/
   );
   assert.match(
     spatialQaContext({ roomType: "living room", spatialIntent: { focalPoint: "tv_media_wall" }, cameraFacts: { focalElementInFrame: true, focalLabel: "the TV and media wall" } }),
@@ -119,6 +120,22 @@ import {
     focalLabel: null
   });
   assert.equal(unanchored.filter((part) => part.type === "input_image").length, 2);
+}
+
+// A view with no anchored photograph cannot fail its camera comparison.
+{
+  const check = {
+    architectureConsistent: true,
+    cameraMatchesAnchor: "no" as const,
+    sharedObjectsConsistent: true,
+    expectedShown: [],
+    expectedMissing: [],
+    invented: [],
+    verdict: "consistent" as const,
+    issues: []
+  };
+  assert.equal(normalizeViewConsistency(check, { anchorPhotoDataUrl: null }).cameraMatchesAnchor, "not_applicable");
+  assert.equal(normalizeViewConsistency(check, { anchorPhotoDataUrl: "data:image/jpeg;base64,P" }).cameraMatchesAnchor, "no");
 }
 
 // Reference order for a planned view: the anchored photograph first (when

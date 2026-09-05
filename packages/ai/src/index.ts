@@ -3069,7 +3069,7 @@ export function spatialQaContext(input: Pick<AssessRenderSpatialQualityInput, "r
       ? input.cameraFacts.focalElementInFrame === true
         ? `The focal element (${focalWords}) is IN FRAME in this view.`
         : input.cameraFacts.focalElementInFrame === false
-          ? `The focal element (${focalWords}) is BEHIND THE CAMERA in this view: seating that faces the camera is facing it, so do not fail focalOrientation for a wall the camera cannot see.`
+          ? `The focal element (${focalWords}) is NOT IN FRAME in this view (out of frame or behind the camera): judge seating orientation against the room's geometry, and do not fail focalOrientation for a wall you cannot see.`
           : `Whether the focal element (${focalWords}) is in frame is not known for this view.`
       : null;
   return [
@@ -3247,6 +3247,15 @@ export function normalizeCameraRead(
   };
 }
 
+// A reasoning model spends its output cap on reasoning too; a response that
+// ran out of budget is reported by name, never as an empty JSON parse, so the
+// caller's fallback records a legible reason.
+function assertCompleteResponse(response: { status?: string | null; output_text: string }, label: string) {
+  if (response.status === "incomplete" || !response.output_text) {
+    throw new Error(`${label} returned an incomplete response (status ${response.status ?? "unknown"}).`);
+  }
+}
+
 export async function readRoomCameraFacts(input: ReadRoomCameraFactsInput): Promise<ReadRoomCameraFactsResult> {
   const env = parseServerEnv(process.env);
   const client = createTextClient(env);
@@ -3256,7 +3265,7 @@ export async function readRoomCameraFacts(input: ReadRoomCameraFactsInput): Prom
 
   const response = await client.responses.create(
     {
-      max_output_tokens: 2000,
+      max_output_tokens: 4000,
       ...stageRequestParams,
       input: [
         { role: "system", content: cameraReadPrompt.system },
@@ -3273,6 +3282,7 @@ export async function readRoomCameraFacts(input: ReadRoomCameraFactsInput): Prom
     },
     { timeout: input.timeoutMs ?? CAMERA_READ_TIMEOUT_MS }
   );
+  assertCompleteResponse(response, "The camera read");
 
   const parsed = cameraReadResponseSchema.parse(JSON.parse(response.output_text));
   return {
@@ -3334,6 +3344,18 @@ export function viewConsistencyContent(input: Omit<AssessViewConsistencyInput, "
   ];
 }
 
+// A view with no anchored photograph has no camera to match; a model that
+// answers "no" anyway must not cost a regeneration.
+export function normalizeViewConsistency(
+  check: ViewConsistencyResponse,
+  input: Pick<AssessViewConsistencyInput, "anchorPhotoDataUrl">
+): ViewConsistencyResponse {
+  if (input.anchorPhotoDataUrl) {
+    return check;
+  }
+  return { ...check, cameraMatchesAnchor: "not_applicable" };
+}
+
 export async function assessViewConsistency(input: AssessViewConsistencyInput): Promise<AssessViewConsistencyResult> {
   const env = parseServerEnv(process.env);
   const client = createTextClient(env);
@@ -3341,7 +3363,7 @@ export async function assessViewConsistency(input: AssessViewConsistencyInput): 
 
   const response = await client.responses.create(
     {
-      max_output_tokens: 3000,
+      max_output_tokens: 4000,
       ...stageRequestParams,
       input: [
         { role: "system", content: viewConsistencyPrompt.system },
@@ -3358,9 +3380,10 @@ export async function assessViewConsistency(input: AssessViewConsistencyInput): 
     },
     { timeout: input.timeoutMs ?? VIEW_CONSISTENCY_TIMEOUT_MS }
   );
+  assertCompleteResponse(response, "The view consistency check");
 
   return {
-    check: viewConsistencyResponseSchema.parse(JSON.parse(response.output_text)),
+    check: normalizeViewConsistency(viewConsistencyResponseSchema.parse(JSON.parse(response.output_text)), input),
     promptKey: viewConsistencyPrompt.key,
     promptVersion: viewConsistencyPrompt.version,
     model: stageModel,

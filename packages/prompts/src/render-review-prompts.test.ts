@@ -62,7 +62,7 @@ assert.equal(parsedCheck.invented.length, 1);
 // Spatial QA: the version moved, hard violations are named as regenerate, and
 // the reviewer is told the camera can have the focal wall behind it.
 assert.equal(renderSpatialQaPrompt.version, "2026-09-05.1");
-assert.match(renderSpatialQaPrompt.system, /behind the camera/i);
+assert.match(renderSpatialQaPrompt.system, /NOT IN FRAME/);
 assert.match(renderSpatialQaPrompt.system, /regenerate, never warn|never warn/i);
 
 console.log("render review prompt tests passed");
