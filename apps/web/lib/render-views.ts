@@ -61,9 +61,11 @@ export const VIEW_LEASE_GRACE_MS = 30_000;
 // A lease is bounded by the VIEW's own worst case (start, one retry, grace),
 // never by the whole attempt: a dead delivery's lease must lapse inside the
 // queue's redelivery cadence, or its views would never be repaired. It is
-// extended by the holder once the generation lands, for the check and a retry.
+// extended by the holder once the generation lands, for the check, a retry
+// and its grace; every paid call of the view is bounded by the lease as well
+// as the attempt, so the extension must hold a check AND the retry reserve.
 export const VIEW_LEASE_MS = VIEW_START_RESERVE_MS + 75_000 + VIEW_LEASE_GRACE_MS;
-export const VIEW_LEASE_EXTENSION_MS = 75_000 + VIEW_LEASE_GRACE_MS;
+export const VIEW_LEASE_EXTENSION_MS = VIEW_CONSISTENCY_TIMEOUT_MS + 75_000 + VIEW_LEASE_GRACE_MS;
 
 const SIGNED_URL_TTL_SECONDS = 60 * 30;
 
@@ -435,6 +437,10 @@ export async function ensureFinalRenderViews({
     // delivery reclaims the lease and pays for the same view again (Codex).
     let leaseUntilMs = leaseUntil;
     const leaseRemainingMs = () => Math.max(0, leaseUntilMs - deps.now() - VIEW_LEASE_GRACE_MS);
+    // Every paid call of this view, and the retry reserve, see the SMALLER of
+    // the attempt's time and the lease's: nothing this delivery pays for can
+    // outlive the lease a reclaimer could take (Codex, round 2).
+    const viewRemainingMs = () => Math.min(remainingMs(), leaseRemainingMs());
     const leaseSummary = {
       renderJobId: job.id,
       viewKey: view.key,
@@ -496,7 +502,7 @@ export async function ensureFinalRenderViews({
           mustShowLabels: view.mustShowLabels,
           purpose: view.purpose,
           promptSuffix,
-          deadlineMs: Math.min(remainingMs(), leaseRemainingMs())
+          deadlineMs: viewRemainingMs()
         });
         // Counted the moment the provider answered: an upload or asset insert
         // that fails after this still closes the row with the spend (Codex).
@@ -527,14 +533,24 @@ export async function ensureFinalRenderViews({
         // Recorded before the check so a crash from here leaves a recoverable
         // asset, and the lease is extended for the check and a possible retry.
         const extendedUntil = Math.min(deps.now() + VIEW_LEASE_EXTENSION_MS, deadlineAt + VIEW_LEASE_GRACE_MS);
-        await serviceSupabase
+        const { data: extended, error: extendError } = await serviceSupabase
           .from("ai_jobs")
           .update({
             output_summary: { assetId: asset.id, assetPath },
             input_summary: { ...leaseSummary, leaseUntil: extendedUntil }
           })
           .eq("id", lease.id)
-          .eq("status", "running");
+          .eq("status", "running")
+          .select("id");
+        // The extension must land before anything else is paid for: a lease
+        // already reclaimed means another delivery owns the view now, and the
+        // asset just recorded is what it will check (Codex, round 2).
+        if (extendError) {
+          throw new Error(`The view's lease could not be extended: ${extendError.message}`);
+        }
+        if (!extended || extended.length === 0) {
+          throw new Error("The view's lease was reclaimed before its generation landed; the reclaiming delivery checks the asset.");
+        }
         leaseUntilMs = extendedUntil;
         return { assetId: asset.id, assetPath, bytes, credits: generated.imageCreditsUsed, recovered: false };
       };
@@ -549,7 +565,7 @@ export async function ensureFinalRenderViews({
       const viewFocalLabel = focalIndex >= 0 ? (view.mustShowLabels[focalIndex] ?? focalLabel) : null;
 
       const assess = async (image: ViewImage) => {
-        if (remainingMs() < MIN_TEXT_CALL_MS) {
+        if (viewRemainingMs() < MIN_TEXT_CALL_MS) {
           throw new Error("No time left in the attempt to check the view.");
         }
         const result = await deps.assessView({
@@ -562,7 +578,7 @@ export async function ensureFinalRenderViews({
           hiddenLabels: heroHiddenLabels,
           designLabels: plan.designLabels,
           focalLabel: viewFocalLabel,
-          timeoutMs: Math.max(1_000, Math.min(VIEW_CONSISTENCY_TIMEOUT_MS, remainingMs()))
+          timeoutMs: Math.max(1_000, Math.min(VIEW_CONSISTENCY_TIMEOUT_MS, viewRemainingMs()))
         });
         spentTextCost = addCost(spentTextCost, result.textCostUsd ?? null);
         return { check: result.check, textCostUsd: result.textCostUsd ?? null };
@@ -572,7 +588,7 @@ export async function ensureFinalRenderViews({
         generate,
         assess,
         correction: viewConsistencyCorrectionLanguage,
-        remainingMs,
+        remainingMs: viewRemainingMs,
         creditsOf: (image) => image.credits,
         focalLabel: viewFocalLabel
       });

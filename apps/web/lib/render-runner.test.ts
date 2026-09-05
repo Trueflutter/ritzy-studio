@@ -42,7 +42,7 @@ type World = {
   storageCalls: StorageCall[];
 };
 
-function world(overrides: { jobStatus?: string; successRows?: Array<{ id: string }>; executionPath?: string } = {}) {
+function world(overrides: { jobStatus?: string; successRows?: Array<{ id: string }>; executionPath?: string; aiJobCloseError?: string } = {}) {
   const state: World = {
     jobStatus: overrides.jobStatus ?? "queued",
     successRows: overrides.successRows ?? [{ id: "job-1" }],
@@ -145,6 +145,9 @@ function world(overrides: { jobStatus?: string; successRows?: Array<{ id: string
       }
       if (call.table === "ai_jobs" && call.op === "insert") {
         return { data: { id: `read-job-${calls.filter((entry) => entry.table === "ai_jobs" && entry.op === "insert").length}` } };
+      }
+      if (call.table === "ai_jobs" && call.op === "update" && overrides.aiJobCloseError) {
+        return { error: { message: overrides.aiJobCloseError } };
       }
       return { data: null };
     },
@@ -427,6 +430,18 @@ async function main() {
     const plan = summary.viewPlan as { views: Array<{ key: string; sourcePhotoAssetId: string | null }> };
     assert.equal(plan.views[0].key, "focal_wide", "a fallback read with a known focal point plans the focal view");
     assert.equal(plan.views[0].sourcePhotoAssetId, null);
+  }
+
+  // Codex, round 2: a paid camera read whose audit row cannot be closed is
+  // not lost money. Its cost rides on the job's own row, flagged.
+  {
+    const { client, state } = world({ aiJobCloseError: "db down" });
+    const { deps: d } = deps(client);
+    await runFinalRender({ renderJobId: "job-1", attempt: { mode: "queue", deliveryCount: 1 } }, d);
+    const summary = (updates(state, "succeeded")[0].payload as { input_summary: Record<string, unknown> }).input_summary;
+    assert.equal(summary.cameraReadAuditUnclosed, true);
+    assert.equal(summary.costEstimateUsd, 0.3071, "the hero, the QA and the unclosed read's 0.003");
+    assert.equal((summary.cameraRead as { source: string }).source, "vision", "the read itself is kept");
   }
 
   // D. Inline mode, the render throws: the failure write, filtered on running,

@@ -150,6 +150,9 @@ type FinalRenderJobInputSummary = {
 type HeroAssessment = SpatialQaAssessment & {
   cameraRead: RoomCameraRead | null;
   cameraReadError: string | null;
+  // The read succeeded but its audit row could not be closed: its cost is
+  // folded into this job's own cost so the per-room total still sees it.
+  cameraReadAuditUnclosed: boolean;
 };
 
 export async function runFinalRender(
@@ -301,6 +304,7 @@ export async function runFinalRender(
     // spatial QA told what the read found. Both bounded by what is left of the attempt.
     // The last completed read is kept outside the assessment so a QA call that throws
     // after a paid, successful read does not cost the plan that read.
+    let readAuditUnclosed = false;
     let latestRead: { cameraRead: RoomCameraRead | null; cameraReadError: string | null } = {
       cameraRead: null,
       cameraReadError: null
@@ -309,6 +313,7 @@ export async function runFinalRender(
       const heroDataUrl = await deps.toVisionDataUrl(Buffer.from(render.imageBase64, "base64"), "image/png");
       let cameraRead: RoomCameraRead | null = null;
       let cameraReadError: string | null = null;
+      let unclosedReadCostUsd = 0;
       // No time left means no paid call: the review is recorded as unable to run
       // rather than started against a floor timeout past the deadline.
       if (remainingMs() < MIN_TEXT_CALL_MS) {
@@ -341,7 +346,7 @@ export async function runFinalRender(
             timeoutMs: Math.max(1_000, Math.min(CAMERA_READ_TIMEOUT_MS, remainingMs()))
           });
           cameraRead = read.read;
-          await closeAiJob(
+          const closedRead = await closeAiJob(
             serviceSupabase,
             readJob.id,
             {
@@ -354,6 +359,12 @@ export async function runFinalRender(
             },
             "camera read"
           );
+          // A paid read whose row could not be closed is not lost money: its
+          // cost rides on the job's own row, flagged (Codex, round 2).
+          if (!closedRead.closed) {
+            readAuditUnclosed = true;
+            unclosedReadCostUsd += read.textCostUsd ?? 0;
+          }
         } catch (error) {
           cameraReadError = error instanceof Error ? error.message : "The camera read failed.";
           await closeAiJob(
@@ -376,7 +387,9 @@ export async function runFinalRender(
         cameraFacts: { focalElementInFrame: facts.focalElementInFrame, focalLabel },
         timeoutMs: Math.max(1_000, Math.min(SPATIAL_QA_TIMEOUT_MS, remainingMs()))
       });
-      return { qa: qa.qa, facts, textCostUsd: qa.textCostUsd ?? null, cameraRead, cameraReadError };
+      const textCostUsd =
+        unclosedReadCostUsd > 0 ? Math.round(((qa.textCostUsd ?? 0) + unclosedReadCostUsd) * 10_000) / 10_000 : (qa.textCostUsd ?? null);
+      return { qa: qa.qa, facts, textCostUsd, cameraRead, cameraReadError, cameraReadAuditUnclosed: readAuditUnclosed };
     };
 
     // Post-render spatial QA: the bounded state machine. A review that cannot run never
@@ -496,6 +509,7 @@ export async function runFinalRender(
           // The camera reads carry their own rows.
           imageCreditsUsed: enforced.imageCreditsUsed,
           spatialQaTextCostUsd: enforced.textCostUsd,
+          cameraReadAuditUnclosed: readAuditUnclosed,
           costEstimateUsd: sumImagePlusTextUsd(evolinkCreditsToUsd(enforced.imageCreditsUsed), enforced.textCostUsd)
         }
       })

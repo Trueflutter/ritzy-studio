@@ -203,6 +203,13 @@ never silently dropped.
 - S4 (criteria 10 and 11): `final_view_coverage` 5 of 5 and
   `final_spatial_plausibility` 5 of 5 on the production model;
   `final_view_consistency` reported, not gating, until its variance is known.
+  MEASURED 2026-09-05 on the shipped S4 code: plausibility 5 of 5 on every
+  pass; coverage 3 of 5 (Al Furjan: the harness judge and the app's own
+  check disagree about whether a floor lamp and a throw are visible; the
+  glass room: the view carrying the pendant and the lamps was excluded for
+  an invented artwork). KNOWINGLY UNMET, the number not lowered, recorded
+  in the S4 plan's Verification for Ayo's decision; the slice that decides
+  whether a missing non-focal piece earns a bounded retry owns the gap.
 - Criterion 8 (sourcing fidelity, Gate 1 condition): all five rooms pass
   product_consistency on the production model; the Phase 0 chandelier-for-
   floor-lamp and swing-chair failures are rejected by the sourcing contracts

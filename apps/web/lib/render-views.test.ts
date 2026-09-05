@@ -12,6 +12,7 @@ import { FINAL_RENDER_ATTEMPT_BUDGET_MS } from "./render";
 import {
   ensureFinalRenderViews,
   RENDER_VIEW_CHECK_JOB_TYPE,
+  VIEW_LEASE_EXTENSION_MS,
   VIEW_LEASE_GRACE_MS,
   VIEW_LEASE_MS,
   VIEW_START_RESERVE_MS,
@@ -79,6 +80,7 @@ function scenario(options: {
   outcomesRecordedByOther?: Record<string, { outcome: string; assetId: string }>;
   closeErrorsBeforeSuccess?: number;
   uploadError?: string;
+  extensionLost?: boolean;
   jobReadError?: string;
   listWriteError?: string;
   viewsVersion?: number | null;
@@ -200,6 +202,10 @@ function scenario(options: {
         if (payload.status === "succeeded" && state.closeErrors > 0) {
           state.closeErrors -= 1;
           return { error: { message: "pooler blip" } };
+        }
+        if (options.extensionLost && !payload.status && payload.output_summary?.assetPath) {
+          // The lease was reclaimed between the generation and its extension.
+          return { data: [] };
         }
         if (row && requiredStatus && row.status !== requiredStatus) {
           return { data: [] };
@@ -712,6 +718,32 @@ async function reviewFindings() {
     );
     assert.equal(state.versionWrites.length, 1, "a DB error is not retried as a version miss");
     assert.equal(state.checkRows.filter((row) => row.status === "succeeded").length, 2, "the views stand on their own rows for the redelivery");
+  }
+
+  // Codex, round 2: the retry generation and its check run inside the
+  // extended lease, never merely inside the attempt; and a lease reclaimed
+  // between the generation and its extension stops this delivery before it
+  // pays for a check (the reclaimer checks the recorded asset).
+  {
+    const { client } = scenario();
+    const { deps: d, probe } = deps({ checksByKey: { focal_wide: [inconsistent(), consistent()], anchor_detail: [consistent()] } });
+    await ensureFinalRenderViews({ serviceSupabase: client as never, renderJobId: "job-1", deadlineAt: probe.clock + FINAL_RENDER_ATTEMPT_BUDGET_MS, now: d.now, deps: d });
+    const focalGenerations = probe.generations.filter((input) => input.viewKey === "focal_wide");
+    assert.equal(focalGenerations.length, 2);
+    assert.ok(
+      focalGenerations[1].deadlineMs !== undefined && focalGenerations[1].deadlineMs <= VIEW_LEASE_EXTENSION_MS - VIEW_LEASE_GRACE_MS,
+      "the retry's image call is bounded by the extended lease"
+    );
+    const focalChecks = probe.assessments.filter((input) => input.viewKey === "focal_wide");
+    assert.ok(focalChecks.every((input) => input.timeoutMs !== undefined && input.timeoutMs <= VIEW_LEASE_EXTENSION_MS - VIEW_LEASE_GRACE_MS));
+  }
+  {
+    const { client, state } = scenario({ extensionLost: true });
+    const { deps: d, probe } = deps();
+    const result = await ensureFinalRenderViews({ serviceSupabase: client as never, renderJobId: "job-1", deadlineAt: probe.clock + FINAL_RENDER_ATTEMPT_BUDGET_MS, now: d.now, deps: d });
+    assert.equal(probe.assessments.length, 0, "no check is paid for after the lease was lost");
+    assert.equal(result.complete, false);
+    assert.ok(state.viewAssets.length >= 2, "the generated assets stay recorded for the reclaimer");
   }
 
   // No time left after the generation means no paid check: the view is
