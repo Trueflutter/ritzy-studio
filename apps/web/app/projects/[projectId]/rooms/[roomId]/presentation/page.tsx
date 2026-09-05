@@ -20,6 +20,10 @@ import { RenderRefresh } from "./render-refresh";
 import { UnlockShoppingListCta } from "./unlock-shopping-list-cta";
 
 export const dynamic = "force-dynamic";
+// This page posts the final render action; when the queue cannot be reached the
+// render runs inline inside this route, under FINAL_RENDER_INLINE_BUDGET_MS
+// (pinned by lib/render.test.ts against this literal).
+export const maxDuration = 300;
 
 const renderRevealPhases = [
   "Reading the room photograph",
@@ -124,7 +128,7 @@ export default async function PresentationPage({
   const { data: routedRenderJob } = renderJobId
     ? await serviceSupabase
         .from("render_jobs")
-        .select("id, status, error_message, created_at, completed_at, output_asset_ids")
+        .select("id, status, error_message, created_at, completed_at, output_asset_ids, input_summary")
         .eq("id", renderJobId)
         .eq("room_id", roomId)
         .maybeSingle()
@@ -133,7 +137,7 @@ export default async function PresentationPage({
     !routedRenderJob && shoppingList && selectedConcept
       ? await serviceSupabase
           .from("render_jobs")
-          .select("id, status, error_message, created_at, completed_at, output_asset_ids")
+          .select("id, status, error_message, created_at, completed_at, output_asset_ids, input_summary")
           .eq("room_id", roomId)
           .eq("concept_id", selectedConcept.id)
           .eq("shopping_list_id", shoppingList.id)
@@ -179,7 +183,13 @@ export default async function PresentationPage({
   // A render whose in-request after() task never completed can sit in `running` indefinitely.
   // Once it is stalled, stop showing the progress spinner (which would poll forever) and fall
   // through to the retry affordance, which will fail the stale job and start a fresh render.
-  const isRenderStalled = isRenderJobStalled(renderJobStatus, latestRenderJob?.created_at);
+  const latestRenderSummary = ((latestRenderJob?.input_summary ?? {}) as { executionPath?: string }) ?? {};
+  const isRenderStalled = isRenderJobStalled(
+    renderJobStatus,
+    latestRenderJob?.created_at,
+    undefined,
+    latestRenderSummary.executionPath
+  );
   const showRenderProgress =
     !finalRenderUrl &&
     !isRenderStalled &&

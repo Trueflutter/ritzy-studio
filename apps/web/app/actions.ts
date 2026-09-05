@@ -44,7 +44,7 @@ import {
   type ProductRow
 } from "@/lib/services/sourcing-support";
 import { createClient } from "@/lib/supabase/server";
-import { FINAL_RENDER_STALE_MS } from "@/lib/render";
+import { finalRenderStaleMs } from "@/lib/render";
 import { localSkuFidelityModeEnabled } from "@/lib/render-flags";
 import { enqueueFinalRender, runFinalRender } from "@/lib/render-runner";
 import {
@@ -1958,7 +1958,8 @@ export async function generateFinalRenderAction(formData: FormData) {
 
   if (matchingRenderJob?.status === "running" || matchingRenderJob?.status === "queued") {
     const startedAt = matchingRenderJob.created_at ? Date.parse(matchingRenderJob.created_at) : Date.now();
-    const isStale = Number.isFinite(startedAt) && Date.now() - startedAt > FINAL_RENDER_STALE_MS;
+    const executionPath = ((matchingRenderJob.input_summary ?? {}) as { executionPath?: string }).executionPath;
+    const isStale = Number.isFinite(startedAt) && Date.now() - startedAt > finalRenderStaleMs(executionPath);
 
     if (!isStale) {
       redirect(
