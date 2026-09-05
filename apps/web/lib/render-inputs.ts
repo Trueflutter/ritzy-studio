@@ -2,6 +2,7 @@ import type { GenerateFinalGroundedRenderInput } from "@ritzy-studio/ai";
 import {
   parseRoomDesignSpecRow,
   parseSpatialIntent,
+  planningFocalPoint,
   sortProductsForRenderReferences,
   type RoomDesignSpec,
   type SpatialIntent
@@ -265,7 +266,10 @@ export async function loadFinalRenderInputs({
     throw new Error(briefError.message);
   }
   const spatialIntent = parseSpatialIntent(designBrief?.structured_json, roomType);
-  const focalPoint = spatialIntent.focalPoint && spatialIntent.focalPoint !== "unknown" ? spatialIntent.focalPoint : null;
+  // The planner and the placement review work from the chosen focal point,
+  // or from the layout rules' own TV-wall assumption when the confirmed
+  // design carries one (planningFocalPoint).
+  const focalPoint = planningFocalPoint(spatialIntent, spec);
   const heroReferenceCap = localSkuFidelityModeEnabled(roomType) ? LOCAL_SKU_FIDELITY_RENDER_REFERENCE_LIMIT : 8;
 
   const [primaryPhoto, ...additionalPhotos] = photos;

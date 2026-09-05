@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 import type { DesignSpecObject } from "./design-spec";
-import { spatialLayoutModeForRoomType } from "./spatial-design-rules";
+import { type SpatialIntent, spatialLayoutModeForRoomType } from "./spatial-design-rules";
 import { sourcingRolesFromDesignSpec } from "./spec-sourcing";
 
 // S4 step 1: the view planner. A final render is one hero image plus one or
@@ -110,6 +110,12 @@ export type ViewPlanInput = {
   heroReferenceCap?: number;
 };
 
+// mustShowLabels entries are capped by the persisted plan's schema; a label
+// the planner emits must always parse back, or the views phase would read
+// the plan as legacy and quietly drop the focal view.
+export const VIEW_LABEL_MAX_CHARS = 160;
+export const DESIGN_LABEL_MAX_ENTRIES = 40;
+
 export const plannedViewSchema = z.object({
   key: z.enum(PLANNED_VIEW_KEYS),
   label: z.string().min(1).max(60),
@@ -128,6 +134,11 @@ export const viewPlanSchema = z.object({
   heroPhotoAssetId: z.string().min(1).max(80).nullable(),
   heroReferenceItemIds: z.array(z.string().min(1).max(80)).max(12),
   views: z.array(plannedViewSchema).max(2),
+  // Every piece of the confirmed design, sourceable or not, so the
+  // consistency judge can tell a design piece the hero does not show from an
+  // invention. Absent on plans persisted before it existed: an empty list,
+  // never a legacy plan.
+  designLabels: z.array(z.string().min(1).max(VIEW_LABEL_MAX_CHARS)).max(DESIGN_LABEL_MAX_ENTRIES).default([]),
   coverage: z.object({
     focalToken: z.string().min(1).max(60).nullable(),
     focalCoveredBy: z.enum(["hero", ...PLANNED_VIEW_KEYS]).nullable(),
@@ -222,7 +233,7 @@ function isDiningRole(role: KeyRole): boolean {
   );
 }
 
-function keyRolesFor(input: ViewPlanInput): { keyRoles: KeyRole[]; focalCarrierLabels: string[] } {
+function keyRolesFor(input: ViewPlanInput): { keyRoles: KeyRole[]; focalCarrierLabels: string[]; designLabels: string[] } {
   if (input.spec) {
     const { roles, unsourceable } = sourcingRolesFromDesignSpec(input.spec, input.roomType);
     const keyRoles = roles.map((role) => ({
@@ -231,6 +242,10 @@ function keyRolesFor(input: ViewPlanInput): { keyRoles: KeyRole[]; focalCarrierL
       category: role.category,
       specRole: role.specRole
     }));
+    const designLabels = unique([...roles.map((role) => role.specLabel), ...unsourceable.map((entry) => entry.label)].map(boundedLabel)).slice(
+      0,
+      DESIGN_LABEL_MAX_ENTRIES
+    );
     const focalCarrierLabels = [
       ...roles.filter((role) => specRoleMatchesFocal(role.specRole, input.focalPoint)).map((role) => role.specLabel),
       ...unsourceable
@@ -238,7 +253,7 @@ function keyRolesFor(input: ViewPlanInput): { keyRoles: KeyRole[]; focalCarrierL
         .filter((entry) => specRoleMatchesFocal(entry.specKey.split(":").slice(1).join(":") || entry.specKey, input.focalPoint))
         .map((entry) => entry.label)
     ];
-    return { keyRoles, focalCarrierLabels };
+    return { keyRoles, focalCarrierLabels, designLabels };
   }
   // No spec (a legacy room): the selected products are the key roles.
   return {
@@ -248,7 +263,8 @@ function keyRolesFor(input: ViewPlanInput): { keyRoles: KeyRole[]; focalCarrierL
       category: product.category,
       specRole: product.specKey?.split(":")[1] ?? product.category
     })),
-    focalCarrierLabels: []
+    focalCarrierLabels: [],
+    designLabels: unique(input.products.map((product) => boundedLabel(product.label))).slice(0, DESIGN_LABEL_MAX_ENTRIES)
   };
 }
 
@@ -256,14 +272,31 @@ function unique<T>(values: readonly T[]): T[] {
   return Array.from(new Set(values));
 }
 
-// mustShowLabels entries are capped by the persisted plan's schema; a label
-// the planner emits must always parse back, or the views phase would read
-// the plan as legacy and quietly drop the focal view.
-export const VIEW_LABEL_MAX_CHARS = 160;
 
 function boundedLabel(value: string): string {
   const collapsed = value.replace(/\s+/g, " ").trim();
   return collapsed.length <= VIEW_LABEL_MAX_CHARS ? collapsed : `${collapsed.slice(0, VIEW_LABEL_MAX_CHARS - 1)}…`;
+}
+
+// The focal point the planner and the placement review work from. A focal
+// point the shopper chose is used as given. When the brief left it unknown,
+// the layout rules already assume the TV wall anchors a living room's seating
+// (parseSpatialIntent records that assumption), and the planner follows the
+// same assumption only when the confirmed design actually carries a TV or a
+// media wall; a lounge designed without one gets no focal view. Nothing here
+// says whether the hero SHOWS the focal element: that stays the camera read's.
+export function planningFocalPoint(
+  intent: Pick<SpatialIntent, "layoutMode" | "focalPoint">,
+  spec: { objects: DesignSpecObject[] } | null
+): string | null {
+  if (intent.focalPoint && intent.focalPoint !== "unknown") {
+    return intent.focalPoint;
+  }
+  const livingLike = intent.layoutMode === "living_only" || intent.layoutMode === "living_plus_dining";
+  if (!livingLike || !spec) {
+    return null;
+  }
+  return spec.objects.some((object) => specRoleMatchesFocal(object.role, "tv_media_wall")) ? "tv_media_wall" : null;
 }
 
 function composeFocalLabel(focalLabel: string, carrierLabels: readonly string[]): string {
@@ -275,7 +308,7 @@ export function planViews(input: ViewPlanInput): ViewPlan {
   const heroCap = input.heroReferenceCap ?? HERO_REFERENCE_CAP;
   const layoutMode = spatialLayoutModeForRoomType(input.roomType);
   const read = input.cameraRead ?? fallbackCameraRead(input.photos);
-  const { keyRoles, focalCarrierLabels } = keyRolesFor(input);
+  const { keyRoles, focalCarrierLabels, designLabels } = keyRolesFor(input);
   const keyRoleKeys = keyRoles.map((role) => role.key);
   const roleByKey = new Map(keyRoles.map((role) => [role.key, role]));
 
@@ -424,6 +457,7 @@ export function planViews(input: ViewPlanInput): ViewPlan {
     heroPhotoAssetId: input.heroPhotoAssetId,
     heroReferenceItemIds: input.products.slice(0, heroCap).map((product) => product.itemId),
     views,
+    designLabels,
     coverage: {
       focalToken,
       focalCoveredBy: focalToken === null ? null : focalCoveredByHero ? "hero" : wideKey,

@@ -156,6 +156,39 @@ async function main() {
   assert.equal(single.renderInput({}).mustPreserve, null);
   assert.equal(single.renderInput({}).conceptImageBytes, null);
   assert.equal(single.products[0].imageBytes, null, "a product without a fetchable image still renders by name");
+  assert.equal(single.focalPoint, null, "no chosen focal point and no confirmed design: no assumption");
+
+  // A brief that left the focal point unknown, on a living room whose
+  // confirmed design carries a TV: the planner follows the layout rules' own
+  // TV-wall assumption (four of the five harness rooms are this case).
+  const { client: assumedClient } = fakeSupabase(
+    (call) => {
+      if (call.table === "room_assets" && call.filters.some(([column, value]) => column === "asset_type" && value === "room_photo")) {
+        return { data: [photos[0]] };
+      }
+      if (call.table === "concepts") {
+        return { data: { id: "concept-1", title: "Quiet Lounge", description: null, primary_image_asset: null } };
+      }
+      if (call.table === "room_design_specs") {
+        return { data: specRow };
+      }
+      if (call.table === "shopping_list_items") {
+        return { data: items };
+      }
+      return { data: null };
+    },
+    (storageCall) => (storageCall.op === "download" ? { data: new Blob([Buffer.from("x")]) } : { data: null })
+  );
+  const assumed = await loadFinalRenderInputs({
+    serviceSupabase: assumedClient,
+    roomId: "room-1",
+    roomType: "Living Room",
+    conceptId: "concept-1",
+    selectedShoppingItemIds: ["item-lamp", "item-sofa"],
+    fetchImage: async () => null
+  });
+  assert.equal(assumed.spatialIntent.focalPoint, "unknown", "the brief itself is not rewritten");
+  assert.equal(assumed.focalPoint, "tv_media_wall", "the design carries a TV, so the planner works from the TV wall");
 }
 
 // Review fix: a failed read is never "nothing on record". An errored spec or

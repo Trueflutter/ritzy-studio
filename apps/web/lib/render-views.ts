@@ -122,6 +122,7 @@ export function compatibilityViewPlan(): ViewPlan {
     heroPhotoAssetId: null,
     heroReferenceItemIds: [],
     views: [view("reverse_wide"), view("anchor_detail")],
+    designLabels: [],
     coverage: { focalToken: null, focalCoveredBy: null, keyRoleKeys: [], heroCovers: [], uncovered: [] }
   };
 }
@@ -507,6 +508,7 @@ export async function ensureFinalRenderViews({
           anchorPhotoDataUrl: sourcePhoto?.dataUrl ?? null,
           expectedLabels: view.mustShowLabels,
           hiddenLabels: heroHiddenLabels,
+          designLabels: plan.designLabels,
           focalLabel,
           timeoutMs: Math.max(1_000, Math.min(VIEW_CONSISTENCY_TIMEOUT_MS, remainingMs()))
         });

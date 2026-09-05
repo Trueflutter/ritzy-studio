@@ -237,12 +237,19 @@ async function judgeFinalSet({
   planIntent: unknown;
 }): Promise<CheckVerdict[]> {
   const checklist = readFileSync(path.join(process.cwd(), "scripts/critique-harness/checklist.md"), "utf8");
+  // Every piece of the confirmed design, so a design piece the hero does not
+  // show (a TV on the wall behind the hero camera) is never an invention.
+  const specObjects = Array.isArray((spec as { objects?: unknown } | null)?.objects) ? ((spec as { objects: Array<{ label?: unknown }> }).objects) : [];
+  const designVocabulary = specObjects.map((object) => (typeof object.label === "string" ? object.label : null)).filter((label): label is string => label !== null);
   const content: Array<Record<string, unknown>> = [
     {
       type: "input_text",
       text: JSON.stringify({
         room: { label: room.label, register: room.register, expectations: room.expectations },
         spec,
+        designVocabulary,
+        inventionRule:
+          "A visible piece matching a role in the confirmed spec (designVocabulary) is part of the design, never an invention, whether or not the hero shows it; only purchasable pieces outside the spec and outside the hero are inventions.",
         checksRequested: FINAL_CHECKS,
         checklistDefinitions: checklist,
         plan: planIntent,

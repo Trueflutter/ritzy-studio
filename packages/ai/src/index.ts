@@ -3318,6 +3318,9 @@ export type AssessViewConsistencyInput = {
   anchorPhotoDataUrl: string | null;
   expectedLabels: string[];
   hiddenLabels: string[];
+  // The confirmed design's vocabulary (every piece, sourceable or not): a
+  // visible piece matching it is part of the design, not an invention.
+  designLabels: string[];
   focalLabel: string | null;
   timeoutMs?: number;
 };
@@ -3339,6 +3342,7 @@ export function viewConsistencyContent(input: Omit<AssessViewConsistencyInput, "
         viewKey: input.viewKey,
         expected: input.expectedLabels.map((label) => fenceUntrustedText(label, 160)),
         heroHidden: input.hiddenLabels.map((label) => fenceUntrustedText(label, 160)),
+        design: input.designLabels.slice(0, 40).map((label) => fenceUntrustedText(label, 160)),
         focalLabel: input.focalLabel ? fenceUntrustedText(input.focalLabel, 160) : null,
         anchoredPhotograph: Boolean(input.anchorPhotoDataUrl)
       })

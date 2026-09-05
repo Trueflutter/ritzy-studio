@@ -99,6 +99,7 @@ import {
     anchorPhotoDataUrl: "data:image/jpeg;base64,PHOTO",
     expectedLabels: ["the TV and media wall (wall-mounted TV)", "low media console"],
     hiddenLabels: ["low media console"],
+    designLabels: ["wall-mounted TV", "crystal chandelier"],
     focalLabel: "the TV and media wall (wall-mounted TV)"
   });
   const images = anchored.flatMap((part) => (part.type === "input_image" ? [part] : []));
@@ -108,6 +109,7 @@ import {
   const json = JSON.parse(texts[0]);
   assert.deepEqual(json.expected, ["the TV and media wall (wall-mounted TV)", "low media console"]);
   assert.deepEqual(json.heroHidden, ["low media console"]);
+  assert.deepEqual(json.design, ["wall-mounted TV", "crystal chandelier"], "the design vocabulary travels as data");
 
   const unanchored = viewConsistencyContent({
     roomType: "living room",
@@ -117,6 +119,7 @@ import {
     anchorPhotoDataUrl: null,
     expectedLabels: [],
     hiddenLabels: [],
+    designLabels: [],
     focalLabel: null
   });
   assert.equal(unanchored.filter((part) => part.type === "input_image").length, 2);

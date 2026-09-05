@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 
 import type { DesignSpecObject } from "./design-spec";
+import { spatialLayoutModeForRoomType } from "./spatial-design-rules";
 import {
   fallbackCameraRead,
   parseViewPlan,
@@ -8,6 +9,7 @@ import {
   PLANNED_VIEW_LABELS,
   plannedViewCaption,
   plannedViewLabel,
+  planningFocalPoint,
   specRoleMatchesFocal,
   type RoomCameraRead,
   type ViewPlanInput
@@ -407,5 +409,35 @@ assert.equal(plannedViewLabel("something_else"), "Alternate angle");
 assert.equal(plannedViewLabel(null), "Alternate angle");
 assert.equal(plannedViewCaption("reverse_wide"), "From the other end of the room");
 assert.equal(plannedViewCaption("nope"), "Another view");
+
+// The design vocabulary: every piece of the confirmed design, sourceable or
+// not, so the consistency judge can tell a design piece the hero does not
+// show from an invention (the evidence run counted a spec's chandelier, TV
+// and table lamps as inventions). Bounded like every persisted label, and a
+// plan persisted before it existed reads back as empty, never as legacy.
+{
+  const plan = planViews(input({ cameraRead: read({}) }));
+  assert.ok(plan.designLabels.includes("wall-mounted TV"), "an unsourceable role is design vocabulary");
+  assert.ok(plan.designLabels.includes("three-seat curved sofa"));
+  assert.ok(plan.designLabels.length <= 40 && plan.designLabels.every((label) => label.length <= 160));
+  const { designLabels: dropped, ...withoutVocabulary } = plan;
+  assert.ok(dropped.length > 0);
+  assert.deepEqual(parseViewPlan(JSON.parse(JSON.stringify(withoutVocabulary)))?.designLabels, []);
+}
+
+// The planning focal point: chosen by the shopper, or the layout rules' own
+// TV-wall assumption when the design carries one; never for a lounge without
+// a TV, never for a bedroom, never without a confirmed design.
+{
+  const living = spatialLayoutModeForRoomType("Living Room");
+  const hall = spatialLayoutModeForRoomType("Living & Dining");
+  const bedroom = spatialLayoutModeForRoomType("Bedroom");
+  assert.equal(planningFocalPoint({ layoutMode: living, focalPoint: "fireplace" }, livingSpec), "fireplace");
+  assert.equal(planningFocalPoint({ layoutMode: living, focalPoint: "unknown" }, livingSpec), "tv_media_wall");
+  assert.equal(planningFocalPoint({ layoutMode: hall, focalPoint: "unknown" }, hallSpec), "tv_media_wall");
+  assert.equal(planningFocalPoint({ layoutMode: living, focalPoint: "unknown" }, officeSpec), null);
+  assert.equal(planningFocalPoint({ layoutMode: bedroom, focalPoint: "unknown" }, livingSpec), null);
+  assert.equal(planningFocalPoint({ layoutMode: living, focalPoint: undefined }, null), null);
+}
 
 console.log("view planning tests passed");

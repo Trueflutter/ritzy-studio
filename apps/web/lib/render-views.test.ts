@@ -58,6 +58,7 @@ const plan: ViewPlan = {
       photoNotes: []
     }
   ],
+  designLabels: ["wall-mounted TV", "low media console", "crystal chandelier"],
   coverage: {
     focalToken: "focal:tv_media_wall",
     focalCoveredBy: "focal_wide",
@@ -347,6 +348,11 @@ async function main() {
     assert.deepEqual(focal?.mustShowLabels, ["the TV and media wall (wall-mounted TV)", "low media console"]);
     assert.equal(focal?.focalLabel, "the TV and media wall");
     assert.ok(focal?.deadlineMs !== undefined && focal.deadlineMs <= FINAL_RENDER_ATTEMPT_BUDGET_MS);
+    assert.deepEqual(
+      probe.assessments.find((input) => input.viewKey === "focal_wide")?.designLabels,
+      plan.designLabels,
+      "the consistency judge holds the design vocabulary"
+    );
     const detail = probe.generations.find((input) => input.viewKey === "anchor_detail");
     assert.equal(detail?.sourcePhoto ?? null, null);
     assert.equal(detail?.productReferences?.length, 0, "a product without an image is not a reference");

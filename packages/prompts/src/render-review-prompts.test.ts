@@ -43,6 +43,12 @@ assert.throws(() => cameraReadResponseSchema.parse({ hero: { showsFocalElement: 
 assert.match(viewConsistencyPrompt.system, /anchored photograph|photograph of the real room/i);
 assert.match(viewConsistencyPrompt.system, /expected/i);
 assert.match(viewConsistencyPrompt.system, /invent/i);
+// Evidence-run finding: a chandelier, a TV and two table lamps the confirmed
+// spec carried were counted as inventions because the hero did not show
+// them. The judge now holds the design vocabulary.
+assert.equal(viewConsistencyPrompt.version, "2026-09-05.2");
+assert.match(viewConsistencyPrompt.system, /design's vocabulary/i);
+assert.match(viewConsistencyPrompt.system, /never an invention/i);
 assert.deepEqual(
   [...(viewConsistencyJsonSchema.properties.cameraMatchesAnchor as unknown as { enum: readonly string[] }).enum],
   ["yes", "no", "not_applicable"]
