@@ -7,6 +7,7 @@ import {
   effectiveViewConsistencyVerdict,
   enforceSpatialQa,
   enforceViewConsistency,
+  spatialQaIssues,
   SPATIAL_QA_RETRY_RESERVE_MS,
   VIEW_RETRY_RESERVE_MS
 } from "./render-qa";
@@ -43,6 +44,29 @@ assert.equal(effectiveSpatialQaVerdict({ ...passQa, scalePlausibility: "fail", v
 assert.equal(effectiveSpatialQaVerdict({ ...passQa, zoning: "fail", verdict: "warn" }, null), "regenerate");
 assert.equal(effectiveSpatialQaVerdict({ ...passQa, verdict: "warn", anchorAlignment: "fail" }, null), "warn");
 assert.equal(effectiveSpatialQaVerdict(passQa, null), "pass");
+// Review fix: a model regeneration is downgraded only when the focal wall is
+// the SOLE failed check and the read knows it is behind the camera. Artifacts
+// or a canted anchor keep the regeneration; so does unknown framing.
+const artifactsAndFocal: Qa = {
+  ...passQa,
+  focalOrientation: "fail",
+  anchorAlignment: "fail",
+  compositionIntegrity: "fail",
+  verdict: "regenerate",
+  issues: ["Sofa canted 30 degrees off the rug grid.", "Coffee table legs merge into the rug."]
+};
+assert.equal(effectiveSpatialQaVerdict(artifactsAndFocal, { focalElementInFrame: false }), "regenerate");
+assert.equal(effectiveSpatialQaVerdict(artifactsAndFocal, null), "regenerate");
+const focalOnlyRegenerate: Qa = { ...passQa, focalOrientation: "fail", verdict: "regenerate", issues: ["Seating faces away from the TV wall."] };
+assert.equal(effectiveSpatialQaVerdict(focalOnlyRegenerate, { focalElementInFrame: false }), "warn");
+assert.equal(effectiveSpatialQaVerdict(focalOnlyRegenerate, { focalElementInFrame: null }), "regenerate", "unknown framing keeps the model's verdict");
+assert.equal(effectiveSpatialQaVerdict(focalOnlyRegenerate, { focalElementInFrame: true }), "regenerate");
+// A failed check with no written issue still yields a correction sentence.
+assert.deepEqual(
+  spatialQaIssues({ ...passQa, scalePlausibility: "fail", verdict: "warn", issues: [] }),
+  ["Furniture scale or clearances are not plausible for the room."]
+);
+assert.deepEqual(spatialQaIssues(regenerateQa), regenerateQa.issues);
 
 type Render = { id: string; credits: number | null };
 
@@ -158,6 +182,46 @@ function spatialHarness(verdicts: Array<Qa | Error>, remaining: number[] = [600_
   assert.match(result.error ?? "", /provider down/);
 }
 
+// A retry image call that throws keeps the paid, judged first render.
+{
+  let renders = 0;
+  const result = await enforceSpatialQa<Render, { qa: Qa; facts: { focalElementInFrame: boolean | null }; textCostUsd: number | null }>({
+    render: async (suffix) => {
+      renders += 1;
+      if (suffix) {
+        throw new Error("provider 503");
+      }
+      return { id: `render-${renders}`, credits: 20 };
+    },
+    assess: async () => ({ qa: regenerateQa, facts: { focalElementInFrame: true }, textCostUsd: 0.01 }),
+    correction: (issues) => `fix: ${issues.join(" | ")}`,
+    remainingMs: () => 600_000,
+    creditsOf: (render) => render.credits
+  });
+  assert.equal(renders, 2);
+  assert.equal(result.result.id, "render-1");
+  assert.equal(result.outcome, "unresolved");
+  assert.match(result.error ?? "", /provider 503/);
+  assert.equal(result.imageCreditsUsed, 20, "the failed retry consumed nothing that was reported");
+}
+
+// An escalated regeneration whose model wrote no issue is corrected with the
+// synthesised sentence rather than an empty list.
+{
+  const suffixes: Array<string | null> = [];
+  await enforceSpatialQa<Render, { qa: Qa; facts: { focalElementInFrame: boolean | null }; textCostUsd: number | null }>({
+    render: async (suffix) => {
+      suffixes.push(suffix);
+      return { id: "r", credits: null };
+    },
+    assess: async () => ({ qa: { ...passQa, scalePlausibility: "fail", verdict: "warn", issues: [] }, facts: { focalElementInFrame: null }, textCostUsd: null }),
+    correction: (issues) => issues.join("|"),
+    remainingMs: () => 600_000,
+    creditsOf: () => null
+  });
+  assert.equal(suffixes[1], "Furniture scale or clearances are not plausible for the room.");
+}
+
 // No time for a retry: exactly one render, unresolved, reason recorded.
 {
   const harness = spatialHarness([regenerateQa], [SPATIAL_QA_RETRY_RESERVE_MS - 1]);
@@ -197,6 +261,15 @@ assert.equal(
   "a non-focal expectation missing is reported, not failed"
 );
 assert.equal(effectiveViewConsistencyVerdict({ ...consistentCheck, verdict: "inconsistent" }, null), "inconsistent", "the model's own inconsistent verdict is kept");
+// The model saw the fenced label and copies it back fenced; a quote in the
+// focal label must not defeat the comparison.
+assert.equal(
+  effectiveViewConsistencyVerdict(
+    { ...consistentCheck, expectedShown: [], expectedMissing: ["the TV and media wall (65 wall-mounted TV)"] },
+    'the TV and media wall (65" wall-mounted TV)'
+  ),
+  "inconsistent"
+);
 
 type View = { id: string; credits: number | null };
 const inconsistentCheck: Check = { ...consistentCheck, sharedObjectsConsistent: false, verdict: "inconsistent", issues: ["The sofa changed colour."] };
@@ -263,6 +336,41 @@ function viewHarness(checks: Array<Check | Error>, remaining: number[] = [600_00
   const result = await harness.run();
   assert.equal(harness.calls().generations, 2);
   assert.equal(result.outcome, "resolved_after_regeneration");
+}
+
+// A retry generation that throws keeps the judged first image as unresolved.
+{
+  let generations = 0;
+  const result = await enforceViewConsistency<View, { check: Check; textCostUsd: number | null }>({
+    generate: async (suffix) => {
+      generations += 1;
+      if (suffix) {
+        throw new Error("provider 503");
+      }
+      return { id: `view-${generations}`, credits: 20 };
+    },
+    assess: async () => ({ check: inconsistentCheck, textCostUsd: 0.003 }),
+    correction: (issues) => issues.join("|"),
+    remainingMs: () => 600_000,
+    creditsOf: (view) => view.credits,
+    focalLabel: null
+  });
+  assert.equal(generations, 2);
+  assert.equal(result.image.id, "view-1");
+  assert.equal(result.outcome, "unresolved");
+  assert.equal(result.regenerated, false);
+  assert.match(result.error ?? "", /provider 503/);
+}
+
+// A retry check that throws keeps the last image, with no assessment claiming
+// to describe it.
+{
+  const harness = viewHarness([inconsistentCheck, new Error("provider down")]);
+  const result = await harness.run();
+  assert.equal(result.image.id, "view-2");
+  assert.equal(result.outcome, "unresolved");
+  assert.equal(result.assessment, null);
+  assert.ok(result.issues.includes("The corrected view could not be checked."));
 }
 
 // A throwing assess returns unchecked with the image kept.

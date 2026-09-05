@@ -1,3 +1,4 @@
+import { fenceUntrustedText } from "@ritzy-studio/ai";
 import type { RenderSpatialQaResponse, ViewConsistencyResponse } from "@ritzy-studio/prompts";
 
 // S4 step 3: the enforcement state machines behind the final render's spatial
@@ -30,11 +31,33 @@ export function effectiveSpatialQaVerdict(qa: RenderSpatialQaResponse, facts: Sp
   if (qa.focalOrientation === "fail" && facts?.focalElementInFrame === true) {
     return "regenerate";
   }
-  if (qa.verdict === "regenerate" && qa.focalOrientation === "fail" && facts?.focalElementInFrame !== true) {
-    // The model regenerated for the focal wall alone, which it cannot see.
+  const focalIsTheOnlyFail =
+    qa.focalOrientation === "fail" && qa.anchorAlignment !== "fail" && qa.compositionIntegrity !== "fail";
+  if (qa.verdict === "regenerate" && focalIsTheOnlyFail && facts?.focalElementInFrame === false) {
+    // The model regenerated for the focal wall alone, and the camera read
+    // knows that wall is behind the camera. Anything else it regenerated
+    // for (a canted anchor, artifacts) keeps its verdict, and so does a
+    // focal regeneration when the framing is unknown.
     return "warn";
   }
   return qa.verdict;
+}
+
+// A check the model failed without writing an issue still needs a sentence
+// for the correction prompt and for the shopper's review note.
+const SPATIAL_CHECK_FALLBACK_ISSUES: Array<[keyof RenderSpatialQaResponse, string]> = [
+  ["focalOrientation", "The primary seating does not address the room's focal element."],
+  ["anchorAlignment", "The primary piece is canted off the room grid."],
+  ["scalePlausibility", "Furniture scale or clearances are not plausible for the room."],
+  ["compositionIntegrity", "There are visible artifacts: warped, floating or duplicated furniture."],
+  ["zoning", "The living and dining zones are merged or reversed."]
+];
+
+export function spatialQaIssues(qa: RenderSpatialQaResponse): string[] {
+  if (qa.issues.length > 0) {
+    return [...qa.issues];
+  }
+  return SPATIAL_CHECK_FALLBACK_ISSUES.filter(([check]) => qa[check] === "fail").map(([, sentence]) => sentence);
 }
 
 export type SpatialQaOutcome = "passed" | "resolved_after_regeneration" | "unresolved" | "unreviewed";
@@ -123,7 +146,7 @@ export async function enforceSpatialQa<R, A extends SpatialQaAssessment>({
   }
   textCostUsd = addCost(textCostUsd, firstAssessment.textCostUsd);
   const firstVerdict = effectiveSpatialQaVerdict(firstAssessment.qa, firstAssessment.facts);
-  const firstIssues = [...firstAssessment.qa.issues];
+  const firstIssues = spatialQaIssues(firstAssessment.qa);
 
   if (firstVerdict !== "regenerate") {
     return {
@@ -155,7 +178,26 @@ export async function enforceSpatialQa<R, A extends SpatialQaAssessment>({
     };
   }
 
-  const retry = await render(correction(firstIssues));
+  // The corrected attempt is best effort in both halves: a retry image call
+  // that fails (provider outage, the attempt deadline) must not lose the paid,
+  // judged first render.
+  let retry: R;
+  try {
+    retry = await render(correction(firstIssues));
+  } catch (error) {
+    return {
+      result: first,
+      assessment: firstAssessment,
+      outcome: "unresolved",
+      regenerated: false,
+      issues: firstIssues,
+      verdicts: [firstVerdict],
+      reason: null,
+      error: errorMessage(error, "The corrected render could not be generated."),
+      imageCreditsUsed,
+      textCostUsd
+    };
+  }
   imageCreditsUsed = addCredits(imageCreditsUsed, creditsOf(retry));
 
   let retryAssessment: A;
@@ -186,7 +228,7 @@ export async function enforceSpatialQa<R, A extends SpatialQaAssessment>({
       assessment: retryAssessment,
       outcome: "resolved_after_regeneration",
       regenerated: true,
-      issues: [...retryAssessment.qa.issues],
+      issues: spatialQaIssues(retryAssessment.qa),
       verdicts: [firstVerdict, retryVerdict],
       reason: null,
       error: null,
@@ -225,7 +267,10 @@ export function effectiveViewConsistencyVerdict(
   if (check.invented.length > 0) {
     return "inconsistent";
   }
-  if (focalLabel && check.expectedMissing.some((label) => label.trim().toLowerCase() === focalLabel.trim().toLowerCase())) {
+  // The model saw the labels through the same fence the app applies before
+  // sending them, and copies them back as it saw them; compare like with like.
+  const focal = focalLabel ? fenceUntrustedText(focalLabel, 160).toLowerCase() : null;
+  if (focal && check.expectedMissing.some((label) => fenceUntrustedText(label, 160).toLowerCase() === focal)) {
     return "inconsistent";
   }
   return "consistent";
@@ -328,7 +373,25 @@ export async function enforceViewConsistency<R, A extends ViewConsistencyAssessm
     };
   }
 
-  const retry = await generate(correction(firstIssues));
+  let retry: R;
+  try {
+    retry = await generate(correction(firstIssues));
+  } catch (error) {
+    // The corrected view could not be generated; the judged first image
+    // stands as unresolved rather than failing the whole view.
+    return {
+      image: first,
+      assessment: firstAssessment,
+      outcome: "unresolved",
+      regenerated: false,
+      issues: firstIssues,
+      verdicts: [firstVerdict],
+      reason: null,
+      error: errorMessage(error, "The corrected view could not be generated."),
+      imageCreditsUsed,
+      textCostUsd
+    };
+  }
   imageCreditsUsed = addCredits(imageCreditsUsed, creditsOf(retry));
 
   let retryAssessment: A;
@@ -337,10 +400,10 @@ export async function enforceViewConsistency<R, A extends ViewConsistencyAssessm
   } catch (error) {
     // The corrected view cannot be judged. The last attempt is kept, as the
     // unresolved rule says, with the first verdict's issues and the reason
-    // the second has none.
+    // the second has none; no assessment describes the kept image.
     return {
       image: retry,
-      assessment: firstAssessment,
+      assessment: null,
       outcome: "unresolved",
       regenerated: true,
       issues: [...firstIssues, "The corrected view could not be checked."],
