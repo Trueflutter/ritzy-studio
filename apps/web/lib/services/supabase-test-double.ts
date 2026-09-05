@@ -23,7 +23,7 @@ export type RecordedCall = {
 
 export type StorageCall = {
   bucket: string;
-  op: "createSignedUrl" | "download" | "upload";
+  op: "createSignedUrl" | "download" | "upload" | "remove";
   path: string;
 };
 
@@ -152,6 +152,12 @@ export function fakeSupabase(respond: Responder, respondStorage: StorageResponde
         },
         async upload(path: string) {
           const call: StorageCall = { bucket, op: "upload", path };
+          storageCalls.push(call);
+          const result = respondStorage(call);
+          return { data: result.data ?? null, error: result.error ?? null };
+        },
+        async remove(paths: string[]) {
+          const call: StorageCall = { bucket, op: "remove", path: paths.join(",") };
           storageCalls.push(call);
           const result = respondStorage(call);
           return { data: result.data ?? null, error: result.error ?? null };
