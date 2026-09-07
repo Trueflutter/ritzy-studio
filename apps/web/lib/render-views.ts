@@ -65,6 +65,11 @@ export const VIEW_LEASE_GRACE_MS = 30_000;
 // as the attempt, so the extension must hold a check AND the retry reserve.
 export const VIEW_LEASE_MS = VIEW_START_RESERVE_MS + 75_000 + VIEW_LEASE_GRACE_MS;
 export const VIEW_LEASE_EXTENSION_MS = VIEW_CONSISTENCY_TIMEOUT_MS + 75_000 + VIEW_LEASE_GRACE_MS;
+// Re-checked immediately before the paid image call, after the hero, the
+// photograph and the product references were loaded: the primary provider
+// polls for at least two intervals even on a zero deadline, so a call must
+// never start on a budget the loads have already spent (external review).
+export const VIEW_IMAGE_CALL_MIN_MS = 10_000;
 
 const SIGNED_URL_TTL_SECONDS = 60 * 30;
 
@@ -307,12 +312,17 @@ export async function ensureFinalRenderViews({
     if (assetError) {
       throw new Error(`The anchored photograph could not be read: ${assetError.message}`);
     }
+    // The plan anchored this view to a photograph the room owned when the
+    // plan was made. A photograph that cannot be loaded now (row gone, or
+    // Storage failing) fails the lease for the next delivery to retry; the
+    // view is never generated unanchored under a plan that says it stands at
+    // the photograph (external review of PR #337).
     if (!asset) {
-      return null;
+      throw new Error(`The anchored photograph ${assetId} no longer exists on the room.`);
     }
-    const { data: blob } = await serviceSupabase.storage.from("room-assets").download(asset.storage_path);
-    if (!blob) {
-      return null;
+    const { data: blob, error: downloadError } = await serviceSupabase.storage.from("room-assets").download(asset.storage_path);
+    if (downloadError || !blob) {
+      throw new Error(`The anchored photograph could not be downloaded: ${downloadError?.message ?? "no file returned"}`);
     }
     const bytes = Buffer.from(await blob.arrayBuffer());
     const { data: signed } = await serviceSupabase.storage.from("room-assets").createSignedUrl(asset.storage_path, SIGNED_URL_TTL_SECONDS);
@@ -519,6 +529,9 @@ export async function ensureFinalRenderViews({
           if (blob) {
             return { assetId: recovered.assetId, assetPath: recovered.assetPath, bytes: Buffer.from(await blob.arrayBuffer()), credits: null, recovered: true };
           }
+        }
+        if (viewRemainingMs() < VIEW_IMAGE_CALL_MIN_MS) {
+          throw new Error("No time left in the attempt to generate the view; the lease is released for the next delivery.");
         }
         const generated = await deps.generateView({
           roomType: context.roomType,

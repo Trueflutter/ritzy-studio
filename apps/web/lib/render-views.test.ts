@@ -83,6 +83,8 @@ function scenario(options: {
   uploadError?: string;
   checkRowsReadError?: string;
   sourcePhotoReadError?: string;
+  sourcePhotoMissing?: boolean;
+  sourcePhotoDownloadError?: string;
   extensionLost?: boolean;
   bumpLeaseOnReread?: boolean;
   jobReadError?: string;
@@ -163,6 +165,9 @@ function scenario(options: {
           if (options.sourcePhotoReadError) {
             return { error: { message: options.sourcePhotoReadError } };
           }
+          if (options.sourcePhotoMissing) {
+            return { data: null };
+          }
           return { data: { id: "photo-2", storage_path: "u/room-1/p2.jpg", mime_type: "image/jpeg" } };
         }
         if (byId) {
@@ -239,7 +244,9 @@ function scenario(options: {
       return { data: null };
     },
     (storageCall) =>
-      storageCall.op === "download"
+      storageCall.op === "download" && options.sourcePhotoDownloadError && storageCall.path === "u/room-1/p2.jpg"
+        ? { data: null, error: { message: options.sourcePhotoDownloadError } }
+        : storageCall.op === "download"
         ? { data: new Blob([Buffer.from(storageCall.path)]) }
         : storageCall.op === "createSignedUrl"
           ? { data: { signedUrl: `https://project.supabase.co/signed/${storageCall.path}` } }
@@ -303,6 +310,8 @@ function deps(
     checksByKey?: Record<string, Array<AssessViewConsistencyResult | Error>>;
     generateThrows?: boolean;
     generateCostMs?: number;
+    // Time the input loads take (the hero's data URL is built while loading).
+    loadCostMs?: number;
   } = {}
 ): { deps: FinalRenderViewsDeps; probe: Probe } {
   const probe: Probe = { generations: [], assessments: [], clock: 1_000_000, order: [] };
@@ -340,7 +349,10 @@ function deps(
         return next;
       },
       fetchImage: async (url) => ({ bytes: Buffer.from(url), mimeType: "image/jpeg" }),
-      toVisionDataUrl: async (bytes) => `data:image/png;base64,${bytes.toString("base64")}`,
+      toVisionDataUrl: async (bytes) => {
+        probe.clock += options.loadCostMs ?? 0;
+        return `data:image/png;base64,${bytes.toString("base64")}`;
+      },
       nonce: () => `n${(nonce += 1)}`
     }
   };
@@ -809,6 +821,41 @@ async function reviewFindings() {
     assert.equal(probe.generations.filter((input) => input.viewKey === "focal_wide").length, 0, "the anchored view is not generated without its photograph");
     const focalRow = state.checkRows.find((row) => row.input_summary.viewKey === "focal_wide");
     assert.equal(focalRow?.status, "failed", "the lease closes failed for the next delivery");
+  }
+
+  // External review of PR #337: a planned anchor that cannot be loaded (row
+  // gone, or Storage failing) fails the lease for the next delivery; the
+  // view is never generated unanchored under a plan that anchors it.
+  for (const [label, options] of [
+    ["missing row", { sourcePhotoMissing: true }],
+    ["download failed", { sourcePhotoDownloadError: "storage down" }]
+  ] as const) {
+    const { client, state } = scenario(options);
+    const { deps: d, probe } = deps();
+    const result = await ensureFinalRenderViews({ serviceSupabase: client as never, renderJobId: "job-1", deadlineAt: probe.clock + FINAL_RENDER_ATTEMPT_BUDGET_MS, now: d.now, deps: d });
+    assert.equal(result.complete, false, label);
+    assert.equal(probe.generations.filter((input) => input.viewKey === "focal_wide").length, 0, `${label}: no unanchored generation`);
+    const focalRow = state.checkRows.find((row) => row.input_summary.viewKey === "focal_wide");
+    assert.equal(focalRow?.status, "failed", `${label}: the lease is released`);
+    assert.ok(probe.generations.some((input) => input.viewKey === "anchor_detail"), `${label}: the unanchored view still proceeds`);
+  }
+
+  // External review of PR #337: the budget is re-checked immediately before
+  // the paid image call. Loads that spend the budget after the start check
+  // leave no generation, a released lease and an honest reason.
+  {
+    const { client, state } = scenario();
+    const { deps: d, probe } = deps({ loadCostMs: VIEW_START_RESERVE_MS + 10_000 });
+    const result = await ensureFinalRenderViews({ serviceSupabase: client as never, renderJobId: "job-1", deadlineAt: probe.clock + VIEW_START_RESERVE_MS + 5_000, now: d.now, deps: d });
+    assert.equal(result.complete, false);
+    assert.equal(probe.generations.length, 0, "no paid image call on a spent budget");
+    assert.equal(probe.assessments.length, 0);
+    const failedCloses = state.calls.filter(
+      (call) => call.table === "ai_jobs" && call.op === "update" && (call.payload as { status?: string }).status === "failed" && /No time left in the attempt to generate/.test(String((call.payload as { error_message?: string }).error_message))
+    );
+    const releases = failedCloses.filter((call) => typeof (call.payload as { output_summary?: { viewKey?: string } }).output_summary?.viewKey === "string");
+    assert.equal(releases.length, 2, "both leases are released with the reason");
+    assert.equal(failedCloses.length - releases.length, 1, "the views job closes failed carrying the same reason");
   }
 
   // Codex, round 2: the retry generation and its check run inside the
