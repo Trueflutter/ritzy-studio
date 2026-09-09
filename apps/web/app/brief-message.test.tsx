@@ -9,6 +9,7 @@ import { BRIEF_FIELD_BOUNDS, type BriefFieldName } from "@ritzy-studio/domain";
 
 import {
   BriefMessage,
+  FieldError,
   isRefusedField,
   refusalCopy,
   refusedFieldsFrom
@@ -28,6 +29,25 @@ assert.match(refused, /border-error/);
 assert.match(refused, /colours and materials/);
 assert.match(refused, /under 1200 characters/);
 
+// The field it names is a screen or more below the banner, so the banner has
+// to hand her to it rather than describe it (design review).
+assert.match(refused, /href="#colorNotes"/);
+assert.match(refused, /Go to that answer/);
+assert.match(
+  renderToStaticMarkup(<BriefMessage refused={["colorNotes", "avoidNotes"]} />),
+  /href="#colorNotes"/,
+  "several refusals point at the first"
+);
+
+// The field's own message explains the value the field is SHOWING, which is
+// the shorter answer she had. Marking a visibly short value as over its limit
+// reads as nonsense, and the limit is stated once, in the banner (design
+// review).
+const fieldNote = renderToStaticMarkup(<FieldError field="colorNotes" refused={["colorNotes"]} />);
+assert.match(fieldNote, /What you typed was too long to save, so this is the answer you had/);
+assert.equal(fieldNote.includes("1200"), false, "the limit is not repeated beside the field");
+assert.equal(renderToStaticMarkup(<FieldError field="avoidNotes" refused={["colorNotes"]} />), "");
+
 // What the message PROMISES has to be what the action does. The first version
 // discarded the whole submission and told her the opposite; the sibling fields
 // surviving is proved in `lib/brief-fields.test.ts`, against the real schema
@@ -45,6 +65,15 @@ assert.match(two, /were too long to save/);
 assert.match(two, /Everything else on this page was saved/);
 const three = refusalCopy(["colorNotes", "functionalRequirements", "avoidNotes"]);
 assert.match(three, /, .*and /, "three read as a list rather than as and-and");
+
+// Each limit is stated. Naming two refused answers and giving a number for
+// neither leaves her nothing to aim at (correctness review), and a measurement
+// is counted in centimetres, not characters.
+assert.match(two, /under 1200 characters/);
+assert.match(two, /under 2000 characters/);
+const withMeasurement = refusalCopy(["colorNotes", "wallLengthCm"]);
+assert.match(withMeasurement, /main wall measurement under 5000\./);
+assert.equal(withMeasurement.includes("5000 characters"), false, "a measurement is not counted in characters");
 
 // Free text keeps the neutral note it has always had, and cannot borrow the
 // error treatment however it is dressed.

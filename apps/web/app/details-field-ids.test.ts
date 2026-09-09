@@ -32,6 +32,42 @@ for (const id of [ASSUMPTION_SOURCE_FIELD_IDS.wall, ASSUMPTION_SOURCE_FIELD_IDS.
   assert.ok(page.includes(`name="${id}"`), `the details page submits ${id}`);
 }
 
+// The refusal banner links to `#<field name>`, so every refusable field this
+// page renders has to carry its own name as its id or the link lands nowhere
+// and the shopper is back to hunting for the field (design review).
+for (const field of [
+  "colorNotes",
+  "functionalRequirements",
+  "avoidNotes",
+  "inspirationNotes",
+  "mustKeepClear",
+  "wallLengthCm",
+  "roomDepthCm",
+  "ceilingHeightCm"
+] as const) {
+  assert.ok(page.includes(`id="${field}"`), `the details page renders ${field} as an anchor target for the refusal banner`);
+  assert.ok(BRIEF_FIELD_BOUNDS[field] !== undefined, `${field} is a bounded field`);
+}
+
+// Every field a refusal can name has to be MARKED, or the shopper is told an
+// answer was refused and no input on the page says which (correctness review
+// found the three measurements in exactly that state).
+for (const field of [
+  "colorNotes",
+  "functionalRequirements",
+  "avoidNotes",
+  "inspirationNotes",
+  "wallLengthCm",
+  "roomDepthCm",
+  "ceilingHeightCm"
+] as const) {
+  assert.ok(
+    page.includes(`fieldErrorClass("${field}", refusedFields)`),
+    `the details page marks ${field} when a refusal names it`
+  );
+  assert.ok(page.includes(`<FieldError field="${field}"`), `and renders its message`);
+}
+
 // Tests review, mutation-verified: deleting a maxLength or a max from the page
 // left every suite green, because the only assertions were that the getter
 // returns what the table holds. The bounds have to be asserted where they are

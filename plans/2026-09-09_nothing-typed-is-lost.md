@@ -192,8 +192,13 @@ New files (do not exist today):
    row.
 3. Submitting a colour note of 1201 characters through a client that
    bypasses the input bound redirects back to the details step with a
-   message naming the colour field, writes no typed column, and leaves the
-   previously saved values intact; the action does not throw.
+   message naming the colour field, marks that field, leaves the colour note
+   already on record untouched, and SAVES every other answer the same
+   submission carried; the action does not throw. (Amended after the PR was
+   opened. The criterion first read "writes no typed column", which is the
+   whole-submission discard a review showed to be this plan's own objective
+   failing one layer in. A change that restores it is a regression, not a
+   return to the plan.)
 4. For every field `designBriefSchema` bounds, the attribute the form
    renders equals the schema's bound (one test reads both), so the four
    textareas carry `maxLength` 1200, 2000, 1200 and 1600 and the three
@@ -437,12 +442,20 @@ measurements and its colour note several times and leaving it measured at
   pinned by `measurementsChanged` in `apps/web/lib/brief-fields.test.ts`,
   including that an unchanged resubmission writes no row and that the other
   brief steps cannot clear a room's measurements by omitting the inputs.
-- **AC 3**, a refused answer is a message, not a throw. A client with the
-  input bound removed posted 1201 characters of colour notes; the response
-  came back to the details step with "Your colours and materials answer is
-  longer than we can store, so nothing was saved", no framework error page
-  rendered, and the previously saved colour note was still in the field
-  afterwards. Verified in the browser.
+- **AC 3**, a refused answer is a message, not a throw, and costs only the
+  field it names. Re-driven in the browser after the criterion was amended.
+  A client with the input bound removed posted 1201 characters of colour
+  notes; the response came back to the details step at `?refused=colorNotes`
+  with "Your colours and materials answer was too long to save, so we kept
+  the answer you had. Everything else on this page was saved. Keep it under
+  1200 characters.", no framework error page rendered, and the saved colour
+  note was still in the field. A second submission carried an over-long
+  functional answer alongside a changed colour note and a changed wall
+  measurement: both changes were saved, the functional answer kept
+  "seats six for dinner", and only that field was marked. A third carried two
+  over-long answers and both were named with both limits. The earlier run
+  recorded here quoted a message the shipped code no longer produces; that
+  wording is superseded.
 - **AC 4**, the form carries the schema's bounds.
   `packages/domain/src/brief-field-bounds.test.ts` exercises the schema at
   each bound rather than trusting the wiring, and

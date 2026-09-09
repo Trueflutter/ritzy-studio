@@ -101,6 +101,11 @@ export default async function BriefDetailsPage({
   const questionClass = "block font-display text-[20px] font-light italic leading-snug text-ink";
   const underlineField =
     "mt-3 block w-full resize-y border-0 border-b border-[var(--rs-border-strong)] bg-transparent px-0 pb-3 font-body text-body-m text-ink outline-none transition-colors duration-micro ease-standard placeholder:italic placeholder:text-[var(--rs-text-disabled)] focus:border-[var(--rs-accent-deep)]";
+  // The measurements are marked the same way the textareas are: a refusal
+  // naming a measurement used to mark no input anywhere on the page
+  // (correctness review).
+  const numberField =
+    "mt-3 block w-full border-0 border-b border-[var(--rs-border-strong)] bg-transparent px-0 pb-2 font-body text-body-m text-ink outline-none transition-colors duration-micro ease-standard placeholder:italic placeholder:text-[var(--rs-text-disabled)] focus:border-[var(--rs-accent-deep)] [font-feature-settings:'tnum','lnum']";
 
   return (
     <BriefShell
@@ -300,7 +305,7 @@ export default async function BriefDetailsPage({
                     Day-to-day dining seats
                   </label>
                   <input
-                    className="mt-3 block w-full border-0 border-b border-[var(--rs-border-strong)] bg-transparent px-0 pb-2 font-body text-body-m text-ink outline-none transition-colors duration-micro ease-standard placeholder:italic placeholder:text-[var(--rs-text-disabled)] focus:border-[var(--rs-accent-deep)] [font-feature-settings:'tnum','lnum']"
+                    className={numberField}
                     defaultValue={spatialIntent.diningSeatCount ?? ""}
                     id="diningSeatCount"
                     max="16"
@@ -341,7 +346,7 @@ export default async function BriefDetailsPage({
                   Main wall cm
                 </label>
                 <input
-                  className="mt-3 block w-full border-0 border-b border-[var(--rs-border-strong)] bg-transparent px-0 pb-2 font-body text-body-m text-ink outline-none transition-colors duration-micro ease-standard placeholder:italic placeholder:text-[var(--rs-text-disabled)] focus:border-[var(--rs-accent-deep)] [font-feature-settings:'tnum','lnum']"
+                  className={`${numberField}${fieldErrorClass("wallLengthCm", refusedFields)}`}
                   defaultValue={measurements?.wall_length_cm ?? ""}
                   id="wallLengthCm"
                   max={briefNumberAttributes("wallLengthCm").max}
@@ -350,13 +355,14 @@ export default async function BriefDetailsPage({
                   placeholder="e.g. 520"
                   type="number"
                 />
+                <FieldError field="wallLengthCm" refused={refusedFields} />
               </div>
               <div>
                 <label className={questionClass} htmlFor="roomDepthCm">
                   Room depth cm
                 </label>
                 <input
-                  className="mt-3 block w-full border-0 border-b border-[var(--rs-border-strong)] bg-transparent px-0 pb-2 font-body text-body-m text-ink outline-none transition-colors duration-micro ease-standard placeholder:italic placeholder:text-[var(--rs-text-disabled)] focus:border-[var(--rs-accent-deep)] [font-feature-settings:'tnum','lnum']"
+                  className={`${numberField}${fieldErrorClass("roomDepthCm", refusedFields)}`}
                   defaultValue={measurements?.room_depth_cm ?? ""}
                   id="roomDepthCm"
                   max={briefNumberAttributes("roomDepthCm").max}
@@ -365,13 +371,14 @@ export default async function BriefDetailsPage({
                   placeholder="e.g. 410"
                   type="number"
                 />
+                <FieldError field="roomDepthCm" refused={refusedFields} />
               </div>
               <div>
                 <label className={questionClass} htmlFor="ceilingHeightCm">
                   Ceiling cm
                 </label>
                 <input
-                  className="mt-3 block w-full border-0 border-b border-[var(--rs-border-strong)] bg-transparent px-0 pb-2 font-body text-body-m text-ink outline-none transition-colors duration-micro ease-standard placeholder:italic placeholder:text-[var(--rs-text-disabled)] focus:border-[var(--rs-accent-deep)] [font-feature-settings:'tnum','lnum']"
+                  className={`${numberField}${fieldErrorClass("ceilingHeightCm", refusedFields)}`}
                   defaultValue={measurements?.ceiling_height_cm ?? ""}
                   id="ceilingHeightCm"
                   max={briefNumberAttributes("ceilingHeightCm").max}
@@ -380,6 +387,7 @@ export default async function BriefDetailsPage({
                   placeholder="e.g. 290"
                   type="number"
                 />
+                <FieldError field="ceilingHeightCm" refused={refusedFields} />
               </div>
             </div>
             <MeasurementAssumptionNotes roomType={room.room_type} savedNotes={savedAssumptionNotes} />

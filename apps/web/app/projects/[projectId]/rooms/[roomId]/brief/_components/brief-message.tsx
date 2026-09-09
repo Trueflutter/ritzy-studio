@@ -1,4 +1,5 @@
 import { BRIEF_FIELD_BOUNDS, type BriefFieldName } from "@ritzy-studio/domain";
+import { ButtonLink } from "@ritzy-studio/ui";
 
 import { isBriefFieldName } from "@/lib/brief-fields";
 
@@ -86,7 +87,11 @@ export function refusalCopy(fields: readonly BriefFieldName[]): string {
     return `${sentence(REFUSAL_LABELS[field])} was too long to save, so we kept the answer you had. Everything else on this page was saved.${limitClause(field)}`;
   }
 
-  return `${sentence(nameList(fields.map((field) => REFUSAL_LABELS[field])))} were too long to save, so we kept the answers you had. Everything else on this page was saved.`;
+  // Each limit is stated, not just the names: a shopper told two answers were
+  // refused and given no number for either has nothing to aim at (correctness
+  // review).
+  const limits = fields.map((field) => `Keep ${REFUSAL_LABELS[field]} under ${BRIEF_FIELD_BOUNDS[field].max}${BRIEF_FIELD_BOUNDS[field].kind === "text" ? " characters" : ""}.`);
+  return `${sentence(nameList(fields.map((field) => REFUSAL_LABELS[field])))} were too long to save, so we kept the answers you had. Everything else on this page was saved. ${limits.join(" ")}`;
 }
 
 export function BriefMessage({
@@ -98,12 +103,21 @@ export function BriefMessage({
 }) {
   if (refused.length > 0) {
     return (
-      <p
+      <div
         className="mb-10 max-w-[65ch] border-s-2 border-error bg-surface px-4 py-3 font-body text-body-s text-ink"
         role="alert"
       >
-        {refusalCopy(refused)}
-      </p>
+        <p>{refusalCopy(refused)}</p>
+        {/* The banner sits in the first viewport and the field it names is a
+            screen or more below it, so stating the remedy here without a way
+            to reach it leaves her scrolling for a field she has to recognise
+            from a paraphrase (design review). Every refusable field is
+            rendered with its own name as its id, which
+            `details-field-ids.test.ts` holds the page to. */}
+        <ButtonLink className="mt-2" href={`#${refused[0]}`} trailing="→" variant="quiet">
+          {refused.length > 1 ? "Go to the first" : "Go to that answer"}
+        </ButtonLink>
+      </div>
     );
   }
 
@@ -131,11 +145,13 @@ export function FieldError({ field, refused }: { field: BriefFieldName; refused:
   if (!refused.includes(field)) {
     return null;
   }
-  const bound = BRIEF_FIELD_BOUNDS[field];
+  // NOT "too long to save" on its own: what this field is showing is the
+  // SHORTER answer she had, restored, and marking a visibly short value as
+  // over its limit reads as nonsense (design review). The limit itself is
+  // stated once, in the banner.
   return (
     <p className="mt-[10px] font-display text-[13.5px] italic leading-[1.5] text-error">
-      Too long to save. Keep it under {bound.max}
-      {bound.kind === "text" ? " characters" : ""}.
+      What you typed was too long to save, so this is the answer you had.
     </p>
   );
 }
