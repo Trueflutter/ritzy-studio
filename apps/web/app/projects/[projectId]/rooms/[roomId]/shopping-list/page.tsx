@@ -13,6 +13,10 @@ import type { ProductCardItem } from "./product-card";
 import { ShoppingListGrid, type CategoryGroup } from "./shopping-list-grid";
 
 export const dynamic = "force-dynamic";
+// This page posts the final render action; when the queue cannot be reached the
+// render runs inline inside this route, under FINAL_RENDER_INLINE_BUDGET_MS
+// (pinned by lib/render.test.ts against this literal).
+export const maxDuration = 300;
 
 export default async function ShoppingListPage({
   params

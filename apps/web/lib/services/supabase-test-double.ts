@@ -12,6 +12,7 @@ export type RecordedCall = {
   gte: Array<[string, unknown]>;
   lt: Array<[string, unknown]>;
   in: Array<[string, unknown]>;
+  is: Array<[string, unknown]>;
   columns?: string;
   order: Array<[string, unknown]>;
   limit?: number;
@@ -23,7 +24,7 @@ export type RecordedCall = {
 
 export type StorageCall = {
   bucket: string;
-  op: "createSignedUrl" | "download" | "upload";
+  op: "createSignedUrl" | "download" | "upload" | "remove";
   path: string;
 };
 
@@ -46,6 +47,7 @@ export function fakeSupabase(respond: Responder, respondStorage: StorageResponde
       gte: [],
       lt: [],
       in: [],
+      is: [],
       order: [],
       single: false
     };
@@ -102,6 +104,10 @@ export function fakeSupabase(respond: Responder, respondStorage: StorageResponde
         call.in.push([column, value]);
         return builder;
       },
+      is(column: string, value: unknown) {
+        call.is.push([column, value]);
+        return builder;
+      },
       order(column: string, options?: unknown) {
         call.order.push([column, options]);
         return builder;
@@ -152,6 +158,12 @@ export function fakeSupabase(respond: Responder, respondStorage: StorageResponde
         },
         async upload(path: string) {
           const call: StorageCall = { bucket, op: "upload", path };
+          storageCalls.push(call);
+          const result = respondStorage(call);
+          return { data: result.data ?? null, error: result.error ?? null };
+        },
+        async remove(paths: string[]) {
+          const call: StorageCall = { bucket, op: "remove", path: paths.join(",") };
           storageCalls.push(call);
           const result = respondStorage(call);
           return { data: result.data ?? null, error: result.error ?? null };

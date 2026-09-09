@@ -39,6 +39,12 @@ const CHECKS = [
   "palette_register"
 ] as const;
 
+// S4: the delivered FINAL render's set, judged beside the concept checks. The
+// six checks above keep their meaning (they judge the concept the shopper
+// approved); these three judge what the reveal shows, and their notes carry
+// the app's own verdicts so the two judges can be read side by side.
+const FINAL_CHECKS = ["final_spatial_plausibility", "final_view_coverage", "final_view_consistency"] as const;
+
 function loadEnv() {
   const envPath = path.join(process.cwd(), ".env.local");
   if (existsSync(envPath)) {
@@ -206,6 +212,123 @@ async function judgeRoom({
     .find((part) => part.type === "output_text")?.text;
   if (!text) {
     throw new Error("OpenAI harness call returned no output text.");
+  }
+  return (JSON.parse(text) as { verdicts: CheckVerdict[] }).verdicts;
+}
+
+// The judge sees the images, the spec and the plan's INTENT (which view is
+// which, whether it stands at a photograph, what it was asked to show), and
+// nothing the app itself concluded: the app's verdicts are joined to the
+// notes in code afterwards, the way product_consistency pairs its scores, or
+// the two judges would agree by construction.
+async function judgeFinalSet({
+  model,
+  room,
+  spec,
+  heroImage,
+  views,
+  planIntent
+}: {
+  model: string;
+  room: ManifestRoom;
+  spec: Record<string, unknown> | null;
+  heroImage: string;
+  views: Array<{ key: string; image: string; anchorPhoto: string | null; mustShow: string[] }>;
+  planIntent: unknown;
+}): Promise<CheckVerdict[]> {
+  const checklist = readFileSync(path.join(process.cwd(), "scripts/critique-harness/checklist.md"), "utf8");
+  // Every piece of the confirmed design, so a design piece the hero does not
+  // show (a TV on the wall behind the hero camera) is never an invention.
+  const specObjects = Array.isArray((spec as { objects?: unknown } | null)?.objects) ? ((spec as { objects: Array<{ label?: unknown }> }).objects) : [];
+  const designVocabulary = specObjects.map((object) => (typeof object.label === "string" ? object.label : null)).filter((label): label is string => label !== null);
+  const content: Array<Record<string, unknown>> = [
+    {
+      type: "input_text",
+      text: JSON.stringify({
+        room: { label: room.label, register: room.register, expectations: room.expectations },
+        spec,
+        designVocabulary,
+        inventionRule:
+          "A visible piece matching a role in the confirmed spec (designVocabulary) is part of the design, never an invention, whether or not the hero shows it; only purchasable pieces outside the spec and outside the hero are inventions.",
+        checksRequested: FINAL_CHECKS,
+        checklistDefinitions: checklist,
+        plan: planIntent,
+        views: views.map((view, index) => ({
+          image: index + 2,
+          key: view.key,
+          anchoredToPhotograph: Boolean(view.anchorPhoto),
+          expectedToShow: view.mustShow
+        }))
+      })
+    },
+    { type: "input_text", text: "Image 1: the FINAL hero render the reveal shows." },
+    { type: "input_image", image_url: heroImage, detail: "high" }
+  ];
+  views.forEach((view, index) => {
+    content.push(
+      { type: "input_text", text: `Final view ${index + 1} (${view.key}). Judge final_view_coverage across the hero and every view, and final_view_consistency for each view against the hero.` },
+      { type: "input_image", image_url: view.image, detail: "low" }
+    );
+    if (view.anchorPhoto) {
+      content.push(
+        { type: "input_text", text: `The photograph of the real room that final view ${index + 1} (${view.key}) was anchored to: its camera position and architecture are the truth for that view.` },
+        { type: "input_image", image_url: view.anchorPhoto, detail: "low" }
+      );
+    }
+  });
+  const response = await fetch("https://api.openai.com/v1/responses", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      model,
+      max_output_tokens: 6000,
+      input: [
+        { role: "system", content: HARNESS_SYSTEM },
+        { role: "user", content }
+      ],
+      text: {
+        format: {
+          type: "json_schema",
+          name: "critique_harness_final_verdicts",
+          strict: true,
+          schema: {
+            type: "object",
+            additionalProperties: false,
+            properties: {
+              verdicts: {
+                type: "array",
+                minItems: FINAL_CHECKS.length,
+                maxItems: FINAL_CHECKS.length,
+                items: {
+                  type: "object",
+                  additionalProperties: false,
+                  properties: {
+                    check: { type: "string", enum: [...FINAL_CHECKS] },
+                    verdict: { type: "string", enum: ["pass", "fail", "not_applicable"] },
+                    notes: { type: "string", minLength: 4, maxLength: 600 }
+                  },
+                  required: ["check", "verdict", "notes"]
+                }
+              }
+            },
+            required: ["verdicts"]
+          }
+        }
+      }
+    })
+  });
+  if (!response.ok) {
+    throw new Error(`OpenAI harness final-set call failed: HTTP ${response.status} ${await response.text()}`);
+  }
+  const payload = (await response.json()) as {
+    output?: Array<{ type: string; content?: Array<{ type: string; text?: string }> }>;
+  };
+  const text = payload.output?.flatMap((item) => item.content ?? []).find((part) => part.type === "output_text")?.text;
+  if (!text) {
+    throw new Error("OpenAI harness final-set call returned no output text.");
   }
   return (JSON.parse(text) as { verdicts: CheckVerdict[] }).verdicts;
 }
@@ -535,6 +658,122 @@ async function runRoom(model: string, room: ManifestRoom) {
     viewImages,
     spec: specs[0] ?? null
   });
+  // A set of one is not a set. The spec was extracted from the hero, so
+  // "every spec element appears in at least one view" is true of the hero by
+  // construction; the check only means something across two or more views.
+  for (const verdict of verdicts) {
+    if (verdict.check === "view_coverage" && viewImages.length === 0) {
+      verdict.verdict = "not_applicable";
+      verdict.notes = `The concept has a single view (the hero); coverage is judged on sets of two or more. ${verdict.notes}`;
+    }
+  }
+
+  // S4: the delivered final render, discovered through the newest succeeded
+  // render job for this concept (final assets carry no concept_id), its
+  // output_asset_ids kept in order: index 0 the hero, the rest the views the
+  // reveal shows. Not-applicable when no final render exists, never skipped.
+  const finalJobs = (await supabaseGet(
+    `render_jobs?room_id=eq.${room.roomId}&concept_id=eq.${hero.id}&status=eq.succeeded&order=created_at.desc&select=id,output_asset_ids,input_summary,created_at`
+  )) as Array<{ id: string; output_asset_ids: string[]; input_summary: Record<string, unknown>; created_at: string }>;
+  const finalJob = finalJobs.find((job) => Array.isArray(job.output_asset_ids) && job.output_asset_ids.length > 0) ?? null;
+  let finalVerdicts: CheckVerdict[] = [];
+  let finalContext: Record<string, unknown> | null = null;
+  if (finalJob) {
+    const finalAssets = (await supabaseGet(
+      `room_assets?id=in.(${finalJob.output_asset_ids.join(",")})&asset_type=eq.final_render&select=id,storage_path,view_key`
+    )) as Array<{ id: string; storage_path: string; view_key: string | null }>;
+    const byId = new Map(finalAssets.map((asset) => [asset.id, asset]));
+    // The hero is strictly output_asset_ids[0], never the next readable asset:
+    // promoting a view into the hero slot would judge the wrong image.
+    const heroAsset = byId.get(finalJob.output_asset_ids[0]) ?? null;
+    const heroImage = heroAsset ? await storageDataUrl("generated-renders", heroAsset.storage_path) : null;
+    const summary = finalJob.input_summary ?? {};
+    const viewOutcomes = (summary.viewOutcomes ?? {}) as Record<string, { outcome?: string }>;
+    const checkRows = (await supabaseGet(
+      `ai_jobs?job_type=eq.render_view_check&input_summary->>renderJobId=eq.${finalJob.id}&order=created_at.desc&select=status,input_summary,output_summary`
+    )) as Array<{ status: string; input_summary: Record<string, unknown>; output_summary: Record<string, unknown> | null }>;
+    const plan = (summary.viewPlan ?? null) as {
+      views?: Array<{ key: string; sourcePhotoAssetId: string | null; mustShowLabels: string[] }>;
+      coverage?: unknown;
+    } | null;
+    const planViewByKey = new Map((plan?.views ?? []).map((view) => [view.key, view]));
+    // Every listed view is read; one that cannot be read is named, never
+    // dropped, because the set judged must be the set the reveal shows.
+    const listedViews = finalJob.output_asset_ids.slice(1);
+    const unreadable: string[] = [];
+    const views: Array<{ key: string; image: string; anchorPhoto: string | null; mustShow: string[] }> = [];
+    for (const assetId of listedViews) {
+      const asset = byId.get(assetId);
+      const image = asset ? await storageDataUrl("generated-renders", asset.storage_path) : null;
+      const key = asset?.view_key ?? `unknown (${assetId.slice(0, 8)})`;
+      if (!image) {
+        unreadable.push(key);
+        continue;
+      }
+      const planned = asset?.view_key ? planViewByKey.get(asset.view_key) : undefined;
+      let anchorPhoto: string | null = null;
+      if (planned?.sourcePhotoAssetId) {
+        const photoRows = (await supabaseGet(`room_assets?id=eq.${planned.sourcePhotoAssetId}&select=storage_path`)) as Array<{ storage_path: string }>;
+        anchorPhoto = photoRows[0] ? await storageDataUrl("room-assets", photoRows[0].storage_path) : null;
+      }
+      views.push({ key, image, anchorPhoto, mustShow: planned?.mustShowLabels ?? [] });
+    }
+    const appOutcomes = {
+      spatialQaOutcome: summary.spatialQaOutcome ?? null,
+      spatialQaVerdict: summary.spatialQaVerdict ?? null,
+      spatialQaIssues: summary.spatialQaIssues ?? [],
+      spatialQaRegenerated: summary.spatialQaRegenerated ?? null,
+      cameraRead: summary.cameraRead ?? null,
+      viewsComplete: summary.viewsComplete ?? null,
+      viewOutcomes,
+      viewChecks: checkRows.map((row) => ({
+        status: row.status,
+        viewKey: row.input_summary?.viewKey ?? null,
+        outcome: row.output_summary?.outcome ?? null,
+        issues: row.output_summary?.issues ?? null,
+        regenerated: row.output_summary?.regenerated ?? null
+      }))
+    };
+    const planIntent = plan
+      ? { views: plan.views?.map((view) => ({ key: view.key, anchoredToPhoto: Boolean(view.sourcePhotoAssetId), expectedToShow: view.mustShowLabels })), coverage: plan.coverage }
+      : "legacy (no plan; fixed keys from the hero alone)";
+    finalContext = { renderJobId: finalJob.id, createdAt: finalJob.created_at, listedViews: listedViews.length, judgedViewKeys: views.map((view) => view.key), unreadableViews: unreadable, plan: planIntent, ...appOutcomes };
+    const listedViewCount = listedViews.length;
+    if (!heroImage) {
+      finalVerdicts = FINAL_CHECKS.map((check) => ({ check, verdict: "fail" as const, notes: "The final render's hero image (output_asset_ids[0]) could not be read from storage." }));
+    } else if (unreadable.length > 0) {
+      finalVerdicts = FINAL_CHECKS.map((check) => ({
+        check,
+        verdict: check === "final_spatial_plausibility" ? ("not_applicable" as const) : ("fail" as const),
+        notes: `A listed final view could not be read from storage (${unreadable.join(", ")}), so the set the reveal shows could not be judged as a set.`
+      }));
+    } else {
+      finalVerdicts = await judgeFinalSet({ model, room, spec: specs[0] ?? null, heroImage, views, planIntent });
+      const incomplete = appOutcomes.viewsComplete === false ? " The app records the planned views as NOT complete for this job." : "";
+      for (const verdict of finalVerdicts) {
+        if (verdict.check === "final_view_coverage" && listedViewCount === 0) {
+          verdict.verdict = "not_applicable";
+          verdict.notes = `The final render lists a single view (the hero); coverage is judged on sets of two or more.${incomplete} ${verdict.notes}`;
+        }
+        if (verdict.check === "final_view_consistency" && listedViewCount === 0) {
+          verdict.verdict = "not_applicable";
+          verdict.notes = `No additional final views listed.${incomplete} ${verdict.notes}`;
+        }
+        if (verdict.check === "final_spatial_plausibility") {
+          verdict.notes = `${verdict.notes} [app spatialQaOutcome: ${String(appOutcomes.spatialQaOutcome)}, verdict: ${String(appOutcomes.spatialQaVerdict)}, regenerated: ${String(appOutcomes.spatialQaRegenerated)}]`;
+        }
+        if (verdict.check === "final_view_consistency") {
+          verdict.notes = `${verdict.notes} [app view outcomes: ${views.map((view) => `${view.key}=${viewOutcomes[view.key]?.outcome ?? "none"}`).join(", ") || "none"}]${incomplete}`;
+        }
+        if (verdict.check === "final_view_coverage") {
+          verdict.notes = `${verdict.notes} [plan: ${plan?.views?.map((view) => `${view.key}${view.sourcePhotoAssetId ? " (anchored)" : ""}`).join(", ") ?? "legacy"}]${incomplete}`;
+        }
+      }
+    }
+  } else {
+    finalVerdicts = FINAL_CHECKS.map((check) => ({ check, verdict: "not_applicable" as const, notes: "No final render exists for this concept yet." }));
+  }
+  verdicts.push(...finalVerdicts);
 
   // Criterion 8, restated with S3b: every ANCHOR on the concept's shopping list
   // must belong to the design. An anchor is a piece the render was GENERATED
@@ -569,6 +808,20 @@ async function runRoom(model: string, room: ManifestRoom) {
       products: { name: string; primary_image_url: string | null } | null;
     }>;
     const anchorIds = new Set(anchorRows.map((row) => row.product_id));
+    // The app's own design-check score for each anchor, from the sourcing
+    // run that judged this concept (every judged product, kept or not), so
+    // the two judges' numbers can be read as pairs.
+    // The newest sourcing run whose design check actually RAN (a run that
+    // timed out before it, or was swept, carries no verdicts and would print
+    // every anchor as unscored while an earlier run's scores still drive the
+    // claim). Its job id is printed so the pair can be traced.
+    const sourcingJobs = (await supabaseGet(
+      `ai_jobs?job_type=eq.product_visual_sourcing&input_summary->>conceptId=eq.${hero.id}&order=created_at.desc&limit=5&select=id,output_summary`
+    )) as Array<{ id: string; output_summary: { verification?: { used?: boolean; verdicts?: Array<{ productId: string; similarity: number }> } } | null }>;
+    const scoredRun = sourcingJobs.find((job) => job.output_summary?.verification?.used === true) ?? null;
+    const appScores = new Map(
+      (scoredRun?.output_summary?.verification?.verdicts ?? []).map((verdict) => [verdict.productId, verdict.similarity])
+    );
     // What the app went on to CLAIM, reported beside it: the gap between the
     // two is the anchors the app's own check declined to stand behind, which
     // is the honest handling of a render that dropped a reference.
@@ -646,6 +899,19 @@ async function runRoom(model: string, room: ManifestRoom) {
     // judgement from failing the whole gate.
     const anchorsKept = anchorVerdicts.length - failed.length;
     const meetsFloor = anchorsKept * 2 >= anchorIds.size && anchorsKept > 0;
+    // The pairs, and the anchors on which the two judges disagree across the
+    // gate's own line. Reported on every run: this is the reconciliation the
+    // retention slice needs before anything is tuned against either judge.
+    const threshold = productConsistencyThreshold();
+    const pairs = anchorVerdicts.map((product) => {
+      const app = appScores.get(product.productId);
+      const claimed = claimedAnchorIds.has(product.productId);
+      const appText = typeof app === "number" ? app.toFixed(2) : claimed ? "claimed" : "declined";
+      const disagree =
+        typeof app === "number" ? (product.similarity >= threshold) !== (app >= threshold) : claimed !== (product.similarity >= threshold);
+      return `${product.productName.slice(0, 40)} (${product.roleLabel}): harness ${product.similarity.toFixed(2)} / app ${appText}${disagree ? " DISAGREE" : ""}`;
+    });
+    const disagreements = pairs.filter((pair) => pair.endsWith("DISAGREE")).length;
 
     const noAnchors = anchorIds.size === 0;
     // A list that claims nothing is not a passing list, however well the render
@@ -683,7 +949,10 @@ async function runRoom(model: string, room: ManifestRoom) {
             matchedVerdicts.length > 0
               ? `matched products (reported, not gating): ${matchedVerdicts.length - matchedFailed.length}/${matchedVerdicts.length} belong to the design${matchedFailed.length > 0 ? `; below the bar: ${matchedFailed.map((product) => `${product.productName} (${product.similarity.toFixed(2)})`).join("; ")}` : ""}`
               : null,
-            missingLabels.length > 0 ? `honestly missing on the list: ${missingLabels.join("; ")}` : null
+            missingLabels.length > 0 ? `honestly missing on the list: ${missingLabels.join("; ")}` : null,
+            pairs.length > 0
+              ? `judge pairs (harness / app${scoredRun ? `, app scores from sourcing job ${scoredRun.id.slice(0, 8)}` : ", no scored sourcing run"}): ${pairs.join(" | ")}; disagree across ${threshold}: ${disagreements} of ${pairs.length}`
+              : null
           ]
             .filter(Boolean)
             .join(". ")
@@ -709,7 +978,7 @@ async function runRoom(model: string, room: ManifestRoom) {
     );
   }
 
-  return { room: room.key, status: "JUDGED" as const, conceptId: hero.id, verdicts, productVerdicts };
+  return { room: room.key, status: "JUDGED" as const, conceptId: hero.id, verdicts, productVerdicts, finalRender: finalContext };
 }
 
 async function main() {
