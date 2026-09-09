@@ -20,10 +20,10 @@ export default async function BriefDetailsPage({
   searchParams
 }: {
   params: Promise<{ projectId: string; roomId: string }>;
-  searchParams: Promise<{ message?: string }>;
+  searchParams: Promise<{ message?: string; tone?: string }>;
 }) {
   const { projectId, roomId } = await params;
-  const { message } = await searchParams;
+  const { message, tone } = await searchParams;
   const supabase = await createClient();
   const {
     data: { user }
@@ -113,7 +113,14 @@ export default async function BriefDetailsPage({
       title="The questions a designer would ask."
     >
       {message ? (
-        <p className="mb-10 border border-line bg-surface px-4 py-3 font-body text-body-s text-ink-secondary">
+        <p
+          className={
+            tone === "error"
+              ? "mb-10 max-w-[65ch] border-s-2 border-error bg-surface px-4 py-3 font-body text-body-s text-ink"
+              : "mb-10 max-w-[65ch] border border-line bg-surface px-4 py-3 font-body text-body-s text-ink-secondary"
+          }
+          role={tone === "error" ? "alert" : undefined}
+        >
           {message}
         </p>
       ) : null}
@@ -345,7 +352,7 @@ export default async function BriefDetailsPage({
                   max={briefNumberAttributes("wallLengthCm").max}
                   min={briefNumberAttributes("wallLengthCm").min}
                   name="wallLengthCm"
-                  placeholder="520"
+                  placeholder="e.g. 520"
                   type="number"
                 />
               </div>
@@ -360,7 +367,7 @@ export default async function BriefDetailsPage({
                   max={briefNumberAttributes("roomDepthCm").max}
                   min={briefNumberAttributes("roomDepthCm").min}
                   name="roomDepthCm"
-                  placeholder="410"
+                  placeholder="e.g. 410"
                   type="number"
                 />
               </div>
@@ -375,7 +382,7 @@ export default async function BriefDetailsPage({
                   max={briefNumberAttributes("ceilingHeightCm").max}
                   min={briefNumberAttributes("ceilingHeightCm").min}
                   name="ceilingHeightCm"
-                  placeholder="290"
+                  placeholder="e.g. 290"
                   type="number"
                 />
               </div>

@@ -7,6 +7,7 @@ import {
 } from "@ritzy-studio/ai";
 import type { Database } from "@ritzy-studio/db";
 import {
+  BRIEF_FIELD_BOUNDS,
   createProjectSchema,
   createRoomSchema,
   designBriefSchema,
@@ -879,9 +880,18 @@ export async function saveDesignBriefAction(formData: FormData) {
     const issue = result.error.issues[0];
     const field = issue?.path?.[0];
     const label = typeof field === "string" ? briefFieldLabel(field) : "One of your answers";
+    const bound =
+      typeof field === "string" && field in BRIEF_FIELD_BOUNDS
+        ? BRIEF_FIELD_BOUNDS[field as keyof typeof BRIEF_FIELD_BOUNDS]
+        : null;
+    const limit = bound?.kind === "text" ? ` Keep it under ${bound.max} characters.` : "";
+    // Says what happened rather than asking for something impossible. The
+    // refused text is not on the screen (the field shows what was saved
+    // before), so telling her to "shorten it and continue" would name an edit
+    // she cannot make (design review finding).
     redirect(
-      `/projects/${projectId}/rooms/${roomId}/brief/${briefStep === "details" ? "details" : briefStep}?message=${encodeURIComponent(
-        `${label} is longer than we can store, so nothing was saved. Shorten it and continue; the rest of your answers are as you left them.`
+      `/projects/${projectId}/rooms/${roomId}/brief/${briefStep === "details" ? "details" : briefStep}?tone=error&message=${encodeURIComponent(
+        `${label} was too long to save, so we kept the answer you had and changed nothing else.${limit}`
       )}`
     );
   }
