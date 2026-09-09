@@ -10,11 +10,16 @@ import { VisualStyleSelector } from "../visual-style-selector";
 export const dynamic = "force-dynamic";
 
 export default async function BriefStylePage({
-  params
+  params,
+  searchParams
 }: {
   params: Promise<{ projectId: string; roomId: string }>;
+  searchParams: Promise<{ message?: string }>;
 }) {
   const { projectId, roomId } = await params;
+  // Without this the step could refuse a submission and re-render
+  // identically, so the button looked dead (review finding).
+  const { message } = await searchParams;
   const supabase = await createClient();
   const {
     data: { user }
@@ -58,6 +63,12 @@ export default async function BriefStylePage({
       subtitle="Pick the visual directions that feel closest. You can refine the language later."
       title="Choose the styles that feel right."
     >
+      {message ? (
+        <p className="mb-10 border border-line bg-surface px-4 py-3 font-body text-body-s text-ink-secondary">
+          {message}
+        </p>
+      ) : null}
+
       <form action={saveDesignBriefAction}>
         <input name="projectId" type="hidden" value={projectId} />
         <input name="roomId" type="hidden" value={roomId} />

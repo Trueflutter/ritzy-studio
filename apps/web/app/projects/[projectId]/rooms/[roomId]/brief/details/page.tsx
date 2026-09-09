@@ -1,6 +1,6 @@
 import { ButtonLink, SubmitButton } from "@ritzy-studio/ui";
 import {
-  measurementAssumptionNotes,
+  measurementScalingNotes,
   parseSpatialIntent,
   spatialLayoutModeForRoomType
 } from "@ritzy-studio/domain";
@@ -84,18 +84,17 @@ export default async function BriefDetailsPage({
   const colourNotes = colourNotesDefault(designBrief?.color_notes, palette);
   // Measurements are optional, so the screen says what the design does
   // without them. The lines state what the pipeline actually carries; nothing
-  // here invents a dimension.
-  const assumptionNotes = measurementAssumptionNotes({
-    roomType: room.room_type,
-    measurements: measurements
+  // here invents a dimension. This is the SAVED state, so the server markup is
+  // right before the panel hydrates and starts following what she types.
+  const savedScalingNotes = measurementScalingNotes(
+    measurements
       ? {
           wallLengthCm: measurements.wall_length_cm,
           roomDepthCm: measurements.room_depth_cm,
           ceilingHeightCm: measurements.ceiling_height_cm
         }
-      : null,
-    spatialIntent
-  });
+      : null
+  );
 
   // Editorial field styling — questions read as italic prompts; answers sit on a hairline.
   const questionClass = "block font-display text-[20px] font-light italic leading-snug text-ink";
@@ -381,7 +380,10 @@ export default async function BriefDetailsPage({
                 />
               </div>
             </div>
-            <MeasurementAssumptionNotes notes={assumptionNotes} />
+            <MeasurementAssumptionNotes
+              intentAssumptions={spatialIntent.assumptions ?? []}
+              scalingNotes={savedScalingNotes}
+            />
           </div>
 
           <div className="mt-8 border-t border-line pt-6">

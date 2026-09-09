@@ -6,7 +6,8 @@ import {
   briefNumberAttributes,
   briefTextAttributes,
   colourNotesDefault,
-  measurementsChanged
+  measurementsChanged,
+  shopperStyleNote
 } from "./brief-fields";
 
 // S5 (AC 4, AC 5): the two decisions the details form was getting wrong.
@@ -101,6 +102,42 @@ import {
     true,
     "a note is part of the record"
   );
+}
+
+// Review finding: the style step re-wraps its own output, so the stored note
+// grew by about eighty characters on every save and eventually crossed the
+// schema bound, after which the step could never be submitted again. Stripping
+// the lines this app wrote makes composing idempotent.
+{
+  assert.equal(shopperStyleNote(null), undefined);
+  assert.equal(shopperStyleNote("   "), undefined);
+  assert.equal(shopperStyleNote("calm, not cold"), "calm, not cold");
+
+  const composedOnce = [
+    "Selected visual styles: Quiet Luxury, Warm Minimal",
+    "calm, not cold",
+    "Avoid styles: Industrial."
+  ].join("\n\n");
+  assert.equal(shopperStyleNote(composedOnce), "calm, not cold", "the composed lines are not the shopper's words");
+
+  // The already-grown case: composing repeatedly nested the machine lines.
+  const composedTwice = [
+    "Selected visual styles: Quiet Luxury, Warm Minimal",
+    "Selected visual styles: Quiet Luxury",
+    "calm, not cold",
+    "Avoid styles: Industrial.",
+    "Avoid styles: Industrial."
+  ].join("\n\n");
+  assert.equal(shopperStyleNote(composedTwice), "calm, not cold", "a grown value is repaired, not preserved");
+
+  // A room where the shopper wrote nothing keeps nothing, so the next
+  // composition is exactly the two machine lines and stops growing.
+  assert.equal(shopperStyleNote(["Selected visual styles: Quiet Luxury", "Avoid styles: Industrial."].join("\n\n")), undefined);
+
+  // Applying it twice changes nothing, which is what makes the composition
+  // safe to run on every save.
+  const once = shopperStyleNote(composedOnce);
+  assert.equal(shopperStyleNote(once), once);
 }
 
 console.log("brief fields tests passed");

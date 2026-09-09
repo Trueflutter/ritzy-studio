@@ -804,23 +804,31 @@ export type MeasurementAssumptionInput = {
   spatialIntent: SpatialIntent;
 };
 
+// The measurement half on its own, so the brief's form can recompute it from
+// the values a shopper is typing rather than from the ones she last saved.
+export function measurementScalingNotes(
+  measurements: MeasurementAssumptionInput["measurements"]
+): string[] {
+  const wallLengthCm = measurements?.wallLengthCm ?? null;
+  const roomDepthCm = measurements?.roomDepthCm ?? null;
+  const ceilingHeightCm = measurements?.ceilingHeightCm ?? null;
+
+  if (!wallLengthCm || !roomDepthCm) {
+    return [
+      "Without the main wall and the room depth, the design is scaled from your photographs rather than exact dimensions."
+    ];
+  }
+  if (!ceilingHeightCm) {
+    return ["The ceiling height is not stated, so the design keeps the proportions your photographs show."];
+  }
+  return [];
+}
+
 export function measurementAssumptionNotes({
   measurements,
   spatialIntent
 }: MeasurementAssumptionInput): string[] {
-  const notes: string[] = [];
-  const wallLengthCm = measurements?.wallLengthCm ?? null;
-  const roomDepthCm = measurements?.roomDepthCm ?? null;
-  const ceilingHeightCm = measurements?.ceilingHeightCm ?? null;
-  const planShapeKnown = Boolean(wallLengthCm) && Boolean(roomDepthCm);
-
-  if (!planShapeKnown) {
-    notes.push(
-      "Without the main wall and the room depth, the design is scaled from your photographs rather than exact dimensions."
-    );
-  } else if (!ceilingHeightCm) {
-    notes.push("The ceiling height is not stated, so the design keeps the proportions your photographs show.");
-  }
+  const notes: string[] = [...measurementScalingNotes(measurements)];
 
   for (const assumption of spatialIntent.assumptions ?? []) {
     notes.push(assumption);

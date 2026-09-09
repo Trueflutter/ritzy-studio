@@ -96,3 +96,30 @@ export function measurementsChanged(submitted: SubmittedMeasurements, existing: 
     next.notes !== existing.notes
   );
 }
+
+// The shopper's own style note, recovered from the stored value (S5).
+//
+// The style step round-trips `design_briefs.style_notes` through a hidden
+// textarea, and the action re-wraps whatever comes back with a fresh
+// "Selected visual styles: ..." line and a trailing "Avoid styles: ..." line.
+// Composing from the composed value means the column grows by roughly eighty
+// characters on every save, and once it passes the schema's 2000-character
+// bound the style step can never be submitted again. Stripping the lines this
+// app wrote makes the composition idempotent, and repairs an already-grown
+// value the next time that room is saved.
+const COMPOSED_STYLE_PREFIXES = ["Selected visual styles:", "Avoid styles:"];
+
+export function shopperStyleNote(stored: string | null | undefined): string | undefined {
+  const value = (stored ?? "").trim();
+  if (value.length === 0) {
+    return undefined;
+  }
+
+  const kept = value
+    .split(/\n{2,}/)
+    .map((block) => block.trim())
+    .filter((block) => block.length > 0 && !COMPOSED_STYLE_PREFIXES.some((prefix) => block.startsWith(prefix)))
+    .join("\n\n");
+
+  return kept.length > 0 ? kept : undefined;
+}

@@ -43,7 +43,7 @@ import {
   structuredBriefJson,
   type ProductRow
 } from "@/lib/services/sourcing-support";
-import { measurementsChanged } from "@/lib/brief-fields";
+import { measurementsChanged, shopperStyleNote } from "@/lib/brief-fields";
 import { createClient } from "@/lib/supabase/server";
 import { finalRenderRetryHonoured, finalRenderStaleMs } from "@/lib/render";
 import { localSkuFidelityModeEnabled } from "@/lib/render-flags";
@@ -930,7 +930,7 @@ export async function saveDesignBriefAction(formData: FormData) {
         .limit(1)
         .maybeSingle()
     : { data: null };
-  const hasMeasurements =
+  const shouldWriteMeasurementRow =
     submittedDetailsStep &&
     measurementsChanged(
       {
@@ -942,6 +942,30 @@ export async function saveDesignBriefAction(formData: FormData) {
       latestMeasurements ?? null
     );
 
+  // What the room measures once this submission lands, which is NOT the same
+  // question as whether a row needs writing. An unchanged resubmission writes
+  // nothing and must still report the room as measured, or the clarifying
+  // questions would be regenerated as though nobody had ever given a
+  // dimension (review finding).
+  const effectiveMeasurements = submittedDetailsStep
+    ? {
+        wallLengthCm: parsed.wallLengthCm ?? null,
+        roomDepthCm: parsed.roomDepthCm ?? null,
+        ceilingHeightCm: parsed.ceilingHeightCm ?? null,
+        notes: parsed.measurementNotes ?? null
+      }
+    : {
+        wallLengthCm: latestMeasurements?.wall_length_cm ?? null,
+        roomDepthCm: latestMeasurements?.room_depth_cm ?? null,
+        ceilingHeightCm: latestMeasurements?.ceiling_height_cm ?? null,
+        notes: latestMeasurements?.notes ?? null
+      };
+  const hasMeasurements =
+    effectiveMeasurements.wallLengthCm !== null ||
+    effectiveMeasurements.roomDepthCm !== null ||
+    effectiveMeasurements.ceilingHeightCm !== null ||
+    effectiveMeasurements.notes !== null;
+
   const selectedStyleSummary = visualStyleSummary(parsed.styleSlugs);
   const avoidedStyleSummary = parsed.avoidStyleSlugs.length
     ? visualStyleOptions
@@ -949,9 +973,14 @@ export async function saveDesignBriefAction(formData: FormData) {
         .map((option) => option.name)
         .join(", ")
     : null;
+  // Compose from the shopper's own words, never from the value this app last
+  // composed: the style step round-trips style_notes through a hidden field,
+  // so re-wrapping the wrapped value grew the column on every save until it
+  // crossed the schema bound and the step could not be submitted at all
+  // (review finding).
   const resolvedStyleNotes = [
     selectedStyleSummary ? `Selected visual styles: ${selectedStyleSummary}` : null,
-    parsed.styleNotes ?? null,
+    shopperStyleNote(parsed.styleNotes) ?? null,
     avoidedStyleSummary ? `Avoid styles: ${avoidedStyleSummary}.` : null
   ]
     .filter(Boolean)
@@ -990,10 +1019,10 @@ export async function saveDesignBriefAction(formData: FormData) {
 
   if (hasMeasurements) {
     structuredJson.measurements = {
-      wallLengthCm: parsed.wallLengthCm ?? null,
-      roomDepthCm: parsed.roomDepthCm ?? null,
-      ceilingHeightCm: parsed.ceilingHeightCm ?? null,
-      notes: parsed.measurementNotes ?? null,
+      wallLengthCm: effectiveMeasurements.wallLengthCm,
+      roomDepthCm: effectiveMeasurements.roomDepthCm,
+      ceilingHeightCm: effectiveMeasurements.ceilingHeightCm,
+      notes: effectiveMeasurements.notes,
       source: "manual",
       confidence: "verified"
     };
@@ -1065,15 +1094,15 @@ export async function saveDesignBriefAction(formData: FormData) {
 
   const designBriefId = briefResult.data.id;
 
-  if (hasMeasurements) {
+  if (shouldWriteMeasurementRow) {
     const { error: measurementError } = await supabase.from("room_measurements").insert({
       room_id: parsed.roomId,
       source: "manual",
       confidence: "verified",
-      wall_length_cm: parsed.wallLengthCm ?? null,
-      room_depth_cm: parsed.roomDepthCm ?? null,
-      ceiling_height_cm: parsed.ceilingHeightCm ?? null,
-      notes: parsed.measurementNotes ?? null
+      wall_length_cm: effectiveMeasurements.wallLengthCm,
+      room_depth_cm: effectiveMeasurements.roomDepthCm,
+      ceiling_height_cm: effectiveMeasurements.ceilingHeightCm,
+      notes: effectiveMeasurements.notes
     });
 
     if (measurementError) {
@@ -1190,10 +1219,10 @@ export async function saveDesignBriefAction(formData: FormData) {
       inspirationNotes: currentInspirationNotes || undefined,
       measurements: hasMeasurements
         ? {
-            wallLengthCm: parsed.wallLengthCm,
-            roomDepthCm: parsed.roomDepthCm,
-            ceilingHeightCm: parsed.ceilingHeightCm,
-            notes: parsed.measurementNotes
+            wallLengthCm: effectiveMeasurements.wallLengthCm ?? undefined,
+            roomDepthCm: effectiveMeasurements.roomDepthCm ?? undefined,
+            ceilingHeightCm: effectiveMeasurements.ceilingHeightCm ?? undefined,
+            notes: effectiveMeasurements.notes ?? undefined
           }
         : undefined
     });

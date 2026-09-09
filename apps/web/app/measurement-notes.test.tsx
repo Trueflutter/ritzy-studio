@@ -9,13 +9,14 @@ import { MeasurementAssumptionNotes } from "./projects/[projectId]/rooms/[roomId
 
 // S5 (AC 7): the assumption list renders what it is given, numbered, and
 // renders nothing at all when there is nothing to assume, so a fully measured
-// room does not carry an empty panel.
+// room does not carry an empty panel. The server markup asserted here is what
+// a shopper sees before the panel hydrates and starts following her typing.
 
 const withNotes = renderToStaticMarkup(
   <MeasurementAssumptionNotes
-    notes={[
-      "Without the main wall and the room depth, the design is scaled from your photographs rather than exact dimensions.",
-      "Focal point not confirmed; assuming the TV/media wall anchors the seating."
+    intentAssumptions={["Focal point not confirmed; assuming the TV/media wall anchors the seating."]}
+    scalingNotes={[
+      "Without the main wall and the room depth, the design is scaled from your photographs rather than exact dimensions."
     ]}
   />
 );
@@ -29,7 +30,7 @@ assert.match(withNotes, />i\.</, "numbered in roman numerals");
 assert.match(withNotes, />ii\.</);
 
 // Nothing to assume renders nothing, not an empty bordered box.
-assert.equal(renderToStaticMarkup(<MeasurementAssumptionNotes notes={[]} />), "");
+assert.equal(renderToStaticMarkup(<MeasurementAssumptionNotes intentAssumptions={[]} scalingNotes={[]} />), "");
 
 // The assumptions are visible on the page, never hidden behind a tooltip
 // (12.5 forbids it) and never collapsed behind a control on this screen.
