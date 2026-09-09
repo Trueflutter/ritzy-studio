@@ -31,16 +31,29 @@ for (const [field, bound] of Object.entries(BRIEF_FIELD_BOUNDS).filter(([name]) 
   }
 }
 
-// The table covers every bounded field of the schema, so a field added to the
-// brief without a bound in the table is caught here rather than by a shopper
-// losing what she typed.
+// The table covers every bounded field of the SCHEMA, derived from the schema
+// rather than from a list pasted beside it: a field added to designBriefSchema
+// with an inline bound and no entry in the table would otherwise ship with no
+// client bound and no refusal label (tests review).
 {
   const described = new Set(Object.keys(BRIEF_FIELD_BOUNDS));
-  const bounded = ["styleNotes", "colorNotes", "budgetNotes", "functionalRequirements", "avoidNotes", "inspirationNotes", "wallLengthCm", "roomDepthCm", "ceilingHeightCm", "measurementNotes", "mustKeepClear"];
-  for (const field of bounded) {
-    assert.ok(described.has(field), `${field} has a bound in the table`);
+  const boundedInSchema = Object.entries(designBriefSchema.shape)
+    .filter(([, schema]) => {
+      // A field that matters here is one a shopper can OVERFLOW by typing: it
+      // takes an ordinary value of its kind and refuses a large one. Asking
+      // only "does it refuse something large" would also catch the uuid and
+      // enum fields, which refuse everything that is not their shape.
+      const accepts = (value: unknown) => schema.safeParse(value).success;
+      const overflowsText = accepts("a modest answer") && !accepts("x".repeat(100_000));
+      const overflowsNumber = accepts(100) && !accepts(10_000_000);
+      return overflowsText || overflowsNumber;
+    })
+    .map(([name]) => name);
+
+  for (const field of boundedInSchema) {
+    assert.ok(described.has(field), `${field} is bounded by the schema and must have an entry in BRIEF_FIELD_BOUNDS`);
   }
-  assert.equal(described.size, bounded.length, "the table describes exactly the bounded fields");
+  assert.ok(boundedInSchema.length >= 9, `the schema still bounds the fields this test walks (found ${boundedInSchema.length})`);
 }
 
 // The three the details form renders as number inputs carry the maxima the

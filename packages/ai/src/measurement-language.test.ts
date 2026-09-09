@@ -52,9 +52,7 @@ const saysPhotographs = (notes: string[]) => notes.some((note) => /scaled from y
   const prompt = promptFor(measurements);
   assert.equal(saysPhotographs(notes), false, "a measured room is not told it was scaled from photographs");
   assert.equal(notes.some((note) => /ceiling height is not stated/i.test(note)), false);
-  assert.match(prompt, /520\s*cm/);
-  assert.match(prompt, /410\s*cm/);
-  assert.match(prompt, /300\s*cm/);
+  assert.deepEqual(centimetres(prompt), ["520 cm", "410 cm", "300 cm"], "exactly the three she gave");
 }
 
 // Wall and depth without a ceiling: the prompt uses the plan shape and omits
@@ -65,9 +63,10 @@ const saysPhotographs = (notes: string[]) => notes.some((note) => /scaled from y
   const prompt = promptFor(measurements);
   assert.equal(saysPhotographs(notes), false);
   assert.equal(notes.some((note) => /ceiling/i.test(note)), true, "the missing ceiling is named");
-  assert.match(prompt, /520\s*cm/);
-  assert.match(prompt, /410\s*cm/);
-  assert.equal(/ceiling/i.test(prompt.split("The real room measures")[1]?.split(".")[0] ?? ""), false);
+  // The whole set, not a phrase near a phrase: a default ceiling appended
+  // anywhere in the prompt fails this, which is the invented dimension the
+  // note's wording depends on never existing (tests review).
+  assert.deepEqual(centimetres(prompt), ["520 cm", "410 cm"], "no third number reaches the model");
 }
 
 console.log("measurement language correspondence tests passed");

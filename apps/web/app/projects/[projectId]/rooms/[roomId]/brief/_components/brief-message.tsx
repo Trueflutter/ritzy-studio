@@ -15,7 +15,12 @@ import { BRIEF_FIELD_BOUNDS, type BriefFieldName } from "@ritzy-studio/domain";
 // note it has always had, and only a name this file recognises produces an
 // error.
 
-const REFUSAL_LABELS: Partial<Record<BriefFieldName, string>> = {
+// Every bounded field needs a label: a refusal on one without it renders
+// nothing at all, so the shopper presses Continue, the page reloads
+// identical and nothing was saved. That is the silent refusal this component
+// exists to prevent, so the type is total rather than partial and
+// `brief-message.test.tsx` walks the bounds table (tests review).
+const REFUSAL_LABELS: Record<BriefFieldName, string> = {
   colorNotes: "Your colours and materials answer",
   functionalRequirements: "Your answer about what the room needs to do",
   avoidNotes: "Your answer about what to keep out",
@@ -25,17 +30,24 @@ const REFUSAL_LABELS: Partial<Record<BriefFieldName, string>> = {
   mustKeepClear: "Your note about what must stay clear",
   wallLengthCm: "The main wall measurement",
   roomDepthCm: "The room depth measurement",
-  ceilingHeightCm: "The ceiling measurement"
+  ceilingHeightCm: "The ceiling measurement",
+  budgetNotes: "The budget note carried from your project"
 };
 
 export function isRefusedField(value: string | undefined): value is BriefFieldName {
-  return value !== undefined && value in REFUSAL_LABELS;
+  // hasOwnProperty, not `in`: `in` walks the prototype chain, so `constructor`
+  // and `__proto__` would pass an allowlist this file calls closed and render
+  // as a first-class error (security review).
+  return value !== undefined && Object.prototype.hasOwnProperty.call(REFUSAL_LABELS, value);
 }
 
 export function refusalCopy(field: BriefFieldName): string {
-  const bound = BRIEF_FIELD_BOUNDS[field];
+  const bound = Object.prototype.hasOwnProperty.call(BRIEF_FIELD_BOUNDS, field) ? BRIEF_FIELD_BOUNDS[field] : null;
+  if (!bound) {
+    return "One of your answers was too long to save, so we kept the answer you had and changed nothing else.";
+  }
   const limit = bound.kind === "text" ? ` Keep it under ${bound.max} characters.` : ` Keep it under ${bound.max}.`;
-  return `${REFUSAL_LABELS[field] ?? "One of your answers"} was too long to save, so we kept the answer you had and changed nothing else.${limit}`;
+  return `${REFUSAL_LABELS[field]} was too long to save, so we kept the answer you had and changed nothing else.${limit}`;
 }
 
 export function BriefMessage({ message, refused }: { message?: string; refused?: string }) {

@@ -90,7 +90,7 @@ export function spatialLayoutModeForRoomType(roomType: string): SpatialLayoutMod
   return "unknown";
 }
 
-const spatialFocalPointValues: readonly SpatialFocalPoint[] = [
+export const spatialFocalPointValues: readonly SpatialFocalPoint[] = [
   "tv_media_wall",
   "view_window",
   "fireplace",
@@ -101,7 +101,7 @@ const spatialFocalPointValues: readonly SpatialFocalPoint[] = [
   "unknown"
 ];
 
-const spatialSeatingPriorityValues: readonly SpatialSeatingPriority[] = [
+export const spatialSeatingPriorityValues: readonly SpatialSeatingPriority[] = [
   "tv_viewing",
   "conversation",
   "family_lounging",

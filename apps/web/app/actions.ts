@@ -12,9 +12,11 @@ import {
   createRoomSchema,
   designBriefSchema,
   setUserModeSchema,
+  spatialFocalPointValues,
+  spatialSeatingPriorityValues,
   substitutionModeSchema,
   visualStyleOptions,
-  visualStyleSummary,
+  visualStyleSummary
 } from "@ritzy-studio/domain";
 import { renderExecutionMode, signupAllowed,
   configuredTextModel
@@ -44,7 +46,12 @@ import {
   structuredBriefJson,
   type ProductRow
 } from "@/lib/services/sourcing-support";
-import { composeStyleNote, measurementsChanged, shopperStyleNote } from "@/lib/brief-fields";
+import {
+  composeStyleNote,
+  measurementsChanged,
+  normaliseSubmittedText,
+  shopperStyleNote
+} from "@/lib/brief-fields";
 import { createClient } from "@/lib/supabase/server";
 import { finalRenderRetryHonoured, finalRenderStaleMs } from "@/lib/render";
 import { localSkuFidelityModeEnabled } from "@/lib/render-flags";
@@ -65,15 +72,18 @@ const INTERNAL_PILOT_SIGNUP_MESSAGE =
   "Internal pilot. Only ritzyinteriors.com email domains currently permitted";
 
 
+// A submitted value is kept only when it is one this app offered.
+function allowedValue(value: string | undefined, allowed: readonly string[]): string | null {
+  return value !== undefined && allowed.includes(value) ? value : null;
+}
+
 function optionalString(formData: FormData, key: string) {
   // CRLF to LF before anything counts characters. The browser's maxLength
   // counts a newline as one code unit, but form encoding sends it as two, so
   // a shopper who pastes a bounded answer with paragraph breaks is truncated
   // to a legal length in the field and then refused by the schema for a limit
   // she is already under and cannot get further under (correctness review).
-  const value = String(formData.get(key) ?? "")
-    .replace(/\r\n/g, "\n")
-    .trim();
+  const value = normaliseSubmittedText(String(formData.get(key) ?? ""));
   return value.length > 0 ? value : undefined;
 }
 
@@ -925,7 +935,7 @@ export async function saveDesignBriefAction(formData: FormData) {
   // step because the other brief steps do not carry these inputs at all, and
   // reading their absence as "cleared" would wipe a room's measurements when
   // its owner edited her style notes.
-  const { data: latestMeasurements } = submittedDetailsStep
+  const { data: latestMeasurements, error: latestMeasurementsError } = submittedDetailsStep
     ? await supabase
         .from("room_measurements")
         .select("wall_length_cm, room_depth_cm, ceiling_height_cm, notes")
@@ -933,7 +943,15 @@ export async function saveDesignBriefAction(formData: FormData) {
         .order("created_at", { ascending: false })
         .limit(1)
         .maybeSingle()
-    : { data: null };
+    : { data: null, error: null };
+  // A failed read must not be mistaken for "this room has no measurements":
+  // the clearing decision below would then take its no-row branch, write
+  // nothing, and the value the shopper just deleted would come back on the
+  // next render with nothing said, which is the symptom this slice removes
+  // (correctness review).
+  if (latestMeasurementsError) {
+    throw new Error(latestMeasurementsError.message);
+  }
   const shouldWriteMeasurementRow = measurementsChanged({
     step: briefStep,
     submitted: {
@@ -1045,9 +1063,16 @@ export async function saveDesignBriefAction(formData: FormData) {
     const diningSeatCountRaw = optionalNumber(formData, "diningSeatCount");
     structuredJson.spatialIntent = {
       ...existingIntent,
-      ...(formData.has("focalPoint") ? { focalPoint: optionalString(formData, "focalPoint") ?? null } : {}),
+      // Both are rendered as selects, so a value outside the list came from a
+      // client that ignored the markup. parseSpatialIntent coerces on read, so
+      // nothing unvalidated reaches a prompt, but the column would still carry
+      // whatever was posted and re-read it on every select for the life of the
+      // room (security review).
+      ...(formData.has("focalPoint")
+        ? { focalPoint: allowedValue(optionalString(formData, "focalPoint"), spatialFocalPointValues) }
+        : {}),
       ...(formData.has("seatingPriority")
-        ? { seatingPriority: optionalString(formData, "seatingPriority") ?? null }
+        ? { seatingPriority: allowedValue(optionalString(formData, "seatingPriority"), spatialSeatingPriorityValues) }
         : {}),
       ...(formData.has("diningSeatCount") ? { diningSeatCount: diningSeatCountRaw ?? null } : {}),
       ...(formData.has("mustKeepClear")

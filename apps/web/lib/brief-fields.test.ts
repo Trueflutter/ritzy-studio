@@ -8,6 +8,7 @@ import {
   colourNotesDefault,
   composeStyleNote,
   measurementsChanged,
+  normaliseSubmittedText,
   shopperStyleNote
 } from "./brief-fields";
 
@@ -146,6 +147,29 @@ import {
 
   // A room where the shopper wrote nothing keeps nothing.
   assert.equal(shopperStyleNote(compose(undefined)), undefined);
+}
+
+// Tests review, mutation-verified: removing the CRLF replacement left every
+// suite green, because the only assertions were facts about String.length.
+// The normalisation is asserted here, on the function that performs it.
+{
+  const bound = BRIEF_FIELD_BOUNDS.colorNotes.max;
+  // What a browser sends for a value the field accepted at exactly its bound:
+  // maxLength counted six newlines as six, the encoder sends twelve.
+  // Newlines in the MIDDLE: trailing ones are trimmed, which is correct and
+  // would hide what this is measuring.
+  const paragraphed = "x".repeat(100) + "\n".repeat(6) + "x".repeat(bound - 106);
+  assert.equal(paragraphed.length, bound);
+  const encoded = paragraphed.replace(/\n/g, "\r\n");
+  assert.equal(encoded.length, bound + 6, "the wire form is over the bound");
+  assert.equal(
+    normaliseSubmittedText(encoded).length,
+    bound,
+    "normalising brings it back to the length the field counted"
+  );
+  assert.equal(normaliseSubmittedText("  spaced  "), "spaced", "and it still trims");
+  assert.equal(normaliseSubmittedText("a\r\nb"), "a\nb");
+  assert.equal(normaliseSubmittedText(""), "");
 }
 
 console.log("brief fields tests passed");

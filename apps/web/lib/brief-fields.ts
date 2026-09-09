@@ -4,6 +4,16 @@ import {
   type TextBriefFieldName
 } from "@ritzy-studio/domain";
 
+// CRLF to LF, before anything counts characters. The browser's maxLength
+// counts a newline as one code unit and form encoding sends it as two, so a
+// shopper who pastes a bounded answer with paragraph breaks is truncated to a
+// legal length in the field and then refused by the schema for a limit she is
+// already under. Exported and tested here rather than left inline in the
+// action, where nothing could reach it (tests review).
+export function normaliseSubmittedText(value: string): string {
+  return value.replace(/\r\n/g, "\n").trim();
+}
+
 // The two decisions the brief's details form was getting wrong (S5).
 //
 // They live here rather than as conditions inside a 439-line async server

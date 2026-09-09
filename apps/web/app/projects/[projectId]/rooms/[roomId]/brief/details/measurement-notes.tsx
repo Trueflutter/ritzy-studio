@@ -43,14 +43,42 @@ const readValue = (id: string): string | null => {
   return null;
 };
 
-const readNumber = (id: string): number | null => {
-  const raw = readValue(id);
-  if (raw === null) {
-    return null;
-  }
-  const value = Number(raw);
-  return Number.isFinite(value) && value > 0 ? value : null;
-};
+// The read step, separated from the DOM so it can be exercised against a stub
+// accessor. Without this the listener wiring is the only thing a test can
+// reach, and the wiring is not where the falsehood would come from: a control
+// that stops being an input or a select reads as absent, and the panel would
+// quietly assert the saved state again (tests review).
+export function assumptionInputsFrom(getValue: (id: string) => string | null) {
+  const asNumber = (id: string) => {
+    const raw = getValue(id);
+    if (raw === null || raw.trim().length === 0) {
+      return null;
+    }
+    const value = Number(raw);
+    return Number.isFinite(value) && value > 0 ? value : null;
+  };
+
+  return {
+    measurements: {
+      wallLengthCm: asNumber(ASSUMPTION_SOURCE_FIELD_IDS.wall),
+      roomDepthCm: asNumber(ASSUMPTION_SOURCE_FIELD_IDS.depth),
+      ceilingHeightCm: asNumber(ASSUMPTION_SOURCE_FIELD_IDS.ceiling)
+    },
+    intent: {
+      focalPoint: getValue(ASSUMPTION_SOURCE_FIELD_IDS.focalPoint) ?? "unknown",
+      seatingPriority: getValue(ASSUMPTION_SOURCE_FIELD_IDS.seatingPriority) ?? "unknown",
+      diningSeatCount: asNumber(ASSUMPTION_SOURCE_FIELD_IDS.diningSeatCount)
+    }
+  };
+}
+
+export function assumptionNotesFrom(getValue: (id: string) => string | null, roomType: string): string[] {
+  const { measurements, intent } = assumptionInputsFrom(getValue);
+  return measurementAssumptionNotes({
+    measurements,
+    spatialIntent: parseSpatialIntent({ spatialIntent: intent }, roomType)
+  });
+}
 
 export function MeasurementAssumptionNotes({
   roomType,
@@ -64,26 +92,7 @@ export function MeasurementAssumptionNotes({
   const [notes, setNotes] = useState<readonly string[]>(savedNotes);
 
   useEffect(() => {
-    const recompute = () =>
-      setNotes(
-        measurementAssumptionNotes({
-          measurements: {
-            wallLengthCm: readNumber(ASSUMPTION_SOURCE_FIELD_IDS.wall),
-            roomDepthCm: readNumber(ASSUMPTION_SOURCE_FIELD_IDS.depth),
-            ceilingHeightCm: readNumber(ASSUMPTION_SOURCE_FIELD_IDS.ceiling)
-          },
-          spatialIntent: parseSpatialIntent(
-            {
-              spatialIntent: {
-                focalPoint: readValue(ASSUMPTION_SOURCE_FIELD_IDS.focalPoint) ?? "unknown",
-                seatingPriority: readValue(ASSUMPTION_SOURCE_FIELD_IDS.seatingPriority) ?? "unknown",
-                diningSeatCount: readNumber(ASSUMPTION_SOURCE_FIELD_IDS.diningSeatCount)
-              }
-            },
-            roomType
-          )
-        })
-      );
+    const recompute = () => setNotes(assumptionNotesFrom(readValue, roomType));
 
     const fields = Object.values(ASSUMPTION_SOURCE_FIELD_IDS)
       .map((id) => document.getElementById(id))
