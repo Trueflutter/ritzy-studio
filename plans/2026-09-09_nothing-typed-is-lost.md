@@ -376,8 +376,9 @@ are behaviours of a `"use server"` action were driven in a real browser,
 because the recording double cannot host one and this PR deliberately does
 not extract the action.
 
-The browser run used the dev-harness Playwright driver and its saved
-session (`scripts/dev-harness/auth.json`, gitignored). Open question 2 in
+The browser run is twenty checks against the running app, all passing. It
+used the dev-harness Playwright driver and its saved session
+(`scripts/dev-harness/auth.json`, gitignored). Open question 2 in
 this plan is therefore answered: the saved state's refresh token was still
 valid, so no new session had to be minted and no password was read or
 typed. The harness's `node_modules` symlink pointed into a deleted
@@ -418,6 +419,11 @@ measurements and its colour note several times and leaving it measured at
   saved note came back in the field, where the old condition rendered an
   empty box. `colourNotesDefault` pins the three cases, including that the
   palette is a submitted default and never a placeholder.
+- **The assumption list follows what she types**, which the increment review
+  showed a server-rendered list could not do: with the fields empty the
+  photograph line is shown, typing a wall length and a depth removes it and
+  names the ceiling instead, and typing the ceiling clears the panel, all
+  without a submit. Verified in the browser.
 - **AC 6**, the note matches the prompt.
   `packages/ai/src/measurement-language.test.ts` calls both sides in one
   test and asserts both directions, including the case that motivated the
