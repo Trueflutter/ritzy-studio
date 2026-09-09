@@ -43,6 +43,7 @@ import {
   structuredBriefJson,
   type ProductRow
 } from "@/lib/services/sourcing-support";
+import { measurementsChanged } from "@/lib/brief-fields";
 import { createClient } from "@/lib/supabase/server";
 import { finalRenderRetryHonoured, finalRenderStaleMs } from "@/lib/render";
 import { localSkuFidelityModeEnabled } from "@/lib/render-flags";
@@ -827,10 +828,27 @@ export async function createRoomAction(formData: FormData) {
   redirect(`/projects/${project.id}/rooms/${room.id}/photos`);
 }
 
+// The shopper-facing name of a brief field, for the one message a refused
+// submission can produce.
+function briefFieldLabel(field: string): string {
+  const labels: Record<string, string> = {
+    colorNotes: "Your colours and materials answer",
+    functionalRequirements: "Your answer about what the room needs to do",
+    avoidNotes: "Your answer about what to keep out",
+    inspirationNotes: "Your note about your references",
+    styleNotes: "Your style note",
+    measurementNotes: "Your measurement note",
+    wallLengthCm: "The main wall measurement",
+    roomDepthCm: "The room depth measurement",
+    ceilingHeightCm: "The ceiling measurement"
+  };
+  return labels[field] ?? "One of your answers";
+}
+
 export async function saveDesignBriefAction(formData: FormData) {
   const briefStep = String(formData.get("briefStep") ?? "details");
   const nextPath = String(formData.get("nextPath") ?? "");
-  const parsed = designBriefSchema.parse({
+  const submission = {
     projectId: String(formData.get("projectId") ?? ""),
     roomId: String(formData.get("roomId") ?? ""),
     roomType: String(formData.get("roomType") ?? ""),
@@ -846,24 +864,34 @@ export async function saveDesignBriefAction(formData: FormData) {
     roomDepthCm: optionalNumber(formData, "roomDepthCm"),
     ceilingHeightCm: optionalNumber(formData, "ceilingHeightCm"),
     measurementNotes: optionalString(formData, "measurementNotes")
-  });
+  };
+
+  // A submission the schema refuses is a message, never a thrown ZodError onto
+  // the framework's raw error page, which is how a shopper used to lose a
+  // whole brief to one over-length note. The form now carries the same bounds
+  // the schema does (BRIEF_FIELD_BOUNDS), so reaching this needs a client that
+  // ignored them; every field she typed is still in the row she came from and
+  // re-renders when she lands back.
+  const result = designBriefSchema.safeParse(submission);
+  if (!result.success) {
+    const projectId = String(formData.get("projectId") ?? "");
+    const roomId = String(formData.get("roomId") ?? "");
+    const issue = result.error.issues[0];
+    const field = issue?.path?.[0];
+    const label = typeof field === "string" ? briefFieldLabel(field) : "One of your answers";
+    redirect(
+      `/projects/${projectId}/rooms/${roomId}/brief/${briefStep === "details" ? "details" : briefStep}?message=${encodeURIComponent(
+        `${label} is longer than we can store, so nothing was saved. Shorten it and continue; the rest of your answers are as you left them.`
+      )}`
+    );
+  }
+  const parsed = result.data;
 
   const briefRootPath = `/projects/${parsed.projectId}/rooms/${parsed.roomId}/brief`;
   const redirectPath = nextPath.startsWith(briefRootPath)
     ? nextPath
     : `${briefRootPath}/details`;
   const submittedDetailsStep = briefStep === "details";
-
-  if (
-    submittedDetailsStep &&
-    (!parsed.wallLengthCm || !parsed.roomDepthCm || !parsed.ceilingHeightCm)
-  ) {
-    redirect(
-      `${briefRootPath}/details?message=${encodeURIComponent(
-        "Room measurements are required before we can design and size furniture for this room."
-      )}`
-    );
-  }
 
   const supabase = await createClient();
   const {
@@ -886,11 +914,33 @@ export async function saveDesignBriefAction(formData: FormData) {
     redirect("/");
   }
 
+  // Measurements are optional now, so the details step writes whenever what
+  // was submitted differs from what is on record, INCLUDING when it became
+  // empty: the page reads the newest row, so a value the shopper deleted
+  // comes back for ever unless the deletion is written. Scoped to the details
+  // step because the other brief steps do not carry these inputs at all, and
+  // reading their absence as "cleared" would wipe a room's measurements when
+  // its owner edited her style notes.
+  const { data: latestMeasurements } = submittedDetailsStep
+    ? await supabase
+        .from("room_measurements")
+        .select("wall_length_cm, room_depth_cm, ceiling_height_cm, notes")
+        .eq("room_id", parsed.roomId)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle()
+    : { data: null };
   const hasMeasurements =
-    parsed.wallLengthCm !== undefined ||
-    parsed.roomDepthCm !== undefined ||
-    parsed.ceilingHeightCm !== undefined ||
-    parsed.measurementNotes !== undefined;
+    submittedDetailsStep &&
+    measurementsChanged(
+      {
+        wallLengthCm: parsed.wallLengthCm,
+        roomDepthCm: parsed.roomDepthCm,
+        ceilingHeightCm: parsed.ceilingHeightCm,
+        notes: parsed.measurementNotes
+      },
+      latestMeasurements ?? null
+    );
 
   const selectedStyleSummary = visualStyleSummary(parsed.styleSlugs);
   const avoidedStyleSummary = parsed.avoidStyleSlugs.length
