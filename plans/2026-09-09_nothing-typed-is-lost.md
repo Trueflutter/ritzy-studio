@@ -376,7 +376,7 @@ are behaviours of a `"use server"` action were driven in a real browser,
 because the recording double cannot host one and this PR deliberately does
 not extract the action.
 
-The browser run is twenty checks against the running app, all passing. It
+The browser run is twenty-two checks against the running app, all passing. It
 used the dev-harness Playwright driver and its saved session
 (`scripts/dev-harness/auth.json`, gitignored). Open question 2 in
 this plan is therefore answered: the saved state's refresh token was still
@@ -435,7 +435,7 @@ measurements and its colour note several times and leaving it measured at
   covers the numbered list, the empty case rendering nothing, and that the
   assumptions are neither in a tooltip nor collapsed, which 12.5 forbids.
 - **AC 8**, gates. `pnpm check` (lint, typecheck across all packages,
-  production build) and every workspace suite pass: 87 test files green,
+  production build) and every workspace suite pass: 89 test files green,
   up from 82 on `main`. The diff's added lines contain no em dash and no
   dollar sign reaches user-visible text.
 
