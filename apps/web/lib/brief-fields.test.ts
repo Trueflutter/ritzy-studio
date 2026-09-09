@@ -1,15 +1,20 @@
 import assert from "node:assert/strict";
 
-import { BRIEF_FIELD_BOUNDS } from "@ritzy-studio/domain";
+import { BRIEF_FIELD_BOUNDS, designBriefSchema } from "@ritzy-studio/domain";
 
 import {
+  AVOIDED_STYLES_PREFIX,
+  SELECTED_STYLES_PREFIX,
   briefNumberAttributes,
+  briefRefusal,
   briefTextAttributes,
   colourNotesDefault,
   composeStyleNote,
+  measurementsAfterRefusal,
   measurementsChanged,
   normaliseSubmittedText,
-  shopperStyleNote
+  shopperStyleNote,
+  withoutRefusedFields
 } from "./brief-fields";
 
 // S5 (AC 4, AC 5): the two decisions the details form was getting wrong.
@@ -170,6 +175,152 @@ import {
   assert.equal(normaliseSubmittedText("  spaced  "), "spaced", "and it still trims");
   assert.equal(normaliseSubmittedText("a\r\nb"), "a\nb");
   assert.equal(normaliseSubmittedText(""), "");
+}
+
+// Review finding: a refusal used to discard the WHOLE submission. A shopper
+// who fixed her colour note and pasted an over-long functional answer in the
+// same visit lost both, while the message told her everything else had been
+// kept. Exercised against the real schema, because the repair is only correct
+// if it produces exactly what the schema would have taken.
+{
+  const submission = {
+    projectId: "6133dc43-b169-4fe9-8b05-5796e105543a",
+    roomId: "f4fba429-63e0-45cf-b7c6-eefc81657b55",
+    roomType: "Living Room",
+    styleSlugs: [],
+    avoidStyleSlugs: [],
+    colorNotes: "warm walnut, brushed brass",
+    functionalRequirements: "x".repeat(BRIEF_FIELD_BOUNDS.functionalRequirements.max + 1)
+  };
+
+  const first = designBriefSchema.safeParse(submission);
+  assert.equal(first.success, false, "the over-long answer is refused");
+  const refusal = briefRefusal(first.success ? [] : first.error.issues);
+  assert.deepEqual(refusal.refused, ["functionalRequirements"]);
+  assert.equal(refusal.recoverable, true, "a bounded answer is something the rest of the write can survive");
+
+  const second = designBriefSchema.safeParse(withoutRefusedFields(submission, refusal.refused));
+  assert.equal(second.success, true, "what is left parses");
+  assert.equal(
+    second.success && second.data.colorNotes,
+    "warm walnut, brushed brass",
+    "the valid sibling is NOT discarded with the refused one"
+  );
+  assert.equal(
+    second.success && second.data.functionalRequirements,
+    undefined,
+    "and the refused field arrives as not-submitted, so the action leaves the stored answer alone"
+  );
+
+  // Two at once are both named, because naming one and silently keeping the
+  // other is the same silent refusal in a smaller form.
+  const both = designBriefSchema.safeParse({
+    ...submission,
+    colorNotes: "y".repeat(BRIEF_FIELD_BOUNDS.colorNotes.max + 1)
+  });
+  assert.deepEqual(briefRefusal(both.success ? [] : both.error.issues).refused.sort(), [
+    "colorNotes",
+    "functionalRequirements"
+  ]);
+
+  // A failure that is not a bounded answer cannot be repaired by dropping a
+  // field: there is nothing the shopper could shorten and no rest of the
+  // submission worth writing.
+  const broken = designBriefSchema.safeParse({ ...submission, roomId: "not-a-uuid", functionalRequirements: "fine" });
+  const brokenRefusal = briefRefusal(broken.success ? [] : broken.error.issues);
+  assert.equal(brokenRefusal.recoverable, false);
+  assert.deepEqual(brokenRefusal.refused, []);
+
+  // The measurements the write should carry afterwards: the refused number
+  // keeps what is on record, the ones she fixed land.
+  const onRecord = { wall_length_cm: 520, room_depth_cm: 410, ceiling_height_cm: 300, notes: null };
+  assert.deepEqual(
+    measurementsAfterRefusal({
+      submitted: { wallLengthCm: undefined, roomDepthCm: 400, ceilingHeightCm: 290 },
+      existing: onRecord,
+      refused: ["wallLengthCm"]
+    }),
+    { wallLengthCm: 520, roomDepthCm: 400, ceilingHeightCm: 290 }
+  );
+  assert.equal(
+    measurementsChanged({
+      step: "details",
+      submitted: measurementsAfterRefusal({
+        submitted: { wallLengthCm: undefined, roomDepthCm: 400, ceilingHeightCm: 290 },
+        existing: onRecord,
+        refused: ["wallLengthCm"]
+      }),
+      existing: onRecord
+    }),
+    true,
+    "the fixed measurements are still written"
+  );
+  // And a refusal on a room that has no row invents nothing.
+  assert.deepEqual(
+    measurementsAfterRefusal({
+      submitted: { wallLengthCm: undefined, roomDepthCm: 400 },
+      existing: null,
+      refused: ["wallLengthCm"]
+    }),
+    { wallLengthCm: null, roomDepthCm: 400, ceilingHeightCm: null }
+  );
+  // With nothing refused it is the submission, unchanged.
+  assert.deepEqual(
+    measurementsAfterRefusal({
+      submitted: { wallLengthCm: 520, roomDepthCm: 410, ceilingHeightCm: 300 },
+      existing: onRecord,
+      refused: []
+    }),
+    { wallLengthCm: 520, roomDepthCm: 410, ceilingHeightCm: 300 }
+  );
+}
+
+// Review finding: the strip rule matched the prefix ANYWHERE in the stored
+// value, so a paragraph of the shopper's that happened to open with one of the
+// two lines this app writes was deleted on save. It is stripped only where
+// this app puts its own blocks now, walking in from the two edges.
+{
+  const compose = (shopperNote: string | undefined) =>
+    composeStyleNote({ selectedSummary: "Quiet Luxury", shopperNote, avoidedSummary: "Industrial" });
+
+  for (const prefix of [SELECTED_STYLES_PREFIX, AVOIDED_STYLES_PREFIX]) {
+    const hers = `I looked at the board again.\n\n${prefix} the calm ones, not the shiny ones.\n\nRugs matter more than art.`;
+    assert.equal(shopperStyleNote(hers), hers, `a paragraph opening "${prefix}" is not this app's text`);
+    assert.equal(shopperStyleNote(compose(hers)), hers, "and it survives a round trip through the composer");
+  }
+
+  // The corner this deliberately does not cover: a note whose FIRST block
+  // opens with the selected line, which is exactly where the composer writes
+  // its own. Matching the style names instead would tell them apart, and would
+  // also stop recognising this app's own text the day a style is renamed,
+  // after which the value grows on every save again. That is the bug this
+  // whole pair exists to stop, so the ambiguity is left at the edges.
+  assert.equal(shopperStyleNote(`${SELECTED_STYLES_PREFIX} my own words`), undefined);
+
+  // The style selector writes a DIFFERENT shape into the same field, the
+  // prefix on its own line followed by "Name: description" lines, and replaces
+  // the whole field with it. If that stopped being recognised, the action
+  // would treat it as the shopper's words and re-wrap it on every save, which
+  // is the growth that eventually locked the step (mutation-checked: keeping
+  // only single-line machine blocks leaves this green and the growth back).
+  const fromSelector = `${SELECTED_STYLES_PREFIX}\nQuiet Luxury: calm, unshowy materials\nWarm Minimal: few pieces, warm tone`;
+  assert.equal(shopperStyleNote(fromSelector), undefined, "the selector's block is this app's text too");
+  const afterSelectorEdit = compose(fromSelector);
+  assert.equal(afterSelectorEdit, compose(undefined), "so composing it adds nothing");
+  assert.ok(afterSelectorEdit.length < BRIEF_FIELD_BOUNDS.styleNotes.max);
+
+  // A value the pre-S5 composition had already grown, which nests its own
+  // output at both ends: the repair has to clear the whole run, not one layer
+  // per save.
+  const grown = [
+    `${SELECTED_STYLES_PREFIX} Quiet Luxury`,
+    `${SELECTED_STYLES_PREFIX} Quiet Luxury`,
+    `${SELECTED_STYLES_PREFIX} Quiet Luxury`,
+    "calm, not cold",
+    `${AVOIDED_STYLES_PREFIX} Industrial.`,
+    `${AVOIDED_STYLES_PREFIX} Industrial.`
+  ].join("\n\n");
+  assert.equal(shopperStyleNote(grown), "calm, not cold", "an accumulated value repairs in one save");
 }
 
 console.log("brief fields tests passed");

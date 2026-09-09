@@ -1,5 +1,6 @@
 import {
   BRIEF_FIELD_BOUNDS,
+  type BriefFieldName,
   type NumberBriefFieldName,
   type TextBriefFieldName
 } from "@ritzy-studio/domain";
@@ -139,7 +140,6 @@ export function measurementsChanged({
 // test asserts they round-trip rather than matching a pasted literal.
 export const SELECTED_STYLES_PREFIX = "Selected visual styles:";
 export const AVOIDED_STYLES_PREFIX = "Avoid styles:";
-const COMPOSED_STYLE_PREFIXES = [SELECTED_STYLES_PREFIX, AVOIDED_STYLES_PREFIX];
 
 export function composeStyleNote({
   selectedSummary,
@@ -178,16 +178,128 @@ export function composeStyleNote({
 }
 
 export function shopperStyleNote(stored: string | null | undefined): string | undefined {
-  const value = (stored ?? "").trim();
-  if (value.length === 0) {
-    return undefined;
-  }
-
-  const kept = value
+  const blocks = (stored ?? "")
     .split(/(?:\r?\n){2,}/)
     .map((block) => block.trim())
-    .filter((block) => block.length > 0 && !COMPOSED_STYLE_PREFIXES.some((prefix) => block.startsWith(prefix)))
-    .join("\n\n");
+    .filter((block) => block.length > 0);
 
+  // Stripped only WHERE this app writes its own blocks, not wherever those
+  // words appear. `composeStyleNote` puts the selected summary first and the
+  // avoided summary last with the shopper's note between them, so walking in
+  // from the two edges recovers her note exactly and leaves anything she wrote
+  // in the middle alone, even when it opens with the same words (review
+  // finding: matching the prefix anywhere deleted a paragraph of hers that
+  // happened to start "Avoid styles: ...").
+  //
+  // Greedy at each edge rather than one block a side because the pre-S5
+  // composition wrapped its own output on every save, leaving a RUN of these
+  // blocks at each end; a single-block rule would strip one layer per save and
+  // never clear the value it is there to repair.
+  //
+  // Deliberately not narrowed further by matching the style names the summary
+  // carries: that would stop recognising this app's own text the day a style
+  // is renamed, and an unrecognised block is then kept, re-wrapped, and the
+  // growth-to-lockout bug this pair exists to stop comes back silently.
+  let first = 0;
+  let end = blocks.length;
+  while (first < end && blocks[first].startsWith(SELECTED_STYLES_PREFIX)) {
+    first += 1;
+  }
+  while (end > first && blocks[end - 1].startsWith(AVOIDED_STYLES_PREFIX)) {
+    end -= 1;
+  }
+
+  const kept = blocks.slice(first, end).join("\n\n");
   return kept.length > 0 ? kept : undefined;
+}
+
+// What a refused submission costs, and what it must not (S5, review finding).
+//
+// The first version of this refused the WHOLE submission: it redirected before
+// the Supabase client was created, so a shopper who fixed her colour note and
+// pasted an over-long functional answer in the same visit lost both. That is
+// the same loss this slice exists to remove, one layer further in, and the
+// copy on the screen claimed otherwise.
+//
+// So a refusal is now per field. The fields the schema would not take keep the
+// value already on record; everything else in the submission is saved, and the
+// screen names what was refused.
+
+export function isBriefFieldName(value: unknown): value is BriefFieldName {
+  // hasOwnProperty, not `in`: `in` walks the prototype chain, so `constructor`
+  // and `__proto__` would pass an allowlist this file calls closed (security
+  // review).
+  return typeof value === "string" && Object.prototype.hasOwnProperty.call(BRIEF_FIELD_BOUNDS, value);
+}
+
+export type BriefRefusal = {
+  // The bounded fields the schema refused, in the order it reported them.
+  refused: BriefFieldName[];
+  // Whether the rest of the submission can still be saved. False when
+  // something that is not a bounded field failed, a room id that is not a uuid
+  // for instance: there is then no "rest" worth writing and nothing the
+  // shopper could shorten to fix it.
+  recoverable: boolean;
+};
+
+export function briefRefusal(issues: readonly { readonly path?: readonly PropertyKey[] }[]): BriefRefusal {
+  const refused: BriefFieldName[] = [];
+  let recoverable = issues.length > 0;
+
+  for (const issue of issues) {
+    const field = issue.path?.[0];
+    if (isBriefFieldName(field)) {
+      if (!refused.includes(field)) {
+        refused.push(field);
+      }
+      continue;
+    }
+    recoverable = false;
+  }
+
+  return { refused, recoverable };
+}
+
+// The submission again with the refused fields removed, so re-parsing it
+// yields exactly what the shopper sent minus what could not be taken. The
+// caller must then leave the stored value alone for those fields: an
+// `undefined` here means "not submitted", and the write path turns a submitted
+// empty into a deletion.
+export function withoutRefusedFields<T extends Record<string, unknown>>(
+  submission: T,
+  refused: readonly BriefFieldName[]
+): T {
+  const repaired: Record<string, unknown> = { ...submission };
+  for (const field of refused) {
+    repaired[field] = undefined;
+  }
+  return repaired as T;
+}
+
+// The three measurements as they should be written once a refusal is known.
+//
+// A number the schema would not take keeps whatever is on record, so the ones
+// she did fix still land and the refused one is not read as a deletion. Inline
+// in the action this was a conditional per field that no test could reach,
+// which is how the last swallowed clearing decision got in (tests review).
+export function measurementsAfterRefusal({
+  submitted,
+  existing,
+  refused
+}: {
+  submitted: SubmittedMeasurements;
+  existing: StoredMeasurements;
+  refused: readonly BriefFieldName[];
+}): { wallLengthCm: number | null; roomDepthCm: number | null; ceilingHeightCm: number | null } {
+  return {
+    wallLengthCm: refused.includes("wallLengthCm")
+      ? (existing?.wall_length_cm ?? null)
+      : (submitted.wallLengthCm ?? null),
+    roomDepthCm: refused.includes("roomDepthCm")
+      ? (existing?.room_depth_cm ?? null)
+      : (submitted.roomDepthCm ?? null),
+    ceilingHeightCm: refused.includes("ceilingHeightCm")
+      ? (existing?.ceiling_height_cm ?? null)
+      : (submitted.ceilingHeightCm ?? null)
+  };
 }

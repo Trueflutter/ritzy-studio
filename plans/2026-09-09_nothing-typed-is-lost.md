@@ -367,6 +367,27 @@ repeated.
   was effectively unreachable while measurements were mandatory and is an
   ordinary state now, and the grey sample numerals read as entered values
   against a measured screen that uses the same number for real.
+- **Step 2, a refusal costs only the field it names.** Found by review after
+  the PR was opened. The first implementation refused the whole submission: it
+  redirected before the Supabase client was created, so a shopper who fixed her
+  colour note and pasted an over-long functional answer in the same visit lost
+  both, which is this plan's own objective failing one layer further in, and
+  the message told her everything else had been kept. The parse now drops only
+  the fields the schema would not take, re-parses, writes the rest, and names
+  what was refused; the refused fields keep the value on record, including the
+  measurement numbers, and the copy says what actually happened. Where the
+  failure is not a bounded answer (a room id that is not a uuid) nothing is
+  written, because there is no rest of the submission to save.
+- **Step 2, the style-note strip is positional, not textual.** Also found by
+  review. `shopperStyleNote` matched the two composed prefixes anywhere in the
+  stored value, so a paragraph of the shopper's own that opened with those
+  words would have been deleted on save. It now strips only from the two edges,
+  where `composeStyleNote` writes them. Narrowing it further by matching the
+  style names the summary carries was rejected: it would stop recognising this
+  app's own text the day a style is renamed, and the growth-to-lockout bug the
+  pair exists to stop would come back silently. The residual corner, a note
+  whose first block opens with the same line the composer writes there, is
+  pinned by test as a known limit.
 
 ## Verification
 
@@ -376,7 +397,10 @@ are behaviours of a `"use server"` action were driven in a real browser,
 because the recording double cannot host one and this PR deliberately does
 not extract the action.
 
-The browser run is twenty-two checks against the running app, all passing. It
+The browser run is twenty-four checks against the running app, all passing
+(twenty-two, plus the two the post-PR review added: a submission carrying one
+refused answer and three valid changes, and a submission carrying two refused
+answers). It
 used the dev-harness Playwright driver and its saved session
 (`scripts/dev-harness/auth.json`, gitignored). Open question 2 in
 this plan is therefore answered: the saved state's refresh token was still

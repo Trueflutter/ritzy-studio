@@ -8,6 +8,7 @@ import {
 import type { Database } from "@ritzy-studio/db";
 import {
   BRIEF_FIELD_BOUNDS,
+  type BriefFieldName,
   createProjectSchema,
   createRoomSchema,
   designBriefSchema,
@@ -47,10 +48,14 @@ import {
   type ProductRow
 } from "@/lib/services/sourcing-support";
 import {
+  briefRefusal,
   composeStyleNote,
+  measurementsAfterRefusal,
   measurementsChanged,
   normaliseSubmittedText,
-  shopperStyleNote
+  shopperStyleNote,
+  withoutRefusedFields,
+  type BriefRefusal
 } from "@/lib/brief-fields";
 import { createClient } from "@/lib/supabase/server";
 import { finalRenderRetryHonoured, finalRenderStaleMs } from "@/lib/render";
@@ -882,17 +887,36 @@ export async function saveDesignBriefAction(formData: FormData) {
   // the framework's raw error page, which is how a shopper used to lose a
   // whole brief to one over-length note. The form now carries the same bounds
   // the schema does (BRIEF_FIELD_BOUNDS), so reaching this needs a client that
-  // ignored them; every field she typed is still in the row she came from and
-  // re-renders when she lands back.
-  const result = designBriefSchema.safeParse(submission);
+  // ignored them.
+  //
+  // And a refusal costs only the field it names. The first version redirected
+  // from here, before the Supabase client was even created, so a shopper who
+  // fixed her colour note and pasted an over-long functional answer in the
+  // same visit lost both: the same loss this slice exists to remove, one layer
+  // in, while the message on the screen claimed otherwise (review finding).
+  // The refused fields are dropped from the submission, the rest is saved
+  // below, and the redirect at the end of the write names them.
+  const refusalStep = BRIEF_STEPS_WITH_MESSAGES.includes(briefStep) ? briefStep : "details";
+  const firstPass = designBriefSchema.safeParse(submission);
+  const refusal: BriefRefusal = firstPass.success
+    ? { refused: [], recoverable: true }
+    : briefRefusal(firstPass.error.issues);
+  const refused = refusal.refused;
+  const result =
+    firstPass.success || !refusal.recoverable
+      ? firstPass
+      : designBriefSchema.safeParse(withoutRefusedFields(submission, refused));
   if (!result.success) {
+    // Nothing here can be saved: what failed is not a bounded answer she could
+    // shorten (a room id that is not a uuid, say), so there is no rest of the
+    // submission to write.
+    //
     // The FIELD NAME travels, not the copy. The screen resolves the wording
     // and marks the named input, so the error treatment cannot be handed to
     // anyone who can put text in the URL (security review), and the refusal
     // lands on the thing that has to change rather than only on the page
     // (design review).
     const field = result.error.issues[0]?.path?.[0];
-    const refusalStep = BRIEF_STEPS_WITH_MESSAGES.includes(briefStep) ? briefStep : "details";
     redirect(
       `/projects/${submission.projectId}/rooms/${submission.roomId}/brief/${refusalStep}?refused=${encodeURIComponent(
         typeof field === "string" ? field : "unknown"
@@ -952,13 +976,21 @@ export async function saveDesignBriefAction(formData: FormData) {
   if (latestMeasurementsError) {
     throw new Error(latestMeasurementsError.message);
   }
-  const shouldWriteMeasurementRow = measurementsChanged({
-    step: briefStep,
+  // A measurement the schema would not take keeps the number already on
+  // record, so the two she did fix still land and the refused one is left
+  // exactly as it was rather than read as a deletion (review finding).
+  const submittedMeasurements = measurementsAfterRefusal({
     submitted: {
       wallLengthCm: parsed.wallLengthCm,
       roomDepthCm: parsed.roomDepthCm,
       ceilingHeightCm: parsed.ceilingHeightCm
     },
+    existing: latestMeasurements ?? null,
+    refused
+  });
+  const shouldWriteMeasurementRow = measurementsChanged({
+    step: briefStep,
+    submitted: submittedMeasurements,
     existing: latestMeasurements ?? null
   });
 
@@ -969,9 +1001,7 @@ export async function saveDesignBriefAction(formData: FormData) {
   // dimension (review finding).
   const effectiveMeasurements = submittedDetailsStep
     ? {
-        wallLengthCm: parsed.wallLengthCm ?? null,
-        roomDepthCm: parsed.roomDepthCm ?? null,
-        ceilingHeightCm: parsed.ceilingHeightCm ?? null,
+        ...submittedMeasurements,
         notes: parsed.measurementNotes ?? null
       }
     : // The other brief steps carry no measurement inputs and this branch does
@@ -1094,19 +1124,31 @@ export async function saveDesignBriefAction(formData: FormData) {
     structured_json: structuredJson as Database["public"]["Tables"]["design_briefs"]["Update"]["structured_json"]
   };
 
-  if (formData.has("styleSlugs") || formData.has("avoidStyleSlugs") || formData.has("styleNotes")) {
+  // Not written when the note itself was refused: the composition would then
+  // run without her words and DELETE the note that could not be taken, which
+  // is the opposite of what the message promises. Her selection still records
+  // in structured_json above, and the next submission the schema accepts
+  // recomposes the column from it.
+  if (
+    (formData.has("styleSlugs") || formData.has("avoidStyleSlugs") || formData.has("styleNotes")) &&
+    !refused.includes("styleNotes")
+  ) {
     briefPayload.style_notes = resolvedStyleNotes || null;
   }
 
-  const colorNotes = optionalValueForPresentField(formData, "colorNotes", parsed.colorNotes);
-  const budgetNotes = optionalValueForPresentField(formData, "budgetNotes", parsed.budgetNotes);
-  const functionalRequirements = optionalValueForPresentField(
-    formData,
-    "functionalRequirements",
-    parsed.functionalRequirements
-  );
-  const avoidNotes = optionalValueForPresentField(formData, "avoidNotes", parsed.avoidNotes);
-  const inspirationNotes = optionalValueForPresentField(formData, "inspirationNotes", parsed.inspirationNotes);
+  // A refused column is left exactly as it is on record. `undefined` means
+  // "not submitted" to the writes below, while a submitted empty means
+  // "delete this", and the refused value arrives empty because it was dropped
+  // before the parse: writing it would delete the answer the message on the
+  // next screen promises to have kept (review finding).
+  const columnValue = <T>(field: BriefFieldName, value: T | undefined) =>
+    refused.includes(field) ? undefined : optionalValueForPresentField(formData, field, value);
+
+  const colorNotes = columnValue("colorNotes", parsed.colorNotes);
+  const budgetNotes = columnValue("budgetNotes", parsed.budgetNotes);
+  const functionalRequirements = columnValue("functionalRequirements", parsed.functionalRequirements);
+  const avoidNotes = columnValue("avoidNotes", parsed.avoidNotes);
+  const inspirationNotes = columnValue("inspirationNotes", parsed.inspirationNotes);
 
   if (colorNotes !== undefined) briefPayload.color_notes = colorNotes;
   if (budgetNotes !== undefined) briefPayload.budget_notes = budgetNotes;
@@ -1148,6 +1190,16 @@ export async function saveDesignBriefAction(formData: FormData) {
   }
 
   await supabase.from("rooms").update({ status: "briefing" }).eq("id", parsed.roomId);
+
+  // Everything the schema took is now saved. She lands back on the step that
+  // has to change, with the refused fields named and outlined, and nothing
+  // paid runs on a submission she is about to correct.
+  if (refused.length > 0) {
+    revalidatePath(briefRootPath);
+    redirect(
+      `${briefRootPath}/${refusalStep}?refused=${encodeURIComponent(refused.join(","))}`
+    );
+  }
 
   if (briefStep === "inspiration") {
     try {
