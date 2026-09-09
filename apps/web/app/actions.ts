@@ -857,6 +857,12 @@ export async function createRoomAction(formData: FormData) {
 // anything else lands on details, which does.
 const BRIEF_STEPS_WITH_MESSAGES = ["details", "style", "inspiration"];
 
+// What a submission the schema cannot read at all is told. A refusal names a
+// field the shopper can shorten; this branch has no such field, so it sends a
+// bounded code the screen resolves to its own sentence, rather than resolving
+// to a note the screen does not render.
+const UNREADABLE_SUBMISSION_CODE = "unreadable";
+
 export async function saveDesignBriefAction(formData: FormData) {
   const briefStep = String(formData.get("briefStep") ?? "details");
   const nextPath = String(formData.get("nextPath") ?? "");
@@ -911,16 +917,14 @@ export async function saveDesignBriefAction(formData: FormData) {
     // shorten (a room id that is not a uuid, say), so there is no rest of the
     // submission to write.
     //
-    // The FIELD NAME travels, not the copy. The screen resolves the wording
-    // and marks the named input, so the error treatment cannot be handed to
-    // anyone who can put text in the URL (security review), and the refusal
-    // lands on the thing that has to change rather than only on the page
-    // (design review).
-    const field = result.error.issues[0]?.path?.[0];
+    // A bounded code, not the sentence and not the field name. The field name
+    // would resolve to nothing on the screen, which renders no note at all, so
+    // she would press Continue and get back a page identical to the one she
+    // left; the sentence would put display copy in the URL, and `?message=`
+    // renders whatever text a link carries, which is exactly the channel this
+    // refusal is kept out of (security review).
     redirect(
-      `/projects/${submission.projectId}/rooms/${submission.roomId}/brief/${refusalStep}?refused=${encodeURIComponent(
-        typeof field === "string" ? field : "unknown"
-      )}`
+      `/projects/${submission.projectId}/rooms/${submission.roomId}/brief/${refusalStep}?refused=${UNREADABLE_SUBMISSION_CODE}`
     );
   }
   const parsed = result.data;

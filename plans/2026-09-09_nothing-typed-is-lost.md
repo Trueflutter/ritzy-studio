@@ -260,6 +260,24 @@ rollout section are owed before implementation.
 Each is a separate PR. The findings are recorded so the analysis is not
 repeated.
 
+- **The refused answer itself is not handed back.** The design review's
+  standing P0 on this screen, twice measured. The screen map's clause for
+  `/brief/details` is "rejection NEVER wipes input"; every OTHER answer in the
+  submission now survives, but the refused field re-renders the shorter answer
+  already on record, so a shopper who wrote past the bound has to write it
+  again from memory. The critic measured the state at both widths and reports
+  no restore, undo or view-what-you-typed affordance anywhere on the page.
+  Two mechanisms would close it, and both are larger than this PR: the field
+  values could be stashed in `sessionStorage` on submit and the refused one
+  restored when the page comes back carrying `?refused=`, which needs a client
+  component and works only where scripting does; or the submission could be
+  written to a draft the page reads, which needs a column and therefore a
+  migration this PR deliberately does not have. Also owed with it: the live
+  character count the critic asks for at the field, which needs the submitted
+  LENGTH to travel, not just the field name. Worth knowing before scheduling
+  it: the refusal is only reachable at all from a client that ignores the
+  `maxLength` the markup now carries, so no shopper using the app as shipped
+  can land in this state.
 - **The style selector clobbers a stored note.** Found while answering a
   review of this PR; pre-existing and outside this diff.
   `visual-style-selector.tsx` replaces the WHOLE hidden `styleNotes` field
@@ -394,6 +412,25 @@ repeated.
   measurement numbers, and the copy says what actually happened. Where the
   failure is not a bounded answer (a room id that is not a uuid) nothing is
   written, because there is no rest of the submission to save.
+- **Step 2, where each fact about a refusal is said.** Three rounds of review
+  after the PR was opened moved this twice, so the rule is written down here.
+  The field note explains the value the field is SHOWING, because it shows the
+  shorter answer that was restored and "Too long to save" beside a visibly
+  short value reads as nonsense. The limit rides on the field, because that is
+  where she rewrites and the banner is a screen above her by then; a step that
+  renders no field for the refused answer says the limit in its banner
+  instead, so it is never said twice and never nowhere. The banner names the
+  fields, says what happened to the rest, and links to the first. All three
+  measurements carry the same error treatment as the four textareas, because a
+  refusal naming a measurement marked no input anywhere on the page.
+- **Step 2, the branch that can name no field.** A submission the schema cannot
+  read at all (a room id that is not a uuid) has no field to name, and sending
+  the field name anyway resolved to nothing on the screen: she would press
+  Continue and get back an identical page. It sends a bounded CODE now, which
+  the screen resolves to its own sentence. Putting the sentence itself in
+  `?message=` was written and then withdrawn: that channel renders whatever
+  text a link carries, and making this PR depend on it is exactly the
+  reflection the refusal treatment is kept out of.
 - **Step 2, the style-note strip is positional, not textual.** Also found by
   review. `shopperStyleNote` matched the two composed prefixes anywhere in the
   stored value, so a paragraph of the shopper's own that opened with those
@@ -413,10 +450,11 @@ are behaviours of a `"use server"` action were driven in a real browser,
 because the recording double cannot host one and this PR deliberately does
 not extract the action.
 
-The browser run is twenty-four checks against the running app, all passing
-(twenty-two, plus the two the post-PR review added: a submission carrying one
-refused answer and three valid changes, and a submission carrying two refused
-answers). It
+The browser run is twenty-seven checks against the running app, all passing
+(twenty-two, plus five the post-PR reviews added: a submission carrying one
+refused answer and three valid changes, a submission carrying two refused
+answers, and the three that hold the refusal's copy and link where the design
+review put them). It
 used the dev-harness Playwright driver and its saved session
 (`scripts/dev-harness/auth.json`, gitignored). Open question 2 in
 this plan is therefore answered: the saved state's refresh token was still

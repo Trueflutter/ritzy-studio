@@ -9,7 +9,13 @@ import { notFound, redirect } from "next/navigation";
 import { saveDesignBriefAction } from "@/app/actions";
 import { briefNumberAttributes, briefTextAttributes, colourNotesDefault } from "@/lib/brief-fields";
 import { createClient } from "@/lib/supabase/server";
-import { BriefMessage, FieldError, fieldErrorClass, refusedFieldsFrom } from "../_components/brief-message";
+import {
+  BriefMessage,
+  FieldError,
+  fieldErrorClass,
+  refusalCodesFrom,
+  refusedFieldsFrom
+} from "../_components/brief-message";
 import { BriefShell } from "../_components/brief-shell";
 import { FloorPlanUploader } from "../floor-plan-uploader";
 import { MeasurementAssumptionNotes } from "./measurement-notes";
@@ -26,6 +32,7 @@ export default async function BriefDetailsPage({
   const { projectId, roomId } = await params;
   const { message, refused } = await searchParams;
   const refusedFields = refusedFieldsFrom(refused);
+  const refusalCodes = refusalCodesFrom(refused);
   const supabase = await createClient();
   const {
     data: { user }
@@ -118,7 +125,7 @@ export default async function BriefDetailsPage({
       subtitle="Grouped so you can move through them in order — the vision first, then how the room lives, then the measurements. Answer what you know; skip the rest — we will note the assumption."
       title="The questions a designer would ask."
     >
-      <BriefMessage message={message} refused={refusedFields} />
+      <BriefMessage codes={refusalCodes} fieldsAreMarked message={message} refused={refusedFields} />
 
       <form action={saveDesignBriefAction}>
         <input name="projectId" type="hidden" value={projectId} />

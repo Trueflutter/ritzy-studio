@@ -11,6 +11,7 @@ import {
   BriefMessage,
   FieldError,
   isRefusedField,
+  refusalCodesFrom,
   refusalCopy,
   refusedFieldsFrom
 } from "./projects/[projectId]/rooms/[roomId]/brief/_components/brief-message";
@@ -25,6 +26,9 @@ import {
 // name and the limit to aim for.
 const refused = renderToStaticMarkup(<BriefMessage refused={["colorNotes"]} />);
 assert.match(refused, /role="alert"/);
+// Next renders its own empty role="alert" route announcer, so the browser
+// checks address this banner by name rather than by "the first alert".
+assert.match(refused, /data-testid="brief-refusal"/);
 assert.match(refused, /border-error/);
 assert.match(refused, /colours and materials/);
 assert.match(refused, /under 1200 characters/);
@@ -45,8 +49,21 @@ assert.match(
 // review).
 const fieldNote = renderToStaticMarkup(<FieldError field="colorNotes" refused={["colorNotes"]} />);
 assert.match(fieldNote, /What you typed was too long to save, so this is the answer you had/);
-assert.equal(fieldNote.includes("1200"), false, "the limit is not repeated beside the field");
+assert.match(fieldNote, /under 1200 characters/, "the number rides where she rewrites");
 assert.equal(renderToStaticMarkup(<FieldError field="avoidNotes" refused={["colorNotes"]} />), "");
+
+// Said once. A page that marks its fields lets them carry the number; a step
+// that renders no field for the refused answer says it in the banner, or it
+// is said nowhere at all.
+const marked = refusalCopy(["colorNotes"], { fieldsAreMarked: true });
+assert.equal(marked.includes("1200"), false, "the banner does not repeat the field's number");
+assert.match(marked, /Everything else on this page was saved\./);
+assert.match(refusalCopy(["colorNotes"]), /under 1200 characters/, "and says it where no field will");
+assert.equal(
+  refusalCopy(["colorNotes", "wallLengthCm"], { fieldsAreMarked: true }).includes("5000"),
+  false,
+  "including when several were refused"
+);
 
 // What the message PROMISES has to be what the action does. The first version
 // discarded the whole submission and told her the opposite; the sibling fields
@@ -115,6 +132,27 @@ for (const field of Object.keys(BRIEF_FIELD_BOUNDS) as BriefFieldName[]) {
   assert.match(markup, /was too long to save/, `${field} explains what happened`);
   assert.equal(markup.includes("Shorten it and continue"), false, "no instruction the shopper cannot follow");
 }
+
+// The one refusal that names no field, a submission the schema could not read.
+// It travels as a CODE and the sentence is resolved here, because putting the
+// sentence in the URL would render whatever text a link carried (security
+// review). An unknown code, and anything off the prototype chain, resolves to
+// nothing.
+assert.deepEqual(refusalCodesFrom("unreadable"), ["unreadable"]);
+for (const value of ["nonsense", "constructor", "__proto__", "toString", "colorNotes"]) {
+  assert.deepEqual(refusalCodesFrom(value), [], `${value} is not a refusal code`);
+}
+const unreadable = renderToStaticMarkup(<BriefMessage codes={refusalCodesFrom("unreadable")} />);
+assert.match(unreadable, /role="alert"/);
+assert.match(unreadable, /data-testid="brief-refusal"/);
+assert.match(unreadable, /border-error/);
+assert.match(unreadable, /could not read that submission/);
+assert.equal(unreadable.includes("href="), false, "there is no field to send her to");
+assert.equal(
+  renderToStaticMarkup(<BriefMessage codes={refusalCodesFrom("nonsense")} message="plain" />).includes("role=\"alert\""),
+  false,
+  "an unknown code falls through to the neutral note rather than to an error"
+);
 
 // Nothing at all renders nothing.
 assert.equal(renderToStaticMarkup(<BriefMessage />), "");
