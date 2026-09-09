@@ -255,6 +255,17 @@ rollout section are owed before implementation.
 Each is a separate PR. The findings are recorded so the analysis is not
 repeated.
 
+- **The style selector clobbers a stored note.** Found while answering a
+  review of this PR; pre-existing and outside this diff.
+  `visual-style-selector.tsx` replaces the WHOLE hidden `styleNotes` field
+  with its own generated block whenever the field is empty or starts with
+  "Selected visual styles:", so toggling a style drops any shopper text the
+  stored value carried from that submission. It cannot lose anything today,
+  because no screen lets a shopper write into `style_notes` at all: the only
+  writers are the action's composer and this selector. The fix is for the
+  selector to use the same `composeStyleNote` and `shopperStyleNote` pair the
+  server uses, rather than its own third format, and it has to land with (or
+  before) any screen that adds a style-note field.
 - **Photo slots, replace and reorder** (step 16). Needs a stored order, but
   "the first photograph is the camera" is read in four places, not one:
   `apps/web/lib/render-inputs.ts`, `apps/web/lib/services/room-images.ts`
