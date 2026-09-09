@@ -5,6 +5,8 @@ import { renderToStaticMarkup } from "react-dom/server";
 
 (globalThis as { React?: unknown }).React = React;
 
+import { measurementAssumptionNotes, parseSpatialIntent } from "@ritzy-studio/domain";
+
 import { MeasurementAssumptionNotes } from "./projects/[projectId]/rooms/[roomId]/brief/details/measurement-notes";
 
 // S5 (AC 7): the assumption list renders what it is given, numbered, and
@@ -12,12 +14,15 @@ import { MeasurementAssumptionNotes } from "./projects/[projectId]/rooms/[roomId
 // room does not carry an empty panel. The server markup asserted here is what
 // a shopper sees before the panel hydrates and starts following her typing.
 
+// A living room with nothing chosen and nothing measured: the domain function
+// supplies both halves, which is the same call the screen makes.
+const savedNotesFor = (measurements: { wallLengthCm: number | null; roomDepthCm: number | null; ceilingHeightCm: number | null }, roomType: string) =>
+  measurementAssumptionNotes({ measurements, spatialIntent: parseSpatialIntent({ spatialIntent: {} }, roomType) });
+
 const withNotes = renderToStaticMarkup(
   <MeasurementAssumptionNotes
-    intentAssumptions={["Focal point not confirmed; assuming the TV/media wall anchors the seating."]}
-    scalingNotes={[
-      "Without the main wall and the room depth, the design is scaled from your photographs rather than exact dimensions."
-    ]}
+    roomType="Living Room"
+    savedNotes={savedNotesFor({ wallLengthCm: null, roomDepthCm: null, ceilingHeightCm: null }, "Living Room")}
   />
 );
 
@@ -30,7 +35,15 @@ assert.match(withNotes, />i\.</, "numbered in roman numerals");
 assert.match(withNotes, />ii\.</);
 
 // Nothing to assume renders nothing, not an empty bordered box.
-assert.equal(renderToStaticMarkup(<MeasurementAssumptionNotes intentAssumptions={[]} scalingNotes={[]} />), "");
+assert.equal(
+  renderToStaticMarkup(
+    <MeasurementAssumptionNotes
+      roomType="Bedroom"
+      savedNotes={savedNotesFor({ wallLengthCm: 400, roomDepthCm: 380, ceilingHeightCm: 290 }, "Bedroom")}
+    />
+  ),
+  ""
+);
 
 // The assumptions are visible on the page, never hidden behind a tooltip
 // (12.5 forbids it) and never collapsed behind a control on this screen.

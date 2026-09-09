@@ -131,6 +131,11 @@ export const BRIEF_FIELD_BOUNDS = {
   avoidNotes: { kind: "text", max: 1200 },
   inspirationNotes: { kind: "text", max: 1600 },
   measurementNotes: { kind: "text", max: 1200 },
+  // Free text on the same form, written verbatim into structured_json.
+  // parseSpatialIntent bounds it on READ, which protects the prompt budget but
+  // not the column: an unbounded post is re-read by every select on the row
+  // for the life of the room (security review).
+  mustKeepClear: { kind: "text", max: 160 },
   wallLengthCm: { kind: "number", min: 1, max: 5000 },
   roomDepthCm: { kind: "number", min: 1, max: 5000 },
   ceilingHeightCm: { kind: "number", min: 1, max: 1000 }
@@ -138,8 +143,18 @@ export const BRIEF_FIELD_BOUNDS = {
 
 export type BriefFieldName = keyof typeof BRIEF_FIELD_BOUNDS;
 
-const textBound = (field: Extract<BriefFieldName, keyof typeof BRIEF_FIELD_BOUNDS>) =>
-  z.string().max(BRIEF_FIELD_BOUNDS[field].max).optional();
+// Split by kind, so a text bound cannot be applied to a measurement field.
+// The obvious spelling, Extract<BriefFieldName, keyof typeof BRIEF_FIELD_BOUNDS>,
+// is Extract<T, T> and narrows nothing (review finding).
+export type TextBriefFieldName = {
+  [K in BriefFieldName]: (typeof BRIEF_FIELD_BOUNDS)[K]["kind"] extends "text" ? K : never;
+}[BriefFieldName];
+
+export type NumberBriefFieldName = {
+  [K in BriefFieldName]: (typeof BRIEF_FIELD_BOUNDS)[K]["kind"] extends "number" ? K : never;
+}[BriefFieldName];
+
+const textBound = (field: TextBriefFieldName) => z.string().max(BRIEF_FIELD_BOUNDS[field].max).optional();
 
 export const designBriefSchema = z.object({
   projectId: z.uuid(),

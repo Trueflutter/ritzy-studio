@@ -5,6 +5,7 @@ import { notFound, redirect } from "next/navigation";
 
 import { deleteInspirationImageAction, saveDesignBriefAction } from "@/app/actions";
 import { createClient } from "@/lib/supabase/server";
+import { BriefMessage } from "../_components/brief-message";
 import { BriefShell } from "../_components/brief-shell";
 import { InspirationUploader } from "../inspiration-uploader";
 
@@ -15,10 +16,10 @@ export default async function BriefInspirationPage({
   searchParams
 }: {
   params: Promise<{ projectId: string; roomId: string }>;
-  searchParams: Promise<{ message?: string }>;
+  searchParams: Promise<{ message?: string; refused?: string }>;
 }) {
   const { projectId, roomId } = await params;
-  const { message } = await searchParams;
+  const { message, refused } = await searchParams;
   const supabase = await createClient();
   const {
     data: { user }
@@ -65,11 +66,7 @@ export default async function BriefInspirationPage({
       subtitle="Many people save rooms, palettes, or materials they love. If you have any, share them here and we'll draw from them. Otherwise, skip ahead."
       title="Have any inspiration photos?"
     >
-      {message ? (
-        <p className="mb-6 border border-line bg-surface px-4 py-3 font-display text-body-s italic text-ink-secondary">
-          {message}
-        </p>
-      ) : null}
+      <BriefMessage message={message} refused={refused} />
 
       <InspirationUploader existingCount={signedAssets.length} roomId={roomId} userId={user.id} />
 

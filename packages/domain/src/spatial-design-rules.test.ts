@@ -295,7 +295,7 @@ function designerVerifiedMeasurements(wallLengthCm: number, roomDepthCm: number)
 {
   const intent = (roomType: string) => parseSpatialIntent({ spatialIntent: {} }, roomType);
   const lines = (roomType: string, measurements: { wallLengthCm?: number | null; roomDepthCm?: number | null; ceilingHeightCm?: number | null } | null) =>
-    measurementAssumptionNotes({ roomType, measurements, spatialIntent: intent(roomType) });
+    measurementAssumptionNotes({ measurements, spatialIntent: intent(roomType) });
 
   const none = lines("Living Room", null);
   assert.ok(

@@ -4,6 +4,7 @@ import { notFound, redirect } from "next/navigation";
 
 import { saveDesignBriefAction } from "@/app/actions";
 import { createClient } from "@/lib/supabase/server";
+import { BriefMessage } from "../_components/brief-message";
 import { BriefShell } from "../_components/brief-shell";
 import { VisualStyleSelector } from "../visual-style-selector";
 
@@ -14,12 +15,12 @@ export default async function BriefStylePage({
   searchParams
 }: {
   params: Promise<{ projectId: string; roomId: string }>;
-  searchParams: Promise<{ message?: string; tone?: string }>;
+  searchParams: Promise<{ message?: string; refused?: string }>;
 }) {
   const { projectId, roomId } = await params;
   // Without this the step could refuse a submission and re-render
   // identically, so the button looked dead (review finding).
-  const { message, tone } = await searchParams;
+  const { message, refused } = await searchParams;
   const supabase = await createClient();
   const {
     data: { user }
@@ -63,18 +64,7 @@ export default async function BriefStylePage({
       subtitle="Pick the visual directions that feel closest. You can refine the language later."
       title="Choose the styles that feel right."
     >
-      {message ? (
-        <p
-          className={
-            tone === "error"
-              ? "mb-10 max-w-[65ch] border-s-2 border-error bg-surface px-4 py-3 font-body text-body-s text-ink"
-              : "mb-10 max-w-[65ch] border border-line bg-surface px-4 py-3 font-body text-body-s text-ink-secondary"
-          }
-          role={tone === "error" ? "alert" : undefined}
-        >
-          {message}
-        </p>
-      ) : null}
+      <BriefMessage message={message} refused={refused} />
 
       <form action={saveDesignBriefAction}>
         <input name="projectId" type="hidden" value={projectId} />

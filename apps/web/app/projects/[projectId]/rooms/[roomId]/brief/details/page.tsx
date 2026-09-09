@@ -1,6 +1,6 @@
 import { ButtonLink, SubmitButton } from "@ritzy-studio/ui";
 import {
-  measurementScalingNotes,
+  measurementAssumptionNotes,
   parseSpatialIntent,
   spatialLayoutModeForRoomType
 } from "@ritzy-studio/domain";
@@ -9,6 +9,7 @@ import { notFound, redirect } from "next/navigation";
 import { saveDesignBriefAction } from "@/app/actions";
 import { briefNumberAttributes, briefTextAttributes, colourNotesDefault } from "@/lib/brief-fields";
 import { createClient } from "@/lib/supabase/server";
+import { BriefMessage, FieldError, fieldErrorClass } from "../_components/brief-message";
 import { BriefShell } from "../_components/brief-shell";
 import { FloorPlanUploader } from "../floor-plan-uploader";
 import { MeasurementAssumptionNotes } from "./measurement-notes";
@@ -20,10 +21,10 @@ export default async function BriefDetailsPage({
   searchParams
 }: {
   params: Promise<{ projectId: string; roomId: string }>;
-  searchParams: Promise<{ message?: string; tone?: string }>;
+  searchParams: Promise<{ message?: string; refused?: string }>;
 }) {
   const { projectId, roomId } = await params;
-  const { message, tone } = await searchParams;
+  const { message, refused } = await searchParams;
   const supabase = await createClient();
   const {
     data: { user }
@@ -86,15 +87,14 @@ export default async function BriefDetailsPage({
   // without them. The lines state what the pipeline actually carries; nothing
   // here invents a dimension. This is the SAVED state, so the server markup is
   // right before the panel hydrates and starts following what she types.
-  const savedScalingNotes = measurementScalingNotes(
-    measurements
-      ? {
-          wallLengthCm: measurements.wall_length_cm,
-          roomDepthCm: measurements.room_depth_cm,
-          ceilingHeightCm: measurements.ceiling_height_cm
-        }
-      : null
-  );
+  const savedAssumptionNotes = measurementAssumptionNotes({
+    measurements: {
+      wallLengthCm: measurements?.wall_length_cm ?? null,
+      roomDepthCm: measurements?.room_depth_cm ?? null,
+      ceilingHeightCm: measurements?.ceiling_height_cm ?? null
+    },
+    spatialIntent
+  });
 
   // Editorial field styling — questions read as italic prompts; answers sit on a hairline.
   const questionClass = "block font-display text-[20px] font-light italic leading-snug text-ink";
@@ -112,18 +112,7 @@ export default async function BriefDetailsPage({
       subtitle="Grouped so you can move through them in order — the vision first, then how the room lives, then the measurements. Answer what you know; skip the rest — we will note the assumption."
       title="The questions a designer would ask."
     >
-      {message ? (
-        <p
-          className={
-            tone === "error"
-              ? "mb-10 max-w-[65ch] border-s-2 border-error bg-surface px-4 py-3 font-body text-body-s text-ink"
-              : "mb-10 max-w-[65ch] border border-line bg-surface px-4 py-3 font-body text-body-s text-ink-secondary"
-          }
-          role={tone === "error" ? "alert" : undefined}
-        >
-          {message}
-        </p>
-      ) : null}
+      <BriefMessage message={message} refused={refused} />
 
       <form action={saveDesignBriefAction}>
         <input name="projectId" type="hidden" value={projectId} />
@@ -175,13 +164,14 @@ export default async function BriefDetailsPage({
               Which colours and materials do you want — and any to avoid?
             </label>
             <textarea
-              className={`${underlineField} min-h-[64px]`}
+              className={`${underlineField} min-h-[64px]${fieldErrorClass("colorNotes", refused)}`}
               defaultValue={colourNotes.value}
               id="colorNotes"
               maxLength={briefTextAttributes("colorNotes").maxLength}
               name="colorNotes"
               placeholder="warm neutrals, brushed brass, deep walnut; nothing cold or grey..."
             />
+            <FieldError field="colorNotes" refused={refused} />
             {colourNotes.fromPalette ? (
               <p className="mt-[10px] font-body text-caption-tight font-medium uppercase tracking-[0.24em] text-accent-deep">
                 pulled from your inspiration · edit freely
@@ -207,39 +197,42 @@ export default async function BriefDetailsPage({
                 What does this room need to do, day to day?
               </label>
               <textarea
-                className={`${underlineField} min-h-[56px]`}
+                className={`${underlineField} min-h-[56px]${fieldErrorClass("functionalRequirements", refused)}`}
                 defaultValue={designBrief?.functional_requirements ?? ""}
                 id="functionalRequirements"
                 maxLength={briefTextAttributes("functionalRequirements").maxLength}
                 name="functionalRequirements"
                 placeholder="seating for six, child-safe finishes, blackout curtains, storage for toys..."
               />
+              <FieldError field="functionalRequirements" refused={refused} />
             </div>
             <div>
               <label className={questionClass} htmlFor="avoidNotes">
                 Anything we should keep out of the design?
               </label>
               <textarea
-                className={`${underlineField} min-h-[56px]`}
+                className={`${underlineField} min-h-[56px]${fieldErrorClass("avoidNotes", refused)}`}
                 defaultValue={designBrief?.avoid_notes ?? ""}
                 id="avoidNotes"
                 maxLength={briefTextAttributes("avoidNotes").maxLength}
                 name="avoidNotes"
                 placeholder="no glass coffee table, no high-pile rug, avoid visible brass..."
               />
+              <FieldError field="avoidNotes" refused={refused} />
             </div>
             <div>
               <label className={questionClass} htmlFor="inspirationNotes">
                 Your references — what to copy, what to ignore?
               </label>
               <textarea
-                className={`${underlineField} min-h-[56px]`}
+                className={`${underlineField} min-h-[56px]${fieldErrorClass("inspirationNotes", refused)}`}
                 defaultValue={designBrief?.inspiration_notes ?? ""}
                 id="inspirationNotes"
                 maxLength={briefTextAttributes("inspirationNotes").maxLength}
                 name="inspirationNotes"
                 placeholder="copy the calm of the second image; ignore the dark wall..."
               />
+              <FieldError field="inspirationNotes" refused={refused} />
             </div>
           </div>
         </div>
@@ -325,6 +318,7 @@ export default async function BriefDetailsPage({
                   className="mt-3 block w-full border-0 border-b border-[var(--rs-border-strong)] bg-transparent px-0 pb-2 font-body text-body-m text-ink outline-none transition-colors duration-micro ease-standard placeholder:italic placeholder:text-[var(--rs-text-disabled)] focus:border-[var(--rs-accent-deep)]"
                   defaultValue={spatialIntent.mustKeepClear?.[0] ?? ""}
                   id="mustKeepClear"
+                  maxLength={briefTextAttributes("mustKeepClear").maxLength}
                   name="mustKeepClear"
                   placeholder="keep the balcony door clear"
                   type="text"
@@ -387,10 +381,7 @@ export default async function BriefDetailsPage({
                 />
               </div>
             </div>
-            <MeasurementAssumptionNotes
-              intentAssumptions={spatialIntent.assumptions ?? []}
-              scalingNotes={savedScalingNotes}
-            />
+            <MeasurementAssumptionNotes roomType={room.room_type} savedNotes={savedAssumptionNotes} />
           </div>
 
           <div className="mt-8 border-t border-line pt-6">

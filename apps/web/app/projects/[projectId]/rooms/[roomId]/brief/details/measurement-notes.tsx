@@ -1,6 +1,6 @@
 "use client";
 
-import { measurementScalingNotes } from "@ritzy-studio/domain";
+import { measurementAssumptionNotes, parseSpatialIntent } from "@ritzy-studio/domain";
 import { useEffect, useState } from "react";
 
 // The assumption list on the brief's details screen (S5, design system 12.5).
@@ -12,21 +12,40 @@ import { useEffect, useState } from "react";
 // always open, because on a form the assumption is a consequence of what the
 // shopper is deciding in front of it.
 //
-// That justification only holds if the list follows what she is typing. A
-// server-rendered list would describe the measurements she last SAVED while
-// sitting directly beneath the inputs that override them, so a shopper who
-// types her three numbers would still be told the design is scaled from her
-// photographs until she submitted (review finding). The measurement half is
-// therefore recomputed here from the live field values; the intent
-// assumptions come from the server, because the fields that decide them are
-// elsewhere on the page and unchanged by this slice.
+// That justification only holds if the list follows the whole form. Every
+// field it depends on, the three measurements and the two spatial selects,
+// sits on this same screen above it, so a server-rendered list would assert
+// assumptions the shopper has already overridden: pick a fireplace as the
+// focal point and a saved-state list still says the design assumes the TV
+// wall (review finding). Everything is therefore read live, and the SAME
+// domain functions compose the list here as the ones the tests pin.
 
 const ROMAN = ["i", "ii", "iii", "iv", "v", "vi", "vii", "viii", "ix", "x"] as const;
 
-const readNumber = (id: string): number | null => {
+// The ids this component reads. `details-field-ids.test.ts` asserts the page
+// still renders every one of them, because a rename there would silently
+// freeze this panel on its saved state.
+export const ASSUMPTION_SOURCE_FIELD_IDS = {
+  wall: "wallLengthCm",
+  depth: "roomDepthCm",
+  ceiling: "ceilingHeightCm",
+  focalPoint: "focalPoint",
+  seatingPriority: "seatingPriority",
+  diningSeatCount: "diningSeatCount"
+} as const;
+
+const readValue = (id: string): string | null => {
   const field = document.getElementById(id);
-  const raw = field instanceof HTMLInputElement ? field.value.trim() : "";
-  if (raw.length === 0) {
+  if (field instanceof HTMLInputElement || field instanceof HTMLSelectElement) {
+    const raw = field.value.trim();
+    return raw.length > 0 ? raw : null;
+  }
+  return null;
+};
+
+const readNumber = (id: string): number | null => {
+  const raw = readValue(id);
+  if (raw === null) {
     return null;
   }
   const value = Number(raw);
@@ -34,45 +53,55 @@ const readNumber = (id: string): number | null => {
 };
 
 export function MeasurementAssumptionNotes({
-  intentAssumptions,
-  scalingNotes,
-  fieldIds = { wall: "wallLengthCm", depth: "roomDepthCm", ceiling: "ceilingHeightCm" }
+  roomType,
+  savedNotes
 }: {
-  // The assumptions parseSpatialIntent recorded, from the server.
-  intentAssumptions: readonly string[];
-  // The measurement lines for what is saved, so the panel is correct in the
-  // server-rendered markup before this component hydrates.
-  scalingNotes: readonly string[];
-  fieldIds?: { wall: string; depth: string; ceiling: string };
+  roomType: string;
+  // What the saved state assumes, so the server markup is right before this
+  // hydrates and a shopper with JavaScript disabled still sees the list.
+  savedNotes: readonly string[];
 }) {
-  const [liveScaling, setLiveScaling] = useState<readonly string[]>(scalingNotes);
+  const [notes, setNotes] = useState<readonly string[]>(savedNotes);
 
   useEffect(() => {
     const recompute = () =>
-      setLiveScaling(
-        measurementScalingNotes({
-          wallLengthCm: readNumber(fieldIds.wall),
-          roomDepthCm: readNumber(fieldIds.depth),
-          ceilingHeightCm: readNumber(fieldIds.ceiling)
+      setNotes(
+        measurementAssumptionNotes({
+          measurements: {
+            wallLengthCm: readNumber(ASSUMPTION_SOURCE_FIELD_IDS.wall),
+            roomDepthCm: readNumber(ASSUMPTION_SOURCE_FIELD_IDS.depth),
+            ceilingHeightCm: readNumber(ASSUMPTION_SOURCE_FIELD_IDS.ceiling)
+          },
+          spatialIntent: parseSpatialIntent(
+            {
+              spatialIntent: {
+                focalPoint: readValue(ASSUMPTION_SOURCE_FIELD_IDS.focalPoint) ?? "unknown",
+                seatingPriority: readValue(ASSUMPTION_SOURCE_FIELD_IDS.seatingPriority) ?? "unknown",
+                diningSeatCount: readNumber(ASSUMPTION_SOURCE_FIELD_IDS.diningSeatCount)
+              }
+            },
+            roomType
+          )
         })
       );
 
-    const fields = [fieldIds.wall, fieldIds.depth, fieldIds.ceiling]
+    const fields = Object.values(ASSUMPTION_SOURCE_FIELD_IDS)
       .map((id) => document.getElementById(id))
       .filter((field): field is HTMLElement => field !== null);
 
     recompute();
     for (const field of fields) {
       field.addEventListener("input", recompute);
+      field.addEventListener("change", recompute);
     }
     return () => {
       for (const field of fields) {
         field.removeEventListener("input", recompute);
+        field.removeEventListener("change", recompute);
       }
     };
-  }, [fieldIds.wall, fieldIds.depth, fieldIds.ceiling]);
+  }, [roomType]);
 
-  const notes = [...liveScaling, ...intentAssumptions];
   if (notes.length === 0) {
     return null;
   }

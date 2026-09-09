@@ -44,7 +44,7 @@ import {
   structuredBriefJson,
   type ProductRow
 } from "@/lib/services/sourcing-support";
-import { measurementsChanged, shopperStyleNote } from "@/lib/brief-fields";
+import { composeStyleNote, measurementsChanged, shopperStyleNote } from "@/lib/brief-fields";
 import { createClient } from "@/lib/supabase/server";
 import { finalRenderRetryHonoured, finalRenderStaleMs } from "@/lib/render";
 import { localSkuFidelityModeEnabled } from "@/lib/render-flags";
@@ -66,7 +66,14 @@ const INTERNAL_PILOT_SIGNUP_MESSAGE =
 
 
 function optionalString(formData: FormData, key: string) {
-  const value = String(formData.get(key) ?? "").trim();
+  // CRLF to LF before anything counts characters. The browser's maxLength
+  // counts a newline as one code unit, but form encoding sends it as two, so
+  // a shopper who pastes a bounded answer with paragraph breaks is truncated
+  // to a legal length in the field and then refused by the schema for a limit
+  // she is already under and cannot get further under (correctness review).
+  const value = String(formData.get(key) ?? "")
+    .replace(/\r\n/g, "\n")
+    .trim();
   return value.length > 0 ? value : undefined;
 }
 
@@ -831,20 +838,9 @@ export async function createRoomAction(formData: FormData) {
 
 // The shopper-facing name of a brief field, for the one message a refused
 // submission can produce.
-function briefFieldLabel(field: string): string {
-  const labels: Record<string, string> = {
-    colorNotes: "Your colours and materials answer",
-    functionalRequirements: "Your answer about what the room needs to do",
-    avoidNotes: "Your answer about what to keep out",
-    inspirationNotes: "Your note about your references",
-    styleNotes: "Your style note",
-    measurementNotes: "Your measurement note",
-    wallLengthCm: "The main wall measurement",
-    roomDepthCm: "The room depth measurement",
-    ceilingHeightCm: "The ceiling measurement"
-  };
-  return labels[field] ?? "One of your answers";
-}
+// Only the three brief steps that render a status note may receive one;
+// anything else lands on details, which does.
+const BRIEF_STEPS_WITH_MESSAGES = ["details", "style", "inspiration"];
 
 export async function saveDesignBriefAction(formData: FormData) {
   const briefStep = String(formData.get("briefStep") ?? "details");
@@ -855,7 +851,12 @@ export async function saveDesignBriefAction(formData: FormData) {
     roomType: String(formData.get("roomType") ?? ""),
     styleSlugs: formData.getAll("styleSlugs").map(String),
     avoidStyleSlugs: formData.getAll("avoidStyleSlugs").map(String),
-    styleNotes: optionalString(formData, "styleNotes"),
+    // Repaired BEFORE validation, not after. Rows already past the bound exist
+    // (the pre-S5 composition grew style_notes on every save), and the style
+    // step posts the stored value straight back; validating first would refuse
+    // those rooms for ever on a note their owner never typed and cannot see,
+    // and the repair below would never run (security and tests review).
+    styleNotes: shopperStyleNote(optionalString(formData, "styleNotes")),
     colorNotes: optionalString(formData, "colorNotes"),
     budgetNotes: optionalString(formData, "budgetNotes"),
     functionalRequirements: optionalString(formData, "functionalRequirements"),
@@ -875,23 +876,16 @@ export async function saveDesignBriefAction(formData: FormData) {
   // re-renders when she lands back.
   const result = designBriefSchema.safeParse(submission);
   if (!result.success) {
-    const projectId = String(formData.get("projectId") ?? "");
-    const roomId = String(formData.get("roomId") ?? "");
-    const issue = result.error.issues[0];
-    const field = issue?.path?.[0];
-    const label = typeof field === "string" ? briefFieldLabel(field) : "One of your answers";
-    const bound =
-      typeof field === "string" && field in BRIEF_FIELD_BOUNDS
-        ? BRIEF_FIELD_BOUNDS[field as keyof typeof BRIEF_FIELD_BOUNDS]
-        : null;
-    const limit = bound?.kind === "text" ? ` Keep it under ${bound.max} characters.` : "";
-    // Says what happened rather than asking for something impossible. The
-    // refused text is not on the screen (the field shows what was saved
-    // before), so telling her to "shorten it and continue" would name an edit
-    // she cannot make (design review finding).
+    // The FIELD NAME travels, not the copy. The screen resolves the wording
+    // and marks the named input, so the error treatment cannot be handed to
+    // anyone who can put text in the URL (security review), and the refusal
+    // lands on the thing that has to change rather than only on the page
+    // (design review).
+    const field = result.error.issues[0]?.path?.[0];
+    const refusalStep = BRIEF_STEPS_WITH_MESSAGES.includes(briefStep) ? briefStep : "details";
     redirect(
-      `/projects/${projectId}/rooms/${roomId}/brief/${briefStep === "details" ? "details" : briefStep}?tone=error&message=${encodeURIComponent(
-        `${label} was too long to save, so we kept the answer you had and changed nothing else.${limit}`
+      `/projects/${submission.projectId}/rooms/${submission.roomId}/brief/${refusalStep}?refused=${encodeURIComponent(
+        typeof field === "string" ? field : "unknown"
       )}`
     );
   }
@@ -940,17 +934,15 @@ export async function saveDesignBriefAction(formData: FormData) {
         .limit(1)
         .maybeSingle()
     : { data: null };
-  const shouldWriteMeasurementRow =
-    submittedDetailsStep &&
-    measurementsChanged(
-      {
-        wallLengthCm: parsed.wallLengthCm,
-        roomDepthCm: parsed.roomDepthCm,
-        ceilingHeightCm: parsed.ceilingHeightCm,
-        notes: parsed.measurementNotes
-      },
-      latestMeasurements ?? null
-    );
+  const shouldWriteMeasurementRow = measurementsChanged({
+    step: briefStep,
+    submitted: {
+      wallLengthCm: parsed.wallLengthCm,
+      roomDepthCm: parsed.roomDepthCm,
+      ceilingHeightCm: parsed.ceilingHeightCm
+    },
+    existing: latestMeasurements ?? null
+  });
 
   // What the room measures once this submission lands, which is NOT the same
   // question as whether a row needs writing. An unchanged resubmission writes
@@ -964,12 +956,11 @@ export async function saveDesignBriefAction(formData: FormData) {
         ceilingHeightCm: parsed.ceilingHeightCm ?? null,
         notes: parsed.measurementNotes ?? null
       }
-    : {
-        wallLengthCm: latestMeasurements?.wall_length_cm ?? null,
-        roomDepthCm: latestMeasurements?.room_depth_cm ?? null,
-        ceilingHeightCm: latestMeasurements?.ceiling_height_cm ?? null,
-        notes: latestMeasurements?.notes ?? null
-      };
+    : // The other brief steps carry no measurement inputs and this branch does
+      // not read the row (the query above runs only for the details step), so
+      // it is written as the nulls it evaluates to rather than as a fallback
+      // that looks like it reads something.
+      { wallLengthCm: null, roomDepthCm: null, ceilingHeightCm: null, notes: null };
   const hasMeasurements =
     effectiveMeasurements.wallLengthCm !== null ||
     effectiveMeasurements.roomDepthCm !== null ||
@@ -988,13 +979,16 @@ export async function saveDesignBriefAction(formData: FormData) {
   // so re-wrapping the wrapped value grew the column on every save until it
   // crossed the schema bound and the step could not be submitted at all
   // (review finding).
-  const resolvedStyleNotes = [
-    selectedStyleSummary ? `Selected visual styles: ${selectedStyleSummary}` : null,
-    shopperStyleNote(parsed.styleNotes) ?? null,
-    avoidedStyleSummary ? `Avoid styles: ${avoidedStyleSummary}.` : null
-  ]
-    .filter(Boolean)
-    .join("\n\n");
+  // Bounded at the write as well as at the read: the composed value is this
+  // app's own text plus the shopper's, and the machine half alone is 673
+  // characters with every style selected, so the sum has to be checked before
+  // it can lock the step (security review).
+  const resolvedStyleNotes = composeStyleNote({
+    selectedSummary: selectedStyleSummary,
+    shopperNote: parsed.styleNotes,
+    avoidedSummary: avoidedStyleSummary,
+    maxChars: BRIEF_FIELD_BOUNDS.styleNotes.max
+  });
 
   const { data: existingBrief } = await supabase
     .from("design_briefs")
@@ -1057,7 +1051,13 @@ export async function saveDesignBriefAction(formData: FormData) {
         : {}),
       ...(formData.has("diningSeatCount") ? { diningSeatCount: diningSeatCountRaw ?? null } : {}),
       ...(formData.has("mustKeepClear")
-        ? { mustKeepClear: optionalString(formData, "mustKeepClear") ?? null }
+        ? {
+            // Bounded at the write too: the attribute on the input stops a
+            // shopper, not a client that ignores it, and this value is
+            // re-read by every select on the row (security review).
+            mustKeepClear:
+              optionalString(formData, "mustKeepClear")?.slice(0, BRIEF_FIELD_BOUNDS.mustKeepClear.max) ?? null
+          }
         : {})
     };
   }
@@ -1112,7 +1112,9 @@ export async function saveDesignBriefAction(formData: FormData) {
       wall_length_cm: effectiveMeasurements.wallLengthCm,
       room_depth_cm: effectiveMeasurements.roomDepthCm,
       ceiling_height_cm: effectiveMeasurements.ceilingHeightCm,
-      notes: effectiveMeasurements.notes
+      // The form has no note field, so a note written by another source is
+      // carried forward rather than erased by a measurement edit.
+      notes: effectiveMeasurements.notes ?? latestMeasurements?.notes ?? null
     });
 
     if (measurementError) {

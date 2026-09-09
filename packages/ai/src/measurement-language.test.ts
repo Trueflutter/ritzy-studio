@@ -17,7 +17,7 @@ import { buildInitialConceptImagePrompt } from ".";
 const roomType = "living room";
 const intent = parseSpatialIntent({ spatialIntent: {} }, roomType);
 const notesFor = (measurements: { wallLengthCm?: number | null; roomDepthCm?: number | null; ceilingHeightCm?: number | null } | null) =>
-  measurementAssumptionNotes({ roomType, measurements, spatialIntent: intent });
+  measurementAssumptionNotes({ measurements, spatialIntent: intent });
 const promptFor = (measurements: { wallLengthCm?: number | null; roomDepthCm?: number | null; ceilingHeightCm?: number | null } | null) =>
   buildInitialConceptImagePrompt({
     generationPrompt: "A calm living room in warm neutrals.",

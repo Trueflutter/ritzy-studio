@@ -792,10 +792,7 @@ function notApplicable(ruleId: SpatialRuleId, message: string): SpatialRuleVerdi
 // `packages/ai/src/measurement-language.test.ts` pins the correspondence in
 // the package that can import both sides.
 
-export const MEASUREMENT_ASSUMPTION_MAX_CHARS = 200;
-
 export type MeasurementAssumptionInput = {
-  roomType: string;
   measurements: {
     wallLengthCm?: number | null;
     roomDepthCm?: number | null;
@@ -834,9 +831,5 @@ export function measurementAssumptionNotes({
     notes.push(assumption);
   }
 
-  return notes.map((note) =>
-    note.length <= MEASUREMENT_ASSUMPTION_MAX_CHARS
-      ? note
-      : `${note.slice(0, MEASUREMENT_ASSUMPTION_MAX_CHARS - 1)}.`
-  );
+  return notes;
 }

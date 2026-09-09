@@ -6,6 +6,7 @@ import {
   briefNumberAttributes,
   briefTextAttributes,
   colourNotesDefault,
+  composeStyleNote,
   measurementsChanged,
   shopperStyleNote
 } from "./brief-fields";
@@ -73,34 +74,43 @@ import {
     ceiling_height_cm: ceiling,
     notes
   });
+  const onDetails = (submitted: Parameters<typeof measurementsChanged>[0]["submitted"], existing: Parameters<typeof measurementsChanged>[0]["existing"]) =>
+    measurementsChanged({ step: "details", submitted, existing });
 
   // A room that never measured and submits nothing collects no empty rows.
-  assert.equal(measurementsChanged({}, null), false);
-  assert.equal(measurementsChanged({ wallLengthCm: 520 }, null), true, "the first measurement is written");
+  assert.equal(onDetails({}, null), false);
+  assert.equal(onDetails({ wallLengthCm: 520 }, null), true, "the first measurement is written");
 
   // The clearing case the old mandatory gate made unreachable.
-  assert.equal(
-    measurementsChanged({}, stored(520, 410, 300)),
-    true,
-    "emptying every field is a change that must be recorded"
-  );
-  assert.equal(
-    measurementsChanged({ wallLengthCm: 520, roomDepthCm: 410 }, stored(520, 410, 300)),
-    true,
-    "clearing one field is a change"
-  );
+  assert.equal(onDetails({}, stored(520, 410, 300)), true, "emptying every field is a change that must be recorded");
+  assert.equal(onDetails({ wallLengthCm: 520, roomDepthCm: 410 }, stored(520, 410, 300)), true, "clearing one field is a change");
 
   // An unchanged resubmission writes nothing, so pressing Continue twice does
   // not grow the table.
-  assert.equal(measurementsChanged({ wallLengthCm: 520, roomDepthCm: 410, ceilingHeightCm: 300 }, stored(520, 410, 300)), false);
-  assert.equal(measurementsChanged({}, stored(null, null, null)), false, "an empty row resubmitted empty is unchanged");
+  assert.equal(onDetails({ wallLengthCm: 520, roomDepthCm: 410, ceilingHeightCm: 300 }, stored(520, 410, 300)), false);
+  assert.equal(onDetails({}, stored(null, null, null)), false, "an empty row resubmitted empty is unchanged");
 
   // A changed value is a change.
-  assert.equal(measurementsChanged({ wallLengthCm: 521, roomDepthCm: 410, ceilingHeightCm: 300 }, stored(520, 410, 300)), true);
+  assert.equal(onDetails({ wallLengthCm: 521, roomDepthCm: 410, ceilingHeightCm: 300 }, stored(520, 410, 300)), true);
+
+  // The other brief steps carry no measurement inputs, so they can never
+  // clear a room's measurements however the submission looks. This is the
+  // guard that used to live as a conjunct in the action.
+  for (const step of ["style", "inspiration", "", "DETAILS"]) {
+    assert.equal(
+      measurementsChanged({ step, submitted: {}, existing: stored(520, 410, 300) }),
+      false,
+      `the ${step || "empty"} step cannot clear a measured room`
+    );
+  }
+
+  // A note written by another source (S5b's floor-plan pass) is not a change
+  // the details form can express, so it must not trigger a rewrite that would
+  // drop it.
   assert.equal(
-    measurementsChanged({ wallLengthCm: 520, roomDepthCm: 410, ceilingHeightCm: 300, notes: "the alcove is 40 cm deep" }, stored(520, 410, 300)),
-    true,
-    "a note is part of the record"
+    onDetails({ wallLengthCm: 520, roomDepthCm: 410, ceilingHeightCm: 300 }, stored(520, 410, 300, "the alcove is 40 cm deep")),
+    false,
+    "a stored note does not make an unchanged submission look changed"
   );
 }
 
@@ -113,31 +123,29 @@ import {
   assert.equal(shopperStyleNote("   "), undefined);
   assert.equal(shopperStyleNote("calm, not cold"), "calm, not cold");
 
-  const composedOnce = [
-    "Selected visual styles: Quiet Luxury, Warm Minimal",
-    "calm, not cold",
-    "Avoid styles: Industrial."
-  ].join("\n\n");
+  // Round-tripped through the real composer, not a pasted literal: rewording
+  // the composed line without updating the reader is exactly how the growth
+  // bug would come back, so the test has to exercise both halves together.
+  const compose = (shopperNote: string | undefined) =>
+    composeStyleNote({
+      selectedSummary: "Quiet Luxury, Warm Minimal",
+      shopperNote,
+      avoidedSummary: "Industrial"
+    });
+
+  const composedOnce = compose("calm, not cold");
   assert.equal(shopperStyleNote(composedOnce), "calm, not cold", "the composed lines are not the shopper's words");
 
-  // The already-grown case: composing repeatedly nested the machine lines.
-  const composedTwice = [
-    "Selected visual styles: Quiet Luxury, Warm Minimal",
-    "Selected visual styles: Quiet Luxury",
-    "calm, not cold",
-    "Avoid styles: Industrial.",
-    "Avoid styles: Industrial."
-  ].join("\n\n");
-  assert.equal(shopperStyleNote(composedTwice), "calm, not cold", "a grown value is repaired, not preserved");
+  // The growth this PR exists to stop: composing the composed value must not
+  // add anything, however many times it happens.
+  const composedTwice = compose(composedOnce);
+  assert.equal(composedTwice, composedOnce, "composing twice is composing once");
+  const composedFiveTimes = compose(compose(compose(composedTwice)));
+  assert.equal(composedFiveTimes.length, composedOnce.length, "the value cannot grow by repetition");
+  assert.equal(shopperStyleNote(composedFiveTimes), "calm, not cold");
 
-  // A room where the shopper wrote nothing keeps nothing, so the next
-  // composition is exactly the two machine lines and stops growing.
-  assert.equal(shopperStyleNote(["Selected visual styles: Quiet Luxury", "Avoid styles: Industrial."].join("\n\n")), undefined);
-
-  // Applying it twice changes nothing, which is what makes the composition
-  // safe to run on every save.
-  const once = shopperStyleNote(composedOnce);
-  assert.equal(shopperStyleNote(once), once);
+  // A room where the shopper wrote nothing keeps nothing.
+  assert.equal(shopperStyleNote(compose(undefined)), undefined);
 }
 
 console.log("brief fields tests passed");
