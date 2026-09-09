@@ -777,3 +777,58 @@ function needsMeasurement(ruleId: SpatialRuleId, message: string): SpatialRuleVe
 function notApplicable(ruleId: SpatialRuleId, message: string): SpatialRuleVerdict {
   return { ruleId, status: "not_applicable", message, warnings: [] };
 }
+
+// The assumption notes the brief's details screen shows beside its optional
+// measurement fields (S5). Measurements are optional, so the screen owes the
+// shopper a plain statement of what the design will do without them.
+//
+// The statement has to match the pipeline rather than sound reassuring.
+// `roomMeasurementsLanguage` in the AI package sends the model no dimensions
+// at all unless BOTH the wall length and the depth are known, so a wall length
+// on its own buys nothing and the honest line is still that the design is
+// scaled from the photographs. No default dimension is invented here: a
+// number nobody measured would either be decoration the render ignores, or,
+// if it were fed to the prompt to make the note true, a room sized to a guess.
+// `packages/ai/src/measurement-language.test.ts` pins the correspondence in
+// the package that can import both sides.
+
+export const MEASUREMENT_ASSUMPTION_MAX_CHARS = 200;
+
+export type MeasurementAssumptionInput = {
+  roomType: string;
+  measurements: {
+    wallLengthCm?: number | null;
+    roomDepthCm?: number | null;
+    ceilingHeightCm?: number | null;
+  } | null;
+  spatialIntent: SpatialIntent;
+};
+
+export function measurementAssumptionNotes({
+  measurements,
+  spatialIntent
+}: MeasurementAssumptionInput): string[] {
+  const notes: string[] = [];
+  const wallLengthCm = measurements?.wallLengthCm ?? null;
+  const roomDepthCm = measurements?.roomDepthCm ?? null;
+  const ceilingHeightCm = measurements?.ceilingHeightCm ?? null;
+  const planShapeKnown = Boolean(wallLengthCm) && Boolean(roomDepthCm);
+
+  if (!planShapeKnown) {
+    notes.push(
+      "Without the main wall and the room depth, the design is scaled from your photographs rather than exact dimensions."
+    );
+  } else if (!ceilingHeightCm) {
+    notes.push("The ceiling height is not stated, so the design keeps the proportions your photographs show.");
+  }
+
+  for (const assumption of spatialIntent.assumptions ?? []) {
+    notes.push(assumption);
+  }
+
+  return notes.map((note) =>
+    note.length <= MEASUREMENT_ASSUMPTION_MAX_CHARS
+      ? note
+      : `${note.slice(0, MEASUREMENT_ASSUMPTION_MAX_CHARS - 1)}.`
+  );
+}
