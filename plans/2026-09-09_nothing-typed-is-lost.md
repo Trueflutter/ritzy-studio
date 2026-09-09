@@ -331,6 +331,43 @@ repeated.
    browser criteria and the visual ladder are recorded as owed until you
    do, the way S4 recorded its reveal walk.
 
+## Deviations
+
+- **Step 2 and 5, three further losses the increment review found.** Redefining
+  `hasMeasurements` from "this submission carries measurements" to "the row
+  needs writing" broke its three other readers, so an unchanged resubmission
+  would have reported a fully measured room as unmeasured and regenerated its
+  clarifying questions with no dimensions. The two questions are now separate
+  values. The new refusal redirect also pointed at `/brief/style`, which
+  accepted no message and rendered none, so a refusal there was silent; and
+  that refusal was reachable, because the step round-trips its composed style
+  note through a hidden field and the action re-wrapped the wrapped value,
+  growing the column by about eighty characters per save until it crossed the
+  bound and the step could never be submitted again. The style page now renders
+  its message and `shopperStyleNote` makes the composition idempotent, which
+  also repairs an already-grown value on the next save. None of this was
+  foreseen by the plan; all of it is inside its objective.
+- **Step 4, the assumption list is a client component.** The plan had it
+  server-rendered. Rendered that way it described the last SAVED measurements
+  while sitting directly beneath the inputs that override them, so a shopper
+  who typed her three numbers was still told the design would be scaled from
+  her photographs until she submitted, which is the opposite of the plan's
+  stated reason for putting the list on the form at all. The measurement half
+  is now recomputed from the live fields; `measurementScalingNotes` was split
+  out of `measurementAssumptionNotes` so both sides share one rule.
+- **Step 2, the refusal's wording and tone.** The plan said the message would
+  name the field. The design review showed that naming it and saying "shorten
+  it and continue" asks for an edit the shopper cannot make, because the
+  refused text is not on the screen. The message now states what happened and
+  the limit, and it carries a tone so a rejection renders as an error rather
+  than through the neutral note the app uses for successes. A `tone` parameter
+  on the redirect is the minimum that achieves it; the shared status component
+  stays deferred.
+- **Step 4, the measurement placeholders.** Not in the plan. The empty state
+  was effectively unreachable while measurements were mandatory and is an
+  ordinary state now, and the grey sample numerals read as entered values
+  against a measured screen that uses the same number for real.
+
 ## Verification
 
 Checked on 2026-09-09 on branch `opus/s5a-intake-integrity`. Unit and
@@ -396,8 +433,39 @@ measurements and its colour note several times and leaving it measured at
   up from 82 on `main`. The diff's added lines contain no em dash and no
   dollar sign reaches user-visible text.
 
-### Not done
+### Design review, and what it is owed
 
-The visual ladder's captures were taken at 1440x900 and 390x844 in three
-states and scored by the ux-critic; its findings and their disposition are
-recorded in the PR.
+The three states were captured at 1440x900 and 390x844 and scored by the
+ux-critic against the rubric and the screen-map row. It returned FAIL(P0) on
+all three states. Three findings were caused or made prominent by this change
+and are fixed above: the refusal asking for an impossible edit, the refusal
+rendering as a neutral note, and the ghost numerals in the empty measurement
+fields.
+
+The rest are properties of the screen this change did not introduce and must
+not be bundled into a data-loss fix. They are recorded here so the PR that
+takes the screen inherits the evidence rather than rediscovering it:
+
+- The editorial header stack (eyebrow, 44px headline, four-line intro,
+  context line, style chip) takes 44 percent of the desktop fold and 58 to 72
+  percent of the first mobile screen, so no question and no input is visible
+  on a 390 wide screen in any state. The critic notes the headline itself is
+  approved in the design handoff, so this is a proportion problem rather than
+  a novel pattern, and that section 19.4 of the design system puts the first
+  input directly under the eyebrow with no intro paragraph.
+- The optional accelerator block is the only enclosed surface on the page, so
+  the optional content outranks the question list the contract calls dominant,
+  and the floor-plan dropzone is roughly seventeen times the area of the
+  primary action.
+- The primary action sits more than two viewports below the fold on desktop
+  and more than three screen heights down on mobile.
+- The must-keep-clear answer is a single-line input that clips a saved value
+  mid-word at both widths, which the contract's "saved values re-render"
+  promise does not survive.
+- The letterspaced captions that carry the word "optional" are the least
+  legible text on the screen, which matches the known form-typography backlog
+  item rather than anything new here.
+- The step rail says Questions is next while the button says Continue to
+  concepts.
+- Two contract states, plan-uploaded and room-identified, have no capture at
+  all and cannot be graded until S5b builds them.
