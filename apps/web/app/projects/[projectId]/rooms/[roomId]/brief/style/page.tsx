@@ -4,17 +4,25 @@ import { notFound, redirect } from "next/navigation";
 
 import { saveDesignBriefAction } from "@/app/actions";
 import { createClient } from "@/lib/supabase/server";
+import { BriefMessage, refusalCodesFrom, refusedFieldsFrom } from "../_components/brief-message";
 import { BriefShell } from "../_components/brief-shell";
 import { VisualStyleSelector } from "../visual-style-selector";
 
 export const dynamic = "force-dynamic";
 
 export default async function BriefStylePage({
-  params
+  params,
+  searchParams
 }: {
   params: Promise<{ projectId: string; roomId: string }>;
+  searchParams: Promise<{ message?: string; refused?: string }>;
 }) {
   const { projectId, roomId } = await params;
+  // Without this the step could refuse a submission and re-render
+  // identically, so the button looked dead (review finding).
+  const { message, refused } = await searchParams;
+  const refusedFields = refusedFieldsFrom(refused);
+  const refusalCodes = refusalCodesFrom(refused);
   const supabase = await createClient();
   const {
     data: { user }
@@ -58,6 +66,8 @@ export default async function BriefStylePage({
       subtitle="Pick the visual directions that feel closest. You can refine the language later."
       title="Choose the styles that feel right."
     >
+      <BriefMessage codes={refusalCodes} message={message} refused={refusedFields} />
+
       <form action={saveDesignBriefAction}>
         <input name="projectId" type="hidden" value={projectId} />
         <input name="roomId" type="hidden" value={roomId} />

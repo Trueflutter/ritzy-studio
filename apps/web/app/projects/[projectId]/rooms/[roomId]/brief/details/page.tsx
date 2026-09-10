@@ -1,11 +1,24 @@
 import { ButtonLink, SubmitButton } from "@ritzy-studio/ui";
-import { parseSpatialIntent, spatialLayoutModeForRoomType } from "@ritzy-studio/domain";
+import {
+  measurementAssumptionNotes,
+  parseSpatialIntent,
+  spatialLayoutModeForRoomType
+} from "@ritzy-studio/domain";
 import { notFound, redirect } from "next/navigation";
 
 import { saveDesignBriefAction } from "@/app/actions";
+import { briefNumberAttributes, briefTextAttributes, colourNotesDefault } from "@/lib/brief-fields";
 import { createClient } from "@/lib/supabase/server";
+import {
+  BriefMessage,
+  FieldError,
+  fieldErrorClass,
+  refusalCodesFrom,
+  refusedFieldsFrom
+} from "../_components/brief-message";
 import { BriefShell } from "../_components/brief-shell";
 import { FloorPlanUploader } from "../floor-plan-uploader";
+import { MeasurementAssumptionNotes } from "./measurement-notes";
 
 export const dynamic = "force-dynamic";
 
@@ -14,10 +27,12 @@ export default async function BriefDetailsPage({
   searchParams
 }: {
   params: Promise<{ projectId: string; roomId: string }>;
-  searchParams: Promise<{ message?: string }>;
+  searchParams: Promise<{ message?: string; refused?: string }>;
 }) {
   const { projectId, roomId } = await params;
-  const { message } = await searchParams;
+  const { message, refused } = await searchParams;
+  const refusedFields = refusedFieldsFrom(refused);
+  const refusalCodes = refusalCodesFrom(refused);
   const supabase = await createClient();
   const {
     data: { user }
@@ -72,14 +87,32 @@ export default async function BriefDetailsPage({
   const inspirationAnalysis = inspirationAnalysisFromStructuredJson(designBrief?.structured_json);
   const selectedStyles = selectedStylesFromStructuredJson(designBrief?.structured_json);
   const palette = palettePlaceholder(inspirationAnalysis);
-  const colorNotes = designBrief?.color_notes?.trim() ?? "";
-  const colorNotesValue = colorNotes || palette;
-  const colorPrefilled = !colorNotes && palette.length > 0;
+  // A saved note always wins over the palette read from the inspiration
+  // images. Both are rendered as a default value, never a placeholder, so a
+  // shopper who accepts the suggestion by leaving it alone still saves it.
+  const colourNotes = colourNotesDefault(designBrief?.color_notes, palette);
+  // Measurements are optional, so the screen says what the design does
+  // without them. The lines state what the pipeline actually carries; nothing
+  // here invents a dimension. This is the SAVED state, so the server markup is
+  // right before the panel hydrates and starts following what she types.
+  const savedAssumptionNotes = measurementAssumptionNotes({
+    measurements: {
+      wallLengthCm: measurements?.wall_length_cm ?? null,
+      roomDepthCm: measurements?.room_depth_cm ?? null,
+      ceilingHeightCm: measurements?.ceiling_height_cm ?? null
+    },
+    spatialIntent
+  });
 
   // Editorial field styling — questions read as italic prompts; answers sit on a hairline.
   const questionClass = "block font-display text-[20px] font-light italic leading-snug text-ink";
   const underlineField =
     "mt-3 block w-full resize-y border-0 border-b border-[var(--rs-border-strong)] bg-transparent px-0 pb-3 font-body text-body-m text-ink outline-none transition-colors duration-micro ease-standard placeholder:italic placeholder:text-[var(--rs-text-disabled)] focus:border-[var(--rs-accent-deep)]";
+  // The measurements are marked the same way the textareas are: a refusal
+  // naming a measurement used to mark no input anywhere on the page
+  // (correctness review).
+  const numberField =
+    "mt-3 block w-full border-0 border-b border-[var(--rs-border-strong)] bg-transparent px-0 pb-2 font-body text-body-m text-ink outline-none transition-colors duration-micro ease-standard placeholder:italic placeholder:text-[var(--rs-text-disabled)] focus:border-[var(--rs-accent-deep)] [font-feature-settings:'tnum','lnum']";
 
   return (
     <BriefShell
@@ -92,11 +125,7 @@ export default async function BriefDetailsPage({
       subtitle="Grouped so you can move through them in order — the vision first, then how the room lives, then the measurements. Answer what you know; skip the rest — we will note the assumption."
       title="The questions a designer would ask."
     >
-      {message ? (
-        <p className="mb-10 border border-line bg-surface px-4 py-3 font-body text-body-s text-ink-secondary">
-          {message}
-        </p>
-      ) : null}
+      <BriefMessage codes={refusalCodes} fieldsAreMarked message={message} refused={refusedFields} />
 
       <form action={saveDesignBriefAction}>
         <input name="projectId" type="hidden" value={projectId} />
@@ -148,13 +177,15 @@ export default async function BriefDetailsPage({
               Which colours and materials do you want — and any to avoid?
             </label>
             <textarea
-              className={`${underlineField} min-h-[64px]`}
-              defaultValue={colorPrefilled ? colorNotesValue : ""}
+              className={`${underlineField} min-h-[64px]${fieldErrorClass("colorNotes", refusedFields)}`}
+              defaultValue={colourNotes.value}
               id="colorNotes"
+              maxLength={briefTextAttributes("colorNotes").maxLength}
               name="colorNotes"
-              placeholder={colorPrefilled ? undefined : "warm neutrals, brushed brass, deep walnut; nothing cold or grey..."}
+              placeholder="warm neutrals, brushed brass, deep walnut; nothing cold or grey..."
             />
-            {colorPrefilled ? (
+            <FieldError field="colorNotes" refused={refusedFields} />
+            {colourNotes.fromPalette ? (
               <p className="mt-[10px] font-body text-caption-tight font-medium uppercase tracking-[0.24em] text-accent-deep">
                 pulled from your inspiration · edit freely
               </p>
@@ -179,36 +210,42 @@ export default async function BriefDetailsPage({
                 What does this room need to do, day to day?
               </label>
               <textarea
-                className={`${underlineField} min-h-[56px]`}
+                className={`${underlineField} min-h-[56px]${fieldErrorClass("functionalRequirements", refusedFields)}`}
                 defaultValue={designBrief?.functional_requirements ?? ""}
                 id="functionalRequirements"
+                maxLength={briefTextAttributes("functionalRequirements").maxLength}
                 name="functionalRequirements"
                 placeholder="seating for six, child-safe finishes, blackout curtains, storage for toys..."
               />
+              <FieldError field="functionalRequirements" refused={refusedFields} />
             </div>
             <div>
               <label className={questionClass} htmlFor="avoidNotes">
                 Anything we should keep out of the design?
               </label>
               <textarea
-                className={`${underlineField} min-h-[56px]`}
+                className={`${underlineField} min-h-[56px]${fieldErrorClass("avoidNotes", refusedFields)}`}
                 defaultValue={designBrief?.avoid_notes ?? ""}
                 id="avoidNotes"
+                maxLength={briefTextAttributes("avoidNotes").maxLength}
                 name="avoidNotes"
                 placeholder="no glass coffee table, no high-pile rug, avoid visible brass..."
               />
+              <FieldError field="avoidNotes" refused={refusedFields} />
             </div>
             <div>
               <label className={questionClass} htmlFor="inspirationNotes">
                 Your references — what to copy, what to ignore?
               </label>
               <textarea
-                className={`${underlineField} min-h-[56px]`}
+                className={`${underlineField} min-h-[56px]${fieldErrorClass("inspirationNotes", refusedFields)}`}
                 defaultValue={designBrief?.inspiration_notes ?? ""}
                 id="inspirationNotes"
+                maxLength={briefTextAttributes("inspirationNotes").maxLength}
                 name="inspirationNotes"
                 placeholder="copy the calm of the second image; ignore the dark wall..."
               />
+              <FieldError field="inspirationNotes" refused={refusedFields} />
             </div>
           </div>
         </div>
@@ -275,7 +312,7 @@ export default async function BriefDetailsPage({
                     Day-to-day dining seats
                   </label>
                   <input
-                    className="mt-3 block w-full border-0 border-b border-[var(--rs-border-strong)] bg-transparent px-0 pb-2 font-body text-body-m text-ink outline-none transition-colors duration-micro ease-standard placeholder:italic placeholder:text-[var(--rs-text-disabled)] focus:border-[var(--rs-accent-deep)] [font-feature-settings:'tnum','lnum']"
+                    className={numberField}
                     defaultValue={spatialIntent.diningSeatCount ?? ""}
                     id="diningSeatCount"
                     max="16"
@@ -294,6 +331,7 @@ export default async function BriefDetailsPage({
                   className="mt-3 block w-full border-0 border-b border-[var(--rs-border-strong)] bg-transparent px-0 pb-2 font-body text-body-m text-ink outline-none transition-colors duration-micro ease-standard placeholder:italic placeholder:text-[var(--rs-text-disabled)] focus:border-[var(--rs-accent-deep)]"
                   defaultValue={spatialIntent.mustKeepClear?.[0] ?? ""}
                   id="mustKeepClear"
+                  maxLength={briefTextAttributes("mustKeepClear").maxLength}
                   name="mustKeepClear"
                   placeholder="keep the balcony door clear"
                   type="text"
@@ -305,8 +343,8 @@ export default async function BriefDetailsPage({
           <div className="mt-8 border-t border-line pt-6">
             <p className="font-body text-caption font-medium uppercase tracking-[0.28em] text-ink-muted">
               Room measurements
-              <span className="ml-3 font-body text-caption-tight font-medium normal-case tracking-[0.24em] text-warning">
-                strongly recommended — sizes furniture honestly
+              <span className="ml-3 font-body text-caption-tight font-medium normal-case tracking-[0.24em] text-ink-subtle">
+                optional · they size the furniture against your real walls
               </span>
             </p>
             <div className="mt-5 grid gap-x-12 gap-y-8 md:grid-cols-3">
@@ -315,44 +353,51 @@ export default async function BriefDetailsPage({
                   Main wall cm
                 </label>
                 <input
-                  className="mt-3 block w-full border-0 border-b border-[var(--rs-border-strong)] bg-transparent px-0 pb-2 font-body text-body-m text-ink outline-none transition-colors duration-micro ease-standard placeholder:italic placeholder:text-[var(--rs-text-disabled)] focus:border-[var(--rs-accent-deep)] [font-feature-settings:'tnum','lnum']"
+                  className={`${numberField}${fieldErrorClass("wallLengthCm", refusedFields)}`}
                   defaultValue={measurements?.wall_length_cm ?? ""}
                   id="wallLengthCm"
-                  min="1"
+                  max={briefNumberAttributes("wallLengthCm").max}
+                  min={briefNumberAttributes("wallLengthCm").min}
                   name="wallLengthCm"
-                  placeholder="520"
+                  placeholder="e.g. 520"
                   type="number"
                 />
+                <FieldError field="wallLengthCm" refused={refusedFields} />
               </div>
               <div>
                 <label className={questionClass} htmlFor="roomDepthCm">
                   Room depth cm
                 </label>
                 <input
-                  className="mt-3 block w-full border-0 border-b border-[var(--rs-border-strong)] bg-transparent px-0 pb-2 font-body text-body-m text-ink outline-none transition-colors duration-micro ease-standard placeholder:italic placeholder:text-[var(--rs-text-disabled)] focus:border-[var(--rs-accent-deep)] [font-feature-settings:'tnum','lnum']"
+                  className={`${numberField}${fieldErrorClass("roomDepthCm", refusedFields)}`}
                   defaultValue={measurements?.room_depth_cm ?? ""}
                   id="roomDepthCm"
-                  min="1"
+                  max={briefNumberAttributes("roomDepthCm").max}
+                  min={briefNumberAttributes("roomDepthCm").min}
                   name="roomDepthCm"
-                  placeholder="410"
+                  placeholder="e.g. 410"
                   type="number"
                 />
+                <FieldError field="roomDepthCm" refused={refusedFields} />
               </div>
               <div>
                 <label className={questionClass} htmlFor="ceilingHeightCm">
                   Ceiling cm
                 </label>
                 <input
-                  className="mt-3 block w-full border-0 border-b border-[var(--rs-border-strong)] bg-transparent px-0 pb-2 font-body text-body-m text-ink outline-none transition-colors duration-micro ease-standard placeholder:italic placeholder:text-[var(--rs-text-disabled)] focus:border-[var(--rs-accent-deep)] [font-feature-settings:'tnum','lnum']"
+                  className={`${numberField}${fieldErrorClass("ceilingHeightCm", refusedFields)}`}
                   defaultValue={measurements?.ceiling_height_cm ?? ""}
                   id="ceilingHeightCm"
-                  min="1"
+                  max={briefNumberAttributes("ceilingHeightCm").max}
+                  min={briefNumberAttributes("ceilingHeightCm").min}
                   name="ceilingHeightCm"
-                  placeholder="290"
+                  placeholder="e.g. 290"
                   type="number"
                 />
+                <FieldError field="ceilingHeightCm" refused={refusedFields} />
               </div>
             </div>
+            <MeasurementAssumptionNotes roomType={room.room_type} savedNotes={savedAssumptionNotes} />
           </div>
 
           <div className="mt-8 border-t border-line pt-6">

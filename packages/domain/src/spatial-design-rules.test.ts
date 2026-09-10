@@ -5,6 +5,7 @@ import {
   evaluateHardCheckableSpatialRules,
   evaluateSpatialRule,
   hardCheckableSpatialRuleIds,
+  measurementAssumptionNotes,
   parseSpatialIntent,
   spatialDesignRules,
   spatialLayoutModeForRoomType,
@@ -283,3 +284,62 @@ function designerVerifiedMeasurements(wallLengthCm: number, roomDepthCm: number)
     confidence: "designer_verified"
   };
 }
+
+// S5 (AC 6): the assumption notes the brief's details screen shows when
+// measurements are missing. They state what the pipeline actually does, which
+// is to scale the design from the photographs, because
+// roomMeasurementsLanguage sends no dimensions at all unless BOTH the wall
+// length and the depth are known. Inventing a default ceiling to display
+// would be decoration the render ignores, or, if it were fed in to make the
+// note true, a room sized to a number nobody measured.
+{
+  const intent = (roomType: string) => parseSpatialIntent({ spatialIntent: {} }, roomType);
+  const lines = (roomType: string, measurements: { wallLengthCm?: number | null; roomDepthCm?: number | null; ceilingHeightCm?: number | null } | null) =>
+    measurementAssumptionNotes({ measurements, spatialIntent: intent(roomType) });
+
+  const none = lines("Living Room", null);
+  assert.ok(
+    none.some((line) => /scaled from your photographs/i.test(line)),
+    "a room with no measurements is told the design is scaled from its photographs"
+  );
+
+  // A wall length without a depth buys nothing: the prompt drops both. The
+  // note must say so rather than implying the number was used.
+  const wallOnly = lines("Living Room", { wallLengthCm: 520, roomDepthCm: null, ceilingHeightCm: 300 });
+  assert.ok(
+    wallOnly.some((line) => /scaled from your photographs/i.test(line)),
+    "one dimension alone is still scaled from photographs"
+  );
+
+  const noCeiling = lines("Living Room", { wallLengthCm: 520, roomDepthCm: 410, ceilingHeightCm: null });
+  assert.ok(
+    !noCeiling.some((line) => /scaled from your photographs/i.test(line)),
+    "wall and depth together are used, so no photograph line"
+  );
+  assert.ok(noCeiling.some((line) => /ceiling/i.test(line)), "the missing ceiling is named");
+
+  const all = lines("Living Room", { wallLengthCm: 520, roomDepthCm: 410, ceilingHeightCm: 300 });
+  assert.equal(
+    all.filter((line) => /scaled from your photographs|ceiling/i.test(line)).length,
+    0,
+    "a fully measured room gets no measurement note"
+  );
+
+  // The intent assumptions parseSpatialIntent already records travel with
+  // them, so the screen shows one list rather than two.
+  assert.ok(
+    all.some((line) => /focal point/i.test(line)),
+    "a living room with no chosen focal point still carries that assumption"
+  );
+  const bedroom = lines("Bedroom", { wallLengthCm: 400, roomDepthCm: 380, ceilingHeightCm: 290 });
+  assert.equal(bedroom.length, 0, "a fully measured bedroom with nothing assumed shows no list");
+
+  // Every line is a sentence a shopper can read, bounded so the screen cannot
+  // be flooded by a hostile brief value.
+  for (const line of [...none, ...wallOnly, ...noCeiling, ...all]) {
+    assert.ok(line.length > 0 && line.length <= 200, `assumption line is bounded: ${line}`);
+    assert.ok(/[.!?]$/.test(line), `assumption line is a sentence: ${line}`);
+  }
+}
+
+console.log("measurement assumption note tests passed");
