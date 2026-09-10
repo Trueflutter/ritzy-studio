@@ -1,5 +1,5 @@
 {
-  "source": "Tilal Al Furjan, 4 bedroom villa type 4B-D, page 15 of the developer's sales brochure. Supplied by Ayo on 2026-09-10 with the observation that many owners have exactly this: a marketing brochure PDF for the villa they bought.",
+  "source": "Tilal Al Furjan, 4 bedroom villa type 4B-D, page 15 of the developer's sales brochure. Developer marketing collateral for a unit type, freely distributed for sales; it names no address and no owner. Kept as the fixture for the commonest artefact a buyer holds: the brochure PDF for the home they bought.",
   "role": "the S5c case, and the one that shows what rasterisation can and cannot recover. Not read by S5b, which refuses PDFs.",
   "measuredOn": "2026-09-10, with the real floor_plan_read stage on gpt-5-mini",
   "structure": {

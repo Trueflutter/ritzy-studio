@@ -359,7 +359,7 @@ proof is obtained is the open question below.
 | 11 | component + browser | `detected-rooms.test.tsx` renders a job whose asset id does not match the attached asset and asserts no control appears; the harness uploads a second plan and asserts the first plan's rooms are gone |
 | 12 | component + browser | `detected-rooms.test.tsx` for the outline on focus with and without a box; the harness captures both widths for the ux-critic |
 | 13 | browser | the harness counts its own interactions for the J3 step 6 path |
-| 14 | unit + browser | `floor-plan-rooms.test.ts` for the floor in `floorPlanReadDecision`; the harness uploads `floor-plan-listing-thumbnail.jpeg` (390 by 578) and asserts no `ai_jobs` row and the honest line |
+| 14 | unit + browser | `floor-plan-rooms.test.ts` for the floor in `floorPlanReadDecision`; the harness uploads the Emaar plan downscaled below the floor and asserts no `ai_jobs` row and the honest line |
 
 The row assertions read through the service client the harness already uses
 (`scripts/dev-harness/read-ai-job.mjs`), extended to read `room_measurements`,
@@ -511,14 +511,19 @@ delta around the action rather than an absolute.
   first guess at the readable floor: 1200 would have refused the real case the
   feature exists for. The floor is 800 now, bracketed by both fixtures, and the
   evidence run still sets the final number.
-- **A readable-resolution floor, and what the supplied fixture is for.** The
-  plan assumed any uploaded image is worth reading. The real plan supplied is
-  390 by 578 pixels, a listing thumbnail, so its dimension strings are about
-  four pixels tall and any answer from it is a guess. A guess is the worst
-  thing this feature can produce, because the confirmation writes
-  `confidence = 'verified'` and that is what switches dimension-aware product
-  fit back on. So a plan below the floor is refused before any call is made
-  (criterion 14), and the supplied fixture earns its place as the negative
-  case rather than the positive one. The positive case is the synthetic metric
-  plan, drawn large enough to be legible, and Ayo is asked for a
-  full-resolution copy of a real plan if he has one.
+- **A readable-resolution floor.** The plan assumed any uploaded image is
+  worth reading. The first real plan Ayo supplied was a listing thumbnail
+  whose dimension strings were about four pixels tall, so any answer from it
+  was a guess, and a guess is the worst thing this feature can produce:
+  the confirmation writes `confidence = 'verified'`, which is what switches
+  dimension-aware product fit back on. So a plan below the floor is refused
+  before any call is made (criterion 14).
+- **That thumbnail is not in the repository, and must not be.** It was a real
+  estate listing sheet for a private residence, carrying the street address,
+  the MLS number and the room-by-room interior layout of somebody's home, and
+  this repository is public (security review, caught before the branch was
+  ever pushed). The commit that added it was rewritten out of the branch
+  rather than deleted in a later one, because a delete leaves the blob in the
+  history a push would publish. Criterion 14 is driven by the Emaar plan
+  downscaled below the floor instead, which is developer marketing collateral
+  and carries nobody's address.
