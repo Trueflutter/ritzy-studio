@@ -57,6 +57,7 @@ import {
   withoutRefusedFields,
   type BriefRefusal
 } from "@/lib/brief-fields";
+import { writeBriefDocument } from "@/lib/services/brief-document";
 import { confirmDetectedRoom, readFloorPlanForRoom } from "@/lib/services/floor-plan-read";
 import { createClient } from "@/lib/supabase/server";
 import { finalRenderRetryHonoured, finalRenderStaleMs } from "@/lib/render";
@@ -1051,83 +1052,87 @@ export async function saveDesignBriefAction(formData: FormData) {
     .limit(1)
     .maybeSingle();
 
-  const structuredJson = structuredBriefJson(existingBrief?.structured_json);
+  // Applied to whatever is in the column at write time, not to what was read
+  // at the top of this action. The floor plan confirmation writes the same
+  // document, and the screen lets her press Continue while one is in flight,
+  // so a merge computed once against a stale read drops the other writer's key
+  // whichever way the two interleave (PR review).
+  const mergeStructuredJson = (current: ReturnType<typeof structuredBriefJson>) => {
+    const structuredJson = { ...current };
 
-  if (formData.has("styleSlugs") || formData.has("avoidStyleSlugs")) {
-    structuredJson.visualPreferences = {
-      likedStyleSlugs: parsed.styleSlugs,
-      avoidedStyleSlugs: parsed.avoidStyleSlugs,
-      likedStyles: visualStyleOptions
-        .filter((option) => parsed.styleSlugs.includes(option.slug))
-        .map((option) => ({
-          slug: option.slug,
-          name: option.name,
-          description: option.description,
-          tags: option.tags
-        })),
-      avoidedStyles: visualStyleOptions
-        .filter((option) => parsed.avoidStyleSlugs.includes(option.slug))
-        .map((option) => ({
-          slug: option.slug,
-          name: option.name
-        }))
-    };
-  }
+    if (formData.has("styleSlugs") || formData.has("avoidStyleSlugs")) {
+      structuredJson.visualPreferences = {
+        likedStyleSlugs: parsed.styleSlugs,
+        avoidedStyleSlugs: parsed.avoidStyleSlugs,
+        likedStyles: visualStyleOptions
+          .filter((option) => parsed.styleSlugs.includes(option.slug))
+          .map((option) => ({
+            slug: option.slug,
+            name: option.name,
+            description: option.description,
+            tags: option.tags
+          })),
+        avoidedStyles: visualStyleOptions
+          .filter((option) => parsed.avoidStyleSlugs.includes(option.slug))
+          .map((option) => ({
+            slug: option.slug,
+            name: option.name
+          }))
+      };
+    }
 
-  if (hasMeasurements) {
-    structuredJson.measurements = {
-      wallLengthCm: effectiveMeasurements.wallLengthCm,
-      roomDepthCm: effectiveMeasurements.roomDepthCm,
-      ceilingHeightCm: effectiveMeasurements.ceilingHeightCm,
-      notes: effectiveMeasurements.notes,
-      source: "manual",
-      confidence: "verified"
-    };
-  }
+    if (hasMeasurements) {
+      structuredJson.measurements = {
+        wallLengthCm: effectiveMeasurements.wallLengthCm,
+        roomDepthCm: effectiveMeasurements.roomDepthCm,
+        ceilingHeightCm: effectiveMeasurements.ceilingHeightCm,
+        notes: effectiveMeasurements.notes,
+        source: "manual",
+        confidence: "verified"
+      };
+    }
 
-  if (
-    formData.has("focalPoint") ||
-    formData.has("seatingPriority") ||
-    formData.has("diningSeatCount") ||
-    formData.has("mustKeepClear")
-  ) {
-    const existingIntent =
-      structuredJson.spatialIntent && typeof structuredJson.spatialIntent === "object"
-        ? (structuredJson.spatialIntent as Record<string, unknown>)
-        : {};
-    const diningSeatCountRaw = optionalNumber(formData, "diningSeatCount");
-    structuredJson.spatialIntent = {
-      ...existingIntent,
-      // Both are rendered as selects, so a value outside the list came from a
-      // client that ignored the markup. parseSpatialIntent coerces on read, so
-      // nothing unvalidated reaches a prompt, but the column would still carry
-      // whatever was posted and re-read it on every select for the life of the
-      // room (security review).
-      ...(formData.has("focalPoint")
-        ? { focalPoint: allowedValue(optionalString(formData, "focalPoint"), spatialFocalPointValues) }
-        : {}),
-      ...(formData.has("seatingPriority")
-        ? { seatingPriority: allowedValue(optionalString(formData, "seatingPriority"), spatialSeatingPriorityValues) }
-        : {}),
-      ...(formData.has("diningSeatCount") ? { diningSeatCount: diningSeatCountRaw ?? null } : {}),
-      ...(formData.has("mustKeepClear")
-        ? {
-            // Bounded at the write too: the attribute on the input stops a
-            // shopper, not a client that ignores it, and this value is
-            // re-read by every select on the row (security review).
-            mustKeepClear:
-              optionalString(formData, "mustKeepClear")?.slice(0, BRIEF_FIELD_BOUNDS.mustKeepClear.max) ?? null
-          }
-        : {})
-    };
-  }
+    if (
+      formData.has("focalPoint") ||
+      formData.has("seatingPriority") ||
+      formData.has("diningSeatCount") ||
+      formData.has("mustKeepClear")
+    ) {
+      const existingIntent =
+        structuredJson.spatialIntent && typeof structuredJson.spatialIntent === "object"
+          ? (structuredJson.spatialIntent as Record<string, unknown>)
+          : {};
+      const diningSeatCountRaw = optionalNumber(formData, "diningSeatCount");
+      structuredJson.spatialIntent = {
+        ...existingIntent,
+        // Both are rendered as selects, so a value outside the list came from a
+        // client that ignored the markup. parseSpatialIntent coerces on read, so
+        // nothing unvalidated reaches a prompt, but the column would still carry
+        // whatever was posted and re-read it on every select for the life of the
+        // room (security review).
+        ...(formData.has("focalPoint")
+          ? { focalPoint: allowedValue(optionalString(formData, "focalPoint"), spatialFocalPointValues) }
+          : {}),
+        ...(formData.has("seatingPriority")
+          ? { seatingPriority: allowedValue(optionalString(formData, "seatingPriority"), spatialSeatingPriorityValues) }
+          : {}),
+        ...(formData.has("diningSeatCount") ? { diningSeatCount: diningSeatCountRaw ?? null } : {}),
+        ...(formData.has("mustKeepClear")
+          ? {
+              // Bounded at the write too: the attribute on the input stops a
+              // shopper, not a client that ignores it, and this value is
+              // re-read by every select on the row (security review).
+              mustKeepClear:
+                optionalString(formData, "mustKeepClear")?.slice(0, BRIEF_FIELD_BOUNDS.mustKeepClear.max) ?? null
+            }
+          : {})
+      };
+    }
 
-  const briefPayload: Database["public"]["Tables"]["design_briefs"]["Update"] & {
-    room_id: string;
-  } = {
-    room_id: parsed.roomId,
-    structured_json: structuredJson as Database["public"]["Tables"]["design_briefs"]["Update"]["structured_json"]
+      return structuredJson;
   };
+
+  const briefPayload: Database["public"]["Tables"]["design_briefs"]["Update"] = {};
 
   // Not written when the note itself was refused: the composition would then
   // run without her words and DELETE the note that could not be taken, which
@@ -1161,20 +1166,13 @@ export async function saveDesignBriefAction(formData: FormData) {
   if (avoidNotes !== undefined) briefPayload.avoid_notes = avoidNotes;
   if (inspirationNotes !== undefined) briefPayload.inspiration_notes = inspirationNotes;
 
-  const briefResult = existingBrief
-    ? await supabase
-        .from("design_briefs")
-        .update(briefPayload)
-        .eq("id", existingBrief.id)
-        .select("id")
-        .single()
-    : await supabase.from("design_briefs").insert(briefPayload).select("id").single();
-
-  if (briefResult.error) {
-    throw new Error(briefResult.error.message);
-  }
-
-  const designBriefId = briefResult.data.id;
+  // Through the column's one guarded writer, so a confirmation landing between
+  // this action's read and its write cannot be erased by it, and cannot erase
+  // these answers either (PR review).
+  const { id: designBriefId } = await writeBriefDocument(supabase, parsed.roomId, {
+    columns: briefPayload,
+    merge: mergeStructuredJson
+  });
 
   if (shouldWriteMeasurementRow) {
     const { error: measurementError } = await supabase.from("room_measurements").insert({

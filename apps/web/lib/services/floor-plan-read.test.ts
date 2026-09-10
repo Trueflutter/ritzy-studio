@@ -291,6 +291,9 @@ async function main() {
       if (call.table === "design_briefs" && call.op === "update") {
         return { data: [{ id: "brief-1" }] };
       }
+      if (call.table === "design_briefs" && call.op === "insert") {
+        return { data: { id: "brief-1" } };
+      }
       return { data: null };
     };
     const { client } = fakeSupabase(respond);

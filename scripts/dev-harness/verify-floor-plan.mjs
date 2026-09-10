@@ -13,11 +13,15 @@
 import { chromium } from "playwright";
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 // Everything is resolved from this file, so the leg runs wherever the
 // repository is checked out. It carried one developer's absolute paths, which
 // is fine for a scratch script and not for one in the repository (review).
-const HARNESS = path.dirname(new URL(import.meta.url).pathname);
+// fileURLToPath, not `new URL(...).pathname`: the latter keeps percent
+// encoding, so a checkout under a path with a space in it resolves to a
+// directory that does not exist (review).
+const HARNESS = path.dirname(fileURLToPath(import.meta.url));
 const FIXTURES = `${HARNESS}/fixtures`;
 const OUT = process.env.RITZY_HARNESS_OUT ?? `${HARNESS}/e2e-shots/floor-plan`;
 fs.mkdirSync(OUT, { recursive: true });
