@@ -414,8 +414,66 @@ gate of their own.
    what bring the count inside budget. Flagging it so the parent plan's
    criteria are not read as owed by this slice.
 
+## Verification
+
+Checked on 2026-09-10 on branch `opus/s5b-plan-names-the-room`. The unit,
+component and service criteria are proven by the package suites; the ones that
+are behaviours of a `"use server"` action or of a real model were driven
+against the running app and against the two real plans in the fixtures.
+
+**The readable floor, measured rather than guessed.** The Emaar plan was read
+at six widths, scored against the figures printed on it (seven rooms named,
+six of them dimensioned):
+
+| Width | Unit read | Rooms named | Dimensions right | Wrong |
+|---|---|---|---|---|
+| 1067 (as published) | metres | 7 of 7 | 6 of 6 | 0 |
+| 900 | metres | 7 of 7 | 6 of 6 | 0 |
+| 800 | metres | 7 of 7 | 6 of 6 | 0 |
+| 700 | metres | 7 of 7 | 6 of 6 | 0 |
+| 600 | metres | 7 of 7 | 5 of 6 | 1 |
+| 500 | unknown | 6 of 7 | 0 of 6 | 0 |
+
+Six calls, USD 0.032 in total. The floor stays at 800: the first WRONG number
+appears at 600, and this is the friendliest possible sample, one apartment on a
+wide sheet. A denser drawing fails earlier at the same width, which the 390
+pixel listing thumbnail of a three-level house shows at the other end. The 500
+row is the safety rail working rather than a failure: the model could not tell
+what the drawing was drawn in, said so, and every dimension was dropped instead
+of guessed.
+
+**Criterion 9, read against ground truth.** At its published resolution the
+Emaar plan returns all seven rooms with the drawing's own names, every
+dimension exact against the recorded figures (Living 470 by 320, both bedrooms,
+dining and kitchen, bathroom, balcony), `unitRead` metres, and Storage with no
+dimensions because the drawing prints none for it. USD 0.005 per read.
+
+**The journey, in a browser.** Seventeen checks, all passing, on the e2e
+persona's room: the listing thumbnail refused with nothing spent, the PDF
+refused with nothing spent, the Emaar plan read once with its cost recorded and
+not read again on reload, the chips carrying the numbers they would write, the
+room the plan does not size saying so, confirming filling the fields without a
+reload, the assumption panel following, one measurement row written from the
+plan at `verified` pointing at the asset, a ceiling typed earlier surviving a
+plan that prints none, the outline drawn on the plan, and an unedited Continue
+writing no further row so the plan stays the source.
+
+Test data: the run used the e2e persona's own room
+`f4fba429-63e0-45cf-b7c6-eefc81657b55`, which now carries the Emaar plan as its
+floor-plan asset and a `floor_plan` measurement row at 470 by 320 by 300. A
+room of its own would have been cleaner; the designer free-room trigger refuses
+a second one, which is S6's gate doing its job, so every count in the run is a
+delta around the action rather than an absolute.
+
 ## Deviations
 
+- **No synthetic plan.** The plan called for one, drawn large and metric, as
+  the positive fixture and as the ladder that sets the readable floor. Both
+  jobs are done better by the real Emaar drawing: the ladder runs on it by
+  downscaling, which measures a real plan rather than one whose author knew
+  what the test needed, and it is the positive case already. The plan-attacker
+  warned about exactly that weakness in a fixture I would draw myself, so the
+  synthetic one is dropped rather than added for completeness.
 - **Units, which the plan never mentioned.** The real fixture Ayo supplied is
   a US listing plan in feet-and-inches decimal shorthand, where `14.11` means
   14 feet 11 inches and not 14.11 feet; Dubai plans are metric and usually
