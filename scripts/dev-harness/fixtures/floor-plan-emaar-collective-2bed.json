@@ -1,0 +1,54 @@
+{
+  "source": "Emaar Collective 2.0, Dubai Hills Estate, Tower B, 2 bedroom units 02 and 03. Developer marketing collateral, published on the agency listing page https://drehomes.ae/emaar-collective-2-dubai/floor-plan.php and downloaded 2026-09-10. Committed on Ayo's instruction: these are distributed freely for marketing and on property listings.",
+  "role": "the positive case, and the realistic one: a real Dubai apartment plan, metric, with printed room dimensions, one named room carrying none, an area table in both square feet and square metres, and a key plan of five building diagrams whose unit numbers a read must not mistake for rooms.",
+  "pixels": {
+    "width": 1067,
+    "height": 550
+  },
+  "unitNotation": "metres, printed as 4.7m x 3.2m",
+  "note": "The longest edge is 1067, which is what a real developer publishes. Any readable-resolution floor above that would refuse this drawing.",
+  "rooms": [
+    {
+      "label": "Living",
+      "printed": "4.7m x 3.2m",
+      "wallLengthCm": 470,
+      "roomDepthCm": 320
+    },
+    {
+      "label": "Bedroom 1",
+      "printed": "4.6m x 2.8m",
+      "wallLengthCm": 460,
+      "roomDepthCm": 280
+    },
+    {
+      "label": "Bedroom 2",
+      "printed": "4.6m x 2.7m",
+      "wallLengthCm": 460,
+      "roomDepthCm": 270
+    },
+    {
+      "label": "Dining/Kitchen",
+      "printed": "2.4m x 3.2m",
+      "wallLengthCm": 320,
+      "roomDepthCm": 240
+    },
+    {
+      "label": "Bathroom",
+      "printed": "2.6m x 1.5m",
+      "wallLengthCm": 260,
+      "roomDepthCm": 150
+    },
+    {
+      "label": "Balcony",
+      "printed": "1.2m x 2.0m",
+      "wallLengthCm": 200,
+      "roomDepthCm": 120
+    },
+    {
+      "label": "Storage",
+      "printed": null,
+      "wallLengthCm": null,
+      "roomDepthCm": null
+    }
+  ]
+}

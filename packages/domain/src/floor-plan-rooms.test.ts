@@ -197,6 +197,19 @@ import {
     "the floor is on the LONGEST edge, so a wide plan qualifies"
   );
 
+  // The case the floor must not refuse: a real Emaar marketing plan, which is
+  // what a Dubai developer publishes and what the fixtures now carry. A floor
+  // above this would reject the drawing the feature exists for.
+  assert.equal(
+    floorPlanReadDecision({
+      asset: { id: attached, mimeType: "image/jpeg", widthPx: 1067, heightPx: 550 },
+      newestJob: null
+    }).action,
+    "read"
+  );
+  assert.ok(PLAN_READABLE_MIN_EDGE_PX < 1067, "the floor sits below what developers publish");
+  assert.ok(PLAN_READABLE_MIN_EDGE_PX > 578, "and above the listing thumbnail nothing can be read from");
+
   // An unknown size is read rather than refused: `readImageSize` returns null
   // for a format it cannot measure in the browser, and refusing on that would
   // turn a missing measurement into a missing feature.

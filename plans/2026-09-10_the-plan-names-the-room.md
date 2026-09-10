@@ -426,6 +426,17 @@ gate of their own.
   drawing, and Ayo's fixture has three, with the label "Bedroom" on three
   different rooms. The detected-room record gains an optional `level` and the
   chip shows it, or three identical chips would ask her to pick blind.
+- **A real Dubai plan, found online on Ayo's instruction, and what it did to
+  the floor.** The fixture set is now two real drawings that bracket the
+  problem. Emaar's Collective 2.0 two-bedroom marketing plan (Dubai Hills
+  Estate, from the agency listing page) is the positive case: metric, printed
+  room dimensions in metres, one named room carrying none, an area table in
+  both square feet and square metres, and a key plan of five building diagrams
+  whose unit numbers a read must not mistake for rooms. It is published at 1067
+  by 550, which is what a developer actually distributes, and that refuted the
+  first guess at the readable floor: 1200 would have refused the real case the
+  feature exists for. The floor is 800 now, bracketed by both fixtures, and the
+  evidence run still sets the final number.
 - **A readable-resolution floor, and what the supplied fixture is for.** The
   plan assumed any uploaded image is worth reading. The real plan supplied is
   390 by 578 pixels, a listing thumbnail, so its dimension strings are about

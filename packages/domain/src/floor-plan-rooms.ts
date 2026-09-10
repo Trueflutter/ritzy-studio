@@ -37,12 +37,23 @@ export const DETECTED_ROOM_LABEL_MAX = 40;
 // is the room, and an outline the shopper sees as a dot.
 export const DETECTED_ROOM_BOX_MIN_EDGE = 0.02;
 
-// The longest edge a plan needs before a read is worth paying for. The real
-// listing plan in `scripts/dev-harness/fixtures` is 390 by 578, which puts its
-// dimension strings at about four pixels tall; the number below is set by the
-// evidence run, which reads the synthetic fixture at descending widths and
-// finds where the answer stops matching the drawing.
-export const PLAN_READABLE_MIN_EDGE_PX = 1200;
+// The longest edge a plan needs before a read is worth paying for.
+//
+// Both fixtures are real, and between them they bracket this number. The
+// listing thumbnail is 390 by 578 for a three-level house, which leaves each
+// room about sixty pixels wide and its dimension strings about four pixels
+// tall: nothing can be read off it, and a guess written as `verified` is the
+// worst thing this feature can produce. The Emaar marketing plan is 1067 by
+// 550 for one apartment, which leaves its room labels legible, and that is
+// what a Dubai developer actually publishes. A floor set above 1067 would
+// refuse the real case it was built for, which is how this number came down
+// from a first guess of 1200.
+//
+// It is a proxy: what matters is pixels per room, not pixels per sheet, and
+// this cannot know how much building is on the page. The evidence run reads
+// the synthetic plan at descending widths to find where the answer stops
+// matching the drawing, and this number is set from that.
+export const PLAN_READABLE_MIN_EDGE_PX = 800;
 
 // How much of the room's own width and height a crop adds around it, so it
 // arrives with its own walls rather than cut through them.
