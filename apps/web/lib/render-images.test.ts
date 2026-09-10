@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 
-import { fetchRemoteImage, planImageDataUrl, visionImageDataUrl } from "./render-images";
+import { croppedVisionImageDataUrl, fetchRemoteImage, planImageDataUrl, visionImageDataUrl } from "./render-images";
 
 // fetchRemoteImage's contract: policy refusals, HTTP failures, redirect escapes, and
 // mid-body errors all return null (never throw), so one bad reference degrades to
@@ -168,6 +168,21 @@ async function pinTheDownscales() {
   // one unreadable reference never fails a whole render.
   const broken = Buffer.from([0x00, 0x01, 0x02, 0x03]);
   assert.match(await planImageDataUrl(broken, "image/png"), /^data:image\/png;base64,/);
+
+  // The confirmed room, cut out of a whole-home drawing on the way to the
+  // model. A quarter-width box off a 4000 by 3000 sheet is about 1000 by 750
+  // before the vision downscale, so what comes back is that shape rather than
+  // the sheet's (S5b).
+  const cropped = await croppedVisionImageDataUrl(wide, "image/jpeg", { x0: 0.25, y0: 0.25, x1: 0.5, y1: 0.5 });
+  const croppedBytes = Buffer.from(cropped.split(",")[1], "base64");
+  const croppedMeta = await sharp(croppedBytes).metadata();
+  assert.ok((croppedMeta.width ?? 0) < 1100, `the crop is the room, not the sheet: ${croppedMeta.width}`);
+  assert.ok(Math.abs((croppedMeta.width ?? 0) / (croppedMeta.height ?? 1) - 4 / 3) < 0.1, "and keeps the room's shape");
+
+  // A crop that cannot be taken falls back to the whole plan rather than
+  // failing a concept: no plan at all is worse than an uncropped one.
+  const wholeBack = await croppedVisionImageDataUrl(broken, "image/png", { x0: 0.1, y0: 0.1, x1: 0.5, y1: 0.5 });
+  assert.match(wholeBack, /^data:image\/png;base64,/);
 }
 
 void pinTheDownscales().then(() => console.log("render image downscale pins passed"));

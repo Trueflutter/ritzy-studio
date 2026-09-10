@@ -1,6 +1,9 @@
-import { visionImageDataUrl } from "@/lib/render-images";
+import { floorPlanCropBox } from "@ritzy-studio/domain";
+
+import { croppedVisionImageDataUrl, visionImageDataUrl } from "@/lib/render-images";
 
 import { storageImageDataUrl } from "./storage-images";
+import { structuredBriefJson } from "./sourcing-support";
 import type { ServiceSupabaseClient, UserSupabaseClient } from "./supabase-clients";
 
 // The room's image inputs for AI calls, assembled ONE way (S2 gauntlet finding):
@@ -79,14 +82,32 @@ export async function roomImageInputs(
 
   const { data: floorPlanAsset } = await supabase
     .from("room_assets")
-    .select("storage_path, mime_type")
+    .select("id, storage_path, mime_type")
     .eq("room_id", roomId)
     .eq("asset_type", "floor_plan")
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();
+
+  // The prompt that receives this asserts it is THIS room's plan ("use it to
+  // understand the room's true footprint, door and window positions"). Since
+  // S5b invites whole-home drawings, that sentence is only true once the
+  // drawing is cut down to the room she confirmed, so the crop happens here,
+  // on the way to the model, and nothing is stored (S5b).
+  const { data: brief } = await supabase
+    .from("design_briefs")
+    .select("structured_json")
+    .eq("room_id", roomId)
+    .order("updated_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const cropBox = floorPlanCropBox({
+    recorded: structuredBriefJson(brief?.structured_json).floorPlan,
+    attachedAssetId: floorPlanAsset?.id ?? null
+  });
+
   const floorPlanImageUrl = floorPlanAsset?.mime_type?.startsWith("image/")
-    ? await storageImageDataUrl(supabase, "room-assets", floorPlanAsset.storage_path, floorPlanAsset.mime_type)
+    ? await floorPlanDataUrl(supabase, floorPlanAsset, cropBox)
     : null;
 
   return {
@@ -167,4 +188,20 @@ export async function conceptPrimaryRender(
     storagePath: renderAsset.storage_path,
     signedUrl: signed?.signedUrl ?? null
   };
+}
+
+async function floorPlanDataUrl(
+  supabase: UserSupabaseClient,
+  asset: { storage_path: string; mime_type: string },
+  cropBox: Parameters<typeof croppedVisionImageDataUrl>[2] | null
+) {
+  if (!cropBox) {
+    return storageImageDataUrl(supabase, "room-assets", asset.storage_path, asset.mime_type);
+  }
+
+  const { data, error } = await supabase.storage.from("room-assets").download(asset.storage_path);
+  if (error || !data) {
+    return null;
+  }
+  return croppedVisionImageDataUrl(Buffer.from(await data.arrayBuffer()), asset.mime_type, cropBox);
 }

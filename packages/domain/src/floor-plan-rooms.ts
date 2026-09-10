@@ -290,3 +290,43 @@ export function cropRectangleFor({
   const height = bottom - top;
   return width >= 1 && height >= 1 ? { left, top, width, height } : null;
 }
+
+// What the brief records once she has confirmed a room, and the one question
+// every reader of it has to ask.
+//
+// The record names the plan it belongs to. A plan can be replaced, and a box
+// from the old drawing applied to the new one would crop a corner of somewhere
+// else and hand it to the concept prompts as her room. So the box counts only
+// while the asset it was read from is still the attached one.
+export type ConfirmedFloorPlanRoom = {
+  assetId: string;
+  label: string;
+  box: DetectedRoomBox | null;
+};
+
+export function confirmedFloorPlanRoom(value: unknown): ConfirmedFloorPlanRoom | null {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+  const row = value as Record<string, unknown>;
+  const assetId = typeof row.assetId === "string" && row.assetId.length > 0 ? row.assetId : null;
+  const label = boundedLabel(row.label);
+  if (!assetId || label === null) {
+    return null;
+  }
+  return { assetId, label, box: boundedBox(row.box) };
+}
+
+export function floorPlanCropBox({
+  recorded,
+  attachedAssetId
+}: {
+  recorded: unknown;
+  attachedAssetId: string | null;
+}): DetectedRoomBox | null {
+  const confirmed = confirmedFloorPlanRoom(recorded);
+  if (!confirmed || !attachedAssetId || confirmed.assetId !== attachedAssetId) {
+    return null;
+  }
+  return confirmed.box;
+}

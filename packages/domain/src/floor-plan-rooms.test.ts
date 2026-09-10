@@ -11,6 +11,7 @@ import {
   cropRectangleFor,
   roomConfirmKind,
   detectedRoomLabel,
+  floorPlanCropBox,
   floorPlanReadDecision,
   roomDimensionsLabel
 } from "./floor-plan-rooms";
@@ -305,6 +306,31 @@ import {
     null,
     "a region under a pixel is not a region once nothing is added around it"
   );
+}
+
+// ------------------------------------------- the crop the concept path reads
+{
+  const box = { x0: 0.1, y0: 0.2, x1: 0.5, y1: 0.6 };
+  const recorded = { assetId: "plan-a", label: "Living Room", box };
+
+  assert.deepEqual(floorPlanCropBox({ recorded, attachedAssetId: "plan-a" }), box);
+
+  // The plan she replaced says nothing about the plan she attached. Applying
+  // its box to the new drawing would crop a corner of somewhere else and hand
+  // it to the concept prompts as her room.
+  assert.equal(floorPlanCropBox({ recorded, attachedAssetId: "plan-b" }), null);
+  assert.equal(floorPlanCropBox({ recorded, attachedAssetId: null }), null);
+
+  // A confirmation with no box (the plan could not locate the room) leaves the
+  // whole drawing in place, which is what it did before she confirmed.
+  assert.equal(floorPlanCropBox({ recorded: { ...recorded, box: null }, attachedAssetId: "plan-a" }), null);
+
+  // Nothing recorded, nothing cropped, and nothing thrown at whatever is in
+  // that column from an older shape.
+  assert.equal(floorPlanCropBox({ recorded: null, attachedAssetId: "plan-a" }), null);
+  assert.equal(floorPlanCropBox({ recorded: "living room", attachedAssetId: "plan-a" }), null);
+  assert.equal(floorPlanCropBox({ recorded: { label: "Living Room", box }, attachedAssetId: "plan-a" }), null);
+  assert.equal(floorPlanCropBox({ recorded: { assetId: "plan-a", box }, attachedAssetId: "plan-a" }), null);
 }
 
 console.log("floor plan rooms tests passed");

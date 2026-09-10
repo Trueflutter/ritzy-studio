@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 
 import { fakeSupabase, type RecordedCall } from "./supabase-test-double";
-import { readFloorPlanForRoom } from "./floor-plan-read";
+import { confirmDetectedRoom, readFloorPlanForRoom, revertToWholePlan } from "./floor-plan-read";
 
 // S5b: reading a floor plan costs money and, if it goes wrong quietly, costs
 // a shopper a wrong measurement written as verified. So the two things pinned
@@ -237,6 +237,102 @@ async function main() {
     );
     assert.equal(outcome.status, "read");
     assert.equal(h.inserted().length, 1);
+  }
+
+  // ------------------------------------------------------- confirming a room
+  const detected = [
+    { label: "Living Room", level: null, wallLengthCm: 470, roomDepthCm: 320, ceilingHeightCm: null, box: { x0: 0.1, y0: 0.1, x1: 0.5, y1: 0.5 } },
+    // The villa brochure case: named and located, no size printed legibly.
+    { label: "Family Room", level: "Upper", wallLengthCm: null, roomDepthCm: null, ceilingHeightCm: null, box: { x0: 0.5, y0: 0.1, x1: 0.9, y1: 0.5 } },
+    { label: "Store", level: null, wallLengthCm: null, roomDepthCm: null, ceilingHeightCm: null, box: null }
+  ];
+
+  function confirmHarness({ assetId = ASSET, brief = null }: { assetId?: string; brief?: Record<string, unknown> | null } = {}) {
+    const calls: RecordedCall[] = [];
+    const respond = (call: RecordedCall) => {
+      calls.push(call);
+      if (call.table === "room_assets") {
+        return { data: { id: ASSET, storage_path: "p.png", mime_type: "image/png", width_px: 2400, height_px: 1700 } };
+      }
+      if (call.table === "ai_jobs" && call.op === "select") {
+        return { data: { status: "succeeded", input_summary: { assetId }, output_summary: { rooms: detected } } };
+      }
+      if (call.table === "design_briefs" && call.op === "select") {
+        return { data: brief ? { id: "brief-1", structured_json: brief } : null };
+      }
+      return { data: null };
+    };
+    const { client } = fakeSupabase(respond);
+    return {
+      calls,
+      supabase: client as never,
+      measurements: () => calls.filter((call) => call.table === "room_measurements" && call.op === "insert"),
+      briefWrites: () => calls.filter((call) => call.table === "design_briefs" && (call.op === "update" || call.op === "insert"))
+    };
+  }
+
+  // A room the plan sizes AND locates: both halves land.
+  {
+    const h = confirmHarness({ brief: { visualPreferences: { likedStyleSlugs: ["quiet-luxury"] } } });
+    const outcome = await confirmDetectedRoom({ roomId: ROOM, roomIndex: 0, supabase: h.supabase });
+
+    assert.deepEqual(outcome, { status: "confirmed", wroteMeasurements: true, recordedBox: true, label: "Living Room" });
+
+    const written = h.measurements();
+    assert.equal(written.length, 1);
+    assert.equal(written[0].payload?.source, "floor_plan", "the provenance the criterion asks for");
+    assert.equal(written[0].payload?.confidence, "verified", "which is what keeps dimension-aware fit switched on");
+    assert.equal(written[0].payload?.floor_plan_asset_id, ASSET);
+    assert.equal(written[0].payload?.wall_length_cm, 470);
+    assert.equal(written[0].payload?.room_depth_cm, 320);
+
+    const brief = h.briefWrites();
+    assert.equal(brief.length, 1);
+    const structured = brief[0].payload?.structured_json as Record<string, unknown>;
+    assert.deepEqual(structured.floorPlan, { assetId: ASSET, label: "Living Room", box: detected[0].box });
+    assert.ok(structured.visualPreferences, "and nothing else in the document is dropped");
+  }
+
+  // The villa brochure room: located, not sized. Confirming is still worth
+  // something, because the crop is what the concept prompts need.
+  {
+    const h = confirmHarness();
+    const outcome = await confirmDetectedRoom({ roomId: ROOM, roomIndex: 1, supabase: h.supabase });
+
+    assert.deepEqual(outcome, { status: "confirmed", wroteMeasurements: false, recordedBox: true, label: "Family Room" });
+    assert.equal(h.measurements().length, 0, "no size on the plan, no measurement invented");
+    const structured = h.briefWrites()[0].payload?.structured_json as Record<string, unknown>;
+    assert.deepEqual(structured.floorPlan, { assetId: ASSET, label: "Family Room", box: detected[1].box });
+  }
+
+  // A room the plan can do neither for is not confirmable at all.
+  {
+    const h = confirmHarness();
+    assert.deepEqual(await confirmDetectedRoom({ roomId: ROOM, roomIndex: 2, supabase: h.supabase }), { status: "not_found" });
+    assert.equal(h.measurements().length, 0);
+    assert.equal(h.briefWrites().length, 0);
+  }
+
+  // The list she clicked belongs to a plan she has since replaced: nothing is
+  // written, because one drawing's numbers against another drawing's id is the
+  // silent wrong answer this guard exists for.
+  {
+    const h = confirmHarness({ assetId: "an-older-plan" });
+    assert.deepEqual(await confirmDetectedRoom({ roomId: ROOM, roomIndex: 0, supabase: h.supabase }), { status: "stale" });
+    assert.equal(h.measurements().length, 0);
+    assert.equal(h.briefWrites().length, 0);
+  }
+
+  // Rejecting the crop keeps the numbers.
+  {
+    const h = confirmHarness({
+      brief: { floorPlan: { assetId: ASSET, label: "Living Room", box: { x0: 0.1, y0: 0.1, x1: 0.5, y1: 0.5 } } }
+    });
+    await revertToWholePlan({ roomId: ROOM, supabase: h.supabase });
+
+    const structured = h.briefWrites()[0].payload?.structured_json as Record<string, unknown>;
+    assert.deepEqual(structured.floorPlan, { assetId: ASSET, label: "Living Room", box: null });
+    assert.equal(h.measurements().length, 0, "and the measurement row is not touched");
   }
 
   console.log("floor plan read service tests passed");

@@ -1,8 +1,18 @@
-import { floorPlanReadDecision, type DetectedRoom, type FloorPlanReadAction } from "@ritzy-studio/domain";
+import {
+  boundedDetectedRooms,
+  confirmedFloorPlanRoom,
+  floorPlanReadDecision,
+  roomConfirmKind,
+  type ConfirmedFloorPlanRoom,
+  type DetectedRoom,
+  type FloorPlanReadAction
+} from "@ritzy-studio/domain";
 import { readFloorPlanRooms, stageTextConfig } from "@ritzy-studio/ai";
+import type { Database } from "@ritzy-studio/db";
 import { configuredTextModel } from "@ritzy-studio/config";
 
 import { closeAiJob } from "./close-ai-job";
+import { structuredBriefJson } from "./sourcing-support";
 import { storagePlanImageDataUrl } from "./storage-images";
 import type { ServiceSupabaseClient, UserSupabaseClient } from "./supabase-clients";
 
@@ -165,5 +175,134 @@ export async function readFloorPlanForRoom(
     // does too. The row is still closed, so nothing is left running.
     await closeAiJob(serviceSupabase, opened.id, { status: "failed", error_message: message }, "floor plan read");
     return { status: "failed", message };
+  }
+}
+
+// What she confirmed, and what confirming it is worth (S5b).
+//
+// Two independent halves, because a plan can give one without the other. The
+// dimensions fill the measurement fields, written with the plan as their
+// source. The box crops the drawing for the concept and revision prompts,
+// which assert that what they are shown is this room. A villa brochure gives
+// the second and not the first; an estate agent's plan of one apartment gives
+// both.
+
+export type ConfirmRoomOutcome =
+  | { status: "confirmed"; wroteMeasurements: boolean; recordedBox: boolean; label: string }
+  | { status: "stale" }
+  | { status: "not_found" };
+
+export function detectedRoomsOnJob(job: FloorPlanReadRow | null): DetectedRoom[] {
+  return boundedDetectedRooms(job?.output_summary?.rooms);
+}
+
+export async function confirmDetectedRoom(
+  {
+    roomId,
+    roomIndex,
+    supabase
+  }: {
+    roomId: string;
+    roomIndex: number;
+    supabase: UserSupabaseClient;
+  }
+): Promise<ConfirmRoomOutcome> {
+  const asset = await newestFloorPlanAsset(supabase, roomId);
+  const job = await newestFloorPlanReadJob(supabase, roomId);
+
+  // The list she clicked has to be the list of the plan that is attached. If
+  // the plan changed underneath her, confirming would write one drawing's
+  // numbers against another drawing's id.
+  if (!asset || !job || jobAssetId(job) !== asset.id) {
+    return { status: "stale" };
+  }
+
+  const room = detectedRoomsOnJob(job)[roomIndex];
+  const kind = room ? roomConfirmKind(room) : null;
+  if (!room || kind === null) {
+    return { status: "not_found" };
+  }
+
+  const wroteMeasurements = room.wallLengthCm !== null && room.roomDepthCm !== null;
+  if (wroteMeasurements) {
+    // `verified` is what keeps dimension-aware product fit switched on, and
+    // the chip she clicked carried these numbers, so the click is a person
+    // confirming what she can see. The plan is recorded as their source.
+    const { error } = await supabase.from("room_measurements").insert({
+      room_id: roomId,
+      source: "floor_plan",
+      confidence: "verified",
+      wall_length_cm: room.wallLengthCm,
+      room_depth_cm: room.roomDepthCm,
+      ceiling_height_cm: room.ceilingHeightCm,
+      floor_plan_asset_id: asset.id
+    });
+    if (error) {
+      throw new Error(error.message);
+    }
+  }
+
+  await writeConfirmedRoom(supabase, roomId, { assetId: asset.id, label: room.label, box: room.box });
+
+  return { status: "confirmed", wroteMeasurements, recordedBox: room.box !== null, label: room.label };
+}
+
+// Rejecting a crop must not cost her the numbers, so this clears the box and
+// leaves any measurement row exactly where it is. Named for what it does
+// rather than for the control that calls it: a `use` prefix reads as a React
+// hook to the linter, and it is neither.
+export async function revertToWholePlan({
+  roomId,
+  supabase
+}: {
+  roomId: string;
+  supabase: UserSupabaseClient;
+}): Promise<void> {
+  const existing = await confirmedRoomRow(supabase, roomId);
+  if (!existing.confirmed) {
+    return;
+  }
+  await writeConfirmedRoom(supabase, roomId, { ...existing.confirmed, box: null });
+}
+
+async function confirmedRoomRow(supabase: UserSupabaseClient, roomId: string) {
+  const { data, error } = await supabase
+    .from("design_briefs")
+    .select("id, structured_json")
+    .eq("room_id", roomId)
+    .order("updated_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  const structuredJson = structuredBriefJson(data?.structured_json);
+  return {
+    id: (data as { id?: string } | null)?.id ?? null,
+    structuredJson,
+    confirmed: confirmedFloorPlanRoom(structuredJson.floorPlan)
+  };
+}
+
+async function writeConfirmedRoom(
+  supabase: UserSupabaseClient,
+  roomId: string,
+  floorPlan: ConfirmedFloorPlanRoom
+): Promise<void> {
+  const existing = await confirmedRoomRow(supabase, roomId);
+  const structuredJson = { ...existing.structuredJson, floorPlan };
+
+  // The same cast the action uses for this column: `structuredBriefJson` is
+  // deliberately loose about the keys it does not own.
+  const payload = structuredJson as Database["public"]["Tables"]["design_briefs"]["Update"]["structured_json"];
+
+  const { error } = existing.id
+    ? await supabase.from("design_briefs").update({ structured_json: payload }).eq("id", existing.id)
+    : await supabase.from("design_briefs").insert({ room_id: roomId, structured_json: payload });
+
+  if (error) {
+    throw new Error(error.message);
   }
 }

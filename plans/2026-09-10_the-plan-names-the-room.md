@@ -221,7 +221,7 @@ proof is obtained is the open question below.
 - `apps/web/lib/services/room-images.ts`: crop the plan in memory to the
   recorded box when it belongs to the attached asset.
 - `apps/web/app/actions.ts`: `readFloorPlanAction`, `confirmDetectedRoomAction`
-  and `useWholePlanAction`.
+  and `revertToWholePlanAction`.
 - `apps/web/app/projects/[projectId]/rooms/[roomId]/brief/floor-plan-uploader.tsx`:
   whole-plan copy, the read call after a successful upload, and the honest PDF
   state.

@@ -1,3 +1,4 @@
+import { cropRectangleFor, type DetectedRoomBox } from "@ritzy-studio/domain";
 import sharp from "sharp";
 
 import {
@@ -74,6 +75,23 @@ export async function planImageDataUrl(bytes: Buffer, mimeType: string) {
     return `data:image/jpeg;base64,${resized.toString("base64")}`;
   } catch {
     return bytesToDataUrl(bytes, mimeType);
+  }
+}
+
+// The confirmed room, cut out of the drawing on the way to the model. Any
+// failure falls back to the whole plan: a concept grounded on the whole sheet
+// is worse than one grounded on the room, and both are better than no plan.
+export async function croppedVisionImageDataUrl(bytes: Buffer, mimeType: string, box: DetectedRoomBox) {
+  try {
+    const meta = await sharp(bytes).metadata();
+    const rectangle = cropRectangleFor({ box, widthPx: meta.width ?? 0, heightPx: meta.height ?? 0 });
+    if (!rectangle) {
+      return visionImageDataUrl(bytes, mimeType);
+    }
+    const cropped = await sharp(bytes).extract(rectangle).toBuffer();
+    return visionImageDataUrl(cropped, mimeType);
+  } catch {
+    return visionImageDataUrl(bytes, mimeType);
   }
 }
 
