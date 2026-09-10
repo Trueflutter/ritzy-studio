@@ -188,7 +188,16 @@ export async function readFloorPlanForRoom(
 // both.
 
 export type ConfirmRoomOutcome =
-  | { status: "confirmed"; wroteMeasurements: boolean; recordedBox: boolean; label: string }
+  | {
+      status: "confirmed";
+      wroteMeasurements: boolean;
+      // True when the plan gave this room no size AND a row from confirming
+      // another room off the same drawing had to be cleared, so the screen can
+      // say the measurements went with it.
+      supersededAnotherRoom: boolean;
+      recordedBox: boolean;
+      label: string;
+    }
   | { status: "stale" }
   | { status: "not_found" };
 
@@ -223,18 +232,53 @@ export async function confirmDetectedRoom(
     return { status: "not_found" };
   }
 
-  const wroteMeasurements = room.wallLengthCm !== null && room.roomDepthCm !== null;
+  // What is on record now, and whether it describes a DIFFERENT room she
+  // confirmed off this same drawing. Both questions decide what gets written.
+  const { data: previous, error: previousError } = await supabase
+    .from("room_measurements")
+    .select("wall_length_cm, room_depth_cm, ceiling_height_cm, notes, source, floor_plan_asset_id")
+    .eq("room_id", roomId)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (previousError) {
+    throw new Error(previousError.message);
+  }
+
+  const supersedesAnotherRoom = previous?.source === "floor_plan" && previous.floor_plan_asset_id === asset.id;
+  const dimensioned = room.wallLengthCm !== null && room.roomDepthCm !== null;
+
+  // A plan almost never prints a ceiling height, so a row written from one
+  // alone would blank a ceiling she typed herself, and every reader takes the
+  // newest row: her 300 would vanish from the form and the concept prompt
+  // would gain "measurements were not provided" for a room that just got a
+  // better wall length. Carried forward the way `saveDesignBriefAction`
+  // carries a note it has no field for (review finding). Not carried when the
+  // row on record came from confirming a different room off this drawing:
+  // those numbers are that room's, not hers.
+  const carried = supersedesAnotherRoom
+    ? { ceiling: null, notes: null }
+    : { ceiling: previous?.ceiling_height_cm ?? null, notes: previous?.notes ?? null };
+
+  // Writing happens when the plan has dimensions to write, and also when it
+  // has none but the newest row is another room's confirmation off this same
+  // drawing. Leaving that row would pair one room's measurements with another
+  // room's crop and name, and size a paid concept to a room it was never
+  // shown (review finding).
+  const wroteMeasurements = dimensioned || supersedesAnotherRoom;
   if (wroteMeasurements) {
     // `verified` is what keeps dimension-aware product fit switched on, and
     // the chip she clicked carried these numbers, so the click is a person
-    // confirming what she can see. The plan is recorded as their source.
+    // confirming what she can see. A superseding row with nothing to say is
+    // `unknown`, which is what it knows.
     const { error } = await supabase.from("room_measurements").insert({
       room_id: roomId,
       source: "floor_plan",
-      confidence: "verified",
+      confidence: dimensioned ? "verified" : "unknown",
       wall_length_cm: room.wallLengthCm,
       room_depth_cm: room.roomDepthCm,
-      ceiling_height_cm: room.ceilingHeightCm,
+      ceiling_height_cm: room.ceilingHeightCm ?? carried.ceiling,
+      notes: carried.notes,
       floor_plan_asset_id: asset.id
     });
     if (error) {
@@ -244,7 +288,13 @@ export async function confirmDetectedRoom(
 
   await writeConfirmedRoom(supabase, roomId, { assetId: asset.id, label: room.label, box: room.box });
 
-  return { status: "confirmed", wroteMeasurements, recordedBox: room.box !== null, label: room.label };
+  return {
+    status: "confirmed",
+    wroteMeasurements: dimensioned,
+    supersededAnotherRoom: wroteMeasurements && !dimensioned,
+    recordedBox: room.box !== null,
+    label: room.label
+  };
 }
 
 // Rejecting a crop must not cost her the numbers, so this clears the box and

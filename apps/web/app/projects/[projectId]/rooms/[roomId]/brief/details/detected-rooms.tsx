@@ -46,7 +46,7 @@ function setFieldValue(id: string, value: number | null) {
 }
 
 export type DetectedRoomsActions = {
-  confirm: (roomId: string, roomIndex: number) => Promise<{ message?: string } | null>;
+  confirm: (roomId: string, roomIndex: number) => Promise<{ message?: string; cleared?: boolean } | null>;
   read: (roomId: string) => Promise<{ message?: string } | null>;
   revert: (roomId: string) => Promise<{ message?: string } | null>;
 };
@@ -147,13 +147,18 @@ export function DetectedRooms({
         setMessage(result.message);
       }
       // The fields follow the row, without a reload and without depending on
-      // `defaultValue` re-propagating through one.
+      // `defaultValue` re-propagating through one. Including when the row was
+      // cleared: leaving the previous room's numbers on screen above a chip
+      // that names a different room is the same disagreement in reverse.
       if (room.wallLengthCm !== null && room.roomDepthCm !== null) {
         setFieldValue(MEASUREMENT_FIELD_IDS[0], room.wallLengthCm);
         setFieldValue(MEASUREMENT_FIELD_IDS[1], room.roomDepthCm);
         if (room.ceilingHeightCm !== null) {
           setFieldValue(MEASUREMENT_FIELD_IDS[2], room.ceilingHeightCm);
         }
+      } else if (result?.cleared) {
+        setFieldValue(MEASUREMENT_FIELD_IDS[0], null);
+        setFieldValue(MEASUREMENT_FIELD_IDS[1], null);
       }
     });
   };

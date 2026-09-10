@@ -170,14 +170,29 @@ async function pinTheDownscales() {
   assert.match(await planImageDataUrl(broken, "image/png"), /^data:image\/png;base64,/);
 
   // The confirmed room, cut out of a whole-home drawing on the way to the
-  // model. A quarter-width box off a 4000 by 3000 sheet is about 1000 by 750
-  // before the vision downscale, so what comes back is that shape rather than
-  // the sheet's (S5b).
-  const cropped = await croppedVisionImageDataUrl(wide, "image/jpeg", { x0: 0.25, y0: 0.25, x1: 0.5, y1: 0.5 });
-  const croppedBytes = Buffer.from(cropped.split(",")[1], "base64");
-  const croppedMeta = await sharp(croppedBytes).metadata();
-  assert.ok((croppedMeta.width ?? 0) < 1100, `the crop is the room, not the sheet: ${croppedMeta.width}`);
-  assert.ok(Math.abs((croppedMeta.width ?? 0) / (croppedMeta.height ?? 1) - 4 / 3) < 0.1, "and keeps the room's shape");
+  // model (S5b).
+  //
+  // The box is deliberately a different shape from the sheet. A first version
+  // took a 4:3 box off a 4:3 sheet, so both paths came back 1024 by 768 and
+  // deleting the crop entirely left the assertions green (review finding,
+  // which reproduced it). A landscape sheet and a portrait room cannot be
+  // confused.
+  const landscape = await sharp(wide).metadata();
+  assert.ok((landscape.width ?? 0) > (landscape.height ?? 0), "the sheet is landscape");
+
+  const cropped = await croppedVisionImageDataUrl(wide, "image/jpeg", { x0: 0.1, y0: 0.1, x1: 0.4, y1: 0.7 });
+  const croppedMeta = await sharp(Buffer.from(cropped.split(",")[1], "base64")).metadata();
+  assert.ok(
+    (croppedMeta.height ?? 0) > (croppedMeta.width ?? 0),
+    `the room is portrait where the sheet is landscape: ${croppedMeta.width} by ${croppedMeta.height}`
+  );
+
+  const uncropped = await sharp(Buffer.from((await visionImageDataUrl(wide, "image/jpeg")).split(",")[1], "base64")).metadata();
+  assert.notEqual(
+    `${croppedMeta.width}x${croppedMeta.height}`,
+    `${uncropped.width}x${uncropped.height}`,
+    "and what comes back is not simply the whole sheet"
+  );
 
   // A crop that cannot be taken falls back to the whole plan rather than
   // failing a concept: no plan at all is worse than an uncropped one.

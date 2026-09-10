@@ -1498,8 +1498,18 @@ export async function confirmDetectedRoomAction(roomId: string, roomIndex: numbe
   if (outcome.status === "not_found") {
     return { message: "That room is not on the plan we read." };
   }
-  return outcome.wroteMeasurements
-    ? null
+  if (outcome.wroteMeasurements) {
+    return null;
+  }
+
+  // Changing to a room the plan does not size clears the numbers that came
+  // from the room she picked before: leaving them would pair one room's
+  // measurements with another room's crop and name.
+  return outcome.supersededAnotherRoom
+    ? {
+        cleared: true,
+        message: `The plan gives no size for ${outcome.label}, so the measurements from the room you picked before have been cleared. The design will still read that part of the drawing.`
+      }
     : {
         message: `We could not read a size for ${outcome.label} on the plan, so the fields are still yours to fill. The design will read that part of the drawing.`
       };
