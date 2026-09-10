@@ -286,7 +286,10 @@ async function main() {
         };
       }
       if (call.table === "design_briefs" && call.op === "select") {
-        return { data: brief ? { id: "brief-1", structured_json: brief } : null };
+        return { data: brief ? { id: "brief-1", structured_json: brief, updated_at: "2026-09-10T10:00:00Z" } : null };
+      }
+      if (call.table === "design_briefs" && call.op === "update") {
+        return { data: [{ id: "brief-1" }] };
       }
       return { data: null };
     };
@@ -495,6 +498,74 @@ async function main() {
     // the plan attached now.
     const replaced = await inputsWith({ brief: { floorPlan: confirmed }, assetId: "a-newer-plan" });
     assert.equal(replaced.floorPlanRoomLabel, null);
+  }
+
+  // ------------------------ two writers, one document (P1 from the PR review)
+  //
+  // `saveDesignBriefAction` reads this column, merges and writes the whole
+  // object back; so does the confirmation. She can press Continue while a
+  // confirmation is in flight, and the interleaving loses whichever write read
+  // first: her typed answers, or the room she just picked.
+  {
+    const calls: RecordedCall[] = [];
+    // The other writer lands between our read and our write: her colour note
+    // arrives, and the row's updated_at moves with it.
+    let brief: Record<string, unknown> = { visualPreferences: { likedStyleSlugs: ["quiet-luxury"] } };
+    let updatedAt = "2026-09-10T10:00:00Z";
+    let updates = 0;
+
+    const asks = (call: RecordedCall, column: string, value: unknown) =>
+      call.filters.some(([field, filterValue]) => field === column && filterValue === value);
+
+    const { client } = fakeSupabase((call) => {
+      calls.push(call);
+      if (call.table === "room_assets") {
+        return {
+          data: asks(call, "asset_type", "floor_plan")
+            ? { id: ASSET, storage_path: "p.png", mime_type: "image/png", width_px: 2400, height_px: 1700 }
+            : null
+        };
+      }
+      if (call.table === "ai_jobs" && call.op === "select") {
+        return {
+          data: asks(call, "job_type", "floor_plan_read")
+            ? { status: "succeeded", input_summary: { assetId: ASSET }, output_summary: { rooms: detected } }
+            : null
+        };
+      }
+      if (call.table === "room_measurements") {
+        return { data: null };
+      }
+      if (call.table === "design_briefs" && call.op === "select") {
+        return { data: { id: "brief-1", structured_json: brief, updated_at: updatedAt } };
+      }
+      if (call.table === "design_briefs" && call.op === "update") {
+        updates += 1;
+        // The first write is guarded on a value the other writer has already
+        // moved past, so PostgREST matches nothing.
+        if (asks(call, "updated_at", "2026-09-10T10:00:00Z")) {
+          brief = { ...brief, colourNote: "cool limestone and pale oak" };
+          updatedAt = "2026-09-10T10:00:05Z";
+          return { data: [] };
+        }
+        return { data: [{ id: "brief-1" }] };
+      }
+      return { data: null };
+    });
+
+    const outcome = await confirmDetectedRoom({ roomId: ROOM, roomIndex: 0, supabase: client as never });
+    assert.equal(outcome.status, "confirmed");
+    assert.equal(updates, 2, "the guarded write lost once and was retried");
+
+    const written = calls.filter((call) => call.table === "design_briefs" && call.op === "update");
+    assert.ok(
+      written.every((call) => call.filters.some(([field]) => field === "updated_at")),
+      "every write is guarded on the version it read"
+    );
+    const final = written[1].payload?.structured_json as Record<string, unknown>;
+    assert.deepEqual(final.floorPlan, { assetId: ASSET, label: "Living Room", index: 0 }, "the room she picked survives");
+    assert.equal(final.colourNote, "cool limestone and pale oak", "and so does what the other writer saved");
+    assert.ok(final.visualPreferences, "along with everything that was already there");
   }
 
   console.log("floor plan read service tests passed");

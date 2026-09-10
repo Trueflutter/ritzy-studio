@@ -304,7 +304,7 @@ export async function confirmDetectedRoom(
 async function confirmedRoomRow(supabase: UserSupabaseClient, roomId: string) {
   const { data, error } = await supabase
     .from("design_briefs")
-    .select("id, structured_json")
+    .select("id, structured_json, updated_at")
     .eq("room_id", roomId)
     .order("updated_at", { ascending: false })
     .limit(1)
@@ -315,30 +315,67 @@ async function confirmedRoomRow(supabase: UserSupabaseClient, roomId: string) {
   }
 
   const structuredJson = structuredBriefJson(data?.structured_json);
+  const row = data as { id?: string; updated_at?: string } | null;
   return {
-    id: (data as { id?: string } | null)?.id ?? null,
+    id: row?.id ?? null,
+    updatedAt: row?.updated_at ?? null,
     structuredJson,
     confirmed: confirmedFloorPlanRoom(structuredJson.floorPlan)
   };
 }
+
+// One key in a document two writers share.
+//
+// `saveDesignBriefAction` reads this column, merges, and writes the whole
+// object back; so does this. She can press Continue while a confirmation is in
+// flight, and the interleaving loses whichever write read first: her typed
+// answers, or the room she just picked. PostgREST cannot set a single jsonb
+// key without an RPC, and an RPC is a migration this slice does not have, so
+// the write is guarded instead.
+//
+// `design_briefs` carries a `before update` trigger that stamps `updated_at`
+// (initial schema, line 290), so a write guarded on the value we read matches
+// zero rows the moment anyone else has written. Then we read again, merge onto
+// THEIR version, and try once more (review finding).
+const CONFIRM_WRITE_ATTEMPTS = 3;
 
 async function writeConfirmedRoom(
   supabase: UserSupabaseClient,
   roomId: string,
   floorPlan: ConfirmedFloorPlanRoom
 ): Promise<void> {
-  const existing = await confirmedRoomRow(supabase, roomId);
-  const structuredJson = { ...existing.structuredJson, floorPlan };
+  for (let attempt = 0; attempt < CONFIRM_WRITE_ATTEMPTS; attempt += 1) {
+    const existing = await confirmedRoomRow(supabase, roomId);
+    const structuredJson = { ...existing.structuredJson, floorPlan };
 
-  // The same cast the action uses for this column: `structuredBriefJson` is
-  // deliberately loose about the keys it does not own.
-  const payload = structuredJson as Database["public"]["Tables"]["design_briefs"]["Update"]["structured_json"];
+    // The same cast the action uses for this column: `structuredBriefJson` is
+    // deliberately loose about the keys it does not own.
+    const payload = structuredJson as Database["public"]["Tables"]["design_briefs"]["Update"]["structured_json"];
 
-  const { error } = existing.id
-    ? await supabase.from("design_briefs").update({ structured_json: payload }).eq("id", existing.id)
-    : await supabase.from("design_briefs").insert({ room_id: roomId, structured_json: payload });
+    if (!existing.id) {
+      const { error } = await supabase.from("design_briefs").insert({ room_id: roomId, structured_json: payload });
+      if (error) {
+        throw new Error(error.message);
+      }
+      return;
+    }
 
-  if (error) {
-    throw new Error(error.message);
+    const { data, error } = await supabase
+      .from("design_briefs")
+      .update({ structured_json: payload })
+      .eq("id", existing.id)
+      .eq("updated_at", existing.updatedAt ?? "")
+      .select("id");
+
+    if (error) {
+      throw new Error(error.message);
+    }
+    if ((data ?? []).length > 0) {
+      return;
+    }
   }
+
+  // Three collisions in a row is not contention, it is something wrong. Better
+  // the confirmation fails and says so than that it writes over an answer.
+  throw new Error("Your brief was being saved at the same time. Pick the room again.");
 }

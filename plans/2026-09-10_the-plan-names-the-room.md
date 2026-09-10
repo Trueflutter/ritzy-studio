@@ -387,6 +387,28 @@ behaviour with a test. The new sharp call sites inherit the existing linux
 trace in `apps/web/next.config.ts:18`, so they add no native-dependency preview
 gate of their own.
 
+## Dismissed, with the reasoning
+
+- **"Replacing a floor plan leaves stale measurements active"** (PR review).
+  The remedy proposed, invalidating a measurement when its plan is replaced or
+  making every reader check `floor_plan_asset_id` against the attached asset,
+  rests on a premise this slice does not hold: a measurement describes the
+  ROOM, not the document it was read off. The commonest reason to replace a
+  plan is a better copy of the same drawing, and under that remedy a designer
+  who uploads a sharper scan watches her room become unmeasured, the fields
+  empty, and the concept prompt regain "measurements were not provided". It
+  would also treat a plan-read number as more perishable than a typed one,
+  which nothing else in the brief does: a number she typed by mistake is hers
+  until she changes it, and so is this one, visible in the field and editable.
+  What a replacement DOES invalidate is the room identity, and that is already
+  gated on the attached asset in both readers that use it, the screen
+  (`details/page.tsx`) and the concept path (`room-images.ts`).
+  Worth recording rather than fixing: `room_measurements.floor_plan_asset_id`
+  is `on delete set null`, so replacing a plan silently empties the pointer
+  while `source` still reads `floor_plan`. Nothing reads the pointer today.
+  Changing that is a migration, and it belongs with the slice that gives it a
+  reader.
+
 ## Open questions for Ayo
 
 1. **The PDF split.** This slice ships image plans and tells the truth about

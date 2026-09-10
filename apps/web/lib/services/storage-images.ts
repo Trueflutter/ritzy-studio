@@ -23,4 +23,3 @@ export async function storageImageDataUrl(
   const contentType = mimeType ?? (data.type || "image/jpeg");
   return visionImageDataUrl(buffer, contentType, options);
 }
-

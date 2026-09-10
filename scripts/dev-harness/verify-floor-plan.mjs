@@ -14,9 +14,12 @@ import { chromium } from "playwright";
 import fs from "node:fs";
 import path from "node:path";
 
-const HARNESS = "/Users/ayoolatoye/Documents/projects/ritzy-studio/scripts/dev-harness";
+// Everything is resolved from this file, so the leg runs wherever the
+// repository is checked out. It carried one developer's absolute paths, which
+// is fine for a scratch script and not for one in the repository (review).
+const HARNESS = path.dirname(new URL(import.meta.url).pathname);
 const FIXTURES = `${HARNESS}/fixtures`;
-const OUT = "/private/tmp/claude-501/-Users-ayoolatoye-Documents-projects-ritzy-studio/ab9a7ca8-1f64-40b6-973a-c2aaa3592e5a/scratchpad/shots-s5b";
+const OUT = process.env.RITZY_HARNESS_OUT ?? `${HARNESS}/e2e-shots/floor-plan`;
 fs.mkdirSync(OUT, { recursive: true });
 const BASE = "http://localhost:3000";
 
