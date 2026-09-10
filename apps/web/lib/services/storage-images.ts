@@ -1,4 +1,4 @@
-import { visionImageDataUrl } from "@/lib/render-images";
+import { planImageDataUrl, visionImageDataUrl } from "@/lib/render-images";
 
 import type { ServiceSupabaseClient, UserSupabaseClient } from "./supabase-clients";
 
@@ -19,4 +19,20 @@ export async function storageImageDataUrl(
   const buffer = Buffer.from(await data.arrayBuffer());
   const contentType = mimeType ?? (data.type || "image/jpeg");
   return visionImageDataUrl(buffer, contentType);
+}
+
+// The same download, prepared for a read whose whole job is small print (S5b).
+export async function storagePlanImageDataUrl(
+  client: ServiceSupabaseClient | UserSupabaseClient,
+  bucket: string,
+  path: string,
+  mimeType?: string | null
+) {
+  const { data, error } = await client.storage.from(bucket).download(path);
+  if (error || !data) {
+    return null;
+  }
+
+  const buffer = Buffer.from(await data.arrayBuffer());
+  return planImageDataUrl(buffer, mimeType ?? (data.type || "image/jpeg"));
 }

@@ -55,6 +55,28 @@ export async function visionImageDataUrl(bytes: Buffer, mimeType: string) {
   }
 }
 
+// A floor plan is the case the 1024 above is wrong for. Its value is the text
+// printed on it, and an A3 drawing reduced to 1024 pixels wide leaves its
+// dimension strings a few pixels tall. Sent at `detail: "high"`, the provider
+// tiles up to about 2048, so that is what it is given, at a quality that does
+// not ring around thin line work. Separate from `visionImageDataUrl` on
+// purpose: that one is imported by `render-runner.ts`, which is a high-risk
+// path, and its numbers are pinned by test (S5b).
+export const PLAN_IMAGE_MAX_EDGE_PX = 2048;
+export const PLAN_IMAGE_QUALITY = 90;
+
+export async function planImageDataUrl(bytes: Buffer, mimeType: string) {
+  try {
+    const resized = await sharp(bytes)
+      .resize(PLAN_IMAGE_MAX_EDGE_PX, PLAN_IMAGE_MAX_EDGE_PX, { fit: "inside", withoutEnlargement: true })
+      .jpeg({ quality: PLAN_IMAGE_QUALITY })
+      .toBuffer();
+    return `data:image/jpeg;base64,${resized.toString("base64")}`;
+  } catch {
+    return bytesToDataUrl(bytes, mimeType);
+  }
+}
+
 function remoteImageAllowlist() {
   return buildReferenceHostAllowlist({
     configured: process.env.RITZY_REFERENCE_IMAGE_HOSTS,
