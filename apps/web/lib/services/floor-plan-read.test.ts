@@ -73,7 +73,7 @@ async function main() {
       {
         planDataUrl: async () => "data:image/jpeg;base64,PLAN",
         readPlan: async () => ({
-          read: { unitRead: "metres" as const, rooms },
+          read: { unitRead: "metres" as const, rooms, roomsFound: rooms.length },
           promptKey: "brief.floor_plan_read",
           promptVersion: "2026-09-10.1",
           model: "gpt-5-mini",
@@ -102,8 +102,9 @@ async function main() {
     assert.equal(closed[0].payload?.status, "succeeded");
     assert.equal(closed[0].payload?.cost_estimate_usd, 0.004);
     assert.equal(closed[0].payload?.prompt_version, "2026-09-10.1");
-    const output = closed[0].payload?.output_summary as { rooms: unknown[]; unitRead: string };
+    const output = closed[0].payload?.output_summary as { rooms: unknown[]; unitRead: string; roomsFound: number };
     assert.equal(output.unitRead, "metres");
+    assert.equal(output.roomsFound, 1, "so a shortened list can say it was shortened");
     assert.deepEqual(output.rooms, rooms, "the answer is on the row, so the screen never re-reads a plan to render it");
   }
 
@@ -135,7 +136,7 @@ async function main() {
       {
         planDataUrl: async () => "data:image/jpeg;base64,PLAN",
         readPlan: async () => ({
-          read: { unitRead: "unknown" as const, rooms: [] },
+          read: { unitRead: "unknown" as const, rooms: [], roomsFound: 0 },
           promptKey: "brief.floor_plan_read",
           promptVersion: "2026-09-10.1",
           model: "gpt-5-mini",
@@ -226,7 +227,7 @@ async function main() {
       {
         planDataUrl: async () => "data:image/jpeg;base64,PLAN",
         readPlan: async () => ({
-          read: { unitRead: "metres" as const, rooms },
+          read: { unitRead: "metres" as const, rooms, roomsFound: rooms.length },
           promptKey: "brief.floor_plan_read",
           promptVersion: "2026-09-10.1",
           model: "gpt-5-mini",

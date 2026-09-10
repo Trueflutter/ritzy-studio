@@ -240,6 +240,20 @@ console.log("render review payload tests passed");
   const normalized = normalizeFloorPlanRead(parsed);
   assert.equal(normalized.rooms[0].wallLengthCm, 883.9);
   assert.equal(normalized.rooms[1].wallLengthCm, null, "a room the plan does not dimension keeps its place");
+  assert.equal(normalized.roomsFound, 2, "what the model named, before the bounds and the display cap");
+
+  // A model that cannot tell what the drawing is drawn in reports no
+  // dimensions, whatever numbers it also returned: the cost of getting units
+  // wrong lands on the person who confirms the chip (review finding).
+  const unsure = normalizeFloorPlanRead(
+    floorPlanReadResponseSchema.parse({
+      unitRead: "unknown",
+      rooms: [{ label: "Majlis", level: null, wallLengthCm: 520, roomDepthCm: 410, ceilingHeightCm: null, box: null }]
+    })
+  );
+  assert.equal(unsure.rooms[0].label, "Majlis", "the room is still named");
+  assert.equal(unsure.rooms[0].wallLengthCm, null);
+  assert.equal(unsure.rooms[0].roomDepthCm, null);
 
   // The strict schema and the zod schema are one pair: a shape the JSON schema
   // would have refused must not parse either.

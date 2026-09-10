@@ -11,7 +11,24 @@ import { BRIEF_FIELD_BOUNDS } from "./brief-field-bounds";
 // dropped rather than clamped, because a clamped 50 m wall looks exactly like a
 // read one.
 
-export const DETECTED_ROOMS_MAX = 12;
+// A display bound, not a safety one: the answer schema allows forty. What
+// matters more than the number is the ORDER it cuts in, below.
+export const DETECTED_ROOMS_MAX = 24;
+
+// What a room in a home can plausibly measure, which is not the same question
+// as what a person may type into the form. The form's ceiling is 5000 cm
+// because someone measuring a long villa wall should not be argued with; a
+// model converting a metric plan drawn in millimetres returns 3200 for a 3.2 m
+// bedroom, and 3200 sits comfortably inside that. So a read is held to a
+// tighter ceiling of its own (review finding). The largest room on the listing
+// fixture is 927 cm, so 1500 leaves room for a majlis and still catches the
+// unconverted case for every room over 15 m.
+//
+// It does not catch everything: a 1.2 m cloakroom read as 1200 mm lands inside
+// the plausible range. The defences left for that are the chip, which shows
+// metres to the person clicking it, and criterion 9, which measures a read
+// against a drawing whose figures are known.
+export const DETECTED_ROOM_MAX_CM = 1500;
 export const DETECTED_ROOM_LABEL_MAX = 40;
 
 // The smallest share of the drawing a box may claim and still be a room. A
@@ -27,9 +44,9 @@ export const DETECTED_ROOM_BOX_MIN_EDGE = 0.02;
 // finds where the answer stops matching the drawing.
 export const PLAN_READABLE_MIN_EDGE_PX = 1200;
 
-// How much of the surrounding drawing a crop keeps, so the room arrives with
-// its own walls rather than cut through them.
-export const PLAN_CROP_MARGIN_RATIO = 0.04;
+// How much of the room's own width and height a crop adds around it, so it
+// arrives with its own walls rather than cut through them.
+export const PLAN_CROP_MARGIN_RATIO = 0.06;
 
 export type DetectedRoomBox = {
   x0: number;
@@ -55,7 +72,8 @@ function boundedNumber(value: unknown, field: "wallLengthCm" | "roomDepthCm" | "
     return null;
   }
   const bound = BRIEF_FIELD_BOUNDS[field];
-  return value >= bound.min && value <= bound.max ? value : null;
+  const max = field === "ceilingHeightCm" ? bound.max : Math.min(bound.max, DETECTED_ROOM_MAX_CM);
+  return value >= bound.min && value <= max ? value : null;
 }
 
 function boundedBox(value: unknown): DetectedRoomBox | null {
@@ -89,9 +107,6 @@ export function boundedDetectedRooms(value: unknown): DetectedRoom[] {
 
   const rooms: DetectedRoom[] = [];
   for (const entry of value) {
-    if (rooms.length >= DETECTED_ROOMS_MAX) {
-      break;
-    }
     if (!entry || typeof entry !== "object") {
       continue;
     }
@@ -109,7 +124,15 @@ export function boundedDetectedRooms(value: unknown): DetectedRoom[] {
       level: boundedLabel(row.level)
     });
   }
-  return rooms;
+
+  // The rooms she can act on come first, and only then is the list cut. Plans
+  // name halls, landings, closets and cloakrooms without dimensioning them, so
+  // cutting in the model's own order can drop her bedroom in favour of twelve
+  // cupboards and leave the screen saying nothing was dimensioned (review
+  // finding). Stable within each group, so the drawing's own order survives.
+  const dimensioned = rooms.filter((room) => room.wallLengthCm !== null && room.roomDepthCm !== null);
+  const rest = rooms.filter((room) => room.wallLengthCm === null || room.roomDepthCm === null);
+  return [...dimensioned, ...rest].slice(0, DETECTED_ROOMS_MAX);
 }
 
 // Confirming writes the row, so a room the plan gives no dimensions for has
@@ -214,11 +237,19 @@ export function cropRectangleFor({
     return null;
   }
 
+  // The margin is a fraction of the ROOM, not of the sheet. Taken off the
+  // sheet it scales with the drawing instead of the room, so on a whole-home
+  // plan a bedroom would arrive as a third of its own crop and the concept
+  // model would be told two thirds of the neighbours were hers (review
+  // finding).
+  const marginX = marginRatio * (box.x1 - box.x0);
+  const marginY = marginRatio * (box.y1 - box.y0);
+
   const clamp = (value: number, max: number) => Math.min(Math.max(value, 0), max);
-  const left = clamp(Math.round((box.x0 - marginRatio) * widthPx), widthPx);
-  const top = clamp(Math.round((box.y0 - marginRatio) * heightPx), heightPx);
-  const right = clamp(Math.round((box.x1 + marginRatio) * widthPx), widthPx);
-  const bottom = clamp(Math.round((box.y1 + marginRatio) * heightPx), heightPx);
+  const left = clamp(Math.round((box.x0 - marginX) * widthPx), widthPx);
+  const top = clamp(Math.round((box.y0 - marginY) * heightPx), heightPx);
+  const right = clamp(Math.round((box.x1 + marginX) * widthPx), widthPx);
+  const bottom = clamp(Math.round((box.y1 + marginY) * heightPx), heightPx);
 
   const width = right - left;
   const height = bottom - top;

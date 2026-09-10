@@ -3344,6 +3344,10 @@ export type ReadFloorPlanRoomsResult = {
 export type NormalizedFloorPlanRead = {
   unitRead: FloorPlanReadResponse["unitRead"];
   rooms: DetectedRoom[];
+  // How many rooms the model named, before the bounds and the display cap. The
+  // screen compares it with `rooms.length` so a shortened list can say so
+  // rather than looking like the drawing had nothing else on it.
+  roomsFound: number;
 };
 
 export function floorPlanReadContent(input: { planImageDataUrl: string }): VisionContentPart[] {
@@ -3360,9 +3364,20 @@ export function floorPlanReadContent(input: { planImageDataUrl: string }): Visio
 // or writes it. `boundedDetectedRooms` is the one place that decides what a
 // plan is allowed to say, and it drops rather than clamps.
 export function normalizeFloorPlanRead(parsed: FloorPlanReadResponse): NormalizedFloorPlanRead {
+  // A model that cannot tell what the drawing is drawn in was told to report
+  // null dimensions. Enforced here rather than trusted, because the whole cost
+  // of getting units wrong lands on the person who confirms the chip: her room
+  // would be furnished against a number thirty times too large, with the fit
+  // checks passing trivially because the wall is enormous (review finding).
+  const rooms =
+    parsed.unitRead === "unknown"
+      ? parsed.rooms.map((room) => ({ ...room, wallLengthCm: null, roomDepthCm: null, ceilingHeightCm: null }))
+      : parsed.rooms;
+
   return {
     unitRead: parsed.unitRead,
-    rooms: boundedDetectedRooms(parsed.rooms)
+    rooms: boundedDetectedRooms(rooms),
+    roomsFound: parsed.rooms.length
   };
 }
 

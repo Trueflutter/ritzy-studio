@@ -149,7 +149,11 @@ export async function readFloorPlanForRoom(
         cost_estimate_usd: result.textCostUsd,
         prompt_version: result.promptVersion,
         // The whole answer, because this row is what the screen renders from.
-        output_summary: { unitRead: result.read.unitRead, rooms: result.read.rooms }
+        output_summary: {
+          unitRead: result.read.unitRead,
+          roomsFound: result.read.roomsFound,
+          rooms: result.read.rooms
+        }
       },
       "floor plan read"
     );

@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { BRIEF_FIELD_BOUNDS } from "./index";
 import {
   DETECTED_ROOM_LABEL_MAX,
+  DETECTED_ROOM_MAX_CM,
   DETECTED_ROOMS_MAX,
   PLAN_READABLE_MIN_EDGE_PX,
   boundedDetectedRooms,
@@ -42,13 +43,18 @@ import {
   // clamped: a plan read in millimetres returns 5200 for a 5.2 m wall, and
   // clamping it to the maximum would present 50 m as if it had been read.
   assert.equal(boundedDetectedRooms([room({ wallLengthCm: 52_000 })])[0].wallLengthCm, null);
+
+  // A read is held to a tighter ceiling than the form is. A metric plan drawn
+  // in millimetres returns 3200 for a 3.2 m bedroom, which sits comfortably
+  // inside the form's 5000 cm, and confirming it would write 32 metres as
+  // verified (review finding).
+  assert.equal(boundedDetectedRooms([room({ wallLengthCm: 3200, roomDepthCm: 2800 })])[0].wallLengthCm, null);
+  assert.equal(boundedDetectedRooms([room({ wallLengthCm: 3200, roomDepthCm: 2800 })])[0].roomDepthCm, null);
+  assert.equal(boundedDetectedRooms([room({ wallLengthCm: DETECTED_ROOM_MAX_CM })])[0].wallLengthCm, DETECTED_ROOM_MAX_CM);
+  assert.equal(boundedDetectedRooms([room({ wallLengthCm: DETECTED_ROOM_MAX_CM + 1 })])[0].wallLengthCm, null);
+  assert.ok(DETECTED_ROOM_MAX_CM < BRIEF_FIELD_BOUNDS.wallLengthCm.max, "tighter than what a person may type");
   assert.equal(boundedDetectedRooms([room({ roomDepthCm: 0 })])[0].roomDepthCm, null);
   assert.equal(boundedDetectedRooms([room({ ceilingHeightCm: 2000 })])[0].ceilingHeightCm, null);
-  assert.equal(
-    boundedDetectedRooms([room({ wallLengthCm: BRIEF_FIELD_BOUNDS.wallLengthCm.max })])[0].wallLengthCm,
-    BRIEF_FIELD_BOUNDS.wallLengthCm.max,
-    "the schema's own maximum is inside the bound, not outside it"
-  );
   assert.equal(boundedDetectedRooms([room({ wallLengthCm: Number.NaN })])[0].wallLengthCm, null);
   assert.equal(boundedDetectedRooms([room({ wallLengthCm: "520" })])[0].wallLengthCm, null, "a string is not a number");
 
@@ -66,6 +72,24 @@ import {
   // answering a different question.
   const many = Array.from({ length: DETECTED_ROOMS_MAX + 9 }, (_, index) => room({ label: `Room ${index}` }));
   assert.equal(boundedDetectedRooms(many).length, DETECTED_ROOMS_MAX);
+
+  // And the cut takes the rooms she cannot act on first. Plans name halls,
+  // landings and cupboards without dimensioning them, so cutting in the
+  // model's order can drop her bedroom in favour of twelve closets and leave
+  // the screen saying nothing on the plan was dimensioned (review finding).
+  const cupboards = Array.from({ length: DETECTED_ROOMS_MAX + 4 }, (_, index) =>
+    room({ label: `Closet ${index}`, wallLengthCm: null, roomDepthCm: null })
+  );
+  const cut = boundedDetectedRooms([...cupboards, room({ label: "Master Bedroom" })]);
+  assert.equal(cut.length, DETECTED_ROOMS_MAX);
+  assert.equal(cut[0].label, "Master Bedroom", "the room she came for survives the cut");
+  assert.deepEqual(
+    boundedDetectedRooms([room({ label: "Hall", wallLengthCm: null, roomDepthCm: null }), room({ label: "Living Room" })]).map(
+      (entry) => entry.label
+    ),
+    ["Living Room", "Hall"],
+    "and dimensioned rooms lead the list even when nothing is cut"
+  );
 
   assert.deepEqual(boundedDetectedRooms([]), []);
   assert.deepEqual(boundedDetectedRooms(null), []);
@@ -218,17 +242,34 @@ import {
   const rect = cropRectangleFor({ box, widthPx: 1000, heightPx: 800, marginRatio: 0 });
   assert.deepEqual(rect, { left: 250, top: 400, width: 250, height: 200 });
 
-  const withMargin = cropRectangleFor({ box, widthPx: 1000, heightPx: 800, marginRatio: 0.04 });
-  assert.deepEqual(withMargin, { left: 210, top: 368, width: 330, height: 264 });
+  // The margin is a share of the ROOM, not of the sheet. Taken off the sheet
+  // it scales with the drawing rather than the room, so a small room on a
+  // whole-home plan arrives as a third of its own crop and the concept model
+  // is told the neighbours are hers (review finding).
+  const withMargin = cropRectangleFor({ box, widthPx: 1000, heightPx: 800, marginRatio: 0.1 });
+  assert.deepEqual(withMargin, { left: 225, top: 380, width: 300, height: 240 });
+
+  const small = cropRectangleFor({
+    box: { x0: 0.42, y0: 0.3, x1: 0.51, y1: 0.41 },
+    widthPx: 2048,
+    heightPx: 1400,
+    marginRatio: 0.1
+  });
+  const roomArea = 0.09 * 2048 * (0.11 * 1400);
+  assert.ok(small !== null);
+  assert.ok(
+    roomArea / (small.width * small.height) > 0.65,
+    `the room fills its own crop: ${(roomArea / (small.width * small.height)).toFixed(2)}`
+  );
 
   // The margin cannot walk off the drawing.
   assert.deepEqual(
     cropRectangleFor({ box: { x0: 0, y0: 0, x1: 0.2, y1: 0.2 }, widthPx: 1000, heightPx: 800, marginRatio: 0.1 }),
-    { left: 0, top: 0, width: 300, height: 240 }
+    { left: 0, top: 0, width: 220, height: 176 }
   );
   assert.deepEqual(
     cropRectangleFor({ box: { x0: 0.9, y0: 0.9, x1: 1, y1: 1 }, widthPx: 1000, heightPx: 800, marginRatio: 0.1 }),
-    { left: 800, top: 640, width: 200, height: 160 }
+    { left: 890, top: 712, width: 110, height: 88 }
   );
 
   // A crop of nothing is not a crop.
