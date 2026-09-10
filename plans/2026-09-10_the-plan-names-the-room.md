@@ -431,6 +431,23 @@ gate of their own.
   brief rows; the guarded writer narrows the update path but cannot close the
   insert path without that constraint.
 
+- **A close that fails twice costs one extra read** (cross-model gate, round
+  two). `closeAiJob` returns rather than throws when both its attempts fail, so
+  a successful call can leave its row `running` with no cost recorded, and the
+  staleness rule then allows a retry that spends again. The alternative is the
+  bug that rule just fixed: a shopper stuck on "Reading your floor plan" for
+  ever with no retry. Bounded at one cheap call in a double-write failure, and
+  the honest fix is durable reconciliation, which the render path has and this
+  one does not need at this size.
+- **A response that spends and then fails to parse records no cost**
+  (cross-model gate, round two). `readFloorPlanRooms` parses inside the AI
+  package and throws before returning `textCostUsd`, so an incomplete or
+  malformed answer is billed by the provider and absent from `ai_jobs`. Not
+  specific to this slice: every stage in `packages/ai` does this, including the
+  inspiration analysis this one is modelled on, and criterion 7 states it
+  rather than pretending otherwise. Fixing it means preserving usage across a
+  parse failure in every stage, which is its own change.
+
 ## Open questions for Ayo
 
 1. **The PDF split.** This slice ships image plans and tells the truth about

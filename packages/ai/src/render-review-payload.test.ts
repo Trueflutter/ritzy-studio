@@ -4,6 +4,7 @@ import { floorPlanReadResponseSchema } from "@ritzy-studio/prompts";
 
 import {
   cameraReadContent,
+  floorPlanLanguage,
   floorPlanReadContent,
   normalizeFloorPlanRead,
   finalGroundedRenderReferences,
@@ -271,4 +272,25 @@ console.log("render review payload tests passed");
   );
   assert.equal(millimetres.rooms[0].wallLengthCm, null);
   assert.equal(millimetres.rooms[0].roomDepthCm, null);
+}
+
+// S5b, cross-model gate: the sentence the concept and revision prompts are
+// given about a floor plan.
+//
+// The crop was withdrawn because the model locates rooms badly, and the room's
+// NAME replaced it. That only works if the name reaches the prompt: it was
+// recorded by the confirmation, returned by `roomImageInputs`, and passed to
+// neither model call, so every plan arrived under the unnamed fallback and the
+// replacement did nothing. Asserted on the emitted sentence rather than on the
+// function that returns the label, which is the seam that stayed green.
+{
+  const named = floorPlanLanguage("Bedroom, Second");
+  assert.match(named, /Bedroom, Second/, "the prompt is told which room on the drawing is hers");
+  assert.match(named, /may show more than the room/, "and that the drawing may be the whole home");
+  assert.equal(named.includes("is the room's floor plan"), false, "it no longer asserts the sheet IS her room");
+
+  const unnamed = floorPlanLanguage(null);
+  assert.match(unnamed, /may show more of the home/);
+  assert.equal(unnamed.includes("undefined"), false, "and an absent name is a different sentence, not a hole in one");
+  assert.equal(floorPlanLanguage("   "), unnamed, "whitespace is not a room name");
 }

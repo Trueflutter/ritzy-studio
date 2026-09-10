@@ -72,17 +72,11 @@ export function FloorPlanUploader({
       return false;
     }
 
-    if (existingAssets && existingAssets.length > 0) {
-      const paths = existingAssets.map((asset) => asset.storage_path).filter(Boolean);
-      if (paths.length > 0) {
-        await supabase.storage.from("room-assets").remove(paths);
-      }
-      await supabase.from("room_assets").delete().in(
-        "id",
-        existingAssets.map((asset) => asset.id)
-      );
-    }
-
+    // The new row lands BEFORE the old plan is retired. The other order
+    // deletes the object and the row first, so an insert that then fails
+    // leaves the room with no plan at all, the previous one unrecoverable and
+    // the new one orphaned in storage (cross-model gate). Worst case now is a
+    // stale row that loses to the newer one on every read.
     const { error: rowError } = await supabase.from("room_assets").insert({
       room_id: roomId,
       asset_type: "floor_plan",
@@ -97,6 +91,17 @@ export function FloorPlanUploader({
       setStatus("error");
       setMessage(rowError.message);
       return false;
+    }
+
+    if (existingAssets && existingAssets.length > 0) {
+      const paths = existingAssets.map((asset) => asset.storage_path).filter(Boolean);
+      if (paths.length > 0) {
+        await supabase.storage.from("room-assets").remove(paths);
+      }
+      await supabase.from("room_assets").delete().in(
+        "id",
+        existingAssets.map((asset) => asset.id)
+      );
     }
 
     setStatus("complete");

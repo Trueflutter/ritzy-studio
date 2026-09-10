@@ -59,4 +59,32 @@ for (const id of ["wallLengthCm", "roomDepthCm", "ceilingHeightCm"]) {
 }
 assert.match(rooms, /ASSUMPTION_SOURCE_FIELD_IDS/, "and it takes them from the one place that names them");
 
+// The label has to reach the model, not just the service that assembles the
+// inputs. It was recorded by the confirmation, returned by `roomImageInputs`,
+// and passed to neither model call, so the sentence that replaced the crop was
+// never given a room to name (cross-model gate). The seam tests were green
+// throughout, which is why this asserts the call sites.
+const conceptPaths = [
+  "lib/services/concept-generation.ts",
+  "lib/services/concept-revision.ts"
+];
+for (const rel of conceptPaths) {
+  const source = readFileSync(path.resolve(__dirname, "..", rel), "utf8");
+  assert.match(
+    source,
+    /floorPlanRoomLabel: images\.floorPlanRoomLabel/,
+    `${rel} hands the confirmed room's name to the model beside the plan`
+  );
+}
+
+// The replacement inserts before it retires. The other order loses the old
+// plan when the insert fails, with the new object orphaned in storage
+// (cross-model gate).
+{
+  const insertAt = uploader.indexOf('.from("room_assets").insert');
+  const deleteAt = uploader.indexOf('.from("room_assets").delete');
+  assert.ok(insertAt > 0 && deleteAt > 0);
+  assert.ok(insertAt < deleteAt, "the new plan is durable before the old one is deleted");
+}
+
 console.log("floor plan wiring tests passed");
