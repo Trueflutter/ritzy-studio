@@ -330,3 +330,52 @@ export function floorPlanCropBox({
   }
   return confirmed.box;
 }
+
+// What the screen says about the plan attached to this room.
+//
+// Every one of these is a sentence a shopper reads, and the set is closed on
+// purpose: a plan attached with nothing said about it is the state S5a spent
+// its life removing. The read's own job row carries the state, so this is a
+// pure function of what is attached and what the newest read did with it.
+export type FloorPlanScreenState =
+  | "no_plan"
+  | "pdf"
+  | "too_small"
+  | "reading"
+  | "read_failed"
+  | "no_rooms"
+  | "rooms";
+
+export function floorPlanScreenState({
+  asset,
+  newestJob,
+  roomCount
+}: {
+  asset: FloorPlanAsset | null;
+  newestJob: FloorPlanReadJob | null;
+  roomCount: number;
+}): FloorPlanScreenState {
+  const { action } = floorPlanReadDecision({ asset, newestJob });
+
+  if (action === "no_plan") {
+    return "no_plan";
+  }
+  if (action === "unreadable_format") {
+    return "pdf";
+  }
+  if (action === "too_small") {
+    return "too_small";
+  }
+  if (action === "in_flight") {
+    return "reading";
+  }
+  if (action === "already_read") {
+    return roomCount > 0 ? "rooms" : "no_rooms";
+  }
+
+  // The decision says this plan is worth reading, which means no succeeded or
+  // running job names it. Either the read failed, or the upload's call has not
+  // opened its row yet; both are "we are on it" from the screen's side, and the
+  // failed one carries a retry.
+  return newestJob?.status === "failed" && newestJob.assetId === asset?.id ? "read_failed" : "reading";
+}

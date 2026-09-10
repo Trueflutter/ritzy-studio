@@ -57,6 +57,11 @@ import {
   withoutRefusedFields,
   type BriefRefusal
 } from "@/lib/brief-fields";
+import {
+  confirmDetectedRoom,
+  readFloorPlanForRoom,
+  revertToWholePlan
+} from "@/lib/services/floor-plan-read";
 import { createClient } from "@/lib/supabase/server";
 import { finalRenderRetryHonoured, finalRenderStaleMs } from "@/lib/render";
 import { localSkuFidelityModeEnabled } from "@/lib/render-flags";
@@ -1451,6 +1456,67 @@ export async function analyzeInspirationAction(roomId: string) {
     supabase,
     userId: user.id
   });
+}
+
+// S5b: the floor plan's three actions. The read is triggered by an upload and
+// never by a render, so opening the details page cannot spend money.
+export async function readFloorPlanAction(roomId: string) {
+  const supabase = await createClient();
+  const {
+    data: { user }
+  } = await supabase.auth.getUser();
+  if (!user) {
+    redirect("/login");
+  }
+
+  const outcome = await readFloorPlanForRoom({
+    roomId,
+    userId: user.id,
+    supabase,
+    serviceSupabase: createServiceClient()
+  });
+
+  revalidatePath(`/projects`, "layout");
+  return outcome.status === "failed" ? { message: outcome.message } : null;
+}
+
+export async function confirmDetectedRoomAction(roomId: string, roomIndex: number) {
+  const supabase = await createClient();
+  const {
+    data: { user }
+  } = await supabase.auth.getUser();
+  if (!user) {
+    redirect("/login");
+  }
+
+  const outcome = await confirmDetectedRoom({ roomId, roomIndex, supabase });
+  revalidatePath(`/projects`, "layout");
+
+  if (outcome.status === "stale") {
+    return { message: "That list was read from a different plan. The one attached now is being read." };
+  }
+  if (outcome.status === "not_found") {
+    return { message: "That room is not on the plan we read." };
+  }
+  return outcome.wroteMeasurements
+    ? null
+    : {
+        message: `We could not read a size for ${outcome.label} on the plan, so the fields are still yours to fill. The design will read that part of the drawing.`
+      };
+}
+
+export async function revertToWholePlanAction(roomId: string) {
+  const supabase = await createClient();
+  const {
+    data: { user }
+  } = await supabase.auth.getUser();
+  if (!user) {
+    redirect("/login");
+  }
+
+  await revertToWholePlan({ roomId, supabase });
+  revalidatePath(`/projects`, "layout");
+  return null;
 }
 
 async function ensureInspirationAnalysisBeforeDetails({

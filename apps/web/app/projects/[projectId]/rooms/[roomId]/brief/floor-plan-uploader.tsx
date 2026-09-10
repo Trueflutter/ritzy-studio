@@ -6,6 +6,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
 import { createClient } from "@/lib/supabase/client";
+import { readFloorPlanAction } from "@/app/actions";
 import { readImageSize, slugFileName } from "@/lib/upload";
 
 type UploadStatus = "idle" | "uploading" | "complete" | "error";
@@ -92,6 +93,16 @@ export function FloorPlanUploader({
 
     setStatus("complete");
     setMessage("Floor plan attached");
+
+    // The read is triggered here, by the upload, and never by a render: a page
+    // that read on load would spend on every visit. The same shape the
+    // inspiration images use (S5b).
+    if (file.type.startsWith("image/")) {
+      setMessage("Reading your floor plan...");
+      const result = await readFloorPlanAction(roomId);
+      setMessage(result?.message ?? "Floor plan attached");
+    }
+
     startTransition(() => router.refresh());
     return true;
   }
@@ -100,7 +111,7 @@ export function FloorPlanUploader({
     <ImageDropzone
       accept="image/jpeg,image/png,application/pdf"
       busy={status === "uploading" || isPending}
-      description="Add the floor plan for this room only — not the whole property."
+      description="The whole home's plan is fine. We will find the rooms on it and you pick this one."
       error={
         status === "error"
           ? { message, onRetry: lastFile ? () => void uploadFile(lastFile) : undefined }

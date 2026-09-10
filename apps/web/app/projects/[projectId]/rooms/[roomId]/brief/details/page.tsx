@@ -1,13 +1,27 @@
 import { ButtonLink, SubmitButton } from "@ritzy-studio/ui";
 import {
   measurementAssumptionNotes,
+  confirmedFloorPlanRoom,
+  floorPlanScreenState,
   parseSpatialIntent,
   spatialLayoutModeForRoomType
 } from "@ritzy-studio/domain";
 import { notFound, redirect } from "next/navigation";
 
-import { saveDesignBriefAction } from "@/app/actions";
+import {
+  confirmDetectedRoomAction,
+  readFloorPlanAction,
+  revertToWholePlanAction,
+  saveDesignBriefAction
+} from "@/app/actions";
 import { briefNumberAttributes, briefTextAttributes, colourNotesDefault } from "@/lib/brief-fields";
+import {
+  detectedRoomsOnJob,
+  jobAssetId,
+  newestFloorPlanReadJob
+} from "@/lib/services/floor-plan-read";
+import { structuredBriefJson } from "@/lib/services/sourcing-support";
+import { DetectedRooms } from "./detected-rooms";
 import { createClient } from "@/lib/supabase/server";
 import {
   BriefMessage,
@@ -78,6 +92,28 @@ export default async function BriefDetailsPage({
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();
+
+  // S5b: the rooms the plan named, read from the job row that paid for the
+  // read rather than from the brief document, so a Continue press mid-read
+  // cannot discard an answer already bought.
+  const floorPlanReadJob = await newestFloorPlanReadJob(supabase, roomId);
+  const detectedRooms = detectedRoomsOnJob(floorPlanReadJob);
+  const floorPlanAsset = floorPlan
+    ? { id: floorPlan.id, mimeType: floorPlan.mime_type, widthPx: floorPlan.width_px, heightPx: floorPlan.height_px }
+    : null;
+  const floorPlanState = floorPlanScreenState({
+    asset: floorPlanAsset,
+    newestJob: floorPlanReadJob ? { assetId: jobAssetId(floorPlanReadJob), status: floorPlanReadJob.status } : null,
+    roomCount: detectedRooms.length
+  });
+  const confirmedRoom = confirmedFloorPlanRoom(
+    structuredBriefJson(designBrief?.structured_json).floorPlan
+  );
+  const planPreviewUrl =
+    floorPlan && floorPlan.mime_type?.startsWith("image/")
+      ? ((await supabase.storage.from("room-assets").createSignedUrl(floorPlan.storage_path, 60 * 60)).data?.signedUrl ??
+        null)
+      : null;
 
   const spatialIntent = parseSpatialIntent(designBrief?.structured_json, room.room_type);
   const layoutMode = spatialLayoutModeForRoomType(room.room_type);
@@ -409,6 +445,18 @@ export default async function BriefDetailsPage({
             </p>
             <div className="mt-5">
               <FloorPlanUploader existingStoragePath={floorPlan?.storage_path} roomId={roomId} userId={user.id} />
+              <DetectedRooms
+                actions={{
+                  confirm: confirmDetectedRoomAction,
+                  read: readFloorPlanAction,
+                  revert: revertToWholePlanAction
+                }}
+                confirmed={confirmedRoom}
+                planUrl={planPreviewUrl}
+                roomId={roomId}
+                rooms={detectedRooms}
+                state={floorPlanState}
+              />
             </div>
           </div>
         </div>

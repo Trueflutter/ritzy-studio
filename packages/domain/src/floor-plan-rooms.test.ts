@@ -13,6 +13,7 @@ import {
   detectedRoomLabel,
   floorPlanCropBox,
   floorPlanReadDecision,
+  floorPlanScreenState,
   roomDimensionsLabel
 } from "./floor-plan-rooms";
 
@@ -331,6 +332,30 @@ import {
   assert.equal(floorPlanCropBox({ recorded: "living room", attachedAssetId: "plan-a" }), null);
   assert.equal(floorPlanCropBox({ recorded: { label: "Living Room", box }, attachedAssetId: "plan-a" }), null);
   assert.equal(floorPlanCropBox({ recorded: { assetId: "plan-a", box }, attachedAssetId: "plan-a" }), null);
+}
+
+// ------------------------------------------------------ what the screen says
+{
+  const plan = { id: "plan-a", mimeType: "image/png", widthPx: 2400, heightPx: 1600 };
+  const state = (over: Parameters<typeof floorPlanScreenState>[0]) => floorPlanScreenState(over);
+
+  assert.equal(state({ asset: null, newestJob: null, roomCount: 0 }), "no_plan");
+  assert.equal(state({ asset: { ...plan, mimeType: "application/pdf" }, newestJob: null, roomCount: 0 }), "pdf");
+  assert.equal(state({ asset: { ...plan, widthPx: 390, heightPx: 578 }, newestJob: null, roomCount: 0 }), "too_small");
+
+  // The window between the upload landing and the read's row existing is not
+  // an empty screen: she is told it is being read.
+  assert.equal(state({ asset: plan, newestJob: null, roomCount: 0 }), "reading");
+  assert.equal(state({ asset: plan, newestJob: { assetId: "plan-a", status: "running" }, roomCount: 0 }), "reading");
+
+  assert.equal(state({ asset: plan, newestJob: { assetId: "plan-a", status: "failed" }, roomCount: 0 }), "read_failed");
+  assert.equal(state({ asset: plan, newestJob: { assetId: "plan-a", status: "succeeded" }, roomCount: 3 }), "rooms");
+  assert.equal(state({ asset: plan, newestJob: { assetId: "plan-a", status: "succeeded" }, roomCount: 0 }), "no_rooms");
+
+  // A job about the plan she replaced says nothing about this one, including
+  // its failure: the new plan is being read, not broken.
+  assert.equal(state({ asset: plan, newestJob: { assetId: "an-older-plan", status: "failed" }, roomCount: 0 }), "reading");
+  assert.equal(state({ asset: plan, newestJob: { assetId: "an-older-plan", status: "succeeded" }, roomCount: 9 }), "reading");
 }
 
 console.log("floor plan rooms tests passed");
