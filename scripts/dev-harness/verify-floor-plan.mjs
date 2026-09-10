@@ -94,15 +94,11 @@ const waitForRead = async (from) => {
 };
 
 // ------------------------------------------------------ the too-small refusal
-// The too-small case, made by downscaling the Emaar plan below the floor
-// rather than by committing somebody's listing sheet to a public repository.
-const sharp = (await import("sharp")).default;
-const tooSmall = `${OUT}/too-small.jpg`;
-fs.writeFileSync(
-  tooSmall,
-  await sharp(fs.readFileSync(`${FIXTURES}/floor-plan-emaar-collective-2bed.jpg`)).resize({ width: 500 }).jpeg().toBuffer()
-);
-await upload(tooSmall);
+// The too-small case: the same Emaar plan at 500 pixels, which the ladder in
+// the plan's Verification shows is where a read stops being trustworthy. A
+// downscale of developer collateral rather than somebody's listing sheet, so
+// the fixtures carry no address.
+await upload(`${FIXTURES}/floor-plan-emaar-below-floor-500px.jpg`);
 await page.waitForTimeout(6000);
 await page.goto(DETAILS, { waitUntil: "networkidle" });
 const smallText = await page.locator('[data-testid="detected-rooms"]').innerText().catch(() => "");
@@ -141,7 +137,16 @@ check("reloading the page reads nothing again", reloadJobs.length === afterJobs.
 
 const chips = await page.locator('[data-testid="detected-rooms"] button').allInnerTexts();
 check("the rooms carry the numbers they would write", chips.some((c) => /4\.7 by 3\.2 m/.test(c)), chips.map((c) => c.replace(/\n/g, " ")).join(" | ").slice(0, 120));
-check("and the one the plan does not size says so", chips.some((c) => /no size on the plan|no size or place/.test(c)), "");
+check(
+  "and the one the plan does not size says so",
+  chips.some((c) => /no size printed on the plan/.test(c)),
+  ""
+);
+check(
+  "every read number says where it came from",
+  chips.filter((c) => /\d\.\d by \d\.\d m/.test(c)).every((c) => /read from your plan/.test(c)),
+  ""
+);
 await shot("plan--rooms");
 
 // -------------------------------------------------------------- confirming
@@ -166,8 +171,13 @@ check(
   startedMeasured?.ceiling_height_cm == null || Number(rows[0].ceiling_height_cm) === Number(startedMeasured.ceiling_height_cm),
   `was ${startedMeasured?.ceiling_height_cm}, now ${rows[0]?.ceiling_height_cm}`
 );
+// No outline: the boxes came back plausible and wrong, so the crop and the
+// overlay were withdrawn. What confirming does now is name the room to the
+// concept prompt.
 const outline = await page.locator('[data-testid="detected-room-outline"]').count();
-check("the room she picked is outlined on the plan", outline === 1, `${outline}`);
+check("nothing is outlined on the plan, since the model cannot locate a room", outline === 0, `${outline}`);
+const panel = await page.locator('[data-testid="detected-rooms"]').innerText();
+check("and the screen names the room it is treating as this one", /We are treating Living/.test(panel), panel.replace(/\n/g, " ").slice(0, 80));
 await shot("plan--confirmed");
 
 // ---------------------------------------------------- continue, and the row
