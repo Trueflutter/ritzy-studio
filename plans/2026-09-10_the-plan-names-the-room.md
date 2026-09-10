@@ -287,7 +287,7 @@ proof is obtained is the open question below.
    decimal place, for example `Living Room 5.2 by 4.1 m`. A detected room
    without both a wall length and a depth renders as a disabled control saying
    the plan shows no dimensions for it.
-3. Confirming a detected room adds exactly one `room_measurements` row whose
+3. Confirming a room the plan dimensions adds exactly one `room_measurements` row whose
    `source` is `floor_plan`, `confidence` is `verified`, `floor_plan_asset_id`
    is the plan asset's id, and whose values are that room's; the three inputs
    show those values without a reload, and the assumption panel beneath them
@@ -299,9 +299,12 @@ proof is obtained is the open question below.
    new plan uncropped until a room on it is confirmed.
 5. Confirming a room that carried no box writes the measurement row, records no
    box, leaves `roomImageInputs` returning the whole plan, and the screen says
-   the room could not be located on the drawing. Choosing "use the whole plan
-   instead" after a confirmation clears the recorded box and leaves the
-   `room_measurements` row untouched.
+   the room could not be located on the drawing. Confirming a room the plan
+   locates but does not dimension records the box, writes NO
+   `room_measurements` row, and the screen says the plan gave no size for it
+   and invites her to type one. Choosing "use the whole plan instead" after a
+   confirmation clears the recorded box and leaves any `room_measurements` row
+   untouched.
 6. Pressing Continue without editing after a confirmation adds no further
    `room_measurements` row, so the newest row is still the `floor_plan` one.
    Editing one value and pressing Continue adds exactly one row with
@@ -426,6 +429,19 @@ gate of their own.
   drawing, and Ayo's fixture has three, with the label "Bedroom" on three
   different rooms. The detected-room record gains an optional `level` and the
   chip shows it, or three identical chips would ask her to pick blind.
+- **Confirming a room has two halves, and a villa brochure only has one of
+  them.** Ayo supplied a Tilal Al Furjan villa brochure with the observation
+  that many owners have exactly that: the marketing PDF for the home they
+  bought. Measured with the real read: its two drawings are embedded 1546 by
+  949 JPEGs, so every room name comes back correct and every dimension line,
+  about four pixels tall inside that JPEG, does not, at 200, 300 or 600 dpi.
+  Rasterising higher only enlarges the same pixels. Under the first design
+  that made a whole class of plan a list of disabled chips, which is the
+  commonest artefact a villa owner has and nothing to do with it. So
+  confirming now has two independent halves: the dimensions fill the fields,
+  and the box crops the drawing for the concept prompts. A room with either is
+  worth confirming and the screen says which it got. Recorded with the fixture
+  and its measurements in `scripts/dev-harness/fixtures`.
 - **A real Dubai plan, found online on Ayo's instruction, and what it did to
   the floor.** The fixture set is now two real drawings that bracket the
   problem. Emaar's Collective 2.0 two-bedroom marketing plan (Dubai Hills

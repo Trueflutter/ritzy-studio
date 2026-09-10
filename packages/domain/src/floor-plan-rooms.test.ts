@@ -9,6 +9,7 @@ import {
   boundedDetectedRooms,
   confirmableRooms,
   cropRectangleFor,
+  roomConfirmKind,
   detectedRoomLabel,
   floorPlanReadDecision,
   roomDimensionsLabel
@@ -78,17 +79,19 @@ import {
   // model's order can drop her bedroom in favour of twelve closets and leave
   // the screen saying nothing on the plan was dimensioned (review finding).
   const cupboards = Array.from({ length: DETECTED_ROOMS_MAX + 4 }, (_, index) =>
-    room({ label: `Closet ${index}`, wallLengthCm: null, roomDepthCm: null })
+    room({ label: `Closet ${index}`, wallLengthCm: null, roomDepthCm: null, box: null })
   );
   const cut = boundedDetectedRooms([...cupboards, room({ label: "Master Bedroom" })]);
   assert.equal(cut.length, DETECTED_ROOMS_MAX);
   assert.equal(cut[0].label, "Master Bedroom", "the room she came for survives the cut");
   assert.deepEqual(
-    boundedDetectedRooms([room({ label: "Hall", wallLengthCm: null, roomDepthCm: null }), room({ label: "Living Room" })]).map(
-      (entry) => entry.label
-    ),
-    ["Living Room", "Hall"],
-    "and dimensioned rooms lead the list even when nothing is cut"
+    boundedDetectedRooms([
+      room({ label: "Hall", wallLengthCm: null, roomDepthCm: null, box: null }),
+      room({ label: "Family Room", wallLengthCm: null, roomDepthCm: null, box: { x0: 0.1, y0: 0.1, x1: 0.4, y1: 0.4 } }),
+      room({ label: "Living Room" })
+    ]).map((entry) => entry.label),
+    ["Living Room", "Family Room", "Hall"],
+    "measured first, then located, then the ones she can do nothing with"
   );
 
   assert.deepEqual(boundedDetectedRooms([]), []);
@@ -129,20 +132,29 @@ import {
 
 // ------------------------------------------------------- what she can confirm
 {
+  const box = { x0: 0.1, y0: 0.1, x1: 0.4, y1: 0.4 };
   const rooms = boundedDetectedRooms([
-    { label: "Living Room", wallLengthCm: 520, roomDepthCm: 410, ceilingHeightCm: null, box: null, level: null },
-    { label: "Store", wallLengthCm: null, roomDepthCm: null, ceilingHeightCm: null, box: null, level: null },
-    { label: "Study", wallLengthCm: 300, roomDepthCm: null, ceilingHeightCm: null, box: null, level: null }
+    { label: "Living Room", wallLengthCm: 520, roomDepthCm: 410, ceilingHeightCm: null, box, level: null },
+    { label: "Study", wallLengthCm: 300, roomDepthCm: 250, ceilingHeightCm: null, box: null, level: null },
+    // The villa brochure case, measured on the Tilal fixture: its drawings are
+    // embedded 1546 by 949 JPEGs, so the names read and the dimension lines
+    // under them do not, at any rasterisation. Locating her room still crops
+    // the drawing for the concept, so it is worth confirming.
+    { label: "Family Room", wallLengthCm: null, roomDepthCm: null, ceilingHeightCm: null, box, level: null },
+    { label: "Store", wallLengthCm: null, roomDepthCm: null, ceilingHeightCm: null, box: null, level: null }
   ]);
 
-  // Confirming writes the row, so a room the plan gives no dimensions for has
-  // nothing to write. It still appears on screen, saying so, which is why this
-  // is a split rather than a filter.
+  assert.equal(roomConfirmKind(rooms[0]), "measurements_and_location");
+  assert.equal(roomConfirmKind(rooms[1]), "measurements");
+  assert.equal(roomConfirmKind(rooms[2]), "location");
+  assert.equal(roomConfirmKind(rooms[3]), null);
+
   assert.deepEqual(
     confirmableRooms(rooms).map((room) => room.label),
-    ["Living Room"]
+    ["Living Room", "Study", "Family Room"],
+    "a room the plan locates is confirmable even when it prints no size for it"
   );
-  assert.equal(rooms.length, 3, "the unconfirmable rooms are still rendered");
+  assert.equal(rooms.length, 4, "and the room it can do neither for is still rendered, saying so");
 }
 
 // ------------------------------------------------------------- what she reads

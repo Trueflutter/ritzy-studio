@@ -141,17 +141,41 @@ export function boundedDetectedRooms(value: unknown): DetectedRoom[] {
   // cutting in the model's own order can drop her bedroom in favour of twelve
   // cupboards and leave the screen saying nothing was dimensioned (review
   // finding). Stable within each group, so the drawing's own order survives.
-  const dimensioned = rooms.filter((room) => room.wallLengthCm !== null && room.roomDepthCm !== null);
-  const rest = rooms.filter((room) => room.wallLengthCm === null || room.roomDepthCm === null);
-  return [...dimensioned, ...rest].slice(0, DETECTED_ROOMS_MAX);
+  const rank = (room: DetectedRoom) => {
+    const kind = roomConfirmKind(room);
+    return kind === "measurements_and_location" || kind === "measurements" ? 0 : kind === "location" ? 1 : 2;
+  };
+  return [...rooms].sort((left, right) => rank(left) - rank(right)).slice(0, DETECTED_ROOMS_MAX);
 }
 
-// Confirming writes the row, so a room the plan gives no dimensions for has
-// nothing to write. It is still rendered, saying so, which is why this is a
-// split and not a filter: a plan whose rooms are all unconfirmable must not
-// look like a plan with no rooms in it.
+// What confirming a room can give her, which is not one thing.
+//
+// Measured against a real villa brochure (Tilal Al Furjan, in the fixtures):
+// its drawings are embedded 1546 by 949 JPEGs, so the room NAMES read cleanly
+// and the dimension lines under them, about four pixels tall, do not read at
+// any rasterisation. A first version made dimensions the condition of
+// confirming, which turned that whole class of plan into a list of disabled
+// chips: the commonest artefact a villa owner has, and nothing to do with it.
+//
+// The two halves are independent. Dimensions fill the measurement fields. A
+// box crops the drawing to her room, which is what the concept and revision
+// prompts need in order to be told the truth about what they are looking at.
+// A room with either is worth confirming, and the screen says which it got.
+export type RoomConfirmKind = "measurements_and_location" | "measurements" | "location" | null;
+
+export function roomConfirmKind(room: DetectedRoom): RoomConfirmKind {
+  const measured = room.wallLengthCm !== null && room.roomDepthCm !== null;
+  if (measured && room.box) {
+    return "measurements_and_location";
+  }
+  if (measured) {
+    return "measurements";
+  }
+  return room.box ? "location" : null;
+}
+
 export function confirmableRooms(rooms: readonly DetectedRoom[]): DetectedRoom[] {
-  return rooms.filter((room) => room.wallLengthCm !== null && room.roomDepthCm !== null);
+  return rooms.filter((room) => roomConfirmKind(room) !== null);
 }
 
 export function roomDimensionsLabel({
