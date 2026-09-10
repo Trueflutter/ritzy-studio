@@ -1,7 +1,9 @@
 import { parseServerEnv } from "@ritzy-studio/config";
 import type { Database } from "@ritzy-studio/db";
 import {
+  boundedDetectedRooms,
   buildProductSearchText,
+  type DetectedRoom,
   type RoomCameraRead,
   productEnrichmentInputSchema,
   productEnrichmentResponseSchema,
@@ -75,7 +77,11 @@ import {
   productDesignVerificationResponseSchema,
   anchorSetSelectionPrompt,
   anchorSetSelectionJsonSchema,
-  anchorSetSelectionResponseSchema
+  anchorSetSelectionResponseSchema,
+  floorPlanReadPrompt,
+  floorPlanReadJsonSchema,
+  floorPlanReadResponseSchema,
+  type FloorPlanReadResponse
 } from "@ritzy-studio/prompts";
 import { createHash, createSign } from "node:crypto";
 import { readFile } from "node:fs/promises";
@@ -3310,6 +3316,87 @@ export async function readRoomCameraFacts(input: ReadRoomCameraFactsInput): Prom
     read: normalizeCameraRead(parsed, { focalPoint: input.focalPoint, photoAssetIds, roleKeys }),
     promptKey: cameraReadPrompt.key,
     promptVersion: cameraReadPrompt.version,
+    model: stageModel,
+    textCostUsd: estimateTextCostUsd(stageModel, response.usage)
+  };
+}
+
+// S5b: the floor plan read. One drawing in, the rooms it names out.
+//
+// Sent at HIGH detail, unlike the camera read above: that one asks which room a
+// photograph shows, which survives 512-pixel tiles, while this one asks what is
+// printed in six-point type on a drawing (plan review finding).
+export const FLOOR_PLAN_READ_TIMEOUT_MS = 90_000;
+
+export type ReadFloorPlanRoomsInput = {
+  planImageDataUrl: string;
+  timeoutMs?: number;
+};
+
+export type ReadFloorPlanRoomsResult = {
+  read: NormalizedFloorPlanRead;
+  promptKey: string;
+  promptVersion: string;
+  model: string;
+  textCostUsd: number | null;
+};
+
+export type NormalizedFloorPlanRead = {
+  unitRead: FloorPlanReadResponse["unitRead"];
+  rooms: DetectedRoom[];
+};
+
+export function floorPlanReadContent(input: { planImageDataUrl: string }): VisionContentPart[] {
+  return [
+    {
+      type: "input_text",
+      text: "Read this floor plan. Report every named room, its dimensions in centimetres, the level it sits on when the sheet labels levels, and where it sits on the page. Return only the requested JSON."
+    },
+    { type: "input_image", image_url: input.planImageDataUrl, detail: "high" }
+  ];
+}
+
+// The model's answer, put through the domain's bounds before anything renders
+// or writes it. `boundedDetectedRooms` is the one place that decides what a
+// plan is allowed to say, and it drops rather than clamps.
+export function normalizeFloorPlanRead(parsed: FloorPlanReadResponse): NormalizedFloorPlanRead {
+  return {
+    unitRead: parsed.unitRead,
+    rooms: boundedDetectedRooms(parsed.rooms)
+  };
+}
+
+export async function readFloorPlanRooms(input: ReadFloorPlanRoomsInput): Promise<ReadFloorPlanRoomsResult> {
+  const env = parseServerEnv(process.env);
+  const client = createTextClient(env);
+  const { model: stageModel, requestParams: stageRequestParams } = stageTextConfig("floor_plan_read", env.OPENAI_TEXT_MODEL);
+
+  const response = await client.responses.create(
+    {
+      max_output_tokens: 4000,
+      ...stageRequestParams,
+      input: [
+        { role: "system", content: floorPlanReadPrompt.system },
+        { role: "user", content: floorPlanReadContent(input) }
+      ],
+      text: {
+        format: {
+          type: "json_schema",
+          name: "ritzy_floor_plan_read",
+          schema: floorPlanReadJsonSchema,
+          strict: true
+        }
+      }
+    },
+    { timeout: input.timeoutMs ?? FLOOR_PLAN_READ_TIMEOUT_MS }
+  );
+  assertCompleteResponse(response, "The floor plan read");
+
+  const parsed = floorPlanReadResponseSchema.parse(JSON.parse(response.output_text));
+  return {
+    read: normalizeFloorPlanRead(parsed),
+    promptKey: floorPlanReadPrompt.key,
+    promptVersion: floorPlanReadPrompt.version,
     model: stageModel,
     textCostUsd: estimateTextCostUsd(stageModel, response.usage)
   };
