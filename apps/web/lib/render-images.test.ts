@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 
-import { croppedVisionImageDataUrl, fetchRemoteImage, planImageDataUrl, visionImageDataUrl } from "./render-images";
+import { fetchRemoteImage, planImageOptions, visionImageDataUrl } from "./render-images";
 
 // fetchRemoteImage's contract: policy refusals, HTTP failures, redirect escapes, and
 // mid-body errors all return null (never throw), so one bad reference degrades to
@@ -153,7 +153,7 @@ async function pinTheDownscales() {
   };
 
   assert.equal(await edgeOf(await visionImageDataUrl(wide, "image/jpeg")), 1024, "the shared vision downscale");
-  assert.equal(await edgeOf(await planImageDataUrl(wide, "image/jpeg")), 2048, "the floor plan downscale");
+  assert.equal(await edgeOf(await visionImageDataUrl(wide, "image/jpeg", planImageOptions())), 2048, "the floor plan options");
 
   // Neither enlarges: a small plan stays small, which is why a plan below the
   // readable floor is refused rather than upscaled into legibility.
@@ -162,42 +162,13 @@ async function pinTheDownscales() {
   })
     .jpeg()
     .toBuffer();
-  assert.equal(await edgeOf(await planImageDataUrl(small, "image/jpeg")), 578);
+  assert.equal(await edgeOf(await visionImageDataUrl(small, "image/jpeg", planImageOptions())), 578);
 
   // Bytes sharp cannot read fall back to the original rather than throwing, so
   // one unreadable reference never fails a whole render.
   const broken = Buffer.from([0x00, 0x01, 0x02, 0x03]);
-  assert.match(await planImageDataUrl(broken, "image/png"), /^data:image\/png;base64,/);
+  assert.match(await visionImageDataUrl(broken, "image/png", planImageOptions()), /^data:image\/png;base64,/);
 
-  // The confirmed room, cut out of a whole-home drawing on the way to the
-  // model (S5b).
-  //
-  // The box is deliberately a different shape from the sheet. A first version
-  // took a 4:3 box off a 4:3 sheet, so both paths came back 1024 by 768 and
-  // deleting the crop entirely left the assertions green (review finding,
-  // which reproduced it). A landscape sheet and a portrait room cannot be
-  // confused.
-  const landscape = await sharp(wide).metadata();
-  assert.ok((landscape.width ?? 0) > (landscape.height ?? 0), "the sheet is landscape");
-
-  const cropped = await croppedVisionImageDataUrl(wide, "image/jpeg", { x0: 0.1, y0: 0.1, x1: 0.4, y1: 0.7 });
-  const croppedMeta = await sharp(Buffer.from(cropped.split(",")[1], "base64")).metadata();
-  assert.ok(
-    (croppedMeta.height ?? 0) > (croppedMeta.width ?? 0),
-    `the room is portrait where the sheet is landscape: ${croppedMeta.width} by ${croppedMeta.height}`
-  );
-
-  const uncropped = await sharp(Buffer.from((await visionImageDataUrl(wide, "image/jpeg")).split(",")[1], "base64")).metadata();
-  assert.notEqual(
-    `${croppedMeta.width}x${croppedMeta.height}`,
-    `${uncropped.width}x${uncropped.height}`,
-    "and what comes back is not simply the whole sheet"
-  );
-
-  // A crop that cannot be taken falls back to the whole plan rather than
-  // failing a concept: no plan at all is worse than an uncropped one.
-  const wholeBack = await croppedVisionImageDataUrl(broken, "image/png", { x0: 0.1, y0: 0.1, x1: 0.5, y1: 0.5 });
-  assert.match(wholeBack, /^data:image\/png;base64,/);
 }
 
 void pinTheDownscales().then(() => console.log("render image downscale pins passed"));

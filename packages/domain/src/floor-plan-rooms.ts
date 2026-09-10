@@ -31,12 +31,6 @@ export const DETECTED_ROOMS_MAX = 24;
 export const DETECTED_ROOM_MAX_CM = 1500;
 export const DETECTED_ROOM_LABEL_MAX = 40;
 
-// The smallest share of the drawing a box may claim and still be a room. A
-// model that answers with a point rather than a region would otherwise produce
-// a crop of eighty pixels of paper, which the concept model would then be told
-// is the room, and an outline the shopper sees as a dot.
-export const DETECTED_ROOM_BOX_MIN_EDGE = 0.02;
-
 // The longest edge a plan needs before a read is worth paying for.
 //
 // Both fixtures are real, and between them they bracket this number. The
@@ -55,23 +49,20 @@ export const DETECTED_ROOM_BOX_MIN_EDGE = 0.02;
 // matching the drawing, and this number is set from that.
 export const PLAN_READABLE_MIN_EDGE_PX = 800;
 
-// How much of the room's own width and height a crop adds around it, so it
-// arrives with its own walls rather than cut through them.
-export const PLAN_CROP_MARGIN_RATIO = 0.06;
-
-export type DetectedRoomBox = {
-  x0: number;
-  y0: number;
-  x1: number;
-  y1: number;
-};
+// There is no box here, and that is a measured decision rather than an
+// omission. A first version asked the model to locate each room so the drawing
+// could be cropped to it before the concept prompts saw it. The boxes came
+// back plausible and wrong: on the Emaar fixture the outline for the living
+// room enclosed the balcony and ran outside the exterior wall, and a crop like
+// that grounds a paid concept on a room the shopper never picked. The names
+// and the dimensions are what this read is good at, so the room's NAME is what
+// travels to the prompt instead (design review).
 
 export type DetectedRoom = {
   label: string;
   wallLengthCm: number | null;
   roomDepthCm: number | null;
   ceilingHeightCm: number | null;
-  box: DetectedRoomBox | null;
   // Which floor of the drawing this room sits on, when the drawing says. A
   // whole-home plan can carry three levels and the label "Bedroom" three
   // times, so without this she would be asked to pick between identical chips.
@@ -85,22 +76,6 @@ function boundedNumber(value: unknown, field: "wallLengthCm" | "roomDepthCm" | "
   const bound = BRIEF_FIELD_BOUNDS[field];
   const max = field === "ceilingHeightCm" ? bound.max : Math.min(bound.max, DETECTED_ROOM_MAX_CM);
   return value >= bound.min && value <= max ? value : null;
-}
-
-function boundedBox(value: unknown): DetectedRoomBox | null {
-  if (!value || typeof value !== "object") {
-    return null;
-  }
-  const { x0, y0, x1, y1 } = value as Record<string, unknown>;
-  const coordinates = [x0, y0, x1, y1];
-  if (!coordinates.every((coordinate) => typeof coordinate === "number" && Number.isFinite(coordinate))) {
-    return null;
-  }
-  const box = { x0, y0, x1, y1 } as DetectedRoomBox;
-  const inside = coordinates.every((coordinate) => (coordinate as number) >= 0 && (coordinate as number) <= 1);
-  const spans =
-    box.x1 - box.x0 >= DETECTED_ROOM_BOX_MIN_EDGE && box.y1 - box.y0 >= DETECTED_ROOM_BOX_MIN_EDGE;
-  return inside && spans ? box : null;
 }
 
 function boundedLabel(value: unknown): string | null {
@@ -131,7 +106,6 @@ export function boundedDetectedRooms(value: unknown): DetectedRoom[] {
       wallLengthCm: boundedNumber(row.wallLengthCm, "wallLengthCm"),
       roomDepthCm: boundedNumber(row.roomDepthCm, "roomDepthCm"),
       ceilingHeightCm: boundedNumber(row.ceilingHeightCm, "ceilingHeightCm"),
-      box: boundedBox(row.box),
       level: boundedLabel(row.level)
     });
   }
@@ -141,41 +115,17 @@ export function boundedDetectedRooms(value: unknown): DetectedRoom[] {
   // cutting in the model's own order can drop her bedroom in favour of twelve
   // cupboards and leave the screen saying nothing was dimensioned (review
   // finding). Stable within each group, so the drawing's own order survives.
-  const rank = (room: DetectedRoom) => {
-    const kind = roomConfirmKind(room);
-    return kind === "measurements_and_location" || kind === "measurements" ? 0 : kind === "location" ? 1 : 2;
-  };
-  return [...rooms].sort((left, right) => rank(left) - rank(right)).slice(0, DETECTED_ROOMS_MAX);
+  return [...rooms]
+    .sort((left, right) => Number(roomIsDimensioned(right)) - Number(roomIsDimensioned(left)))
+    .slice(0, DETECTED_ROOMS_MAX);
 }
 
-// What confirming a room can give her, which is not one thing.
-//
-// Measured against a real villa brochure (Tilal Al Furjan, in the fixtures):
-// its drawings are embedded 1546 by 949 JPEGs, so the room NAMES read cleanly
-// and the dimension lines under them, about four pixels tall, do not read at
-// any rasterisation. A first version made dimensions the condition of
-// confirming, which turned that whole class of plan into a list of disabled
-// chips: the commonest artefact a villa owner has, and nothing to do with it.
-//
-// The two halves are independent. Dimensions fill the measurement fields. A
-// box crops the drawing to her room, which is what the concept and revision
-// prompts need in order to be told the truth about what they are looking at.
-// A room with either is worth confirming, and the screen says which it got.
-export type RoomConfirmKind = "measurements_and_location" | "measurements" | "location" | null;
-
-export function roomConfirmKind(room: DetectedRoom): RoomConfirmKind {
-  const measured = room.wallLengthCm !== null && room.roomDepthCm !== null;
-  if (measured && room.box) {
-    return "measurements_and_location";
-  }
-  if (measured) {
-    return "measurements";
-  }
-  return room.box ? "location" : null;
-}
-
-export function confirmableRooms(rooms: readonly DetectedRoom[]): DetectedRoom[] {
-  return rooms.filter((room) => roomConfirmKind(room) !== null);
+// Whether the plan printed a size for this room, which is the one thing that
+// decides whether confirming it can fill the measurement fields. Exported
+// because the service writes the row and the screen draws the control, and two
+// spellings of "measured" in two packages drift apart (review finding).
+export function roomIsDimensioned(room: DetectedRoom): boolean {
+  return room.wallLengthCm !== null && room.roomDepthCm !== null;
 }
 
 export function roomDimensionsLabel({
@@ -257,51 +207,21 @@ export function floorPlanReadDecision({
   return { action: "read" };
 }
 
-export function cropRectangleFor({
-  box,
-  widthPx,
-  heightPx,
-  marginRatio = PLAN_CROP_MARGIN_RATIO
-}: {
-  box: DetectedRoomBox | null;
-  widthPx: number;
-  heightPx: number;
-  marginRatio?: number;
-}): { left: number; top: number; width: number; height: number } | null {
-  if (!box || widthPx <= 0 || heightPx <= 0) {
-    return null;
-  }
-
-  // The margin is a fraction of the ROOM, not of the sheet. Taken off the
-  // sheet it scales with the drawing instead of the room, so on a whole-home
-  // plan a bedroom would arrive as a third of its own crop and the concept
-  // model would be told two thirds of the neighbours were hers (review
-  // finding).
-  const marginX = marginRatio * (box.x1 - box.x0);
-  const marginY = marginRatio * (box.y1 - box.y0);
-
-  const clamp = (value: number, max: number) => Math.min(Math.max(value, 0), max);
-  const left = clamp(Math.round((box.x0 - marginX) * widthPx), widthPx);
-  const top = clamp(Math.round((box.y0 - marginY) * heightPx), heightPx);
-  const right = clamp(Math.round((box.x1 + marginX) * widthPx), widthPx);
-  const bottom = clamp(Math.round((box.y1 + marginY) * heightPx), heightPx);
-
-  const width = right - left;
-  const height = bottom - top;
-  return width >= 1 && height >= 1 ? { left, top, width, height } : null;
-}
-
 // What the brief records once she has confirmed a room, and the one question
 // every reader of it has to ask.
 //
-// The record names the plan it belongs to. A plan can be replaced, and a box
-// from the old drawing applied to the new one would crop a corner of somewhere
-// else and hand it to the concept prompts as her room. So the box counts only
-// while the asset it was read from is still the attached one.
+// The record names the plan it belongs to. A plan can be replaced, and the
+// room she picked off the old drawing says nothing about the new one, so every
+// reader checks the asset id before trusting it.
 export type ConfirmedFloorPlanRoom = {
   assetId: string;
   label: string;
-  box: DetectedRoomBox | null;
+  // Which room in the read's own list, because a label is not an identity: a
+  // whole-home plan carries "Bedroom" three times, once per floor, which is
+  // why `level` exists at all. Matching by label alone marks all three as
+  // confirmed and tells a screen reader three controls are pressed (review
+  // finding).
+  index: number;
 };
 
 export function confirmedFloorPlanRoom(value: unknown): ConfirmedFloorPlanRoom | null {
@@ -311,24 +231,11 @@ export function confirmedFloorPlanRoom(value: unknown): ConfirmedFloorPlanRoom |
   const row = value as Record<string, unknown>;
   const assetId = typeof row.assetId === "string" && row.assetId.length > 0 ? row.assetId : null;
   const label = boundedLabel(row.label);
-  if (!assetId || label === null) {
+  const index = typeof row.index === "number" && Number.isInteger(row.index) && row.index >= 0 ? row.index : null;
+  if (!assetId || label === null || index === null) {
     return null;
   }
-  return { assetId, label, box: boundedBox(row.box) };
-}
-
-export function floorPlanCropBox({
-  recorded,
-  attachedAssetId
-}: {
-  recorded: unknown;
-  attachedAssetId: string | null;
-}): DetectedRoomBox | null {
-  const confirmed = confirmedFloorPlanRoom(recorded);
-  if (!confirmed || !attachedAssetId || confirmed.assetId !== attachedAssetId) {
-    return null;
-  }
-  return confirmed.box;
+  return { assetId, label, index };
 }
 
 // What the screen says about the plan attached to this room.

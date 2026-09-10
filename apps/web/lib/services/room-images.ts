@@ -1,6 +1,6 @@
-import { floorPlanCropBox } from "@ritzy-studio/domain";
+import { confirmedFloorPlanRoom } from "@ritzy-studio/domain";
 
-import { croppedVisionImageDataUrl, visionImageDataUrl } from "@/lib/render-images";
+import { visionImageDataUrl } from "@/lib/render-images";
 
 import { storageImageDataUrl } from "./storage-images";
 import { structuredBriefJson } from "./sourcing-support";
@@ -23,6 +23,7 @@ export type RoomImageInputs = {
   photoBytes: Buffer | null;
   additionalRoomPhotos: AdditionalRoomPhoto[];
   floorPlanImageUrl: string | null;
+  floorPlanRoomLabel: string | null;
 };
 
 export async function roomImageInputs(
@@ -45,7 +46,8 @@ export async function roomImageInputs(
       signedPhotoUrl: null,
       photoBytes: null,
       additionalRoomPhotos: [],
-      floorPlanImageUrl: null
+      floorPlanImageUrl: null,
+      floorPlanRoomLabel: null
     };
   }
 
@@ -89,11 +91,10 @@ export async function roomImageInputs(
     .limit(1)
     .maybeSingle();
 
-  // The prompt that receives this asserts it is THIS room's plan ("use it to
-  // understand the room's true footprint, door and window positions"). Since
-  // S5b invites whole-home drawings, that sentence is only true once the
-  // drawing is cut down to the room she confirmed, so the crop happens here,
-  // on the way to the model, and nothing is stored (S5b).
+  // Since S5b invites whole-home drawings, the prompt can no longer assert
+  // that this sheet IS the room. It carries the name she confirmed instead,
+  // and `floorPlanLanguage` says the rest. Cropping to her room was tried and
+  // withdrawn: the boxes came back plausible and wrong (S5b).
   const { data: brief } = await supabase
     .from("design_briefs")
     .select("structured_json")
@@ -101,13 +102,14 @@ export async function roomImageInputs(
     .order("updated_at", { ascending: false })
     .limit(1)
     .maybeSingle();
-  const cropBox = floorPlanCropBox({
-    recorded: structuredBriefJson(brief?.structured_json).floorPlan,
-    attachedAssetId: floorPlanAsset?.id ?? null
-  });
+  const confirmed = confirmedFloorPlanRoom(structuredBriefJson(brief?.structured_json).floorPlan);
+  // The room she picked off a plan she has since replaced says nothing about
+  // the plan attached now.
+  const floorPlanRoomLabel =
+    confirmed && floorPlanAsset?.id && confirmed.assetId === floorPlanAsset.id ? confirmed.label : null;
 
   const floorPlanImageUrl = floorPlanAsset?.mime_type?.startsWith("image/")
-    ? await floorPlanDataUrl(supabase, floorPlanAsset, cropBox)
+    ? await storageImageDataUrl(supabase, "room-assets", floorPlanAsset.storage_path, floorPlanAsset.mime_type)
     : null;
 
   return {
@@ -115,7 +117,8 @@ export async function roomImageInputs(
     signedPhotoUrl: signedPhoto?.signedUrl ?? null,
     photoBytes: !downloadError && photoBlob ? Buffer.from(await photoBlob.arrayBuffer()) : null,
     additionalRoomPhotos,
-    floorPlanImageUrl
+    floorPlanImageUrl,
+    floorPlanRoomLabel
   };
 }
 
@@ -190,18 +193,3 @@ export async function conceptPrimaryRender(
   };
 }
 
-async function floorPlanDataUrl(
-  supabase: UserSupabaseClient,
-  asset: { storage_path: string; mime_type: string },
-  cropBox: Parameters<typeof croppedVisionImageDataUrl>[2] | null
-) {
-  if (!cropBox) {
-    return storageImageDataUrl(supabase, "room-assets", asset.storage_path, asset.mime_type);
-  }
-
-  const { data, error } = await supabase.storage.from("room-assets").download(asset.storage_path);
-  if (error || !data) {
-    return null;
-  }
-  return croppedVisionImageDataUrl(Buffer.from(await data.arrayBuffer()), asset.mime_type, cropBox);
-}

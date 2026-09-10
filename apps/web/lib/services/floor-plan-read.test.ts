@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 
 import { fakeSupabase, type RecordedCall } from "./supabase-test-double";
-import { confirmDetectedRoom, readFloorPlanForRoom, revertToWholePlan } from "./floor-plan-read";
+import { confirmDetectedRoom, readFloorPlanForRoom } from "./floor-plan-read";
 import { roomImageInputs } from "./room-images";
 
 // S5b: reading a floor plan costs money and, if it goes wrong quietly, costs
@@ -30,13 +30,20 @@ function harness({ asset, job }: { asset?: Asset; job?: Job } = {}) {
       ? { id: ASSET, storage_path: `${USER}/${ROOM}/floor-plan/plan.png`, mime_type: "image/png", width_px: 2400, height_px: 1700 }
       : asset;
 
+  // The predicates are the point, not the table names. Without them the newest
+  // of a room's many ai_jobs rows (inspiration, concept, sourcing) would govern
+  // the screen, and the newest inspiration photograph would be read as the
+  // floor plan (review finding, mutation-verified).
+  const asks = (call: RecordedCall, column: string, value: unknown) =>
+    call.filters.some(([field, filterValue]) => field === column && filterValue === value);
+
   const respond = (call: RecordedCall) => {
     calls.push(call);
     if (call.table === "room_assets" && call.op === "select") {
-      return { data: plan };
+      return { data: asks(call, "asset_type", "floor_plan") ? plan : null };
     }
     if (call.table === "ai_jobs" && call.op === "select") {
-      return { data: job ?? null };
+      return { data: asks(call, "job_type", "floor_plan_read") ? (job ?? null) : null };
     }
     if (call.table === "ai_jobs" && call.op === "insert") {
       return { data: { id: "job-1" } };
@@ -61,7 +68,6 @@ const rooms = [
     wallLengthCm: 520,
     roomDepthCm: 410,
     ceilingHeightCm: null,
-    box: { x0: 0.1, y0: 0.1, x1: 0.5, y1: 0.5 }
   }
 ];
 
@@ -245,7 +251,7 @@ async function main() {
     { label: "Living Room", level: null, wallLengthCm: 470, roomDepthCm: 320, ceilingHeightCm: null, box: { x0: 0.1, y0: 0.1, x1: 0.5, y1: 0.5 } },
     // The villa brochure case: named and located, no size printed legibly.
     { label: "Family Room", level: "Upper", wallLengthCm: null, roomDepthCm: null, ceilingHeightCm: null, box: { x0: 0.5, y0: 0.1, x1: 0.9, y1: 0.5 } },
-    { label: "Store", level: null, wallLengthCm: null, roomDepthCm: null, ceilingHeightCm: null, box: null }
+    { label: "Store", level: null, wallLengthCm: null, roomDepthCm: null, ceilingHeightCm: null }
   ];
 
   function confirmHarness({
@@ -258,16 +264,26 @@ async function main() {
     measurement?: Record<string, unknown> | null;
   } = {}) {
     const calls: RecordedCall[] = [];
+    const asks = (call: RecordedCall, column: string, value: unknown) =>
+      call.filters.some(([field, filterValue]) => field === column && filterValue === value);
     const respond = (call: RecordedCall) => {
       calls.push(call);
       if (call.table === "room_measurements" && call.op === "select") {
         return { data: measurement };
       }
       if (call.table === "room_assets") {
-        return { data: { id: ASSET, storage_path: "p.png", mime_type: "image/png", width_px: 2400, height_px: 1700 } };
+        return {
+          data: asks(call, "asset_type", "floor_plan")
+            ? { id: ASSET, storage_path: "p.png", mime_type: "image/png", width_px: 2400, height_px: 1700 }
+            : null
+        };
       }
       if (call.table === "ai_jobs" && call.op === "select") {
-        return { data: { status: "succeeded", input_summary: { assetId }, output_summary: { rooms: detected } } };
+        return {
+          data: asks(call, "job_type", "floor_plan_read")
+            ? { status: "succeeded", input_summary: { assetId }, output_summary: { rooms: detected } }
+            : null
+        };
       }
       if (call.table === "design_briefs" && call.op === "select") {
         return { data: brief ? { id: "brief-1", structured_json: brief } : null };
@@ -292,7 +308,6 @@ async function main() {
       status: "confirmed",
       wroteMeasurements: true,
       supersededAnotherRoom: false,
-      recordedBox: true,
       label: "Living Room"
     });
 
@@ -307,7 +322,7 @@ async function main() {
     const brief = h.briefWrites();
     assert.equal(brief.length, 1);
     const structured = brief[0].payload?.structured_json as Record<string, unknown>;
-    assert.deepEqual(structured.floorPlan, { assetId: ASSET, label: "Living Room", box: detected[0].box });
+    assert.deepEqual(structured.floorPlan, { assetId: ASSET, label: "Living Room", index: 0 });
     assert.ok(structured.visualPreferences, "and nothing else in the document is dropped");
   }
 
@@ -321,12 +336,11 @@ async function main() {
       status: "confirmed",
       wroteMeasurements: false,
       supersededAnotherRoom: false,
-      recordedBox: true,
       label: "Family Room"
     });
     assert.equal(h.measurements().length, 0, "no size on the plan, no measurement invented");
     const structured = h.briefWrites()[0].payload?.structured_json as Record<string, unknown>;
-    assert.deepEqual(structured.floorPlan, { assetId: ASSET, label: "Family Room", box: detected[1].box });
+    assert.deepEqual(structured.floorPlan, { assetId: ASSET, label: "Family Room", index: 1 });
   }
 
   // A plan does not print ceiling heights, so a row written from one alone
@@ -362,8 +376,11 @@ async function main() {
       measurement: {
         wall_length_cm: 470,
         room_depth_cm: 320,
-        ceiling_height_cm: null,
-        notes: null,
+        // Carried into the previous confirmation from what she typed, which is
+        // exactly what a first version dropped here. The fixture used to null
+        // both fields, so it could not see the loss it sat on (review finding).
+        ceiling_height_cm: 300,
+        notes: "the alcove is 40 cm deep",
         source: "floor_plan",
         floor_plan_asset_id: ASSET
       }
@@ -374,9 +391,11 @@ async function main() {
     const written = h.measurements()[0].payload;
     assert.equal(written?.wall_length_cm, null, "the other room's numbers go with it");
     assert.equal(written?.room_depth_cm, null);
+    assert.equal(written?.ceiling_height_cm, 300, "but a ceiling is hers whichever room she picks");
+    assert.equal(written?.notes, "the alcove is 40 cm deep", "and so is a note");
     assert.equal(written?.confidence, "unknown", "a row with nothing to say does not claim to be verified");
     const structured = h.briefWrites()[0].payload?.structured_json as Record<string, unknown>;
-    assert.deepEqual(structured.floorPlan, { assetId: ASSET, label: "Family Room", box: detected[1].box });
+    assert.deepEqual(structured.floorPlan, { assetId: ASSET, label: "Family Room", index: 1 });
   }
 
   // But a shopper's own typed measurements are not another room's: confirming
@@ -396,10 +415,18 @@ async function main() {
     assert.equal(h.measurements().length, 0, "her own numbers are hers until she changes them");
   }
 
-  // A room the plan can do neither for is not confirmable at all.
-  {
+  // An index that is not an index. Server-action arguments are client
+  // controlled and the TypeScript number is erased at runtime, so a crafted
+  // one would index the array's prototype and hand back something that passes
+  // a truth test: the insert then writes an all-null row at `verified` over
+  // the measurements she typed (security review).
+  for (const index of [3, -1, 1.5, Number.NaN, "constructor" as unknown as number]) {
     const h = confirmHarness();
-    assert.deepEqual(await confirmDetectedRoom({ roomId: ROOM, roomIndex: 2, supabase: h.supabase }), { status: "not_found" });
+    assert.deepEqual(
+      await confirmDetectedRoom({ roomId: ROOM, roomIndex: index, supabase: h.supabase }),
+      { status: "not_found" },
+      `${String(index)} is not a room`
+    );
     assert.equal(h.measurements().length, 0);
     assert.equal(h.briefWrites().length, 0);
   }
@@ -414,24 +441,12 @@ async function main() {
     assert.equal(h.briefWrites().length, 0);
   }
 
-  // Rejecting the crop keeps the numbers.
-  {
-    const h = confirmHarness({
-      brief: { floorPlan: { assetId: ASSET, label: "Living Room", box: { x0: 0.1, y0: 0.1, x1: 0.5, y1: 0.5 } } }
-    });
-    await revertToWholePlan({ roomId: ROOM, supabase: h.supabase });
-
-    const structured = h.briefWrites()[0].payload?.structured_json as Record<string, unknown>;
-    assert.deepEqual(structured.floorPlan, { assetId: ASSET, label: "Living Room", box: null });
-    assert.equal(h.measurements().length, 0, "and the measurement row is not touched");
-  }
-
-  // ------------------------- what the concept path is actually handed (AC 4)
+  // --------------------- what the concept path is actually told (criterion 4)
   //
-  // The prompt receiving this asserts it is THIS room's plan, so the crop is
-  // the thing that makes the sentence true once whole-home drawings are
-  // invited. Driven end to end against the double with real bytes, because the
-  // wiring is what a later edit drops (review finding).
+  // No crop: the boxes came back plausible and wrong on a real plan. What
+  // travels instead is the NAME she confirmed, which the read is reliable at,
+  // and `floorPlanLanguage` turns it into a sentence that stops asserting a
+  // whole-home drawing is her room.
   {
     const sharp = (await import("sharp")).default;
     const sheet = await sharp({
@@ -445,14 +460,12 @@ async function main() {
       .jpeg()
       .toBuffer();
 
-    const planAsset = { id: ASSET, storage_path: "plan.jpg", mime_type: "image/jpeg" };
-
     async function inputsWith({ brief, assetId = ASSET }: { brief: unknown; assetId?: string }) {
       const respond = (call: RecordedCall) => {
         if (call.table === "room_assets") {
           const isPlan = call.filters.some(([, value]) => value === "floor_plan");
           return isPlan
-            ? { data: { ...planAsset, id: assetId } }
+            ? { data: { id: assetId, storage_path: "plan.jpg", mime_type: "image/jpeg" } }
             : { data: [{ id: "photo-1", storage_path: "photo.jpg", mime_type: "image/jpeg" }] };
         }
         if (call.table === "design_briefs") {
@@ -466,34 +479,22 @@ async function main() {
           : { data: new Blob([new Uint8Array(call.path === "plan.jpg" ? sheet : photo)]) };
 
       const { client } = fakeSupabase(respond, respondStorage as never);
-      const inputs = await roomImageInputs(client as never, ROOM);
-      const bytes = Buffer.from((inputs.floorPlanImageUrl ?? "").split(",")[1] ?? "", "base64");
-      return bytes.length > 0 ? await sharp(bytes).metadata() : null;
+      return roomImageInputs(client as never, ROOM);
     }
 
-    const box = { x0: 0.1, y0: 0.1, x1: 0.35, y1: 0.9 };
-    const confirmed = { assetId: ASSET, label: "Living Room", box };
+    const confirmed = { assetId: ASSET, label: "Living Room", index: 0 };
 
-    // Nothing confirmed: the whole sheet, landscape, as it has always been.
-    const whole = await inputsWith({ brief: {} });
-    assert.ok(whole && (whole.width ?? 0) > (whole.height ?? 0), "the sheet is landscape");
+    const none = await inputsWith({ brief: {} });
+    assert.ok(none.floorPlanImageUrl, "the plan still reaches the model");
+    assert.equal(none.floorPlanRoomLabel, null, "and the prompt is told nothing it cannot know");
 
-    // Confirmed, on the plan that is attached: her room, which is portrait.
-    const cropped = await inputsWith({ brief: { floorPlan: confirmed } });
-    assert.ok(
-      cropped && (cropped.height ?? 0) > (cropped.width ?? 0),
-      `the concept is handed the room, not the sheet: ${cropped?.width} by ${cropped?.height}`
-    );
+    const named = await inputsWith({ brief: { floorPlan: confirmed } });
+    assert.equal(named.floorPlanRoomLabel, "Living Room");
 
-    // The plan she replaced says nothing about the plan she attached: cropping
-    // by its box would cut a corner of somewhere else and call it her room.
+    // The room she picked off a plan she has since replaced says nothing about
+    // the plan attached now.
     const replaced = await inputsWith({ brief: { floorPlan: confirmed }, assetId: "a-newer-plan" });
-    assert.ok(replaced && (replaced.width ?? 0) > (replaced.height ?? 0), "back to the whole sheet");
-
-    // Confirmed but never located (the villa brochure case): the whole drawing
-    // stands, which is what it did before she confirmed.
-    const located = await inputsWith({ brief: { floorPlan: { ...confirmed, box: null } } });
-    assert.ok(located && (located.width ?? 0) > (located.height ?? 0));
+    assert.equal(replaced.floorPlanRoomLabel, null);
   }
 
   console.log("floor plan read service tests passed");

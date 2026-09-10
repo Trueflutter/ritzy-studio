@@ -7,14 +7,12 @@ import {
   DETECTED_ROOMS_MAX,
   PLAN_READABLE_MIN_EDGE_PX,
   boundedDetectedRooms,
-  confirmableRooms,
-  cropRectangleFor,
-  roomConfirmKind,
+  confirmedFloorPlanRoom,
   detectedRoomLabel,
-  floorPlanCropBox,
   floorPlanReadDecision,
   floorPlanScreenState,
-  roomDimensionsLabel
+  roomDimensionsLabel,
+  roomIsDimensioned
 } from "./floor-plan-rooms";
 
 // S5b: what a floor plan read is allowed to say, and when it is allowed to
@@ -33,13 +31,12 @@ import {
     wallLengthCm: 520,
     roomDepthCm: 410,
     ceilingHeightCm: null,
-    box: null,
     level: null,
     ...over
   });
 
   assert.deepEqual(boundedDetectedRooms([room()]), [
-    { label: "Living Room", wallLengthCm: 520, roomDepthCm: 410, ceilingHeightCm: null, box: null, level: null }
+    { label: "Living Room", wallLengthCm: 520, roomDepthCm: 410, ceilingHeightCm: null, level: null }
   ]);
 
   // A dimension outside what the brief's own schema will store is dropped, not
@@ -81,19 +78,18 @@ import {
   // model's order can drop her bedroom in favour of twelve closets and leave
   // the screen saying nothing on the plan was dimensioned (review finding).
   const cupboards = Array.from({ length: DETECTED_ROOMS_MAX + 4 }, (_, index) =>
-    room({ label: `Closet ${index}`, wallLengthCm: null, roomDepthCm: null, box: null })
+    room({ label: `Closet ${index}`, wallLengthCm: null, roomDepthCm: null })
   );
   const cut = boundedDetectedRooms([...cupboards, room({ label: "Master Bedroom" })]);
   assert.equal(cut.length, DETECTED_ROOMS_MAX);
   assert.equal(cut[0].label, "Master Bedroom", "the room she came for survives the cut");
   assert.deepEqual(
     boundedDetectedRooms([
-      room({ label: "Hall", wallLengthCm: null, roomDepthCm: null, box: null }),
-      room({ label: "Family Room", wallLengthCm: null, roomDepthCm: null, box: { x0: 0.1, y0: 0.1, x1: 0.4, y1: 0.4 } }),
+      room({ label: "Hall", wallLengthCm: null, roomDepthCm: null }),
       room({ label: "Living Room" })
     ]).map((entry) => entry.label),
-    ["Living Room", "Family Room", "Hall"],
-    "measured first, then located, then the ones she can do nothing with"
+    ["Living Room", "Hall"],
+    "the rooms she can measure from lead the list"
   );
 
   assert.deepEqual(boundedDetectedRooms([]), []);
@@ -102,61 +98,22 @@ import {
   assert.deepEqual(boundedDetectedRooms([null, 7, "room"]), []);
 }
 
-// ------------------------------------------------------------------ the box
-{
-  const withBox = (box: unknown) =>
-    boundedDetectedRooms([
-      { label: "Living Room", wallLengthCm: 520, roomDepthCm: 410, ceilingHeightCm: null, box, level: null }
-    ])[0].box;
-
-  assert.deepEqual(withBox({ x0: 0.1, y0: 0.2, x1: 0.5, y1: 0.6 }), { x0: 0.1, y0: 0.2, x1: 0.5, y1: 0.6 });
-
-  // A box that is not a box is dropped, and the room survives without one:
-  // the room is still confirmable, it just cannot be cropped or outlined.
-  assert.equal(withBox({ x0: -0.1, y0: 0.2, x1: 0.5, y1: 0.6 }), null, "outside the image");
-  assert.equal(withBox({ x0: 0.1, y0: 0.2, x1: 1.4, y1: 0.6 }), null);
-  assert.equal(withBox({ x0: 0.5, y0: 0.2, x1: 0.5, y1: 0.6 }), null, "zero width is not a region");
-  assert.equal(
-    withBox({ x0: 0.5, y0: 0.5, x1: 0.5004, y1: 0.5004 }),
-    null,
-    "a point is not a region: with a margin around it a degenerate box still crops, so it is refused here"
-  );
-  assert.deepEqual(
-    withBox({ x0: 0.5, y0: 0.5, x1: 0.52, y1: 0.52 }),
-    { x0: 0.5, y0: 0.5, x1: 0.52, y1: 0.52 },
-    "and the smallest real region is kept"
-  );
-  assert.equal(withBox({ x0: 0.6, y0: 0.2, x1: 0.5, y1: 0.6 }), null, "reversed is not a region");
-  assert.equal(withBox({ x0: 0.1, y0: 0.2, x1: 0.5 }), null);
-  assert.equal(withBox(null), null);
-  assert.equal(withBox("0.1,0.2,0.5,0.6"), null);
-}
-
 // ------------------------------------------------------- what she can confirm
 {
-  const box = { x0: 0.1, y0: 0.1, x1: 0.4, y1: 0.4 };
   const rooms = boundedDetectedRooms([
-    { label: "Living Room", wallLengthCm: 520, roomDepthCm: 410, ceilingHeightCm: null, box, level: null },
-    { label: "Study", wallLengthCm: 300, roomDepthCm: 250, ceilingHeightCm: null, box: null, level: null },
+    { label: "Living Room", wallLengthCm: 520, roomDepthCm: 410, ceilingHeightCm: null, level: null },
     // The villa brochure case, measured on the Tilal fixture: its drawings are
     // embedded 1546 by 949 JPEGs, so the names read and the dimension lines
-    // under them do not, at any rasterisation. Locating her room still crops
-    // the drawing for the concept, so it is worth confirming.
-    { label: "Family Room", wallLengthCm: null, roomDepthCm: null, ceilingHeightCm: null, box, level: null },
-    { label: "Store", wallLengthCm: null, roomDepthCm: null, ceilingHeightCm: null, box: null, level: null }
+    // under them do not, at any rasterisation. Confirming still tells the
+    // concept prompt which room on the drawing is hers, which is the half this
+    // read is reliable at.
+    { label: "Family Room", wallLengthCm: null, roomDepthCm: null, ceilingHeightCm: null, level: null },
+    { label: "Study", wallLengthCm: 300, roomDepthCm: null, ceilingHeightCm: null, level: null }
   ]);
 
-  assert.equal(roomConfirmKind(rooms[0]), "measurements_and_location");
-  assert.equal(roomConfirmKind(rooms[1]), "measurements");
-  assert.equal(roomConfirmKind(rooms[2]), "location");
-  assert.equal(roomConfirmKind(rooms[3]), null);
-
-  assert.deepEqual(
-    confirmableRooms(rooms).map((room) => room.label),
-    ["Living Room", "Study", "Family Room"],
-    "a room the plan locates is confirmable even when it prints no size for it"
-  );
-  assert.equal(rooms.length, 4, "and the room it can do neither for is still rendered, saying so");
+  assert.equal(roomIsDimensioned(rooms[0]), true);
+  assert.equal(roomIsDimensioned(rooms[1]), false);
+  assert.equal(roomIsDimensioned(rooms[2]), false, "one dimension is not a size");
 }
 
 // ------------------------------------------------------------- what she reads
@@ -260,102 +217,22 @@ import {
   );
 }
 
-// ------------------------------------------------------------------ the crop
+// ------------------------------------------ what the confirmation remembers
 {
-  const box = { x0: 0.25, y0: 0.5, x1: 0.5, y1: 0.75 };
-
-  // Pixels for sharp, with a margin so the crop carries the room's own walls
-  // rather than cutting through them.
-  const rect = cropRectangleFor({ box, widthPx: 1000, heightPx: 800, marginRatio: 0 });
-  assert.deepEqual(rect, { left: 250, top: 400, width: 250, height: 200 });
-
-  // The margin is a share of the ROOM, not of the sheet. Taken off the sheet
-  // it scales with the drawing rather than the room, so a small room on a
-  // whole-home plan arrives as a third of its own crop and the concept model
-  // is told the neighbours are hers (review finding).
-  const withMargin = cropRectangleFor({ box, widthPx: 1000, heightPx: 800, marginRatio: 0.1 });
-  assert.deepEqual(withMargin, { left: 225, top: 380, width: 300, height: 240 });
-
-  const small = cropRectangleFor({
-    box: { x0: 0.42, y0: 0.3, x1: 0.51, y1: 0.41 },
-    widthPx: 2048,
-    heightPx: 1400,
-    marginRatio: 0.1
+  assert.deepEqual(confirmedFloorPlanRoom({ assetId: "plan-a", label: "Living Room", index: 2 }), {
+    assetId: "plan-a",
+    label: "Living Room",
+    index: 2
   });
-  const roomArea = 0.09 * 2048 * (0.11 * 1400);
-  assert.ok(small !== null);
-  assert.ok(
-    roomArea / (small.width * small.height) > 0.65,
-    `the room fills its own crop: ${(roomArea / (small.width * small.height)).toFixed(2)}`
-  );
 
-  // The margin cannot walk off the drawing.
-  assert.deepEqual(
-    cropRectangleFor({ box: { x0: 0, y0: 0, x1: 0.2, y1: 0.2 }, widthPx: 1000, heightPx: 800, marginRatio: 0.1 }),
-    { left: 0, top: 0, width: 220, height: 176 }
-  );
-  assert.deepEqual(
-    cropRectangleFor({ box: { x0: 0.9, y0: 0.9, x1: 1, y1: 1 }, widthPx: 1000, heightPx: 800, marginRatio: 0.1 }),
-    { left: 890, top: 712, width: 110, height: 88 }
-  );
-
-  // A crop of nothing is not a crop.
-  assert.equal(cropRectangleFor({ box: null, widthPx: 1000, heightPx: 800 }), null);
-  assert.equal(cropRectangleFor({ box, widthPx: 0, heightPx: 800 }), null);
-  assert.equal(
-    cropRectangleFor({ box: { x0: 0.5, y0: 0.5, x1: 0.5004, y1: 0.5004 }, widthPx: 1000, heightPx: 800, marginRatio: 0 }),
-    null,
-    "a region under a pixel is not a region once nothing is added around it"
-  );
-}
-
-// ------------------------------------------- the crop the concept path reads
-{
-  const box = { x0: 0.1, y0: 0.2, x1: 0.5, y1: 0.6 };
-  const recorded = { assetId: "plan-a", label: "Living Room", box };
-
-  assert.deepEqual(floorPlanCropBox({ recorded, attachedAssetId: "plan-a" }), box);
-
-  // The plan she replaced says nothing about the plan she attached. Applying
-  // its box to the new drawing would crop a corner of somewhere else and hand
-  // it to the concept prompts as her room.
-  assert.equal(floorPlanCropBox({ recorded, attachedAssetId: "plan-b" }), null);
-  assert.equal(floorPlanCropBox({ recorded, attachedAssetId: null }), null);
-
-  // A confirmation with no box (the plan could not locate the room) leaves the
-  // whole drawing in place, which is what it did before she confirmed.
-  assert.equal(floorPlanCropBox({ recorded: { ...recorded, box: null }, attachedAssetId: "plan-a" }), null);
-
-  // Nothing recorded, nothing cropped, and nothing thrown at whatever is in
-  // that column from an older shape.
-  assert.equal(floorPlanCropBox({ recorded: null, attachedAssetId: "plan-a" }), null);
-  assert.equal(floorPlanCropBox({ recorded: "living room", attachedAssetId: "plan-a" }), null);
-  assert.equal(floorPlanCropBox({ recorded: { label: "Living Room", box }, attachedAssetId: "plan-a" }), null);
-  assert.equal(floorPlanCropBox({ recorded: { assetId: "plan-a", box }, attachedAssetId: "plan-a" }), null);
-}
-
-// ------------------------------------------------------ what the screen says
-{
-  const plan = { id: "plan-a", mimeType: "image/png", widthPx: 2400, heightPx: 1600 };
-  const state = (over: Parameters<typeof floorPlanScreenState>[0]) => floorPlanScreenState(over);
-
-  assert.equal(state({ asset: null, newestJob: null, roomCount: 0 }), "no_plan");
-  assert.equal(state({ asset: { ...plan, mimeType: "application/pdf" }, newestJob: null, roomCount: 0 }), "pdf");
-  assert.equal(state({ asset: { ...plan, widthPx: 390, heightPx: 578 }, newestJob: null, roomCount: 0 }), "too_small");
-
-  // The window between the upload landing and the read's row existing is not
-  // an empty screen: she is told it is being read.
-  assert.equal(state({ asset: plan, newestJob: null, roomCount: 0 }), "reading");
-  assert.equal(state({ asset: plan, newestJob: { assetId: "plan-a", status: "running" }, roomCount: 0 }), "reading");
-
-  assert.equal(state({ asset: plan, newestJob: { assetId: "plan-a", status: "failed" }, roomCount: 0 }), "read_failed");
-  assert.equal(state({ asset: plan, newestJob: { assetId: "plan-a", status: "succeeded" }, roomCount: 3 }), "rooms");
-  assert.equal(state({ asset: plan, newestJob: { assetId: "plan-a", status: "succeeded" }, roomCount: 0 }), "no_rooms");
-
-  // A job about the plan she replaced says nothing about this one, including
-  // its failure: the new plan is being read, not broken.
-  assert.equal(state({ asset: plan, newestJob: { assetId: "an-older-plan", status: "failed" }, roomCount: 0 }), "reading");
-  assert.equal(state({ asset: plan, newestJob: { assetId: "an-older-plan", status: "succeeded" }, roomCount: 9 }), "reading");
+  // An index is part of the identity, because a whole-home plan carries
+  // "Bedroom" three times and a label alone marks all three.
+  assert.equal(confirmedFloorPlanRoom({ assetId: "plan-a", label: "Living Room" }), null);
+  assert.equal(confirmedFloorPlanRoom({ assetId: "plan-a", label: "Living Room", index: -1 }), null);
+  assert.equal(confirmedFloorPlanRoom({ assetId: "plan-a", label: "Living Room", index: 1.5 }), null);
+  assert.equal(confirmedFloorPlanRoom({ label: "Living Room", index: 0 }), null);
+  assert.equal(confirmedFloorPlanRoom(null), null);
+  assert.equal(confirmedFloorPlanRoom("living room"), null);
 }
 
 console.log("floor plan rooms tests passed");

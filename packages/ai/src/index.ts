@@ -242,6 +242,10 @@ export type GenerateInitialConceptInput = {
   // Data URL of the uploaded floor plan image, when one exists. Read by the
   // direction model for layout reasoning; never used as a render reference.
   floorPlanImageUrl?: string | null;
+  // The room she confirmed on that drawing, when she has. See
+  // `floorPlanLanguage`: without it the prompt cannot say which part of a
+  // whole-home plan is hers.
+  floorPlanRoomLabel?: string | null;
   styleSlugs?: string[];
   styleNotes?: string | null;
   colorNotes?: string | null;
@@ -2653,7 +2657,7 @@ export async function generateInitialConcept(
             ? [
                 {
                   type: "input_text" as const,
-                  text: "The next image is the room's floor plan. Use it to understand the room's true footprint, door and window positions, and circulation before deciding the furniture layout. Reference it in the layout logic of your generation prompt."
+                  text: floorPlanLanguage(input.floorPlanRoomLabel)
                 },
                 {
                   type: "input_image" as const,
@@ -3350,6 +3354,20 @@ export type NormalizedFloorPlanRead = {
   roomsFound: number;
 };
 
+// What the concept and revision prompts are told the drawing is.
+//
+// It used to say "the room's floor plan" flatly. S5b invites whole-home
+// drawings, and the boxes that would have let us crop one down to her room
+// came back plausible and wrong, so the sentence has to carry the truth
+// instead: this may be a plan of the whole home, and here is the name she
+// picked out of it. The name is what the read is reliable at (design review).
+export function floorPlanLanguage(roomLabel?: string | null): string {
+  const named = roomLabel?.trim();
+  return named
+    ? `The next image is a floor plan of this home. It may show more than the room you are designing: on this drawing that room is labelled "${named}". Read its footprint, door and window positions and circulation from that part of the plan, and ignore the rest.`
+    : "The next image is a floor plan supplied for this room. It may show more of the home than the room you are designing, so take the footprint, door and window positions and circulation only from the part you can identify as this room, and ignore the rest.";
+}
+
 export function floorPlanReadContent(input: { planImageDataUrl: string }): VisionContentPart[] {
   return [
     {
@@ -3588,7 +3606,7 @@ export async function generateConceptRevision(
             ? [
                 {
                   type: "input_text" as const,
-                  text: "The next image is the room's floor plan. Use it for the room's true footprint and circulation."
+                  text: floorPlanLanguage(input.floorPlanRoomLabel)
                 },
                 {
                   type: "input_image" as const,

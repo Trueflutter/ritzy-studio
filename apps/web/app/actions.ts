@@ -57,11 +57,7 @@ import {
   withoutRefusedFields,
   type BriefRefusal
 } from "@/lib/brief-fields";
-import {
-  confirmDetectedRoom,
-  readFloorPlanForRoom,
-  revertToWholePlan
-} from "@/lib/services/floor-plan-read";
+import { confirmDetectedRoom, readFloorPlanForRoom } from "@/lib/services/floor-plan-read";
 import { createClient } from "@/lib/supabase/server";
 import { finalRenderRetryHonoured, finalRenderStaleMs } from "@/lib/render";
 import { localSkuFidelityModeEnabled } from "@/lib/render-flags";
@@ -1513,20 +1509,6 @@ export async function confirmDetectedRoomAction(roomId: string, roomIndex: numbe
     : {
         message: `We could not read a size for ${outcome.label} on the plan, so the fields are still yours to fill. The design will read that part of the drawing.`
       };
-}
-
-export async function revertToWholePlanAction(roomId: string) {
-  const supabase = await createClient();
-  const {
-    data: { user }
-  } = await supabase.auth.getUser();
-  if (!user) {
-    redirect("/login");
-  }
-
-  await revertToWholePlan({ roomId, supabase });
-  revalidatePath(`/projects`, "layout");
-  return null;
 }
 
 async function ensureInspirationAnalysisBeforeDetails({

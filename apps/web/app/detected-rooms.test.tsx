@@ -21,14 +21,12 @@ const room = (over: Partial<DetectedRoom> = {}): DetectedRoom => ({
   wallLengthCm: 470,
   roomDepthCm: 320,
   ceilingHeightCm: null,
-  box: { x0: 0.1, y0: 0.2, x1: 0.5, y1: 0.6 },
   ...over
 });
 
 const actions = {
   confirm: async () => null,
-  read: async () => null,
-  revert: async () => null
+  read: async () => null
 };
 
 const render = (
@@ -80,51 +78,36 @@ assert.match(none, /still type the measurements/, "and the form is not blocked b
     planUrl: "https://example.test/plan.png",
     rooms: [
       room(),
-      // The villa brochure case: located, not sized. Still worth confirming,
-      // because the crop is what the concept prompts need.
-      room({ label: "Family Room", level: "Upper", wallLengthCm: null, roomDepthCm: null }),
-      // Neither: named on the drawing and nothing else.
-      room({ label: "Store", wallLengthCm: null, roomDepthCm: null, box: null })
+      // The villa brochure case: named, not sized. Still worth confirming,
+      // because the NAME is what the concept prompt is told.
+      room({ label: "Family Room", level: "Upper", wallLengthCm: null, roomDepthCm: null })
     ]
   });
 
   assert.match(markup, /Living Room/);
   assert.match(markup, /5\.2 by 4\.1 m|4\.7 by 3\.2 m/, "the numbers it would write are on the control she clicks");
   assert.match(markup, /Family Room, Upper/, "the level disambiguates three rooms with one name");
-  assert.match(markup, /no size on the plan/);
-  assert.match(markup, /no size or place on the plan/);
-  assert.match(markup, /disabled=""/, "and the one it can do nothing for cannot be clicked");
-  assert.match(markup, /<img[^>]+plan\.png/, "the plan she uploaded is on screen");
-  assert.equal(markup.includes("Use the whole plan instead"), false, "nothing to revert before anything is confirmed");
+  assert.match(markup, /no size printed on the plan/);
+  assert.match(markup, /read from your plan/, "an AI-read number says where it came from (design system 12.6)");
+  assert.match(markup, /<img[^>]+plan\.png/, "the plan she uploaded is on screen, so she can see it is the right one");
+  assert.equal(markup.includes("detected-room-outline"), false, "and nothing is outlined on it");
 }
 
-// The outline follows the confirmed room without a hover, so the state is
-// legible on a touch screen and in a screenshot.
+// A confirmed room is named back and marked, by index rather than by label: a
+// whole-home plan carries "Bedroom" three times.
 {
   const markup = render("rooms", {
     planUrl: "https://example.test/plan.png",
-    rooms: [room()],
-    confirmed: { assetId: "plan-a", label: "Living Room", box: { x0: 0.1, y0: 0.2, x1: 0.5, y1: 0.6 } }
+    rooms: [
+      room({ label: "Bedroom", level: "Ground" }),
+      room({ label: "Bedroom", level: "First" }),
+      room({ label: "Bedroom", level: "Second" })
+    ],
+    confirmed: { assetId: "plan-a", label: "Bedroom", index: 1 }
   });
 
-  assert.match(markup, /data-testid="detected-room-outline"/);
-  assert.match(markup, /left:10%/);
-  assert.match(markup, /width:40%/);
-  assert.match(markup, /We are treating Living Room as this room/);
-  assert.match(markup, /Use the whole plan instead/, "a wrong box never costs her the numbers");
-  assert.match(markup, /aria-pressed="true"/);
-}
-
-// A confirmation the plan could not locate draws no outline and offers no
-// revert: there is nothing to undo.
-{
-  const markup = render("rooms", {
-    planUrl: "https://example.test/plan.png",
-    rooms: [room({ box: null })],
-    confirmed: { assetId: "plan-a", label: "Living Room", box: null }
-  });
-  assert.equal(markup.includes("detected-room-outline"), false);
-  assert.equal(markup.includes("Use the whole plan instead"), false);
+  assert.equal((markup.match(/aria-pressed="true"/g) ?? []).length, 1, "exactly one chip is pressed");
+  assert.match(markup, /We are treating Bedroom, First as this room/);
 }
 
 // Every control in this block sits inside the details form, so a bare button
@@ -136,6 +119,25 @@ for (const state of ["read_failed", "rooms"] as const) {
   assert.ok(buttons.length > 0, `${state} renders a control`);
   for (const button of buttons) {
     assert.match(button, /type="button"/, `${state}: every control is type=button`);
+  }
+}
+
+// Every named room is clickable, including the ones the plan does not size:
+// confirming one tells the concept prompt which room on the drawing is hers.
+// An unanchored search for `disabled` cannot tell WHICH chip is disabled, and
+// disabling the unsized ones is exactly the regression the villa brochure
+// deviation exists to prevent (tests review, mutation-verified).
+{
+  const markup = render("rooms", {
+    planUrl: "https://example.test/plan.png",
+    rooms: [room(), room({ label: "Family Room", wallLengthCm: null, roomDepthCm: null })]
+  });
+  const chips = markup.match(/<button[^>]*>[\s\S]*?<\/button>/g) ?? [];
+  assert.equal(chips.length, 2);
+  for (const chip of chips) {
+    // The ATTRIBUTE, not the word: the class list carries `disabled:opacity-60`
+    // and an unanchored search matches that instead.
+    assert.equal(/disabled=""/.test(chip), false, `no chip is disabled: ${chip.slice(0, 90)}`);
   }
 }
 

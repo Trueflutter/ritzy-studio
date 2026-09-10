@@ -8,12 +8,7 @@ import {
 } from "@ritzy-studio/domain";
 import { notFound, redirect } from "next/navigation";
 
-import {
-  confirmDetectedRoomAction,
-  readFloorPlanAction,
-  revertToWholePlanAction,
-  saveDesignBriefAction
-} from "@/app/actions";
+import { confirmDetectedRoomAction, readFloorPlanAction, saveDesignBriefAction } from "@/app/actions";
 import { briefNumberAttributes, briefTextAttributes, colourNotesDefault } from "@/lib/brief-fields";
 import {
   detectedRoomsOnJob,
@@ -106,9 +101,11 @@ export default async function BriefDetailsPage({
     newestJob: floorPlanReadJob ? { assetId: jobAssetId(floorPlanReadJob), status: floorPlanReadJob.status } : null,
     roomCount: detectedRooms.length
   });
-  const confirmedRoom = confirmedFloorPlanRoom(
-    structuredBriefJson(designBrief?.structured_json).floorPlan
-  );
+  // Gated on the attached plan, the way the concept path gates it: a room she
+  // picked off a drawing she has since replaced must not be shown as this
+  // room's (review finding).
+  const recordedRoom = confirmedFloorPlanRoom(structuredBriefJson(designBrief?.structured_json).floorPlan);
+  const confirmedRoom = recordedRoom && recordedRoom.assetId === floorPlan?.id ? recordedRoom : null;
   const planPreviewUrl =
     floorPlan && floorPlan.mime_type?.startsWith("image/")
       ? ((await supabase.storage.from("room-assets").createSignedUrl(floorPlan.storage_path, 60 * 60)).data?.signedUrl ??
@@ -446,11 +443,7 @@ export default async function BriefDetailsPage({
             <div className="mt-5">
               <FloorPlanUploader existingStoragePath={floorPlan?.storage_path} roomId={roomId} userId={user.id} />
               <DetectedRooms
-                actions={{
-                  confirm: confirmDetectedRoomAction,
-                  read: readFloorPlanAction,
-                  revert: revertToWholePlanAction
-                }}
+                actions={{ confirm: confirmDetectedRoomAction, read: readFloorPlanAction }}
                 confirmed={confirmedRoom}
                 planUrl={planPreviewUrl}
                 roomId={roomId}

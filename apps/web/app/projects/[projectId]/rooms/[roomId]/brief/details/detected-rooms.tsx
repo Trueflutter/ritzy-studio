@@ -2,8 +2,8 @@
 
 import {
   detectedRoomLabel,
-  roomConfirmKind,
   roomDimensionsLabel,
+  roomIsDimensioned,
   type ConfirmedFloorPlanRoom,
   type DetectedRoom,
   type FloorPlanScreenState
@@ -48,7 +48,6 @@ function setFieldValue(id: string, value: number | null) {
 export type DetectedRoomsActions = {
   confirm: (roomId: string, roomIndex: number) => Promise<{ message?: string; cleared?: boolean } | null>;
   read: (roomId: string) => Promise<{ message?: string } | null>;
-  revert: (roomId: string) => Promise<{ message?: string } | null>;
 };
 
 export function DetectedRooms({
@@ -71,7 +70,6 @@ export function DetectedRooms({
   state: FloorPlanScreenState;
 }) {
   const [pending, startTransition] = useTransition();
-  const [outlined, setOutlined] = useState<number | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
   // No `useRouter` here. Each of these actions calls `revalidatePath`, so Next
@@ -150,7 +148,7 @@ export function DetectedRooms({
       // `defaultValue` re-propagating through one. Including when the row was
       // cleared: leaving the previous room's numbers on screen above a chip
       // that names a different room is the same disagreement in reverse.
-      if (room.wallLengthCm !== null && room.roomDepthCm !== null) {
+      if (roomIsDimensioned(room)) {
         setFieldValue(MEASUREMENT_FIELD_IDS[0], room.wallLengthCm);
         setFieldValue(MEASUREMENT_FIELD_IDS[1], room.roomDepthCm);
         if (room.ceilingHeightCm !== null) {
@@ -163,8 +161,6 @@ export function DetectedRooms({
     });
   };
 
-  const outlinedBox = outlined !== null ? (rooms[outlined]?.box ?? null) : (confirmed?.box ?? null);
-
   return (
     <div className="mt-5 border border-line bg-page px-5 py-4" data-testid="detected-rooms">
       <p className="font-body text-caption-tight font-medium uppercase tracking-[0.24em] text-ink-muted">
@@ -172,35 +168,27 @@ export function DetectedRooms({
       </p>
       <p className="mt-2 font-body text-body-s leading-[1.6] text-ink-secondary">
         {confirmed
-          ? `We are treating ${confirmed.label} as this room.`
+          ? `We are treating ${detectedRoomLabel(rooms[confirmed.index] ?? { label: confirmed.label, level: null })} as this room.`
           : "Pick the one this brief is for and we will use its part of the drawing."}
       </p>
 
       {planUrl ? (
-        <div className="relative mt-4 border border-line bg-surface">
+        <div className="mt-4 border border-line bg-surface">
+          {/* The drawing she uploaded, so she can see it is the right one. No
+              outline is drawn on it: the model locates rooms badly, and an
+              outline around the wrong room is worse than none (design
+              review). */}
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img alt="Your floor plan" className="block w-full" src={planUrl} />
-          {outlinedBox ? (
-            <span
-              aria-hidden
-              className="pointer-events-none absolute border-2 border-accent-deep"
-              data-testid="detected-room-outline"
-              style={{
-                left: `${outlinedBox.x0 * 100}%`,
-                top: `${outlinedBox.y0 * 100}%`,
-                width: `${(outlinedBox.x1 - outlinedBox.x0) * 100}%`,
-                height: `${(outlinedBox.y1 - outlinedBox.y0) * 100}%`
-              }}
-            />
-          ) : null}
+          <img alt="The floor plan you uploaded" className="block w-full" src={planUrl} />
         </div>
       ) : null}
 
       <ul className="mt-4 flex flex-wrap gap-2">
         {rooms.map((room, index) => {
-          const kind = roomConfirmKind(room);
           const dimensions = roomDimensionsLabel(room);
-          const isConfirmed = confirmed?.label === room.label;
+          // By index, not by label: a whole-home plan carries "Bedroom" three
+          // times and matching by name marks all three (review finding).
+          const isConfirmed = confirmed?.index === index;
           return (
             <li key={`${room.label}-${index}`}>
               <button
@@ -208,38 +196,19 @@ export function DetectedRooms({
                 className={`border px-3 py-2 text-left font-body text-body-s transition-colors duration-micro ease-standard disabled:cursor-not-allowed disabled:opacity-60 ${
                   isConfirmed ? "border-ink bg-surface text-ink" : "border-line bg-surface text-ink-secondary hover:border-ink"
                 }`}
-                disabled={kind === null || pending}
-                onBlur={() => setOutlined(null)}
+                disabled={pending}
                 onClick={() => confirmRoom(index, room)}
-                onFocus={() => setOutlined(room.box ? index : null)}
-                onMouseEnter={() => setOutlined(room.box ? index : null)}
-                onMouseLeave={() => setOutlined(null)}
                 type="button"
               >
                 <span className="block">{detectedRoomLabel(room)}</span>
                 <span className="mt-1 block font-display text-[13.5px] italic text-ink-subtle">
-                  {dimensions ?? (kind === "location" ? "no size on the plan" : "no size or place on the plan")}
+                  {dimensions ? `${dimensions}, read from your plan` : "no size printed on the plan"}
                 </span>
               </button>
             </li>
           );
         })}
       </ul>
-
-      {confirmed?.box ? (
-        <button
-          className="mt-4 font-display text-[13.5px] italic leading-[1.5] text-ink-subtle underline decoration-line underline-offset-4 disabled:opacity-50"
-          disabled={pending}
-          onClick={() =>
-            startTransition(async () => {
-              await actions.revert(roomId);
-            })
-          }
-          type="button"
-        >
-          Use the whole plan instead
-        </button>
-      ) : null}
 
       {message ? (
         <p className="mt-3 font-body text-body-s leading-[1.6] text-ink-secondary" role="status">

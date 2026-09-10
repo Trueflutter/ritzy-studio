@@ -2,7 +2,7 @@ import {
   boundedDetectedRooms,
   confirmedFloorPlanRoom,
   floorPlanReadDecision,
-  roomConfirmKind,
+  roomIsDimensioned,
   type ConfirmedFloorPlanRoom,
   type DetectedRoom,
   type FloorPlanReadAction
@@ -13,7 +13,8 @@ import { configuredTextModel } from "@ritzy-studio/config";
 
 import { closeAiJob } from "./close-ai-job";
 import { structuredBriefJson } from "./sourcing-support";
-import { storagePlanImageDataUrl } from "./storage-images";
+import { planImageOptions } from "@/lib/render-images";
+import { storageImageDataUrl } from "./storage-images";
 import type { ServiceSupabaseClient, UserSupabaseClient } from "./supabase-clients";
 
 // Reading the room off a floor plan (S5b).
@@ -103,10 +104,10 @@ export async function readFloorPlanForRoom(
     // Injectable so the persisted transitions are testable without a live
     // provider, the way the spec extraction runner is.
     readPlan = readFloorPlanRooms,
-    planDataUrl = storagePlanImageDataUrl
+    planDataUrl = storageImageDataUrl
   }: {
     readPlan?: typeof readFloorPlanRooms;
-    planDataUrl?: typeof storagePlanImageDataUrl;
+    planDataUrl?: typeof storageImageDataUrl;
   } = {}
 ): Promise<FloorPlanReadOutcome> {
   const asset = await newestFloorPlanAsset(supabase, roomId);
@@ -125,7 +126,7 @@ export async function readFloorPlanForRoom(
 
   // The bytes come first. A row opened before them would have to be closed
   // again for a failure that cost nothing.
-  const dataUrl = await planDataUrl(supabase, "room-assets", asset.storage_path, asset.mime_type);
+  const dataUrl = await planDataUrl(supabase, "room-assets", asset.storage_path, asset.mime_type, planImageOptions());
   if (!dataUrl) {
     return { status: "failed", message: "The floor plan could not be prepared for reading." };
   }
@@ -195,7 +196,6 @@ export type ConfirmRoomOutcome =
       // another room off the same drawing had to be cleared, so the screen can
       // say the measurements went with it.
       supersededAnotherRoom: boolean;
-      recordedBox: boolean;
       label: string;
     }
   | { status: "stale" }
@@ -226,9 +226,13 @@ export async function confirmDetectedRoom(
     return { status: "stale" };
   }
 
-  const room = detectedRoomsOnJob(job)[roomIndex];
-  const kind = room ? roomConfirmKind(room) : null;
-  if (!room || kind === null) {
+  // The index comes from a client, and a server action's arguments are not
+  // typed at runtime: a non-integer would index the array's prototype and hand
+  // back something that passes a truth test (security review).
+  const rooms = detectedRoomsOnJob(job);
+  const room =
+    Number.isInteger(roomIndex) && roomIndex >= 0 && roomIndex < rooms.length ? rooms[roomIndex] : null;
+  if (!room) {
     return { status: "not_found" };
   }
 
@@ -246,19 +250,20 @@ export async function confirmDetectedRoom(
   }
 
   const supersedesAnotherRoom = previous?.source === "floor_plan" && previous.floor_plan_asset_id === asset.id;
-  const dimensioned = room.wallLengthCm !== null && room.roomDepthCm !== null;
+  const dimensioned = roomIsDimensioned(room);
 
-  // A plan almost never prints a ceiling height, so a row written from one
-  // alone would blank a ceiling she typed herself, and every reader takes the
-  // newest row: her 300 would vanish from the form and the concept prompt
-  // would gain "measurements were not provided" for a room that just got a
-  // better wall length. Carried forward the way `saveDesignBriefAction`
-  // carries a note it has no field for (review finding). Not carried when the
-  // row on record came from confirming a different room off this drawing:
-  // those numbers are that room's, not hers.
-  const carried = supersedesAnotherRoom
-    ? { ceiling: null, notes: null }
-    : { ceiling: previous?.ceiling_height_cm ?? null, notes: previous?.notes ?? null };
+  // A plan almost never prints a ceiling height and never writes a note, so a
+  // row built from one alone would blank both, and every reader takes the
+  // newest row: a ceiling she typed would vanish from the form and the concept
+  // prompt would gain "measurements were not provided" for a room that just
+  // got a better wall length. Carried forward the way `saveDesignBriefAction`
+  // carries a note it has no field for (review finding).
+  //
+  // Carried on the superseding path too. A first version dropped them there,
+  // reasoning that the row belonged to the other room, but a ceiling and a
+  // note never come from the plan: they are hers, whichever room she picks
+  // (review finding, which caught the test that could not see the loss).
+  const carried = { ceiling: previous?.ceiling_height_cm ?? null, notes: previous?.notes ?? null };
 
   // Writing happens when the plan has dimensions to write, and also when it
   // has none but the newest row is another room's confirmation off this same
@@ -286,33 +291,14 @@ export async function confirmDetectedRoom(
     }
   }
 
-  await writeConfirmedRoom(supabase, roomId, { assetId: asset.id, label: room.label, box: room.box });
+  await writeConfirmedRoom(supabase, roomId, { assetId: asset.id, label: room.label, index: roomIndex });
 
   return {
     status: "confirmed",
     wroteMeasurements: dimensioned,
     supersededAnotherRoom: wroteMeasurements && !dimensioned,
-    recordedBox: room.box !== null,
     label: room.label
   };
-}
-
-// Rejecting a crop must not cost her the numbers, so this clears the box and
-// leaves any measurement row exactly where it is. Named for what it does
-// rather than for the control that calls it: a `use` prefix reads as a React
-// hook to the linter, and it is neither.
-export async function revertToWholePlan({
-  roomId,
-  supabase
-}: {
-  roomId: string;
-  supabase: UserSupabaseClient;
-}): Promise<void> {
-  const existing = await confirmedRoomRow(supabase, roomId);
-  if (!existing.confirmed) {
-    return;
-  }
-  await writeConfirmedRoom(supabase, roomId, { ...existing.confirmed, box: null });
 }
 
 async function confirmedRoomRow(supabase: UserSupabaseClient, roomId: string) {
