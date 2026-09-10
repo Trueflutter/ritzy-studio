@@ -102,7 +102,11 @@ await upload(`${FIXTURES}/floor-plan-emaar-below-floor-500px.jpg`);
 await page.waitForTimeout(6000);
 await page.goto(DETAILS, { waitUntil: "networkidle" });
 const smallText = await page.locator('[data-testid="detected-rooms"]').innerText().catch(() => "");
-check("a plan below the readable floor is refused before any call", /too small for us to read/.test(smallText), smallText.slice(0, 70));
+check(
+  "a plan below the readable floor is refused before any call",
+  /too small to read/.test(smallText) && /\d{3,4} pixels across/.test(smallText),
+  smallText.slice(0, 80)
+);
 check("and nothing was spent on it", (await jobs()).length === jobsAtStart, `${(await jobs()).length - jobsAtStart} new jobs`);
 await shot("plan--too-small");
 
@@ -136,7 +140,13 @@ const reloadJobs = await jobs();
 check("reloading the page reads nothing again", reloadJobs.length === afterJobs.length, `${reloadJobs.length} jobs`);
 
 const chips = await page.locator('[data-testid="detected-rooms"] button').allInnerTexts();
-check("the rooms carry the numbers they would write", chips.some((c) => /4\.7 by 3\.2 m/.test(c)), chips.map((c) => c.replace(/\n/g, " ")).join(" | ").slice(0, 120));
+// The numbers, not the phrasing: the copy has moved twice and the substance
+// is that the chip carries what confirming it would write.
+check(
+  "the rooms carry the numbers they would write",
+  chips.some((c) => /4\.7 m/.test(c) && /3\.2 m/.test(c)),
+  chips.map((c) => c.replace(/\n/g, " ")).join(" | ").slice(0, 120)
+);
 check(
   "and the one the plan does not size says so",
   chips.some((c) => /no size printed on the plan/.test(c)),
@@ -144,7 +154,7 @@ check(
 );
 check(
   "every read number says where it came from",
-  chips.filter((c) => /\d\.\d by \d\.\d m/.test(c)).every((c) => /read from your plan/.test(c)),
+  chips.filter((c) => /\d\.\d m wall/.test(c)).every((c) => /from your plan/.test(c)),
   ""
 );
 await shot("plan--rooms");
