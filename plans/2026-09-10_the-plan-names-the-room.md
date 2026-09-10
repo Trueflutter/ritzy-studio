@@ -448,15 +448,18 @@ dimension exact against the recorded figures (Living 470 by 320, both bedrooms,
 dining and kitchen, bathroom, balcony), `unitRead` metres, and Storage with no
 dimensions because the drawing prints none for it. USD 0.005 per read.
 
-**The journey, in a browser.** Seventeen checks, all passing, on the e2e
-persona's room: the listing thumbnail refused with nothing spent, the PDF
-refused with nothing spent, the Emaar plan read once with its cost recorded and
-not read again on reload, the chips carrying the numbers they would write, the
-room the plan does not size saying so, confirming filling the fields without a
-reload, the assumption panel following, one measurement row written from the
-plan at `verified` pointing at the asset, a ceiling typed earlier surviving a
-plan that prints none, the outline drawn on the plan, and an unedited Continue
-writing no further row so the plan stays the source.
+**The journey, in a browser.** Nineteen checks, all passing, committed as
+`scripts/dev-harness/verify-floor-plan.mjs` so they can be re-run: a plan below
+the readable floor refused with nothing spent, a PDF refused with nothing
+spent, the Emaar plan read once with its cost recorded and not read again on
+reload, the chips carrying the numbers they would write and saying where they
+came from, the room the plan does not size saying so, confirming filling the
+fields without a reload, the assumption panel following, one measurement row
+written from the plan at `verified` pointing at the asset, a ceiling typed
+earlier surviving a plan that prints none, nothing drawn on the plan since the
+model cannot locate a room, the screen naming the room it is treating as this
+one, and an unedited Continue writing no further row so the plan stays the
+source.
 
 Test data: the run used the e2e persona's own room
 `f4fba429-63e0-45cf-b7c6-eefc81657b55`, which now carries the Emaar plan as its
@@ -467,6 +470,26 @@ delta around the action rather than an absolute.
 
 ## Deviations
 
+- **The crop and the overlay are withdrawn, and the prompt is told the room's
+  name instead.** The largest deviation, and Ayo approved it. The read is
+  excellent at names and dimensions and unreliable at location: on the Emaar
+  fixture the outline for the living room enclosed the balcony and ran outside
+  the exterior wall, measured by the design review against the drawing. A crop
+  taken from a box like that grounds a paid concept on a room the shopper never
+  picked, and an outline around the wrong room is worse than none. Two
+  reviewers independently found the same thing from the other side: an opt-in
+  crop could not carry an unconditional invitation to upload whole-home plans,
+  because every state except a confirmed located room still handed the whole
+  sheet to a prompt asserting it was her room. So the box leaves the answer
+  schema (prompt version `.2`), the crop and the outline and the revert control
+  go, and `floorPlanLanguage` in `packages/ai` replaces the sentence that
+  asserted the drawing IS this room with one that says it may show more of the
+  home and names the room she confirmed on it. Confirming is now worth
+  something for every named room rather than only for the ones the plan sizes,
+  which is what the villa brochure case needed anyway.
+- **PDF comes off the accept list.** The dropzone offered it and the reader
+  refused it sixty pixels below, in the same panel (design review). It returns
+  in S5c with the rasterisation that can read one.
 - **No synthetic plan.** The plan called for one, drawn large and metric, as
   the positive fixture and as the ladder that sets the readable floor. Both
   jobs are done better by the real Emaar drawing: the ladder runs on it by
