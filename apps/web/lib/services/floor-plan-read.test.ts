@@ -275,6 +275,40 @@ async function main() {
     );
   }
 
+  // PDF bytes declared as `image/png`, with a row to match. The format check
+  // reads the row, which the browser wrote, so the only thing that can catch
+  // this is the file itself: bytes no decoder can open are bytes no model can
+  // read (cross-model gate, round three).
+  {
+    const calls: RecordedCall[] = [];
+    const { client } = fakeSupabase(
+      (call) => {
+        calls.push(call);
+        if (call.table === "room_assets" && call.op === "select") {
+          return { data: { id: ASSET, storage_path: "p.png", mime_type: "image/png", width_px: 2400, height_px: 1600 } };
+        }
+        if (call.table === "ai_jobs" && call.op === "insert") {
+          return { data: { id: "job-1" } };
+        }
+        return { data: null };
+      },
+      () => ({ data: new Blob([new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d, 0x31, 0x2e, 0x37])]) })
+    );
+
+    const outcome = await readFloorPlanForRoom(
+      { roomId: ROOM, userId: USER, supabase: client as never, serviceSupabase: client as never },
+      {
+        planDataUrl: async () => "data:image/png;base64,NOTREALLY",
+        readPlan: async () => {
+          throw new Error("must not be called");
+        }
+      }
+    );
+
+    assert.deepEqual(outcome, { status: "skipped", reason: "unreadable_format" });
+    assert.equal(calls.filter((call) => call.table === "ai_jobs" && call.op === "insert").length, 0, "nothing is spent");
+  }
+
   // A failed read is not a refusal: the retry the screen offers is this call.
   {
     const h = harness({ job: { status: "failed", input_summary: { assetId: ASSET } } });

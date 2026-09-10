@@ -448,6 +448,20 @@ gate of their own.
   rather than pretending otherwise. Fixing it means preserving usage across a
   parse failure in every stage, which is its own change.
 
+- **Every remaining unclosed finding is one race, and one migration closes
+  them** (cross-model gate, three rounds). A confirmation can write plan A's
+  numbers just after plan B is attached; two tabs uploading at once leave two
+  `floor_plan` rows, so "the newest asset" becomes timestamp order; two reads
+  of the same plan can each be paid for; and a confirmation's two writes are
+  not one transaction. They are the same shape: this slice serialises nothing
+  because it carries no migration, by design. What closes them together is one
+  migration, a unique partial index making "one live floor plan per room" and
+  "one running read per room" true in the database, plus an RPC for the
+  confirmation's pair of writes. Each is bounded today: a duplicated read costs
+  under a cent, and every disagreement is visible on the screen and corrected
+  by picking the room again. Recorded here rather than half-solved with
+  re-checks that narrow a window without closing it.
+
 ## Open questions for Ayo
 
 1. **The PDF split.** This slice ships image plans and tells the truth about

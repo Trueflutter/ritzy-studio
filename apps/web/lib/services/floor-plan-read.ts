@@ -134,7 +134,16 @@ export async function readFloorPlanForRoom(
   // above uses the row because it is free; this checks the file (cross-model
   // review).
   const measured = await measurePlan(supabase, asset.storage_path);
-  if (measured && measured.longestEdge > 0 && measured.longestEdge < PLAN_READABLE_MIN_EDGE_PX) {
+  if (measured.outcome === "unreadable") {
+    // Bytes no decoder can open are bytes no model can read. A first version
+    // treated every measurement failure as "believe the row", which let PDF
+    // bytes declared as `image/png` walk past the format check and spend
+    // (cross-model gate, round three). A download that fails is different:
+    // that is transient, and refusing it would turn a storage blip into a
+    // missing feature.
+    return { status: "skipped", reason: "unreadable_format" };
+  }
+  if (measured.outcome === "measured" && measured.longestEdge < PLAN_READABLE_MIN_EDGE_PX) {
     return { status: "skipped", reason: "too_small" };
   }
 
@@ -326,23 +335,28 @@ async function writeConfirmedRoom(
 
 // What the file actually is, as opposed to what the row says it is.
 //
-// Returns null when it cannot be measured at all, which is read as "believe
-// the row": the cost of a wrong guess here is one cheap call, and refusing
-// every format sharp cannot open would turn a missing measurement into a
-// missing feature.
-async function measurePlan(
-  supabase: UserSupabaseClient,
-  storagePath: string
-): Promise<{ longestEdge: number } | null> {
+// Three answers, and the difference between the last two is the point. Bytes
+// that no decoder can open are `unreadable` and refused: a model cannot read
+// them either, and `mime_type` on the row is written by the browser, so PDF
+// bytes declared as `image/png` arrive here looking legitimate. A download
+// that fails is `unavailable`, which is transient and believed, because
+// refusing it would turn a storage blip into a missing feature.
+type PlanMeasurement =
+  | { outcome: "measured"; longestEdge: number }
+  | { outcome: "unreadable" }
+  | { outcome: "unavailable" };
+
+async function measurePlan(supabase: UserSupabaseClient, storagePath: string): Promise<PlanMeasurement> {
   const { data, error } = await supabase.storage.from("room-assets").download(storagePath);
   if (error || !data) {
-    return null;
+    return { outcome: "unavailable" };
   }
   try {
     const sharp = (await import("sharp")).default;
     const meta = await sharp(Buffer.from(await data.arrayBuffer())).metadata();
-    return { longestEdge: Math.max(meta.width ?? 0, meta.height ?? 0) };
+    const longestEdge = Math.max(meta.width ?? 0, meta.height ?? 0);
+    return longestEdge > 0 ? { outcome: "measured", longestEdge } : { outcome: "unreadable" };
   } catch {
-    return null;
+    return { outcome: "unreadable" };
   }
 }
