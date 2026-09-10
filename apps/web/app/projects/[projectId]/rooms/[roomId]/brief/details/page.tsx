@@ -98,7 +98,9 @@ export default async function BriefDetailsPage({
     : null;
   const floorPlanState = floorPlanScreenState({
     asset: floorPlanAsset,
-    newestJob: floorPlanReadJob ? { assetId: jobAssetId(floorPlanReadJob), status: floorPlanReadJob.status } : null,
+    newestJob: floorPlanReadJob
+      ? { assetId: jobAssetId(floorPlanReadJob), status: floorPlanReadJob.status, startedAt: floorPlanReadJob.created_at }
+      : null,
     roomCount: detectedRooms.length
   });
   // Gated on the attached plan, the way the concept path gates it: a room she

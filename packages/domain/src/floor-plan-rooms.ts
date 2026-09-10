@@ -162,7 +162,26 @@ export type FloorPlanAsset = {
 export type FloorPlanReadJob = {
   assetId: string | null;
   status: string;
+  startedAt: string | null;
 };
+
+// How long a `running` row is believed before it is treated as abandoned.
+//
+// A read is bounded by a 90 second provider timeout, so a row still running
+// well past that did not finish: the function was killed mid-call, or both
+// attempts to close the row failed (`closeAiJob` returns rather than throws).
+// Without this the screen says "Reading your floor plan" for ever, offers no
+// retry, and the decision refuses a fresh read because the row says running.
+// Found twice, by an increment review and by the cross-model gate.
+export const FLOOR_PLAN_READ_STALE_MS = 5 * 60 * 1000;
+
+export function floorPlanReadIsStale(job: FloorPlanReadJob | null, now: number = Date.now()): boolean {
+  if (job?.status !== "running" || !job.startedAt) {
+    return false;
+  }
+  const started = Date.parse(job.startedAt);
+  return Number.isFinite(started) && now - started > FLOOR_PLAN_READ_STALE_MS;
+}
 
 export type FloorPlanReadAction =
   | "read"
@@ -179,10 +198,12 @@ export type FloorPlanReadAction =
 // is never left with a plan attached and nothing said about it.
 export function floorPlanReadDecision({
   asset,
-  newestJob
+  newestJob,
+  now = Date.now()
 }: {
   asset: FloorPlanAsset | null;
   newestJob: FloorPlanReadJob | null;
+  now?: number;
 }): { action: FloorPlanReadAction } {
   if (!asset) {
     return { action: "no_plan" };
@@ -202,7 +223,9 @@ export function floorPlanReadDecision({
 
   if (newestJob?.assetId === asset.id) {
     if (newestJob.status === "running") {
-      return { action: "in_flight" };
+      // A row that outlived the call it was opened for is not a read in
+      // flight, it is a read that never came back.
+      return { action: floorPlanReadIsStale(newestJob, now) ? "read" : "in_flight" };
     }
     if (newestJob.status === "succeeded") {
       return { action: "already_read" };
@@ -261,13 +284,15 @@ export type FloorPlanScreenState =
 export function floorPlanScreenState({
   asset,
   newestJob,
-  roomCount
+  roomCount,
+  now = Date.now()
 }: {
   asset: FloorPlanAsset | null;
   newestJob: FloorPlanReadJob | null;
   roomCount: number;
+  now?: number;
 }): FloorPlanScreenState {
-  const { action } = floorPlanReadDecision({ asset, newestJob });
+  const { action } = floorPlanReadDecision({ asset, newestJob, now });
 
   if (action === "no_plan") {
     return "no_plan";
@@ -289,5 +314,10 @@ export function floorPlanScreenState({
   // running job names it. Either the read failed, or the upload's call has not
   // opened its row yet; both are "we are on it" from the screen's side, and the
   // failed one carries a retry.
-  return newestJob?.status === "failed" && newestJob.assetId === asset?.id ? "read_failed" : "reading";
+  // A read that never came back reads as a failure, so the screen offers the
+  // retry rather than saying "in a moment" for ever.
+  if (newestJob?.assetId === asset?.id && (newestJob?.status === "failed" || floorPlanReadIsStale(newestJob, now))) {
+    return "read_failed";
+  }
+  return "reading";
 }

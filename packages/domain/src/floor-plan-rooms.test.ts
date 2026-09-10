@@ -9,6 +9,7 @@ import {
   boundedDetectedRooms,
   confirmedFloorPlanRoom,
   detectedRoomLabel,
+  FLOOR_PLAN_READ_STALE_MS,
   floorPlanReadDecision,
   floorPlanScreenState,
   roomDimensionsLabel,
@@ -205,23 +206,23 @@ import {
 
   // The guard that stops the same answer being bought twice.
   assert.equal(
-    floorPlanReadDecision({ asset: readable, newestJob: { assetId: attached, status: "succeeded" } }).action,
+    floorPlanReadDecision({ asset: readable, newestJob: { assetId: attached, status: "succeeded", startedAt: null } }).action,
     "already_read"
   );
   assert.equal(
-    floorPlanReadDecision({ asset: readable, newestJob: { assetId: attached, status: "running" } }).action,
+    floorPlanReadDecision({ asset: readable, newestJob: { assetId: attached, status: "running", startedAt: null } }).action,
     "in_flight"
   );
 
   // A failed read is retryable, which is what the screen's retry calls.
   assert.equal(
-    floorPlanReadDecision({ asset: readable, newestJob: { assetId: attached, status: "failed" } }).action,
+    floorPlanReadDecision({ asset: readable, newestJob: { assetId: attached, status: "failed", startedAt: null } }).action,
     "read"
   );
 
   // A job for the plan she replaced says nothing about the plan she attached.
   assert.equal(
-    floorPlanReadDecision({ asset: readable, newestJob: { assetId: "asset-a", status: "succeeded" } }).action,
+    floorPlanReadDecision({ asset: readable, newestJob: { assetId: "asset-a", status: "succeeded", startedAt: null } }).action,
     "read"
   );
 }
@@ -242,6 +243,32 @@ import {
   assert.equal(confirmedFloorPlanRoom({ label: "Living Room", index: 0 }), null);
   assert.equal(confirmedFloorPlanRoom(null), null);
   assert.equal(confirmedFloorPlanRoom("living room"), null);
+}
+
+// --------------------------------------- a read that never came back (codex)
+{
+  const plan = { id: "plan-a", mimeType: "image/png", widthPx: 2400, heightPx: 1600 };
+  const now = Date.parse("2026-09-10T12:00:00Z");
+  const running = (startedAt: string | null) => ({ assetId: "plan-a", status: "running", startedAt });
+
+  // A row opened moments ago is a read in flight, and the screen waits.
+  assert.equal(
+    floorPlanReadDecision({ asset: plan, newestJob: running("2026-09-10T11:59:30Z"), now }).action,
+    "in_flight"
+  );
+  assert.equal(floorPlanScreenState({ asset: plan, newestJob: running("2026-09-10T11:59:30Z"), roomCount: 0, now }), "reading");
+
+  // A row that outlived the 90 second call it was opened for did not finish:
+  // the function was killed mid-call, or both attempts to close it failed and
+  // `closeAiJob` returned rather than threw. Without this the screen says
+  // "in a moment" for ever and the decision refuses a fresh read.
+  const abandoned = running(new Date(now - FLOOR_PLAN_READ_STALE_MS - 1000).toISOString());
+  assert.equal(floorPlanReadDecision({ asset: plan, newestJob: abandoned, now }).action, "read");
+  assert.equal(floorPlanScreenState({ asset: plan, newestJob: abandoned, roomCount: 0, now }), "read_failed");
+
+  // A row with no timestamp is believed rather than discarded: the cost of a
+  // wrong guess here is a second paid call.
+  assert.equal(floorPlanReadDecision({ asset: plan, newestJob: running(null), now }).action, "in_flight");
 }
 
 console.log("floor plan rooms tests passed");

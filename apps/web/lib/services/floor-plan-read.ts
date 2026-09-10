@@ -1,4 +1,5 @@
 import {
+  PLAN_READABLE_MIN_EDGE_PX,
   boundedDetectedRooms,
   floorPlanReadDecision,
   roomIsDimensioned,
@@ -58,6 +59,7 @@ export async function newestFloorPlanAsset(
 
 export type FloorPlanReadRow = {
   status: string;
+  created_at: string | null;
   input_summary: Record<string, unknown> | null;
   output_summary: Record<string, unknown> | null;
 };
@@ -68,7 +70,7 @@ export async function newestFloorPlanReadJob(
 ): Promise<FloorPlanReadRow | null> {
   const { data, error } = await supabase
     .from("ai_jobs")
-    .select("status, input_summary, output_summary")
+    .select("status, created_at, input_summary, output_summary")
     .eq("room_id", roomId)
     .eq("job_type", "floor_plan_read")
     .order("created_at", { ascending: false })
@@ -115,7 +117,7 @@ export async function readFloorPlanForRoom(
     asset: asset
       ? { id: asset.id, mimeType: asset.mime_type, widthPx: asset.width_px, heightPx: asset.height_px }
       : null,
-    newestJob: job ? { assetId: jobAssetId(job), status: job.status } : null
+    newestJob: job ? { assetId: jobAssetId(job), status: job.status, startedAt: job.created_at } : null
   });
 
   if (action !== "read" || !asset) {
@@ -124,6 +126,18 @@ export async function readFloorPlanForRoom(
 
   // The bytes come first. A row opened before them would have to be closed
   // again for a failure that cost nothing.
+  //
+  // They are also what the readable floor is judged on. `mime_type`,
+  // `width_px` and `height_px` on `room_assets` are written by the browser and
+  // RLS lets an owner write the row directly, so a forged 2400 by 1600 on a
+  // thumbnail buys a paid call that criterion 14 says to refuse. The decision
+  // above uses the row because it is free; this checks the file (cross-model
+  // review).
+  const measured = await measurePlan(supabase, asset.storage_path);
+  if (measured && measured.longestEdge > 0 && measured.longestEdge < PLAN_READABLE_MIN_EDGE_PX) {
+    return { status: "skipped", reason: "too_small" };
+  }
+
   const dataUrl = await planDataUrl(supabase, "room-assets", asset.storage_path, asset.mime_type, planImageOptions());
   if (!dataUrl) {
     return { status: "failed", message: "The floor plan could not be prepared for reading." };
@@ -308,4 +322,27 @@ async function writeConfirmedRoom(
   // Through the column's one guarded writer, so a save landing between this
   // read and this write cannot take the room with it, and vice versa.
   await writeBriefDocument(supabase, roomId, { merge: (current) => ({ ...current, floorPlan }) });
+}
+
+// What the file actually is, as opposed to what the row says it is.
+//
+// Returns null when it cannot be measured at all, which is read as "believe
+// the row": the cost of a wrong guess here is one cheap call, and refusing
+// every format sharp cannot open would turn a missing measurement into a
+// missing feature.
+async function measurePlan(
+  supabase: UserSupabaseClient,
+  storagePath: string
+): Promise<{ longestEdge: number } | null> {
+  const { data, error } = await supabase.storage.from("room-assets").download(storagePath);
+  if (error || !data) {
+    return null;
+  }
+  try {
+    const sharp = (await import("sharp")).default;
+    const meta = await sharp(Buffer.from(await data.arrayBuffer())).metadata();
+    return { longestEdge: Math.max(meta.width ?? 0, meta.height ?? 0) };
+  } catch {
+    return null;
+  }
 }

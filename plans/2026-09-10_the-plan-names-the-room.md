@@ -409,6 +409,28 @@ gate of their own.
   Changing that is a migration, and it belongs with the slice that gives it a
   reader.
 
+- **Two reads of the same plan can both be paid for** (cross-model gate,
+  BLOCKER). `floorPlanReadDecision` reads the newest job and then the service
+  inserts one, so two requests arriving together, two tabs or a double-fired
+  action, can both pass the check and both call the model. Closing it properly
+  needs the claim to be atomic in the database, a partial unique index on
+  `(room_id, job_type) where status = 'running'`, which is a migration this
+  slice does not carry. The cost of the race is one duplicated read, under a
+  cent, both rows close `succeeded` and the newest wins, so nothing downstream
+  disagrees. Recorded for the slice that adds the index.
+- **A confirmation is two writes, and only one of them is guarded** (cross-model
+  gate). The measurement row and the confirmed-room key are written
+  separately, so two tabs confirming different rooms at once can leave one
+  room's numbers newest while the other room's name is recorded. Serialising
+  them needs a transaction, which means an RPC and a migration. Both halves are
+  visible on the screen and recoverable by clicking the right chip, which is
+  why this is recorded rather than fixed here.
+- **`design_briefs` still has no unique constraint on `room_id`** (cross-model
+  gate, raised alongside the guarded writer). Two writers that both find no row
+  can both insert one. Already recorded in S5a's Deferred section as duplicate
+  brief rows; the guarded writer narrows the update path but cannot close the
+  insert path without that constraint.
+
 ## Open questions for Ayo
 
 1. **The PDF split.** This slice ships image plans and tells the truth about

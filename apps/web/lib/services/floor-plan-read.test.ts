@@ -226,6 +226,55 @@ async function main() {
     assert.equal(h.inserted().length, 0, `${refusal.name}: no row, so no cost and no state to clean up`);
   }
 
+  // The row says the plan is big; the file says otherwise. `mime_type`,
+  // `width_px` and `height_px` are written by the browser and RLS lets an
+  // owner write that row directly, so a forged 2400 by 1600 on a thumbnail
+  // would buy a paid call criterion 14 says to refuse (cross-model review).
+  {
+    const sharp = (await import("sharp")).default;
+    const thumbnail = await sharp({
+      create: { width: 390, height: 578, channels: 3, background: { r: 250, g: 250, b: 250 } }
+    })
+      .jpeg()
+      .toBuffer();
+
+    const calls: RecordedCall[] = [];
+    const { client } = fakeSupabase(
+      (call) => {
+        calls.push(call);
+        if (call.table === "room_assets" && call.op === "select") {
+          // What a forged row claims.
+          return { data: { id: ASSET, storage_path: "p.jpg", mime_type: "image/jpeg", width_px: 2400, height_px: 1600 } };
+        }
+        if (call.table === "ai_jobs" && call.op === "select") {
+          return { data: null };
+        }
+        if (call.table === "ai_jobs" && call.op === "insert") {
+          return { data: { id: "job-1" } };
+        }
+        return { data: null };
+      },
+      () => ({ data: new Blob([new Uint8Array(thumbnail)]) })
+    );
+
+    const outcome = await readFloorPlanForRoom(
+      { roomId: ROOM, userId: USER, supabase: client as never, serviceSupabase: client as never },
+      {
+        planDataUrl: async () => "data:image/jpeg;base64,PLAN",
+        readPlan: async () => {
+          throw new Error("must not be called");
+        }
+      }
+    );
+
+    assert.deepEqual(outcome, { status: "skipped", reason: "too_small" }, "the file is what decides, not the row");
+    assert.equal(
+      calls.filter((call) => call.table === "ai_jobs" && call.op === "insert").length,
+      0,
+      "and nothing is spent on it"
+    );
+  }
+
   // A failed read is not a refusal: the retry the screen offers is this call.
   {
     const h = harness({ job: { status: "failed", input_summary: { assetId: ASSET } } });

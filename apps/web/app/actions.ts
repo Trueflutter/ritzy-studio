@@ -1608,28 +1608,18 @@ async function analyzeAndWriteInspirationForRoom({
 
   try {
     const result = await analyzeInspirationImages({ imageUrls: signedUrls });
-    const { data: existingBrief } = await supabase
-      .from("design_briefs")
-      .select("id, structured_json")
-      .eq("room_id", roomId)
-      .order("updated_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
 
-    const structuredJson = structuredBriefJson(existingBrief?.structured_json);
-    structuredJson.inspirationAnalysis = result.analysis;
-
-    const payload = {
-      room_id: roomId,
-      structured_json: structuredJson as Database["public"]["Tables"]["design_briefs"]["Update"]["structured_json"]
-    };
-
-    const writeResult = existingBrief
-      ? await supabase.from("design_briefs").update(payload).eq("id", existingBrief.id)
-      : await supabase.from("design_briefs").insert(payload);
-
-    if (writeResult.error) {
-      throw new Error(writeResult.error.message);
+    // The THIRD writer of this document, and the one the guard missed. It
+    // reads after a paid call that takes seconds, so its window is the widest
+    // of the three: a confirmation landing while the analysis is in flight was
+    // erased by it (cross-model review). Through the same guarded writer as
+    // the other two, merging only the key it owns.
+    try {
+      await writeBriefDocument(supabase, roomId, {
+        merge: (current) => ({ ...current, inspirationAnalysis: result.analysis })
+      });
+    } catch (writeError) {
+      throw new Error(writeError instanceof Error ? writeError.message : "The inspiration analysis could not be saved.");
     }
 
     await serviceSupabase
