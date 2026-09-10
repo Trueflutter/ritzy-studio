@@ -23,3 +23,16 @@ for (const r of rows) {
   if (r.input_summary?.blockers) console.log("blockers:", JSON.stringify(r.input_summary.blockers, null, 2));
   if (g) console.log("catalogueGrounding:", JSON.stringify(g, null, 2));
 }
+
+// S5b: the measurement rows for the same room, newest first, so a floor plan
+// confirmation can be read back with its provenance.
+const measurements = await fetch(
+  `${url}/rest/v1/room_measurements?room_id=eq.${roomId}&order=created_at.desc&limit=5&select=source,confidence,wall_length_cm,room_depth_cm,ceiling_height_cm,floor_plan_asset_id,created_at`,
+  { headers: { apikey: svc, Authorization: "Bearer " + svc } }
+);
+console.log("\n=== room_measurements ===");
+for (const row of await measurements.json()) {
+  console.log(
+    `${row.created_at}  ${row.source}/${row.confidence}  ${row.wall_length_cm} x ${row.room_depth_cm} x ${row.ceiling_height_cm}${row.floor_plan_asset_id ? `  plan ${row.floor_plan_asset_id.slice(0, 8)}` : ""}`
+  );
+}

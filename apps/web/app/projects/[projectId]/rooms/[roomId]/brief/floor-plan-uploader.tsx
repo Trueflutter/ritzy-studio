@@ -13,17 +13,25 @@ type UploadStatus = "idle" | "uploading" | "complete" | "error";
 
 export function FloorPlanUploader({
   existingStoragePath,
+  planState,
   roomId,
   userId
 }: {
   existingStoragePath?: string | null;
+  // What the app has managed to do with the plan that is attached. Without it
+  // this panel says "Floor plan attached" over a plan the app cannot use, and
+  // the refusal underneath reads as the quieter of two contradictory claims
+  // (design review).
+  planState?: "usable" | "unusable";
   roomId: string;
   userId: string;
 }) {
   const [lastFile, setLastFile] = useState<File | null>(null);
   const [status, setStatus] = useState<UploadStatus>("idle");
+  const attachedMessage =
+    planState === "unusable" ? "Attached, but we cannot read it" : "Floor plan attached";
   const [message, setMessage] = useState(
-    existingStoragePath ? "Floor plan attached" : "Drop a floor plan or click to upload"
+    existingStoragePath ? attachedMessage : "Drop a floor plan or click to upload"
   );
   const [isPending, startTransition] = useTransition();
   const router = useRouter();
@@ -31,7 +39,7 @@ export function FloorPlanUploader({
   async function uploadFile(file: File) {
     if (file.size > 10 * 1024 * 1024) {
       setStatus("error");
-      setMessage("Use a JPG, PNG, or PDF up to 10 MB.");
+      setMessage("Use a JPG or PNG up to 10 MB.");
       return false;
     }
 
@@ -100,7 +108,7 @@ export function FloorPlanUploader({
     if (file.type.startsWith("image/")) {
       setMessage("Reading your floor plan...");
       const result = await readFloorPlanAction(roomId);
-      setMessage(result?.message ?? "Floor plan attached");
+      setMessage(result?.message ?? attachedMessage);
     }
 
     startTransition(() => router.refresh());
@@ -109,15 +117,22 @@ export function FloorPlanUploader({
 
   return (
     <ImageDropzone
-      accept="image/jpeg,image/png,application/pdf"
+      accept="image/jpeg,image/png"
       busy={status === "uploading" || isPending}
-      description="The whole home's plan is fine. We will find the rooms on it and you pick this one."
+      description={
+        existingStoragePath
+          ? "Drop another file here to replace it."
+          : "The whole home's plan is fine. We will find the rooms on it and you pick this one."
+      }
       error={
         status === "error"
           ? { message, onRetry: lastFile ? () => void uploadFile(lastFile) : undefined }
           : null
       }
-      hint="JPG, PNG, or PDF · up to 10 MB"
+      // PDF is off the list until the slice that can rasterise one: advertising
+      // a format the reader then refuses is the contradiction the design review
+      // found sixty pixels apart in this panel.
+      hint="JPG or PNG · up to 10 MB. A photograph or screenshot of a PDF plan works."
       icon={<FloorPlanIcon />}
       onFiles={(files) => {
         const file = files[0];

@@ -441,7 +441,12 @@ export default async function BriefDetailsPage({
               </span>
             </p>
             <div className="mt-5">
-              <FloorPlanUploader existingStoragePath={floorPlan?.storage_path} roomId={roomId} userId={user.id} />
+              <FloorPlanUploader
+                existingStoragePath={floorPlan?.storage_path}
+                planState={floorPlanState === "pdf" || floorPlanState === "too_small" ? "unusable" : "usable"}
+                roomId={roomId}
+                userId={user.id}
+              />
               <DetectedRooms
                 actions={{ confirm: confirmDetectedRoomAction, read: readFloorPlanAction }}
                 confirmed={confirmedRoom}
