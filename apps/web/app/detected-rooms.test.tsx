@@ -56,9 +56,21 @@ const pdf = render("pdf");
 assert.match(pdf, /PDF, which we cannot read yet/);
 assert.match(pdf, /picture of it/, "and what to upload instead");
 
+// Both refusals carry the design system's error treatment (8.19). Rendered as
+// a neutral grey note they read as the quieter of two contradictory claims,
+// under a panel heading that says the plan is attached (design review).
+for (const [state, markup] of [["pdf", pdf], ["too small", render("too_small")], ["read failed", render("read_failed")]] as const) {
+  assert.match(markup, /border-t-error/, `${state} is marked as a failure, not as a note`);
+  assert.match(markup, /text-error/, `${state} states what failed in the error colour`);
+}
+assert.equal(/border-t-error/.test(render("no_rooms")), false, "a plan with no rooms on it is not a failure");
+assert.equal(/border-t-error/.test(render("reading")), false, "and neither is a read in progress");
+
 const small = render("too_small");
-assert.match(small, /too small for us to read/);
-assert.match(small, /larger copy/);
+assert.match(small, /too small to read the room names/);
+// A size refusal that states no size leaves her guessing which of her files
+// would pass (design review).
+assert.match(small, /\d{3,4} pixels across/, "it names the floor it is holding her to");
 
 const reading = render("reading");
 assert.match(reading, /Reading your floor plan/);
@@ -85,10 +97,11 @@ assert.match(none, /still type the measurements/, "and the form is not blocked b
   });
 
   assert.match(markup, /Living Room/);
-  assert.match(markup, /5\.2 by 4\.1 m|4\.7 by 3\.2 m/, "the numbers it would write are on the control she clicks");
+  assert.match(markup, /4\.7 m wall, 3\.2 m deep/, "the numbers it would write are on the control she clicks, named");
   assert.match(markup, /Family Room, Upper/, "the level disambiguates three rooms with one name");
   assert.match(markup, /no size printed on the plan/);
-  assert.match(markup, /read from your plan/, "an AI-read number says where it came from (design system 12.6)");
+  assert.match(markup, /from your plan/, "an AI-read number says where it came from (design system 12.6)");
+  assert.equal(/text-ink-subtle/.test(markup), false, "and not in a token the design system forbids below 18px");
   assert.match(markup, /<img[^>]+plan\.png/, "the plan she uploaded is on screen, so she can see it is the right one");
   assert.equal(markup.includes("detected-room-outline"), false, "and nothing is outlined on it");
 }

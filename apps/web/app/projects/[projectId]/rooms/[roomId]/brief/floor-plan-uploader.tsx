@@ -131,8 +131,14 @@ export function FloorPlanUploader({
       }
       // PDF is off the list until the slice that can rasterise one: advertising
       // a format the reader then refuses is the contradiction the design review
-      // found sixty pixels apart in this panel.
-      hint="JPG or PNG · up to 10 MB. A photograph or screenshot of a PDF plan works."
+      // found sixty pixels apart in this panel. And once a refusal is showing
+      // below, the hint drops its advice, because the refusal is already
+      // giving it fifty pixels down.
+      hint={
+        planState === "unusable"
+          ? "JPG or PNG · up to 10 MB"
+          : "JPG or PNG · up to 10 MB. A photograph or screenshot of a PDF plan works."
+      }
       icon={<FloorPlanIcon />}
       onFiles={(files) => {
         const file = files[0];

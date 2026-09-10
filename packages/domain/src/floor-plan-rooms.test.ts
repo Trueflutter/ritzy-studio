@@ -118,9 +118,18 @@ import {
 
 // ------------------------------------------------------------- what she reads
 {
-  assert.equal(roomDimensionsLabel({ wallLengthCm: 520, roomDepthCm: 410 }), "5.2 by 4.1 m");
-  assert.equal(roomDimensionsLabel({ wallLengthCm: 884, roomDepthCm: 470 }), "8.8 by 4.7 m");
-  assert.equal(roomDimensionsLabel({ wallLengthCm: 500, roomDepthCm: 400 }), "5.0 by 4.0 m", "a trailing zero is kept");
+  assert.equal(roomDimensionsLabel({ wallLengthCm: 520, roomDepthCm: 410 }), "5.2 m wall, 4.1 m deep, from your plan");
+  assert.equal(roomDimensionsLabel({ wallLengthCm: 884, roomDepthCm: 470 }), "8.8 m wall, 4.7 m deep, from your plan");
+  assert.equal(
+    roomDimensionsLabel({ wallLengthCm: 500, roomDepthCm: 400 }),
+    "5.0 m wall, 4.0 m deep, from your plan",
+    "a trailing zero is kept"
+  );
+  // The two values are NAMED. The read reports the longer edge as the wall,
+  // and a drawing prints its own order, so a bare "3.2 by 2.4 m" under a plan
+  // printing "2.4m x 3.2m" reads as a transcription error (design review).
+  assert.match(roomDimensionsLabel({ wallLengthCm: 320, roomDepthCm: 240 }) ?? "", /3\.2 m wall, 2\.4 m deep/);
+  assert.match(roomDimensionsLabel({ wallLengthCm: 320, roomDepthCm: 240 }) ?? "", /from your plan/, "and say where they came from");
   assert.equal(roomDimensionsLabel({ wallLengthCm: 520, roomDepthCm: null }), null);
   assert.equal(roomDimensionsLabel({ wallLengthCm: null, roomDepthCm: null }), null);
 

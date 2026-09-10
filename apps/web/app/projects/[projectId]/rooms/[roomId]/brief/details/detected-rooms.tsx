@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  PLAN_READABLE_MIN_EDGE_PX,
   detectedRoomLabel,
   roomDimensionsLabel,
   roomIsDimensioned,
@@ -82,9 +83,25 @@ export function DetectedRooms({
     return null;
   }
 
-  const note = (text: string, action?: { label: string; run: () => void }) => (
-    <div className="mt-5 border border-line bg-page px-5 py-4" data-testid="detected-rooms">
-      <p className="font-body text-body-s leading-[1.6] text-ink-secondary">{text}</p>
+  // A refusal carries the design system's error treatment (8.19: a 1px error
+  // border on the failed section and the caption in the error colour). Without
+  // it a refusal is a neutral grey note carrying the same weight as a hint,
+  // which is how both refusal states read as success (design review).
+  const note = (text: string, action?: { label: string; run: () => void }, tone: "neutral" | "error" = "neutral") => (
+    <div
+      className={`mt-5 border bg-page px-5 py-4 ${tone === "error" ? "border-t-2 border-t-error border-line" : "border-line"}`}
+      data-testid="detected-rooms"
+      role={tone === "error" ? "status" : undefined}
+    >
+      <p
+        className={
+          tone === "error"
+            ? "font-display text-[15px] italic leading-[1.6] text-error"
+            : "font-body text-body-s leading-[1.6] text-ink-secondary"
+        }
+      >
+        {text}
+      </p>
       {action ? (
         <button
           className="mt-3 font-display text-[13.5px] italic leading-[1.5] text-accent-deep underline decoration-line underline-offset-4 disabled:opacity-50"
@@ -103,13 +120,17 @@ export function DetectedRooms({
     // mime type is an image, so a PDF has never reached a model. Saying so is
     // the whole of this state until the rasterisation slice lands.
     return note(
-      "Your plan is a PDF, which we cannot read yet. Upload a picture of it, a screenshot or a photograph, and we will find the rooms on it."
+      "Your plan is a PDF, which we cannot read yet. A picture of it works: a screenshot, or a photograph of the page.",
+      undefined,
+      "error"
     );
   }
 
   if (state === "too_small") {
     return note(
-      "That plan is too small for us to read the room names and sizes on it. A larger copy, or a screenshot taken at full size, would let us find the rooms."
+      `That plan is too small to read the room names and sizes on it. We need about ${PLAN_READABLE_MIN_EDGE_PX} pixels across; a screenshot taken at full size usually is.`,
+      undefined,
+      "error"
     );
   }
 
@@ -118,8 +139,10 @@ export function DetectedRooms({
   }
 
   if (state === "read_failed") {
-    return note("We could not read that floor plan. Nothing else on this page changed.", {
-      label: "Try reading it again",
+    return note(
+      "We could not read that floor plan. Nothing else on this page changed.",
+      {
+        label: "Try reading it again",
       run: () =>
         startTransition(async () => {
           setMessage(null);
@@ -128,7 +151,9 @@ export function DetectedRooms({
             setMessage(result.message);
           }
         })
-    });
+      },
+      "error"
+    );
   }
 
   if (state === "no_rooms") {
@@ -168,22 +193,33 @@ export function DetectedRooms({
       </p>
       <p className="mt-2 font-body text-body-s leading-[1.6] text-ink-secondary">
         {confirmed
-          ? `We are treating ${detectedRoomLabel(rooms[confirmed.index] ?? { label: confirmed.label, level: null })} as this room.`
-          : "Pick the one this brief is for and we will use its part of the drawing."}
+          ? `We are treating ${detectedRoomLabel(rooms[confirmed.index] ?? { label: confirmed.label, level: null })} as this room, and telling the design to read that room on your plan.`
+          : "Pick the one this brief is for and we will use the size printed for it."}
       </p>
 
       {planUrl ? (
-        <div className="mt-4 border border-line bg-surface">
+        <div className="mt-4">
           {/* The drawing she uploaded, so she can see it is the right one. No
               outline is drawn on it: the model locates rooms badly, and an
-              outline around the wrong room is worse than none (design
-              review). */}
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img alt="The floor plan you uploaded" className="block w-full" src={planUrl} />
+              outline around the wrong room is worse than none. At panel width
+              a developer's sheet has five-pixel labels, so it opens full size
+              rather than pretending to be readable here (design review). */}
+          <a
+            className="block border border-line bg-surface focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--rs-focus-ring)]"
+            href={planUrl}
+            rel="noreferrer"
+            target="_blank"
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img alt="The floor plan you uploaded" className="block w-full" src={planUrl} />
+          </a>
+          <span className="mt-2 block font-body text-body-s text-ink-muted">
+            Open the plan full size to read it.
+          </span>
         </div>
       ) : null}
 
-      <ul className="mt-4 flex flex-wrap gap-2">
+      <ul className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
         {rooms.map((room, index) => {
           const dimensions = roomDimensionsLabel(room);
           // By index, not by label: a whole-home plan carries "Bedroom" three
@@ -193,7 +229,7 @@ export function DetectedRooms({
             <li key={`${room.label}-${index}`}>
               <button
                 aria-pressed={isConfirmed}
-                className={`border px-3 py-2 text-left font-body text-body-s transition-colors duration-micro ease-standard disabled:cursor-not-allowed disabled:opacity-60 ${
+                className={`w-full border px-3 py-2 text-left font-body text-body-s transition-colors duration-micro ease-standard focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--rs-focus-ring)] disabled:cursor-not-allowed disabled:opacity-60 ${
                   isConfirmed ? "border-ink bg-surface text-ink" : "border-line bg-surface text-ink-secondary hover:border-ink"
                 }`}
                 disabled={pending}
@@ -201,8 +237,15 @@ export function DetectedRooms({
                 type="button"
               >
                 <span className="block">{detectedRoomLabel(room)}</span>
-                <span className="mt-1 block font-display text-[13.5px] italic text-ink-subtle">
-                  {dimensions ? `${dimensions}, read from your plan` : "no size printed on the plan"}
+                {/* `--rs-text-subtle` is forbidden below 18px: 3.6:1 (design
+                    system 78). The one line saying a machine read these numbers
+                    must not be the hardest thing here to read. And the values
+                    are named rather than listed, because the read reports the
+                    longer edge first while a drawing prints its own order, so
+                    "3.2 by 2.4" against a plan printing "2.4m x 3.2m" reads as
+                    a transcription error (design review). */}
+                <span className="mt-1 block font-display text-[13.5px] italic text-ink-muted">
+                  {dimensions ?? "no size printed on the plan"}
                 </span>
               </button>
             </li>

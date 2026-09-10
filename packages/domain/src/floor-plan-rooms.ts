@@ -138,8 +138,13 @@ export function roomDimensionsLabel({
   if (wallLengthCm === null || roomDepthCm === null) {
     return null;
   }
+  // Named rather than listed. The read reports the longer edge as the wall and
+  // the shorter as the depth, while a drawing prints its own order, so
+  // "3.2 by 2.4 m" under a plan printing "2.4m x 3.2m" reads as a
+  // transcription error rather than as the two fields above it (design
+  // review).
   const metres = (cm: number) => (cm / 100).toFixed(1);
-  return `${metres(wallLengthCm)} by ${metres(roomDepthCm)} m`;
+  return `${metres(wallLengthCm)} m wall, ${metres(roomDepthCm)} m deep, from your plan`;
 }
 
 export function detectedRoomLabel({ label, level }: { label: string; level: string | null }): string {
