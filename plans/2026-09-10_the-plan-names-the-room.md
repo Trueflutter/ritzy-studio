@@ -332,6 +332,12 @@ proof is obtained is the open question below.
     focused, before anything is confirmed. A room with no box draws no outline.
 13. The J3 step 6 path costs three interactions on the running app: choose the
     file, confirm the room, continue.
+14. A plan whose longest edge is below the readable floor is not read at all:
+    no `ai_jobs` row is created, the screen says the plan is too small to read
+    and asks for a larger copy, and no measurement is offered. The floor's
+    number is established by evidence, not assumed: the synthetic fixture is
+    read at descending widths and the number is set where the read stops
+    matching its own ground truth.
 
 ## Test plan
 
@@ -350,6 +356,7 @@ proof is obtained is the open question below.
 | 11 | component + browser | `detected-rooms.test.tsx` renders a job whose asset id does not match the attached asset and asserts no control appears; the harness uploads a second plan and asserts the first plan's rooms are gone |
 | 12 | component + browser | `detected-rooms.test.tsx` for the outline on focus with and without a box; the harness captures both widths for the ux-critic |
 | 13 | browser | the harness counts its own interactions for the J3 step 6 path |
+| 14 | unit + browser | `floor-plan-rooms.test.ts` for the floor in `floorPlanReadDecision`; the harness uploads `floor-plan-listing-thumbnail.jpeg` (390 by 578) and asserts no `ai_jobs` row and the honest line |
 
 The row assertions read through the service client the harness already uses
 (`scripts/dev-harness/read-ai-job.mjs`), extended to read `room_measurements`,
@@ -403,3 +410,30 @@ gate of their own.
    text: the combined start screen and name-only project form of step 17 are
    what bring the count inside budget. Flagging it so the parent plan's
    criteria are not read as owed by this slice.
+
+## Deviations
+
+- **Units, which the plan never mentioned.** The real fixture Ayo supplied is
+  a US listing plan in feet-and-inches decimal shorthand, where `14.11` means
+  14 feet 11 inches and not 14.11 feet; Dubai plans are metric and usually
+  drawn in millimetres. The column stores centimetres. So the prompt asks for
+  centimetres, names all three notations, and requires the model to report the
+  unit it believes it read, so a wrong-unit answer is visible in the job's
+  output rather than silently 30 times too small. The bounds already drop
+  anything outside 1 to 5000 cm, which catches the millimetre mistake but not
+  the feet one, which is why the reported unit matters.
+- **A level per room.** A whole-home plan carries several floors on one
+  drawing, and Ayo's fixture has three, with the label "Bedroom" on three
+  different rooms. The detected-room record gains an optional `level` and the
+  chip shows it, or three identical chips would ask her to pick blind.
+- **A readable-resolution floor, and what the supplied fixture is for.** The
+  plan assumed any uploaded image is worth reading. The real plan supplied is
+  390 by 578 pixels, a listing thumbnail, so its dimension strings are about
+  four pixels tall and any answer from it is a guess. A guess is the worst
+  thing this feature can produce, because the confirmation writes
+  `confidence = 'verified'` and that is what switches dimension-aware product
+  fit back on. So a plan below the floor is refused before any call is made
+  (criterion 14), and the supplied fixture earns its place as the negative
+  case rather than the positive one. The positive case is the synthetic metric
+  plan, drawn large enough to be legible, and Ayo is asked for a
+  full-resolution copy of a real plan if he has one.
