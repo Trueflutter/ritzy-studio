@@ -9,6 +9,8 @@ import { createClient } from "@/lib/supabase/client";
 import { readFloorPlanAction } from "@/app/actions";
 import { readImageSize, slugFileName } from "@/lib/upload";
 
+import { useFloorPlanActivity } from "./floor-plan-activity";
+
 type UploadStatus = "idle" | "uploading" | "reading" | "error";
 
 export function FloorPlanUploader({
@@ -31,6 +33,7 @@ export function FloorPlanUploader({
   const [errorMessage, setErrorMessage] = useState("");
   const [isPending, startTransition] = useTransition();
   const router = useRouter();
+  const { setReplacing } = useFloorPlanActivity();
 
   // Once nothing is in flight, what this panel says about the plan comes from
   // the page, which read it off the rows. A first version kept it in state,
@@ -53,6 +56,9 @@ export function FloorPlanUploader({
 
     setLastFile(file);
     setStatus("uploading");
+    // From here until the refreshed page arrives, the rooms listed beneath
+    // belong to the plan being replaced, so they come off the screen.
+    setReplacing(true);
 
     const supabase = createClient();
     const extension = file.name.split(".").pop() ?? "pdf";
@@ -76,6 +82,7 @@ export function FloorPlanUploader({
     if (uploadError) {
       setStatus("error");
       setErrorMessage(uploadError.message);
+      setReplacing(false);
       return false;
     }
 
@@ -97,6 +104,7 @@ export function FloorPlanUploader({
     if (rowError) {
       setStatus("error");
       setErrorMessage(rowError.message);
+      setReplacing(false);
       return false;
     }
 
@@ -128,6 +136,7 @@ export function FloorPlanUploader({
     // refreshed page arrives instead of the settled wording from before it.
     startTransition(() => {
       setStatus("idle");
+      setReplacing(false);
       router.refresh();
     });
     return true;

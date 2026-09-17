@@ -77,6 +77,71 @@ for (const rel of conceptPaths) {
   );
 }
 
+// A read that throws must not strand the page. The uploader's call carries a
+// catch, so a dropped connection leaves the panel settled and the plan
+// offered for reading rather than "Reading your floor plan..." until a
+// reload; and the rooms block catches around its own read, because inside a
+// transition an uncaught rejection replaces the page with the error boundary
+// (tests review). Both are behaviours of a click, which no render reaches,
+// so the harness drives them too; these pin the shape in the fast suite.
+assert.match(uploader, /await readFloorPlanAction\(roomId\)\.catch\(/, "the uploader survives a read that throws");
+assert.match(rooms, /try \{\s*const result = await actions\.read\(roomId\);/, "the rooms block reads inside a try");
+assert.match(rooms, /label: "Read the rooms on it", run: read \}/, "the offer to read a plan nothing has read is the read");
+assert.match(rooms, /label: "Try reading it again", run: read \}/, "and so is the retry after a failed one");
+
+// A confirmation names the read its list came from, and the page hands the
+// component that read's id. Without it the server compares the attached plan
+// with the newest read, both its own, and cannot see a list from an older
+// plan (PR review).
+assert.match(details, /readJobId=\{floorPlanReadJob\?\.id \?\? null\}/);
+assert.match(rooms, /await actions\.confirm\(roomId, index, readJobId\)/);
+// And a refused confirmation moves no field: it wrote nothing, and the old
+// list's numbers on the page would be saved as hers by Continue.
+{
+  const refusedReturns = rooms.search(/if \(!result\.confirmed\) \{\s*return;\s*\}/);
+  assert.ok(refusedReturns > 0, "a refused confirmation returns");
+  assert.ok(refusedReturns < rooms.indexOf("setFieldValue(MEASUREMENT_FIELD_IDS[0], room.wallLengthCm)"), "before any field is set");
+}
+
+// A read the rooms block started says it is reading while it runs, rather
+// than "not read yet" over a read already paid for (PR review). `pending` is
+// false in any static render, so this is pinned on the source.
+assert.match(rooms, /state === "reading" \|\| \(\(state === "unread" \|\| state === "read_failed"\) && pending\)/);
+
+// The upload panel and the rooms block share one provider, so the rooms of
+// the plan being replaced come off the screen while it is replaced
+// (criterion 11), and the uploader says so at the start and on every way out.
+{
+  const opens = details.indexOf("<FloorPlanActivityProvider>");
+  const closes = details.indexOf("</FloorPlanActivityProvider>");
+  assert.ok(opens > 0 && closes > opens, "the provider is on the page");
+  for (const child of ["<FloorPlanUploader", "<DetectedRooms"]) {
+    const at = details.indexOf(child);
+    assert.ok(at > opens && at < closes, `${child} is inside it`);
+  }
+  assert.ok(
+    uploader.indexOf("setReplacing(true)") > 0 &&
+      uploader.indexOf("setReplacing(true)") < uploader.indexOf('.from("room-assets")\n      .upload('),
+    "the rooms come off before the upload starts"
+  );
+  assert.equal((uploader.match(/setReplacing\(false\)/g) ?? []).length, 3, "and come back on both errors and when the page is refreshed");
+}
+
+// No reply from an action claims a read is under way. The action cannot know
+// that, and a reply saying so sat under a refused plan with nothing reading
+// (tests review).
+{
+  const actionsSource = readFileSync(path.resolve(__dirname, "actions.ts"), "utf8");
+  const start = actionsSource.indexOf("export async function readFloorPlanAction");
+  const end = actionsSource.indexOf("async function ensureInspirationAnalysisBeforeDetails");
+  assert.ok(start > 0 && end > start, "the two floor plan actions are found, in order");
+  // Their string literals only: the rest of the file, comments included, talks
+  // about other things being read.
+  const replies = actionsSource.slice(start, end).match(/"[^"\n]*"|`[^`]*`/g) ?? [];
+  assert.ok(replies.some((reply) => /nothing was changed/.test(reply)), "the replies are what this looks at");
+  assert.equal(replies.some((reply) => /being read|is reading|in progress/i.test(reply)), false);
+}
+
 // The replacement inserts before it retires. The other order loses the old
 // plan when the insert fails, with the new object orphaned in storage
 // (cross-model gate).

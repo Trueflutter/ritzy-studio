@@ -62,6 +62,7 @@ export async function newestFloorPlanAsset(
 }
 
 export type FloorPlanReadRow = {
+  id: string;
   status: string;
   created_at: string | null;
   input_summary: Record<string, unknown> | null;
@@ -74,7 +75,7 @@ export async function newestFloorPlanReadJob(
 ): Promise<FloorPlanReadRow | null> {
   const { data, error } = await supabase
     .from("ai_jobs")
-    .select("status, created_at, input_summary, output_summary")
+    .select("id, status, created_at, input_summary, output_summary")
     .eq("room_id", roomId)
     .eq("job_type", "floor_plan_read")
     .order("created_at", { ascending: false })
@@ -251,20 +252,37 @@ export async function confirmDetectedRoom(
   {
     roomId,
     roomIndex,
+    readJobId,
     supabase
   }: {
     roomId: string;
     roomIndex: number;
+    // The read the clicked list was drawn from, as the client says. Compared,
+    // never trusted: it only has to equal the id read here.
+    readJobId: string;
     supabase: UserSupabaseClient;
   }
 ): Promise<ConfirmRoomOutcome> {
   const asset = await newestFloorPlanAsset(supabase, roomId);
   const job = await newestFloorPlanReadJob(supabase, roomId);
 
-  // The list she clicked has to be the list of the plan that is attached. If
-  // the plan changed underneath her, confirming would write one drawing's
-  // numbers against another drawing's id.
-  if (!asset || !job || jobAssetId(job) !== asset.id) {
+  // The list she clicked has to be the list of the plan that is attached, and
+  // more than that, the very read that list came from. A first version
+  // compared the attached plan with the newest read, both from the server,
+  // which cannot see a list from an older plan: Next runs server actions one at
+  // a time, so a click on the old rooms during a replacement's read is sent
+  // only after that read has landed, both sides then agree, and the old index
+  // lands on the new list, writing one room's numbers as `verified` under
+  // another room's name (PR review). A second tab reaches the same place with
+  // no queue at all. So the client names its read, and anything else is stale.
+  if (
+    !asset ||
+    !job ||
+    jobAssetId(job) !== asset.id ||
+    job.status !== "succeeded" ||
+    typeof readJobId !== "string" ||
+    job.id !== readJobId
+  ) {
     return { status: "stale" };
   }
 

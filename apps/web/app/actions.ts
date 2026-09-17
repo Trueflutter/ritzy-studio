@@ -1480,7 +1480,7 @@ export async function readFloorPlanAction(roomId: string) {
     : null;
 }
 
-export async function confirmDetectedRoomAction(roomId: string, roomIndex: number) {
+export async function confirmDetectedRoomAction(roomId: string, roomIndex: number, readJobId: string) {
   const supabase = await createClient();
   const {
     data: { user }
@@ -1489,28 +1489,34 @@ export async function confirmDetectedRoomAction(roomId: string, roomIndex: numbe
     redirect("/login");
   }
 
-  const outcome = await confirmDetectedRoom({ roomId, roomIndex, supabase });
+  const outcome = await confirmDetectedRoom({ roomId, roomIndex, readJobId, supabase });
   revalidatePath(`/projects`, "layout");
 
+  // `confirmed` is what lets the screen move the measurement fields: a refused
+  // confirmation wrote nothing, and the fields must not say otherwise. Neither
+  // refusal claims to know what the plan is doing now, because nothing here
+  // does (PR review).
   if (outcome.status === "stale") {
-    return { message: "That list was read from a different plan. The one attached now is being read." };
+    return { confirmed: false, message: "That list belongs to a plan you have since replaced, so nothing was changed." };
   }
   if (outcome.status === "not_found") {
-    return { message: "That room is not on the plan we read." };
+    return { confirmed: false, message: "That room is not on the plan we read." };
   }
   if (outcome.wroteMeasurements) {
-    return null;
+    return { confirmed: true };
   }
 
   // Changing to a room the plan does not size clears the numbers that came
   // from the room she picked before: leaving them would pair one room's
-  // measurements with another room's crop and name.
+  // measurements with another room's name.
   return outcome.supersededAnotherRoom
     ? {
+        confirmed: true,
         cleared: true,
         message: `The plan gives no size for ${outcome.label}, so the measurements from the room you picked before have been cleared. The design will still read that part of the drawing.`
       }
     : {
+        confirmed: true,
         message: `We could not read a size for ${outcome.label} on the plan, so the fields are still yours to fill. The design will read that part of the drawing.`
       };
 }

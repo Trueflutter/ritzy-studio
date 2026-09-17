@@ -361,7 +361,14 @@ async function main() {
       (call) => {
         calls.push(call);
         if (call.table === "room_assets" && call.op === "select") {
-          return { data: row };
+          // The concept path asks for photographs and for the plan separately.
+          const askedFor = call.filters.find(([field]) => field === "asset_type")?.[1];
+          return askedFor === "room_photo"
+            ? { data: [{ id: "photo-1", storage_path: "photo.jpg", mime_type: "image/jpeg" }] }
+            : { data: row };
+        }
+        if (call.table === "design_briefs" && call.op === "select") {
+          return { data: { structured_json: {} } };
         }
         if (call.table === "room_assets" && call.op === "update") {
           if (call.filters.some(([field, value]) => field === "id" && value === row.id)) {
@@ -375,7 +382,10 @@ async function main() {
         // No read has ever been made of this plan.
         return { data: null };
       },
-      () => ({ data: new Blob([notImage.bytes]) })
+      (call) =>
+        call.op === "createSignedUrl"
+          ? { data: { signedUrl: `https://example.test/${call.path}` } }
+          : { data: new Blob([call.path === "photo.jpg" ? new Uint8Array([0xff, 0xd8, 0xff]) : notImage.bytes]) }
     );
     const pageState = () =>
       floorPlanScreenState({ asset: floorPlanAssetInput(row), newestJob: floorPlanJobInput(null), roomCount: 0 });
@@ -391,8 +401,12 @@ async function main() {
       );
 
     // Before the read: a plan nothing has read is offered a read, not told
-    // that one is under way.
+    // that one is under way. And the concept path, which decides by the same
+    // column, sends these bytes to the model as an image, because
+    // `visionImageDataUrl` falls back to the raw bytes when sharp cannot open
+    // them.
     assert.equal(pageState(), "unread", `${notImage.name}: before`);
+    assert.ok((await roomImageInputs(client as never, ROOM)).floorPlanImageUrl, `${notImage.name}: sent to concepts before`);
 
     assert.deepEqual(await readIt(), { status: "skipped", reason: "unreadable_format" }, notImage.name);
 
@@ -402,6 +416,11 @@ async function main() {
     assert.equal(row.mime_type, notImage.writes, `${notImage.name}: the row says what the file is`);
     assert.equal(pageState(), notImage.says, `${notImage.name}: an explicit refusal, on every load`);
     assert.ok(floorPlanRefused(pageState()), `${notImage.name}: and the upload panel agrees`);
+    assert.equal(
+      (await roomImageInputs(client as never, ROOM)).floorPlanImageUrl,
+      null,
+      `${notImage.name}: and the concept path leaves it out, rather than paying to send bytes no model can read`
+    );
 
     // Asked again, the decision refuses from the row before it downloads
     // anything, so a refused plan costs one look at the file, once.
@@ -437,6 +456,54 @@ async function main() {
     );
   }
 
+  // A plan the file check passes, on bytes a decoder opens. Every other read
+  // here gets nothing from its storage double, so the check falls through as
+  // "unavailable", and the branch every real read takes went unexercised: a
+  // floor judged on the shorter edge refused the Emaar plan at the size Emaar
+  // publishes it, and every suite passed (tests review).
+  {
+    const sharp = (await import("sharp")).default;
+    const published = await sharp({
+      create: { width: 1067, height: 550, channels: 3, background: { r: 250, g: 250, b: 250 } }
+    })
+      .jpeg()
+      .toBuffer();
+    const calls: RecordedCall[] = [];
+    const { client } = fakeSupabase(
+      (call) => {
+        calls.push(call);
+        if (call.table === "room_assets" && call.op === "select") {
+          return { data: { id: ASSET, storage_path: "p.jpg", mime_type: "image/jpeg", width_px: 1067, height_px: 550 } };
+        }
+        if (call.table === "ai_jobs" && call.op === "insert") {
+          return { data: { id: "job-1" } };
+        }
+        return { data: null };
+      },
+      () => ({ data: new Blob([new Uint8Array(published)]) })
+    );
+    const outcome = await readFloorPlanForRoom(
+      { roomId: ROOM, userId: USER, supabase: client as never, serviceSupabase: client as never },
+      {
+        planDataUrl: async () => "data:image/jpeg;base64,PLAN",
+        readPlan: async () => ({
+          read: { unitRead: "metres" as const, rooms, roomsFound: rooms.length },
+          promptKey: "brief.floor_plan_read",
+          promptVersion: "2026-09-10.2",
+          model: "gpt-5-mini",
+          textCostUsd: 0.004
+        })
+      }
+    );
+    assert.equal(outcome.status, "read", "a plan as wide as a developer publishes it is read");
+    assert.equal(calls.filter((call) => call.table === "ai_jobs" && call.op === "insert").length, 1);
+    assert.equal(
+      calls.filter((call) => call.table === "room_assets" && call.op === "update").length,
+      0,
+      "and a plan the file check passes is left as the browser described it"
+    );
+  }
+
   // A failed read is not a refusal: the retry the screen offers is this call.
   {
     const h = harness({ job: { status: "failed", input_summary: { assetId: ASSET } } });
@@ -468,11 +535,13 @@ async function main() {
   function confirmHarness({
     assetId = ASSET,
     brief = null,
-    measurement = null
+    measurement = null,
+    jobStatus = "succeeded"
   }: {
     assetId?: string;
     brief?: Record<string, unknown> | null;
     measurement?: Record<string, unknown> | null;
+    jobStatus?: string;
   } = {}) {
     const calls: RecordedCall[] = [];
     const asks = (call: RecordedCall, column: string, value: unknown) =>
@@ -492,7 +561,7 @@ async function main() {
       if (call.table === "ai_jobs" && call.op === "select") {
         return {
           data: asks(call, "job_type", "floor_plan_read")
-            ? { status: "succeeded", input_summary: { assetId }, output_summary: { rooms: detected } }
+            ? { id: "read-1", status: jobStatus, input_summary: { assetId }, output_summary: { rooms: detected } }
             : null
         };
       }
@@ -519,7 +588,7 @@ async function main() {
   // A room the plan sizes AND locates: both halves land.
   {
     const h = confirmHarness({ brief: { visualPreferences: { likedStyleSlugs: ["quiet-luxury"] } } });
-    const outcome = await confirmDetectedRoom({ roomId: ROOM, roomIndex: 0, supabase: h.supabase });
+    const outcome = await confirmDetectedRoom({ roomId: ROOM, roomIndex: 0, readJobId: "read-1", supabase: h.supabase });
 
     assert.deepEqual(outcome, {
       status: "confirmed",
@@ -547,7 +616,7 @@ async function main() {
   // something, because the crop is what the concept prompts need.
   {
     const h = confirmHarness();
-    const outcome = await confirmDetectedRoom({ roomId: ROOM, roomIndex: 1, supabase: h.supabase });
+    const outcome = await confirmDetectedRoom({ roomId: ROOM, roomIndex: 1, readJobId: "read-1", supabase: h.supabase });
 
     assert.deepEqual(outcome, {
       status: "confirmed",
@@ -576,7 +645,7 @@ async function main() {
         floor_plan_asset_id: null
       }
     });
-    await confirmDetectedRoom({ roomId: ROOM, roomIndex: 0, supabase: h.supabase });
+    await confirmDetectedRoom({ roomId: ROOM, roomIndex: 0, readJobId: "read-1", supabase: h.supabase });
 
     const written = h.measurements()[0].payload;
     assert.equal(written?.wall_length_cm, 470, "the plan's better number wins where the plan speaks");
@@ -602,7 +671,7 @@ async function main() {
         floor_plan_asset_id: ASSET
       }
     });
-    const outcome = await confirmDetectedRoom({ roomId: ROOM, roomIndex: 1, supabase: h.supabase });
+    const outcome = await confirmDetectedRoom({ roomId: ROOM, roomIndex: 1, readJobId: "read-1", supabase: h.supabase });
 
     assert.equal(outcome.status === "confirmed" && outcome.supersededAnotherRoom, true);
     const written = h.measurements()[0].payload;
@@ -628,7 +697,7 @@ async function main() {
         floor_plan_asset_id: null
       }
     });
-    await confirmDetectedRoom({ roomId: ROOM, roomIndex: 1, supabase: h.supabase });
+    await confirmDetectedRoom({ roomId: ROOM, roomIndex: 1, readJobId: "read-1", supabase: h.supabase });
     assert.equal(h.measurements().length, 0, "her own numbers are hers until she changes them");
   }
 
@@ -640,7 +709,7 @@ async function main() {
   for (const index of [3, -1, 1.5, Number.NaN, "constructor" as unknown as number]) {
     const h = confirmHarness();
     assert.deepEqual(
-      await confirmDetectedRoom({ roomId: ROOM, roomIndex: index, supabase: h.supabase }),
+      await confirmDetectedRoom({ roomId: ROOM, roomIndex: index, readJobId: "read-1", supabase: h.supabase }),
       { status: "not_found" },
       `${String(index)} is not a room`
     );
@@ -653,9 +722,34 @@ async function main() {
   // silent wrong answer this guard exists for.
   {
     const h = confirmHarness({ assetId: "an-older-plan" });
-    assert.deepEqual(await confirmDetectedRoom({ roomId: ROOM, roomIndex: 0, supabase: h.supabase }), { status: "stale" });
+    assert.deepEqual(await confirmDetectedRoom({ roomId: ROOM, roomIndex: 0, readJobId: "read-1", supabase: h.supabase }), { status: "stale" });
     assert.equal(h.measurements().length, 0);
     assert.equal(h.briefWrites().length, 0);
+  }
+
+  // The list she clicked came from a different read than the one on record.
+  // The check above cannot see it: Next runs server actions one at a time, so
+  // a click on the old rooms during a replacement's read is sent only after
+  // that read has landed, and by then the attached plan and the newest read
+  // agree with each other. The old index would name a room on the new list,
+  // written as `verified` under that room's name (PR review). A second tab
+  // gets there with no queue at all.
+  const staleReads: Array<{ name: string; jobStatus?: string; readJobId: unknown }> = [
+    { name: "a list from the read before this one", readJobId: "read-0" },
+    { name: "a read id that is not a string", readJobId: 1 },
+    { name: "no read id at all", readJobId: undefined },
+    { name: "a read that has not finished", jobStatus: "running", readJobId: "read-1" },
+    { name: "a read that failed", jobStatus: "failed", readJobId: "read-1" }
+  ];
+  for (const stale of staleReads) {
+    const h = confirmHarness({ jobStatus: stale.jobStatus });
+    assert.deepEqual(
+      await confirmDetectedRoom({ roomId: ROOM, roomIndex: 0, readJobId: stale.readJobId as string, supabase: h.supabase }),
+      { status: "stale" },
+      stale.name
+    );
+    assert.equal(h.measurements().length, 0, `${stale.name}: nothing measured`);
+    assert.equal(h.briefWrites().length, 0, `${stale.name}: nothing recorded`);
   }
 
   // --------------------- what the concept path is actually told (criterion 4)
@@ -743,7 +837,7 @@ async function main() {
       if (call.table === "ai_jobs" && call.op === "select") {
         return {
           data: asks(call, "job_type", "floor_plan_read")
-            ? { status: "succeeded", input_summary: { assetId: ASSET }, output_summary: { rooms: detected } }
+            ? { id: "read-1", status: "succeeded", input_summary: { assetId: ASSET }, output_summary: { rooms: detected } }
             : null
         };
       }
@@ -767,7 +861,7 @@ async function main() {
       return { data: null };
     });
 
-    const outcome = await confirmDetectedRoom({ roomId: ROOM, roomIndex: 0, supabase: client as never });
+    const outcome = await confirmDetectedRoom({ roomId: ROOM, roomIndex: 0, readJobId: "read-1", supabase: client as never });
     assert.equal(outcome.status, "confirmed");
     assert.equal(updates, 2, "the guarded write lost once and was retried");
 

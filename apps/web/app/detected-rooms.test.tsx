@@ -13,7 +13,11 @@ import {
   type FloorPlanScreenState
 } from "@ritzy-studio/domain";
 
-import { DetectedRooms } from "./projects/[projectId]/rooms/[roomId]/brief/details/detected-rooms";
+import {
+  DetectedRooms,
+  messageForState
+} from "./projects/[projectId]/rooms/[roomId]/brief/details/detected-rooms";
+import { FloorPlanActivityContext } from "./projects/[projectId]/rooms/[roomId]/brief/floor-plan-activity";
 
 // S5b: every state this block can be in says something. A plan attached with
 // nothing said about it is the silence S5a spent its life removing, and here
@@ -31,7 +35,7 @@ const room = (over: Partial<DetectedRoom> = {}): DetectedRoom => ({
 });
 
 const actions = {
-  confirm: async () => null,
+  confirm: async () => ({ confirmed: true }),
   read: async () => null
 };
 
@@ -48,6 +52,7 @@ const render = (
       actions={actions}
       confirmed={confirmed}
       planUrl={planUrl}
+      readJobId="read-1"
       roomId="room-1"
       rooms={rooms}
       state={state}
@@ -189,6 +194,44 @@ for (const state of ["unread", "read_failed", "rooms"] as const) {
     // and an unanchored search matches that instead.
     assert.equal(/disabled=""/.test(chip), false, `no chip is disabled: ${chip.slice(0, 90)}`);
   }
+}
+
+// While the upload panel is replacing the plan, nothing here is about the plan
+// on its way in: every room and control on screen belongs to the one going
+// out. A click on those rooms during the new plan's read was sent after that
+// read landed and named a room on the new list (PR review), and criterion 11
+// says no control from the first plan is rendered once a second is uploaded.
+for (const state of FLOOR_PLAN_SCREEN_STATES) {
+  const markup = renderToStaticMarkup(
+    <FloorPlanActivityContext.Provider value={{ replacing: true, setReplacing: () => {} }}>
+      <DetectedRooms
+        actions={actions}
+        confirmed={{ assetId: "plan-a", label: "Living Room", index: 0 }}
+        planUrl="https://example.test/plan.png"
+        readJobId="read-1"
+        roomId="room-1"
+        rooms={[room()]}
+        state={state}
+      />
+    </FloorPlanActivityContext.Provider>
+  );
+  assert.equal(markup, "", `${state}: nothing of the outgoing plan is on screen while it is replaced`);
+}
+// And outside a replacement the same block does render, so the loop above is
+// not passing on a component that renders nothing.
+assert.notEqual(render("rooms", { rooms: [room()], planUrl: "https://example.test/plan.png" }), "");
+
+// A message belongs to the state it was said in. The block outlives a
+// refresh, so a reply kept past one turned up under whatever the page said
+// next: a refused plan captioned "The one attached now is being read", with
+// nothing reading (PR review).
+{
+  const replied = { text: "That list belongs to a plan you have since replaced, so nothing was changed.", shownIn: "rooms" as const };
+  assert.equal(messageForState(replied, "rooms"), replied.text, "said where it was said");
+  for (const state of FLOOR_PLAN_SCREEN_STATES.filter((candidate) => candidate !== "rooms")) {
+    assert.equal(messageForState(replied, state), null, `not carried into ${state}`);
+  }
+  assert.equal(messageForState(null, "unread"), null);
 }
 
 console.log("detected rooms component tests passed");

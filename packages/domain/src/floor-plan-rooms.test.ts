@@ -296,32 +296,43 @@ import {
     "the newest read was of the plan she replaced, which says nothing about this one"
   );
 
-  // So "reading" is said exactly when a read of THIS plan is running and young,
-  // over every plan and every job this screen can be handed.
+  // Every plan against every job this screen can be handed, and the whole
+  // state for each, not only whether it says "reading". A matrix that asked
+  // only that let the failed-read retry fall silently into "not read yet", and
+  // let a replacement plan inherit the previous plan's failure (tests review).
+  // A refused plan says its refusal whatever the job; otherwise the job
+  // decides, and only a read of THIS plan, running and young, is "reading".
   const young = "2026-09-10T11:59:30Z";
   const abandoned = new Date(now - FLOOR_PLAN_READ_STALE_MS - 1000).toISOString();
   const plans = [
-    { asset: plan, readable: true },
-    { asset: { ...plan, widthPx: null, heightPx: null }, readable: true },
-    { asset: { ...plan, widthPx: 500, heightPx: 320 }, readable: false },
-    { asset: { ...plan, mimeType: PDF_MIME_TYPE }, readable: false },
-    { asset: { ...plan, mimeType: UNKNOWN_BYTES_MIME_TYPE }, readable: false }
-  ];
+    { asset: plan, refusal: null },
+    { asset: { ...plan, widthPx: null, heightPx: null }, refusal: null },
+    { asset: { ...plan, widthPx: 500, heightPx: 320 }, refusal: "too_small" },
+    { asset: { ...plan, mimeType: PDF_MIME_TYPE }, refusal: "pdf" },
+    { asset: { ...plan, mimeType: UNKNOWN_BYTES_MIME_TYPE }, refusal: "unreadable" }
+  ] as const;
+  const onThisPlan: Record<string, { young: string; abandoned: string }> = {
+    queued: { young: "unread", abandoned: "unread" },
+    running: { young: "reading", abandoned: "read_failed" },
+    succeeded: { young: "rooms", abandoned: "rooms" },
+    failed: { young: "read_failed", abandoned: "read_failed" },
+    cancelled: { young: "unread", abandoned: "unread" }
+  };
   const jobs = [
-    { job: null, runningNow: false },
-    ...["queued", "running", "succeeded", "failed", "cancelled"].flatMap((status) => [
-      { job: { assetId: "plan-a", status, startedAt: young }, runningNow: status === "running" },
-      { job: { assetId: "plan-a", status, startedAt: abandoned }, runningNow: false },
-      { job: { assetId: "plan-before", status, startedAt: young }, runningNow: false }
+    { job: null, expected: "unread" },
+    ...Object.entries(onThisPlan).flatMap(([status, expected]) => [
+      { job: { assetId: "plan-a", status, startedAt: young }, expected: expected.young },
+      { job: { assetId: "plan-a", status, startedAt: abandoned }, expected: expected.abandoned },
+      { job: { assetId: "plan-before", status, startedAt: young }, expected: "unread" },
+      { job: { assetId: "plan-before", status, startedAt: abandoned }, expected: "unread" }
     ])
   ];
-  for (const { asset, readable } of plans) {
-    for (const { job, runningNow } of jobs) {
-      const state = floorPlanScreenState({ asset, newestJob: job, roomCount: 1, now });
+  for (const { asset, refusal } of plans) {
+    for (const { job, expected } of jobs) {
       assert.equal(
-        state === "reading",
-        readable && runningNow,
-        `${JSON.stringify(asset)} with ${JSON.stringify(job)} rendered ${state}`
+        floorPlanScreenState({ asset, newestJob: job, roomCount: 1, now }),
+        refusal ?? expected,
+        `${JSON.stringify(asset)} with ${JSON.stringify(job)}`
       );
     }
   }

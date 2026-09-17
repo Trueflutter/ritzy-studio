@@ -28,6 +28,7 @@ import {
   refusedFieldsFrom
 } from "../_components/brief-message";
 import { BriefShell } from "../_components/brief-shell";
+import { FloorPlanActivityProvider } from "../floor-plan-activity";
 import { FloorPlanUploader } from "../floor-plan-uploader";
 import { MeasurementAssumptionNotes } from "./measurement-notes";
 
@@ -442,20 +443,25 @@ export default async function BriefDetailsPage({
               </span>
             </p>
             <div className="mt-5">
-              <FloorPlanUploader
-                existingStoragePath={floorPlan?.storage_path}
-                planState={floorPlanRefused(floorPlanState) ? "unusable" : "usable"}
-                roomId={roomId}
-                userId={user.id}
-              />
-              <DetectedRooms
-                actions={{ confirm: confirmDetectedRoomAction, read: readFloorPlanAction }}
-                confirmed={confirmedRoom}
-                planUrl={planPreviewUrl}
-                roomId={roomId}
-                rooms={detectedRooms}
-                state={floorPlanState}
-              />
+              {/* One provider around both, so the list of rooms knows when the
+                  upload panel is replacing the plan it describes. */}
+              <FloorPlanActivityProvider>
+                <FloorPlanUploader
+                  existingStoragePath={floorPlan?.storage_path}
+                  planState={floorPlanRefused(floorPlanState) ? "unusable" : "usable"}
+                  roomId={roomId}
+                  userId={user.id}
+                />
+                <DetectedRooms
+                  actions={{ confirm: confirmDetectedRoomAction, read: readFloorPlanAction }}
+                  confirmed={confirmedRoom}
+                  planUrl={planPreviewUrl}
+                  readJobId={floorPlanReadJob?.id ?? null}
+                  roomId={roomId}
+                  rooms={detectedRooms}
+                  state={floorPlanState}
+                />
+              </FloorPlanActivityProvider>
             </div>
           </div>
         </div>

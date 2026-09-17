@@ -7,9 +7,10 @@
 //
 //   node verify-floor-plan.mjs
 //
-// It costs one `floor_plan_read` call, about half a cent. Every count is a
-// DELTA around the action rather than an absolute, because it runs on the e2e
-// persona's own room: the designer free-room trigger refuses a second one.
+// It costs two `floor_plan_read` calls, about a cent in all: the plan read on
+// upload, and the read pressed after a lost call. Every count is a DELTA around
+// the action rather than an absolute, because it runs on the e2e persona's own
+// room: the designer free-room trigger refuses a second one.
 import { chromium } from "playwright";
 import fs from "node:fs";
 import path from "node:path";
@@ -284,16 +285,38 @@ check(
 // The upload lands, and the call that asks for the read does not: the tab
 // closed, the connection dropped, or the call threw before it opened a row. A
 // first version rendered that as "Reading your floor plan" for ever, since no
-// row meant "not opened yet" (PR review). The server action is blocked for one
-// upload to stand in for all three; storage and the row go straight to
-// Supabase and are unaffected.
-const blockAction = (route) =>
-  route.request().method() === "POST" && route.request().headers()["next-action"] ? route.abort() : route.continue();
-await page.route("**/*", blockAction);
+// row meant "not opened yet" (PR review). The server action is held and then
+// dropped for one upload to stand in for all three; storage and the row go
+// straight to Supabase and are unaffected.
+//
+// A second tab is left open first, on the rooms of the plan about to be
+// replaced, for the stale click at the end.
+const tab2 = await context.newPage();
+tab2.setDefaultTimeout(60000);
+await tab2.goto(DETAILS, { waitUntil: "networkidle" });
+const tab2Rooms = tab2.locator('[data-testid="detected-rooms"] button');
+check("a second tab shows the rooms of the plan about to be replaced", (await tab2Rooms.count()) > 0, `${await tab2Rooms.count()} rooms`);
+
+const isAction = (route) => route.request().method() === "POST" && Boolean(route.request().headers()["next-action"]);
+// Held for four seconds before it is dropped, so the replacement is in flight
+// long enough to look at.
+const holdThenDrop = async (route) => {
+  if (!isAction(route)) return route.continue();
+  await new Promise((resolve) => setTimeout(resolve, 4000));
+  return route.abort();
+};
+await page.route("**/*", holdThenDrop);
 const jobsBeforeLostCall = (await jobs()).length;
 await upload(`${FIXTURES}/floor-plan-emaar-collective-2bed.jpg`);
+await page.getByText("Reading your floor plan...", { exact: true }).waitFor({ timeout: 30000 }).catch(() => null);
+const roomsWhileReplacing = await page.locator('[data-testid="detected-rooms"] button').count();
+check(
+  "while a plan is replaced, none of the old plan's rooms is on screen to click (criterion 11)",
+  roomsWhileReplacing === 0 && (await page.getByText("Reading your floor plan...", { exact: true }).count()) === 1,
+  `${roomsWhileReplacing} rooms on screen`
+);
 await settle();
-await page.unroute("**/*", blockAction);
+await page.unroute("**/*", holdThenDrop);
 const unreadText = await panelText();
 check(
   "a plan whose read never arrived is offered the read, not told one is running",
@@ -305,7 +328,28 @@ await page.goto(DETAILS, { waitUntil: "networkidle" });
 check("a reload says the same", /have not read this floor plan yet/.test(await panelText()), "");
 await shot("plan--unread");
 
-await page.locator('[data-testid="detected-rooms"] button', { hasText: "Read the rooms on it" }).click();
+// Pressed, with the call dropped: the panel says so and still offers the
+// read, rather than the page going to its error screen.
+const readOffer = () => page.locator('[data-testid="detected-rooms"] button', { hasText: "Read the rooms on it" });
+const drop = (route) => (isAction(route) ? route.abort() : route.continue());
+await page.route("**/*", drop);
+await readOffer().click();
+await page.getByText("That did not go through. Try again in a moment.").waitFor({ timeout: 30000 }).catch(() => null);
+const droppedText = await panelText();
+check(
+  "a pressed read that does not go through says so, and still offers the read",
+  /did not go through/.test(droppedText) && (await readOffer().count()) === 1 && (await jobs()).length === jobsBeforeLostCall,
+  droppedText.replace(/\n/g, " ").slice(0, 90)
+);
+await page.unroute("**/*", drop);
+
+// Pressed again, it reads, saying so while it does.
+await readOffer().click();
+await page
+  .getByText("Reading your floor plan. The rooms it names will appear here in a moment.")
+  .waitFor({ timeout: 10000 })
+  .catch(() => null);
+check("while that read runs, the panel says it is reading", /Reading your floor plan/.test(await panelText()), "");
 const offeredRead = await waitForRead(jobsBeforeLostCall);
 await settle();
 const afterOfferedRead = await panelText();
@@ -316,6 +360,35 @@ check(
     /rooms on your plan/i.test(afterOfferedRead),
   `${offeredRead?.status}, ${(await jobs()).length - jobsBeforeLostCall} job: ${afterOfferedRead.replace(/\n/g, " ").slice(0, 60)}`
 );
+
+// ------------------------------------------------ a stale click in the other tab
+// The second tab still shows the replaced plan's rooms. A click there sends
+// the read its list came from, which is no longer the plan's, so the server
+// refuses it: nothing is written, and that tab's fields do not take the old
+// list's numbers for Continue to save (PR review).
+const measurementsBeforeStale = (await measurements()).length;
+const wallBefore = await tab2.inputValue("#wallLengthCm");
+const depthBefore = await tab2.inputValue("#roomDepthCm");
+await tab2Rooms.filter({ hasText: /Bedroom/ }).first().click();
+await tab2.getByText("belongs to a plan you have since replaced", { exact: false }).waitFor({ timeout: 60000 }).catch(() => null);
+// And the tab is left on the plan attached now, not stranded on a list every
+// click of which is refused: the refusal's own refresh brings in the new
+// plan's rooms, none of them confirmed yet, under the reply.
+await tab2.getByText("Pick the one this brief is for", { exact: false }).waitFor({ timeout: 20000 }).catch(() => null);
+const staleText = await tab2.locator('[data-testid="detected-rooms"]').innerText().catch(() => "");
+check(
+  "a click on the replaced plan's rooms in another tab is refused, says why, and leaves the tab on the plan attached now",
+  /belongs to a plan you have since replaced/.test(staleText) && /Pick the one this brief is for/.test(staleText) && !/We are treating/.test(staleText),
+  staleText.replace(/\n/g, " ").replace(/^.*?(Pick|We are)/, "$1").slice(0, 110)
+);
+const wallAfter = await tab2.inputValue("#wallLengthCm");
+const depthAfter = await tab2.inputValue("#roomDepthCm");
+check(
+  "and nothing is written, and that tab's fields do not move",
+  (await measurements()).length === measurementsBeforeStale && wallAfter === wallBefore && depthAfter === depthBefore,
+  `+${(await measurements()).length - measurementsBeforeStale} rows, wall ${wallBefore} to ${wallAfter}, depth ${depthBefore} to ${depthAfter}`
+);
+await tab2.close();
 
 await browser.close();
 const failed = results.filter((r) => !r.ok);

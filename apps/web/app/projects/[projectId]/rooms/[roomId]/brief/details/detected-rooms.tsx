@@ -11,6 +11,7 @@ import {
 } from "@ritzy-studio/domain";
 import { useState, useTransition } from "react";
 
+import { useFloorPlanActivity } from "../floor-plan-activity";
 import { ASSUMPTION_SOURCE_FIELD_IDS } from "./measurement-notes";
 
 // The rooms a floor plan names, and the one she says is this one (S5b).
@@ -47,14 +48,32 @@ function setFieldValue(id: string, value: number | null) {
 }
 
 export type DetectedRoomsActions = {
-  confirm: (roomId: string, roomIndex: number) => Promise<{ message?: string; cleared?: boolean } | null>;
+  confirm: (
+    roomId: string,
+    roomIndex: number,
+    readJobId: string
+  ) => Promise<{ confirmed: boolean; message?: string; cleared?: boolean }>;
   read: (roomId: string) => Promise<{ message?: string } | null>;
 };
+
+// A message says what the last click came to, and it belongs to the state it
+// was said in. The component outlives a refresh, so a message kept past one
+// turned up under whatever the page said next: a refused plan captioned with
+// the reply to a click on a list it no longer shows (PR review).
+export type ShownMessage = { text: string; shownIn: FloorPlanScreenState };
+
+export function messageForState(message: ShownMessage | null, state: FloorPlanScreenState): string | null {
+  return message && message.shownIn === state ? message.text : null;
+}
+
+const DID_NOT_GO_THROUGH = "That did not go through. Try again in a moment.";
+const READING = "Reading your floor plan. The rooms it names will appear here in a moment.";
 
 export function DetectedRooms({
   actions,
   confirmed,
   planUrl,
+  readJobId,
   roomId,
   rooms,
   state
@@ -66,12 +85,16 @@ export function DetectedRooms({
   actions: DetectedRoomsActions;
   confirmed: ConfirmedFloorPlanRoom | null;
   planUrl: string | null;
+  // The read the rooms below were drawn from. A confirmation sends it back, so
+  // the server can refuse an index from a list that is no longer the plan's.
+  readJobId: string | null;
   roomId: string;
   rooms: readonly DetectedRoom[];
   state: FloorPlanScreenState;
 }) {
   const [pending, startTransition] = useTransition();
-  const [message, setMessage] = useState<string | null>(null);
+  const [message, setMessage] = useState<ShownMessage | null>(null);
+  const { replacing } = useFloorPlanActivity();
 
   // No `useRouter` here. Each of these actions calls `revalidatePath`, so Next
   // re-renders this page's server tree with the action's own response; asking
@@ -79,9 +102,16 @@ export function DetectedRooms({
   // this component unrenderable outside a mounted router, which is how a
   // screen's states go unpinned.
 
-  if (state === "no_plan") {
+  // While the upload panel is bringing in a new plan, nothing here describes
+  // it: every room, refusal and control on screen belongs to the plan being
+  // replaced. The panel says what is happening; this says nothing until the
+  // page is about the new plan.
+  if (state === "no_plan" || replacing) {
     return null;
   }
+
+  const say = (text: string | null | undefined) => setMessage(text ? { text, shownIn: state } : null);
+  const shown = messageForState(message, state);
 
   // The one read a click pays for, from a failed read or from a plan nobody has
   // read. A call that throws reaches here as a rejection, and inside a
@@ -92,9 +122,9 @@ export function DetectedRooms({
       setMessage(null);
       try {
         const result = await actions.read(roomId);
-        setMessage(result?.message ?? null);
+        say(result?.message);
       } catch {
-        setMessage("That did not go through. Try again in a moment.");
+        say(DID_NOT_GO_THROUGH);
       }
     });
 
@@ -130,12 +160,12 @@ export function DetectedRooms({
       {/* What the last click came to, when the state it leaves behind does not
           say it: a read that failed before it opened a row leaves the plan
           exactly as unread as it was. */}
-      {message ? (
+      {shown ? (
         <p
           className="mt-3 font-body text-body-s leading-[1.6] text-ink-secondary"
           role={tone === "error" ? undefined : "status"}
         >
-          {message}
+          {shown}
         </p>
       ) : null}
     </div>
@@ -172,15 +202,19 @@ export function DetectedRooms({
     );
   }
 
+  // A read this block started is a read in progress, for the ten to forty-five
+  // seconds before its answer arrives, and says so. Leaving "not read yet" or
+  // "could not read" on screen over it is the reverse of the claim that sat
+  // over a plan nothing was reading (PR review).
+  if (state === "reading" || ((state === "unread" || state === "read_failed") && pending)) {
+    return note(READING);
+  }
+
   if (state === "unread") {
     // Nothing has read this plan: the upload's call never arrived, or it
     // threw before it opened a row. Not an error, and not a read in progress
     // either, which is what this used to claim, for ever (PR review).
     return note("We have not read this floor plan yet.", { label: "Read the rooms on it", run: read });
-  }
-
-  if (state === "reading") {
-    return note("Reading your floor plan. The rooms it names will appear here in a moment.");
   }
 
   if (state === "read_failed") {
@@ -198,11 +232,25 @@ export function DetectedRooms({
   }
 
   const confirmRoom = (index: number, room: DetectedRoom) => {
+    if (!readJobId) {
+      return;
+    }
     startTransition(async () => {
       setMessage(null);
-      const result = await actions.confirm(roomId, index);
-      if (result?.message) {
-        setMessage(result.message);
+      let result: Awaited<ReturnType<DetectedRoomsActions["confirm"]>>;
+      try {
+        result = await actions.confirm(roomId, index, readJobId);
+      } catch {
+        say(DID_NOT_GO_THROUGH);
+        return;
+      }
+      say(result.message);
+      // Only a confirmation that landed moves the fields. A refused one wrote
+      // nothing, and filling the fields from a list that belonged to another
+      // plan would put that plan's numbers on the page for Continue to save
+      // as hers (PR review).
+      if (!result.confirmed) {
+        return;
       }
       // The fields follow the row, without a reload and without depending on
       // `defaultValue` re-propagating through one. Including when the row was
@@ -214,7 +262,7 @@ export function DetectedRooms({
         if (room.ceilingHeightCm !== null) {
           setFieldValue(MEASUREMENT_FIELD_IDS[2], room.ceilingHeightCm);
         }
-      } else if (result?.cleared) {
+      } else if (result.cleared) {
         setFieldValue(MEASUREMENT_FIELD_IDS[0], null);
         setFieldValue(MEASUREMENT_FIELD_IDS[1], null);
       }
@@ -288,9 +336,9 @@ export function DetectedRooms({
         })}
       </ul>
 
-      {message ? (
+      {shown ? (
         <p className="mt-3 font-body text-body-s leading-[1.6] text-ink-secondary" role="status">
-          {message}
+          {shown}
         </p>
       ) : null}
     </div>

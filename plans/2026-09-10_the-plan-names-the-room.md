@@ -566,6 +566,25 @@ rooms would have said "Reading your floor plan" for ever from the moment the
 unfixed branch merged, and each now offers the read. The Codex gate could not
 run on the fix: the account was at its usage limit until 19 September.
 
+**Then the same-family correctness and tests reviews of that fix**, run in
+the gate's place and not as a substitute for it, found seven more (the last
+two Deviations entries record what changed). Their tests: the confirmation
+refused for five kinds of mismatched read; a plan the file check passes, on
+real bytes, read with no row rewritten; the concept path shown to send the
+disguised bytes before the correction and to leave them out after it; the
+domain matrix asserting the whole state for every plan against every job; the
+rooms block rendering nothing of any state while a replacement is in flight;
+a reply kept to the state it was given in; and source pins for the behaviours
+of a click, which no static render reaches. Seventeen mutations, each
+reverting one of those, each fail a suite. The browser leg has 40 checks, all
+passing, adding: a second tab left on the old rooms; none of the old rooms on
+screen in the uploading tab while the replacement is in flight (criterion 11);
+a pressed read whose call is dropped saying so and still offering the read;
+the panel saying it is reading while a pressed read runs; and the other tab's
+click on the replaced plan's rooms refused with its reason, nothing written,
+its fields unmoved, and the tab left on the new plan's list. Seven reads over
+the day's four runs, USD 0.0234 in total, all succeeded.
+
 ## Deviations
 
 - **The crop and the overlay are withdrawn, and the prompt is told the room's
@@ -681,3 +700,26 @@ run on the fix: the account was at its usage limit until 19 September.
   but we cannot read it" over a readable plan that replaced a refused one. Once
   nothing is in flight its caption now comes from the page, which read it off
   the rows.
+- **A confirmation names the read its list came from, and the old plan's
+  rooms leave the screen while it is replaced** (same-family correctness
+  review of the P1 fix, 2026-09-17; pre-existing in this branch). The stale
+  check compared the attached plan with the newest read, both from the
+  server, so it could not see a list drawn from an older plan. Next runs
+  server actions one at a time (`dispatchAction` in
+  `next/dist/client/components/app-router-instance.js` queues each behind the
+  one in flight), so a click on the old rooms during a replacement's read was
+  sent only after that read landed. Both sides then agreed, and the old index
+  named a room on the new list: one room's numbers written as `verified` under
+  another room's name, and the old chip's numbers put in the fields for
+  Continue to save. A second tab reached the same place with no queue.
+  Criterion 11 was also unmet in the uploading tab, which went on showing the
+  old rooms for the whole read. Three changes. The page hands the component
+  the read's id and the confirmation sends it back, and the server refuses
+  anything but the newest succeeded read of the attached plan. A refused
+  confirmation moves no field. And a small shared state
+  (`floor-plan-activity.tsx`) lets the upload panel take the rooms block off
+  the screen from the moment a replacement starts until the refreshed page
+  arrives. The same round fixed three smaller things: a read the rooms block
+  starts says it is reading while it runs, a reply belongs to the state it
+  was given in rather than following the block through a refresh, and no
+  reply claims a read is under way, since the action cannot know that.
