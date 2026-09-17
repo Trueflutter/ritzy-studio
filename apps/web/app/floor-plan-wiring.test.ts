@@ -95,6 +95,15 @@ assert.match(rooms, /label: "Try reading it again", run: read \}/, "and so is th
 // plan (PR review).
 assert.match(details, /readJobId=\{floorPlanReadJob\?\.id \?\? null\}/);
 assert.match(rooms, /await actions\.confirm\(roomId, index, readJobId\)/);
+// The stale refusal is marked as one on its way out of the action, and the
+// block shows it whatever the page says next: it is the only thing saying why
+// the list she clicked is gone.
+assert.match(rooms, /say\(result\.message, \{ whateverFollows: result\.stale === true \}\)/);
+assert.match(
+  rooms,
+  /messageForState\(message, \{ state, replacement: replacements \}\)/,
+  "and a reply is scoped to the replacement it was given under"
+);
 // And a refused confirmation moves no field: it wrote nothing, and the old
 // list's numbers on the page would be saved as hers by Continue.
 {
@@ -139,6 +148,11 @@ assert.match(rooms, /state === "reading" \|\| \(\(state === "unread" \|\| state 
   // about other things being read.
   const replies = actionsSource.slice(start, end).match(/"[^"\n]*"|`[^`]*`/g) ?? [];
   assert.ok(replies.some((reply) => /nothing was changed/.test(reply)), "the replies are what this looks at");
+  assert.match(
+    actionsSource.slice(start, end),
+    /confirmed: false,\s*stale: true,\s*message: "That list belongs to a plan you have since replaced/,
+    "the stale refusal says it is one"
+  );
   assert.equal(replies.some((reply) => /being read|is reading|in progress/i.test(reply)), false);
 }
 

@@ -1497,7 +1497,11 @@ export async function confirmDetectedRoomAction(roomId: string, roomIndex: numbe
   // refusal claims to know what the plan is doing now, because nothing here
   // does (PR review).
   if (outcome.status === "stale") {
-    return { confirmed: false, message: "That list belongs to a plan you have since replaced, so nothing was changed." };
+    return {
+      confirmed: false,
+      stale: true,
+      message: "That list belongs to a plan you have since replaced, so nothing was changed."
+    };
   }
   if (outcome.status === "not_found") {
     return { confirmed: false, message: "That room is not on the plan we read." };

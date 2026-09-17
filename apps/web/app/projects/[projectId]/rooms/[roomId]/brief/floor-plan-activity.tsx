@@ -16,20 +16,33 @@ import { createContext, useContext, useState, type ReactNode } from "react";
 // came from.
 export type FloorPlanActivity = {
   replacing: boolean;
+  // How many replacements this page has started. A reply given about one plan
+  // carries the count it was given under, so it does not caption the next
+  // plan's rooms (PR review).
+  replacements: number;
   setReplacing: (replacing: boolean) => void;
 };
+
+export function nextFloorPlanActivity(
+  current: Pick<FloorPlanActivity, "replacing" | "replacements">,
+  replacing: boolean
+): Pick<FloorPlanActivity, "replacing" | "replacements"> {
+  return { replacing, replacements: current.replacements + (replacing ? 1 : 0) };
+}
 
 // Not replacing, and nothing to tell, outside a provider: a component rendered
 // on its own, as the component tests render it, behaves as it always has.
 export const FloorPlanActivityContext = createContext<FloorPlanActivity>({
   replacing: false,
+  replacements: 0,
   setReplacing: () => {}
 });
 
 export function FloorPlanActivityProvider({ children }: { children: ReactNode }) {
-  const [replacing, setReplacing] = useState(false);
+  const [activity, setActivity] = useState({ replacing: false, replacements: 0 });
+  const setReplacing = (replacing: boolean) => setActivity((current) => nextFloorPlanActivity(current, replacing));
   return (
-    <FloorPlanActivityContext.Provider value={{ replacing, setReplacing }}>{children}</FloorPlanActivityContext.Provider>
+    <FloorPlanActivityContext.Provider value={{ ...activity, setReplacing }}>{children}</FloorPlanActivityContext.Provider>
   );
 }
 

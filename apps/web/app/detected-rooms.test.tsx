@@ -17,7 +17,10 @@ import {
   DetectedRooms,
   messageForState
 } from "./projects/[projectId]/rooms/[roomId]/brief/details/detected-rooms";
-import { FloorPlanActivityContext } from "./projects/[projectId]/rooms/[roomId]/brief/floor-plan-activity";
+import {
+  FloorPlanActivityContext,
+  nextFloorPlanActivity
+} from "./projects/[projectId]/rooms/[roomId]/brief/floor-plan-activity";
 
 // S5b: every state this block can be in says something. A plan attached with
 // nothing said about it is the silence S5a spent its life removing, and here
@@ -203,7 +206,7 @@ for (const state of ["unread", "read_failed", "rooms"] as const) {
 // says no control from the first plan is rendered once a second is uploaded.
 for (const state of FLOOR_PLAN_SCREEN_STATES) {
   const markup = renderToStaticMarkup(
-    <FloorPlanActivityContext.Provider value={{ replacing: true, setReplacing: () => {} }}>
+    <FloorPlanActivityContext.Provider value={{ replacing: true, replacements: 1, setReplacing: () => {} }}>
       <DetectedRooms
         actions={actions}
         confirmed={{ assetId: "plan-a", label: "Living Room", index: 0 }}
@@ -221,17 +224,54 @@ for (const state of FLOOR_PLAN_SCREEN_STATES) {
 // not passing on a component that renders nothing.
 assert.notEqual(render("rooms", { rooms: [room()], planUrl: "https://example.test/plan.png" }), "");
 
-// A message belongs to the state it was said in. The block outlives a
-// refresh, so a reply kept past one turned up under whatever the page said
-// next: a refused plan captioned "The one attached now is being read", with
-// nothing reading (PR review).
+// A reply belongs to what it was said about. The block outlives a refresh and
+// a replacement, so a reply kept past one turned up under whatever the page said
+// next: a refused plan captioned "The one attached now is being read" with
+// nothing reading, and a reply about the old plan's Kitchen under the new plan's
+// rooms (PR review).
 {
-  const replied = { text: "That list belongs to a plan you have since replaced, so nothing was changed.", shownIn: "rooms" as const };
-  assert.equal(messageForState(replied, "rooms"), replied.text, "said where it was said");
+  const kitchen = {
+    text: "We could not read a size for Kitchen on the plan, so the fields are still yours to fill.",
+    shownIn: "rooms" as const,
+    replacement: 0
+  };
+  assert.equal(messageForState(kitchen, { state: "rooms", replacement: 0 }), kitchen.text, "said where it was said");
   for (const state of FLOOR_PLAN_SCREEN_STATES.filter((candidate) => candidate !== "rooms")) {
-    assert.equal(messageForState(replied, state), null, `not carried into ${state}`);
+    assert.equal(messageForState(kitchen, { state, replacement: 0 }), null, `not carried into ${state}`);
   }
-  assert.equal(messageForState(null, "unread"), null);
+  assert.equal(
+    messageForState(kitchen, { state: "rooms", replacement: 1 }),
+    null,
+    "and not under the rooms of the plan that replaced the one it was about"
+  );
+
+  // The refusal of a stale list is about the click, not the plan. It arrives
+  // with the page for the plan that replaced the list, whatever that page
+  // says, and is the only thing saying why the list she clicked is gone. Until
+  // this tab replaces the plan itself.
+  const stale = {
+    text: "That list belongs to a plan you have since replaced, so nothing was changed.",
+    shownIn: "rooms" as const,
+    replacement: 0,
+    whateverFollows: true
+  };
+  for (const state of FLOOR_PLAN_SCREEN_STATES) {
+    assert.equal(messageForState(stale, { state, replacement: 0 }), stale.text, `the refusal shows over ${state}`);
+  }
+  assert.equal(messageForState(stale, { state: "rooms", replacement: 1 }), null, "until this tab replaces the plan");
+  assert.equal(messageForState(null, { state: "unread", replacement: 0 }), null);
+}
+
+// Each replacement this page starts is counted, and only its start: settling
+// is not a new plan.
+{
+  let activity = { replacing: false, replacements: 0 };
+  activity = nextFloorPlanActivity(activity, true);
+  assert.deepEqual(activity, { replacing: true, replacements: 1 });
+  activity = nextFloorPlanActivity(activity, false);
+  assert.deepEqual(activity, { replacing: false, replacements: 1 });
+  activity = nextFloorPlanActivity(activity, true);
+  assert.deepEqual(activity, { replacing: true, replacements: 2 });
 }
 
 console.log("detected rooms component tests passed");

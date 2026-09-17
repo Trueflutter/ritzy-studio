@@ -52,18 +52,35 @@ export type DetectedRoomsActions = {
     roomId: string,
     roomIndex: number,
     readJobId: string
-  ) => Promise<{ confirmed: boolean; message?: string; cleared?: boolean }>;
+  ) => Promise<{ confirmed: boolean; stale?: boolean; message?: string; cleared?: boolean }>;
   read: (roomId: string) => Promise<{ message?: string } | null>;
 };
 
-// A message says what the last click came to, and it belongs to the state it
-// was said in. The component outlives a refresh, so a message kept past one
-// turned up under whatever the page said next: a refused plan captioned with
-// the reply to a click on a list it no longer shows (PR review).
-export type ShownMessage = { text: string; shownIn: FloorPlanScreenState };
+// A message says what the last click came to, and it belongs to what it was
+// said about. The component outlives a refresh and a replacement, so a message
+// kept past one turned up under whatever the page said next: a refused plan
+// captioned with the reply to a click on a list it no longer shows, and a
+// reply about the old plan's Kitchen captioning the new plan's rooms (PR
+// review). So a reply is shown only in the state it was given in, and only
+// until the plan is next replaced. The exception is the refusal of a stale
+// list, which is about the click rather than the plan: it arrives with the
+// page for the plan that replaced the list, whatever that page says, and is
+// the only thing that says why the list she clicked is gone.
+export type ShownMessage = {
+  text: string;
+  shownIn: FloorPlanScreenState;
+  replacement: number;
+  whateverFollows?: boolean;
+};
 
-export function messageForState(message: ShownMessage | null, state: FloorPlanScreenState): string | null {
-  return message && message.shownIn === state ? message.text : null;
+export function messageForState(
+  message: ShownMessage | null,
+  { state, replacement }: { state: FloorPlanScreenState; replacement: number }
+): string | null {
+  if (!message || message.replacement !== replacement) {
+    return null;
+  }
+  return message.whateverFollows || message.shownIn === state ? message.text : null;
 }
 
 const DID_NOT_GO_THROUGH = "That did not go through. Try again in a moment.";
@@ -94,7 +111,7 @@ export function DetectedRooms({
 }) {
   const [pending, startTransition] = useTransition();
   const [message, setMessage] = useState<ShownMessage | null>(null);
-  const { replacing } = useFloorPlanActivity();
+  const { replacing, replacements } = useFloorPlanActivity();
 
   // No `useRouter` here. Each of these actions calls `revalidatePath`, so Next
   // re-renders this page's server tree with the action's own response; asking
@@ -110,8 +127,9 @@ export function DetectedRooms({
     return null;
   }
 
-  const say = (text: string | null | undefined) => setMessage(text ? { text, shownIn: state } : null);
-  const shown = messageForState(message, state);
+  const say = (text: string | null | undefined, { whateverFollows = false } = {}) =>
+    setMessage(text ? { text, shownIn: state, replacement: replacements, whateverFollows } : null);
+  const shown = messageForState(message, { state, replacement: replacements });
 
   // The one read a click pays for, from a failed read or from a plan nobody has
   // read. A call that throws reaches here as a rejection, and inside a
@@ -244,7 +262,7 @@ export function DetectedRooms({
         say(DID_NOT_GO_THROUGH);
         return;
       }
-      say(result.message);
+      say(result.message, { whateverFollows: result.stale === true });
       // Only a confirmation that landed moves the fields. A refused one wrote
       // nothing, and filling the fields from a list that belonged to another
       // plan would put that plan's numbers on the page for Continue to save

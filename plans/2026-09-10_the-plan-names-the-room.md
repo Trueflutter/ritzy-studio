@@ -582,8 +582,11 @@ screen in the uploading tab while the replacement is in flight (criterion 11);
 a pressed read whose call is dropped saying so and still offering the read;
 the panel saying it is reading while a pressed read runs; and the other tab's
 click on the replaced plan's rooms refused with its reason, nothing written,
-its fields unmoved, and the tab left on the new plan's list. Seven reads over
-the day's four runs, USD 0.0234 in total, all succeeded.
+its fields unmoved, and the tab left on the new plan's list. A second
+correctness pass on that round found one minor defect, recorded in the last
+Deviations entry; six more mutations pin its fix, and the browser leg was
+re-run on the final code, 40 of 40. Nine reads over the day's five runs, USD
+0.0301 in total, all succeeded.
 
 ## Deviations
 
@@ -723,3 +726,12 @@ the day's four runs, USD 0.0234 in total, all succeeded.
   starts says it is reading while it runs, a reply belongs to the state it
   was given in rather than following the block through a refresh, and no
   reply claims a read is under way, since the action cannot know that.
+- **A reply is scoped to the plan it was about** (second correctness pass on
+  the round above, minor). Keyed to the screen state alone, a reply about the
+  old plan, such as "We could not read a size for Kitchen", captioned the new
+  plan's rooms after a replacement in the same tab, and in another tab the
+  refusal of a stale list was hidden whenever the new plan's state was not
+  `rooms`, so the list she clicked vanished unexplained. The shared state now
+  counts replacements, a reply carries the count it was given under, and the
+  stale refusal is marked by the action and shown whatever state follows,
+  until that tab replaces the plan itself.
