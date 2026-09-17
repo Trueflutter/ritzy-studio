@@ -567,8 +567,8 @@ unfixed branch merged, and each now offers the read. The Codex gate could not
 run on the fix: the account was at its usage limit until 19 September.
 
 **Then the same-family correctness and tests reviews of that fix**, run in
-the gate's place and not as a substitute for it, found seven more (the last
-two Deviations entries record what changed). Their tests: the confirmation
+the gate's place and not as a substitute for it, found seven more (recorded in
+the Deviations entry "A confirmation names the read its list came from"). Their tests: the confirmation
 refused for five kinds of mismatched read; a plan the file check passes, on
 real bytes, read with no row rewritten; the concept path shown to send the
 disguised bytes before the correction and to leave them out after it; the
