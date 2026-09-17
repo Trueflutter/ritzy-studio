@@ -280,6 +280,43 @@ check(
   `${afterContinue.length - rows.length} further rows, newest ${afterContinue[0]?.source}`
 );
 
+// --------------------------------------------------- a read that never arrived
+// The upload lands, and the call that asks for the read does not: the tab
+// closed, the connection dropped, or the call threw before it opened a row. A
+// first version rendered that as "Reading your floor plan" for ever, since no
+// row meant "not opened yet" (PR review). The server action is blocked for one
+// upload to stand in for all three; storage and the row go straight to
+// Supabase and are unaffected.
+const blockAction = (route) =>
+  route.request().method() === "POST" && route.request().headers()["next-action"] ? route.abort() : route.continue();
+await page.route("**/*", blockAction);
+const jobsBeforeLostCall = (await jobs()).length;
+await upload(`${FIXTURES}/floor-plan-emaar-collective-2bed.jpg`);
+await settle();
+await page.unroute("**/*", blockAction);
+const unreadText = await panelText();
+check(
+  "a plan whose read never arrived is offered the read, not told one is running",
+  /have not read this floor plan yet/.test(unreadText) && !/Reading your floor plan/.test(unreadText),
+  unreadText.replace(/\n/g, " ").slice(0, 80)
+);
+check("and nothing was spent", (await jobs()).length === jobsBeforeLostCall, `${(await jobs()).length - jobsBeforeLostCall} new jobs`);
+await page.goto(DETAILS, { waitUntil: "networkidle" });
+check("a reload says the same", /have not read this floor plan yet/.test(await panelText()), "");
+await shot("plan--unread");
+
+await page.locator('[data-testid="detected-rooms"] button', { hasText: "Read the rooms on it" }).click();
+const offeredRead = await waitForRead(jobsBeforeLostCall);
+await settle();
+const afterOfferedRead = await panelText();
+check(
+  "and pressing it reads the plan, once, without a reload",
+  offeredRead?.status === "succeeded" &&
+    (await jobs()).length - jobsBeforeLostCall === 1 &&
+    /rooms on your plan/i.test(afterOfferedRead),
+  `${offeredRead?.status}, ${(await jobs()).length - jobsBeforeLostCall} job: ${afterOfferedRead.replace(/\n/g, " ").slice(0, 60)}`
+);
+
 await browser.close();
 const failed = results.filter((r) => !r.ok);
 console.log(`\n${results.length - failed.length}/${results.length} checks passed`);
