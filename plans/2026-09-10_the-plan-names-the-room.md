@@ -543,6 +543,29 @@ room of its own would have been cleaner; the designer free-room trigger refuses
 a second one, which is S6's gate doing its job, so every count in the run is a
 delta around the action rather than an absolute.
 
+**Re-checked on 2026-09-17, after the external review's P1.** The unit,
+component and service suites and `pnpm check` are green. The new tests were
+mutation-verified: ten mutations, each reverting one piece of the fix
+(no-row back to `reading`, every non-image called a PDF, either refusal left
+unwritten, the PDF signature ignored, the correction's error swallowed or
+aimed at no row, the read control or the `unreadable` branch removed, and
+`unreadable` dropped from the refused states), and each fails at least one
+suite. The browser leg now has 34 checks, all passing, adding four groups to
+the nineteen above: PDF bytes and bytes that are no image, each saved as
+`plan.png`, refused on screen as soon as the upload settles, without a
+reload, with the upload panel saying the plan cannot be read, the row
+corrected to `application/pdf` or `application/octet-stream`, the same
+refusal after a reload, and nothing spent; a readable plan replacing a
+refused one captioned "Floor plan attached" without a reload; and an upload
+whose read call was blocked offered the read rather than told one is
+running, the same after a reload, nothing spent, and read exactly once when
+the offer is pressed. Three reads across two runs, USD 0.0100 in total. The
+shared database held five floor plans when this was checked, four of them
+images with no read against them, uploaded from 22 May on: each of those
+rooms would have said "Reading your floor plan" for ever from the moment the
+unfixed branch merged, and each now offers the read. The Codex gate could not
+run on the fix: the account was at its usage limit until 19 September.
+
 ## Deviations
 
 - **The crop and the overlay are withdrawn, and the prompt is told the room's

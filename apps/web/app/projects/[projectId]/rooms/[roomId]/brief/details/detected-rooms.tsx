@@ -94,7 +94,7 @@ export function DetectedRooms({
         const result = await actions.read(roomId);
         setMessage(result?.message ?? null);
       } catch {
-        setMessage("We could not reach the reader. Check your connection and try again.");
+        setMessage("That did not go through. Try again in a moment.");
       }
     });
 
