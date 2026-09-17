@@ -625,3 +625,36 @@ delta around the action rather than an absolute.
   history a push would publish. Criterion 14 is driven by the Emaar plan
   downscaled below the floor instead, which is developer marketing collateral
   and carries nobody's address.
+- **A refusal made from the file is written to the plan's row, and a plan
+  nothing has read is `unread`, never `reading`** (external review at
+  `0e36588`, P1). Bytes the browser declared as an image but no decoder could
+  open were refused by the read and recorded nowhere: the refusal was returned,
+  the action surfaced only `failed` outcomes, the upload panel captioned the
+  plan "Floor plan attached", and the refreshed page, deciding from the row the
+  browser had written, found a readable image with no read against it and said
+  "Reading your floor plan" for ever with nothing to press. The cause was wider
+  than that path. The screen rendered the absence of a job row as a read in
+  progress, and every other way to reach no row shares it: the tab closing
+  before the upload's call, the call throwing before it opens its row, and a
+  plan the read refuses as too small from the file when the row said otherwise.
+  Two changes close the family. The read corrects the asset row to what the
+  file is when it refuses one: `mime_type` becomes `application/pdf` when the
+  bytes open with the PDF signature and `application/octet-stream` otherwise,
+  and `width_px` and `height_px` become the file's own size when that is below
+  the floor. The page, and the concept path, which gates the plan on the same
+  column, then reach the refusal the read did, with no `ai_jobs` row, as
+  criteria 10 and 14 require. And a plan with no read against it is a new
+  `unread` state that offers the read, so `reading` is said only while a read
+  of that plan is running. A refusal is deliberately not retryable: reading the
+  same bytes again cannot succeed, so each refusal names the file that would
+  work, and the upload panel beside it takes the replacement. The screen also
+  gains `unreadable`, split from `pdf`, so a file that is not a PDF is no longer
+  told that it is one. Two alternatives were weighed. A `cancelled` job row per
+  refusal would break the letter of criteria 10 and 14 and put calls that were
+  never made into the ledger of calls made. A local error kept in the upload
+  panel is gone on the next load, which is the page the finding was about. The
+  same line of the uploader carried a second defect the review did not name: it
+  kept its caption in state from before the upload, so it also said "Attached,
+  but we cannot read it" over a readable plan that replaced a refused one. Once
+  nothing is in flight its caption now comes from the page, which read it off
+  the rows.

@@ -5,12 +5,16 @@ import {
   DETECTED_ROOM_LABEL_MAX,
   DETECTED_ROOM_MAX_CM,
   DETECTED_ROOMS_MAX,
+  FLOOR_PLAN_SCREEN_STATES,
+  PDF_MIME_TYPE,
   PLAN_READABLE_MIN_EDGE_PX,
+  UNKNOWN_BYTES_MIME_TYPE,
   boundedDetectedRooms,
   confirmedFloorPlanRoom,
   detectedRoomLabel,
   FLOOR_PLAN_READ_STALE_MS,
   floorPlanReadDecision,
+  floorPlanRefused,
   floorPlanScreenState,
   roomDimensionsLabel,
   roomIsDimensioned
@@ -269,6 +273,75 @@ import {
   // A row with no timestamp is believed rather than discarded: the cost of a
   // wrong guess here is a second paid call.
   assert.equal(floorPlanReadDecision({ asset: plan, newestJob: running(null), now }).action, "in_flight");
+}
+
+// ------------------------ no read is not a read in progress (PR review, P1)
+{
+  const plan = { id: "plan-a", mimeType: "image/png", widthPx: 2400, heightPx: 1600 };
+  const now = Date.parse("2026-09-10T12:00:00Z");
+
+  // A plan nothing has read. The upload's call can fail to arrive, or throw
+  // before it opens a row, or refuse without writing anything down, and a
+  // first version rendered every one of those as "reading", for ever, with
+  // nothing to press.
+  assert.equal(floorPlanScreenState({ asset: plan, newestJob: null, roomCount: 0, now }), "unread");
+  assert.equal(
+    floorPlanScreenState({
+      asset: plan,
+      newestJob: { assetId: "plan-before", status: "succeeded", startedAt: null },
+      roomCount: 3,
+      now
+    }),
+    "unread",
+    "the newest read was of the plan she replaced, which says nothing about this one"
+  );
+
+  // So "reading" is said exactly when a read of THIS plan is running and young,
+  // over every plan and every job this screen can be handed.
+  const young = "2026-09-10T11:59:30Z";
+  const abandoned = new Date(now - FLOOR_PLAN_READ_STALE_MS - 1000).toISOString();
+  const plans = [
+    { asset: plan, readable: true },
+    { asset: { ...plan, widthPx: null, heightPx: null }, readable: true },
+    { asset: { ...plan, widthPx: 500, heightPx: 320 }, readable: false },
+    { asset: { ...plan, mimeType: PDF_MIME_TYPE }, readable: false },
+    { asset: { ...plan, mimeType: UNKNOWN_BYTES_MIME_TYPE }, readable: false }
+  ];
+  const jobs = [
+    { job: null, runningNow: false },
+    ...["queued", "running", "succeeded", "failed", "cancelled"].flatMap((status) => [
+      { job: { assetId: "plan-a", status, startedAt: young }, runningNow: status === "running" },
+      { job: { assetId: "plan-a", status, startedAt: abandoned }, runningNow: false },
+      { job: { assetId: "plan-before", status, startedAt: young }, runningNow: false }
+    ])
+  ];
+  for (const { asset, readable } of plans) {
+    for (const { job, runningNow } of jobs) {
+      const state = floorPlanScreenState({ asset, newestJob: job, roomCount: 1, now });
+      assert.equal(
+        state === "reading",
+        readable && runningNow,
+        `${JSON.stringify(asset)} with ${JSON.stringify(job)} rendered ${state}`
+      );
+    }
+  }
+
+  // The refusal says which remedy applies. A PDF can be photographed; bytes
+  // the read could not open, or a document dropped past the file picker, are
+  // not told they are a PDF.
+  assert.equal(floorPlanScreenState({ asset: { ...plan, mimeType: PDF_MIME_TYPE }, newestJob: null, roomCount: 0, now }), "pdf");
+  assert.equal(
+    floorPlanScreenState({ asset: { ...plan, mimeType: UNKNOWN_BYTES_MIME_TYPE }, newestJob: null, roomCount: 0, now }),
+    "unreadable"
+  );
+  assert.equal(
+    floorPlanScreenState({ asset: { ...plan, mimeType: "application/msword" }, newestJob: null, roomCount: 0, now }),
+    "unreadable"
+  );
+
+  // The upload panel and the refusal beneath it agree on which states cannot
+  // be used, from one definition.
+  assert.deepEqual(FLOOR_PLAN_SCREEN_STATES.filter(floorPlanRefused), ["pdf", "unreadable", "too_small"]);
 }
 
 console.log("floor plan rooms tests passed");

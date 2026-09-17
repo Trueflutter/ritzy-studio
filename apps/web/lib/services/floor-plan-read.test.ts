@@ -1,7 +1,15 @@
 import assert from "node:assert/strict";
 
+import { floorPlanRefused, floorPlanScreenState } from "@ritzy-studio/domain";
+
 import { fakeSupabase, type RecordedCall } from "./supabase-test-double";
-import { confirmDetectedRoom, readFloorPlanForRoom } from "./floor-plan-read";
+import {
+  confirmDetectedRoom,
+  floorPlanAssetInput,
+  floorPlanJobInput,
+  readFloorPlanForRoom,
+  type FloorPlanAssetRow
+} from "./floor-plan-read";
 import { roomImageInputs } from "./room-images";
 
 // S5b: reading a floor plan costs money and, if it goes wrong quietly, costs
@@ -273,6 +281,13 @@ async function main() {
       0,
       "and nothing is spent on it"
     );
+
+    // And the row is corrected to the file, so the page refuses it too rather
+    // than finding a large plan with no read against it (PR review).
+    const corrected = calls.filter((call) => call.table === "room_assets" && call.op === "update");
+    assert.equal(corrected.length, 1);
+    assert.deepEqual(corrected[0].payload, { width_px: 390, height_px: 578 });
+    assert.deepEqual(corrected[0].filters, [["id", ASSET]], "that plan's row and no other");
   }
 
   // PDF bytes declared as `image/png`, with a row to match. The format check
@@ -307,6 +322,119 @@ async function main() {
 
     assert.deepEqual(outcome, { status: "skipped", reason: "unreadable_format" });
     assert.equal(calls.filter((call) => call.table === "ai_jobs" && call.op === "insert").length, 0, "nothing is spent");
+  }
+
+  // ----------------------- a refusal the page can see (PR review, P1)
+  //
+  // Bytes that are not an image, declared as one, on a plan nothing has read.
+  // The read refused them and told nobody: the refusal was returned and not
+  // written, so the refreshed page decided from what the browser had declared,
+  // found a readable image with no read against it, and said "Reading your
+  // floor plan" for ever with nothing to press. Driven here through the
+  // mapping the page itself uses, on the rows as the read leaves them.
+  const notImages = [
+    {
+      name: "PDF bytes saved as plan.png",
+      bytes: new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d, 0x31, 0x2e, 0x37, 0x0a, 0x25]),
+      writes: "application/pdf",
+      says: "pdf"
+    },
+    {
+      name: "bytes no decoder recognises",
+      bytes: new Uint8Array(Array.from({ length: 512 }, (_, i) => (i * 131 + 7) % 256)),
+      writes: "application/octet-stream",
+      says: "unreadable"
+    }
+  ] as const;
+
+  for (const notImage of notImages) {
+    // What the browser writes for a file it could not measure.
+    let row: FloorPlanAssetRow = {
+      id: ASSET,
+      storage_path: "plan.png",
+      mime_type: "image/png",
+      width_px: null,
+      height_px: null
+    };
+    const calls: RecordedCall[] = [];
+    const { client, storageCalls } = fakeSupabase(
+      (call) => {
+        calls.push(call);
+        if (call.table === "room_assets" && call.op === "select") {
+          return { data: row };
+        }
+        if (call.table === "room_assets" && call.op === "update") {
+          if (call.filters.some(([field, value]) => field === "id" && value === row.id)) {
+            row = { ...row, ...(call.payload as Partial<FloorPlanAssetRow>) };
+          }
+          return { data: null };
+        }
+        if (call.table === "ai_jobs" && call.op === "insert") {
+          return { data: { id: "job-1" } };
+        }
+        // No read has ever been made of this plan.
+        return { data: null };
+      },
+      () => ({ data: new Blob([notImage.bytes]) })
+    );
+    const pageState = () =>
+      floorPlanScreenState({ asset: floorPlanAssetInput(row), newestJob: floorPlanJobInput(null), roomCount: 0 });
+    const readIt = () =>
+      readFloorPlanForRoom(
+        { roomId: ROOM, userId: USER, supabase: client as never, serviceSupabase: client as never },
+        {
+          planDataUrl: async () => "data:image/png;base64,NOTREALLY",
+          readPlan: async () => {
+            throw new Error("must not be called");
+          }
+        }
+      );
+
+    // Before the read: a plan nothing has read is offered a read, not told
+    // that one is under way.
+    assert.equal(pageState(), "unread", `${notImage.name}: before`);
+
+    assert.deepEqual(await readIt(), { status: "skipped", reason: "unreadable_format" }, notImage.name);
+
+    // After: the page, from the rows alone, says the plan was refused and
+    // which remedy applies. The upload panel calls it unusable, and replacing
+    // it is the way on, since reading the same bytes again cannot succeed.
+    assert.equal(row.mime_type, notImage.writes, `${notImage.name}: the row says what the file is`);
+    assert.equal(pageState(), notImage.says, `${notImage.name}: an explicit refusal, on every load`);
+    assert.ok(floorPlanRefused(pageState()), `${notImage.name}: and the upload panel agrees`);
+
+    // Asked again, the decision refuses from the row before it downloads
+    // anything, so a refused plan costs one look at the file, once.
+    const before = calls.length;
+    const downloadsBefore = storageCalls.length;
+    assert.deepEqual(await readIt(), { status: "skipped", reason: "unreadable_format" });
+    assert.equal(
+      calls.slice(before).filter((call) => call.op === "update" || call.op === "insert").length,
+      0,
+      `${notImage.name}: nothing written or spent the second time`
+    );
+    assert.equal(storageCalls.length, downloadsBefore, `${notImage.name}: and the file is not fetched again`);
+  }
+
+  // A correction that cannot be written is not swallowed: the page would go
+  // on offering a read of a plan the read refuses.
+  {
+    const { client } = fakeSupabase(
+      (call) => {
+        if (call.table === "room_assets" && call.op === "select") {
+          return { data: { id: ASSET, storage_path: "p.png", mime_type: "image/png", width_px: null, height_px: null } };
+        }
+        if (call.table === "room_assets" && call.op === "update") {
+          return { error: { message: "permission denied for table room_assets" } };
+        }
+        return { data: null };
+      },
+      () => ({ data: new Blob([new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d])]) })
+    );
+    await assert.rejects(
+      readFloorPlanForRoom({ roomId: ROOM, userId: USER, supabase: client as never, serviceSupabase: client as never }),
+      /permission denied/
+    );
   }
 
   // A failed read is not a refusal: the retry the screen offers is this call.

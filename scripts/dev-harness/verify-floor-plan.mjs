@@ -117,6 +117,68 @@ check(
 check("and nothing was spent on it", (await jobs()).length === jobsAtStart, `${(await jobs()).length - jobsAtStart} new jobs`);
 await shot("plan--too-small");
 
+// ------------------------------------------- bytes that are not what they say
+// A PDF saved as `plan.png`, and bytes that are no image at all saved the same
+// way. The browser declares both `image/png`, so the upload asks for a read,
+// and only the server can tell. A first version refused them and wrote nothing
+// down, so the page said "Floor plan attached" and then "Reading your floor
+// plan" for ever (PR review). The refusal has to be on screen when the upload
+// settles, WITHOUT a reload, and still there after one.
+const panelText = async () => page.locator('[data-testid="detected-rooms"]').innerText().catch(() => "");
+const settle = async () =>
+  page
+    .waitForFunction(() => !/Uploading floor plan|Reading your floor plan/.test(document.body.innerText), null, { timeout: 90000 })
+    .catch(() => null);
+const prompts = async () => ({
+  attached: await page.getByText("Floor plan attached", { exact: true }).count(),
+  refused: await page.getByText("Attached, but we cannot read it", { exact: true }).count()
+});
+
+const disguised = [
+  {
+    name: "a PDF saved as plan.png",
+    buffer: fs.readFileSync(`${FIXTURES}/floor-plan-tilal-villa-brochure.pdf`),
+    says: /PDF, which we cannot read yet/,
+    row: "application/pdf"
+  },
+  {
+    name: "bytes that are no image, saved as plan.png",
+    buffer: Buffer.from(Array.from({ length: 4096 }, (_, i) => (i * 131 + 7) % 256)),
+    says: /could not open that file as an image/,
+    row: "application/octet-stream"
+  }
+];
+for (const file of disguised) {
+  await upload({ name: "plan.png", mimeType: "image/png", buffer: file.buffer });
+  await settle();
+  const inSession = await panelText();
+  const prompt = await prompts();
+  check(
+    `${file.name} is refused on screen as soon as the upload settles`,
+    file.says.test(inSession) && !/Reading your floor plan/.test(inSession),
+    inSession.replace(/\n/g, " ").slice(0, 80)
+  );
+  check(
+    "and the upload panel says it cannot be read, not that it is attached",
+    prompt.refused === 1 && prompt.attached === 0,
+    JSON.stringify(prompt)
+  );
+  check(
+    "the plan's row now says what the file is",
+    (await assets())[0]?.mime_type === file.row,
+    `${(await assets())[0]?.mime_type}`
+  );
+  await page.goto(DETAILS, { waitUntil: "networkidle" });
+  const reloaded = await panelText();
+  check(
+    "and a reload says the same, rather than reading for ever",
+    file.says.test(reloaded) && !/Reading your floor plan/.test(reloaded),
+    reloaded.replace(/\n/g, " ").slice(0, 80)
+  );
+  check("nothing was spent on it", (await jobs()).length === jobsAtStart, `${(await jobs()).length - jobsAtStart} new jobs`);
+}
+await shot("plan--not-an-image");
+
 // ------------------------------------------------------------ the PDF refusal
 await upload(`${FIXTURES}/floor-plan-tilal-villa-brochure.pdf`);
 await page.waitForTimeout(6000);
@@ -130,6 +192,16 @@ await shot("plan--pdf");
 const beforeJobs = (await jobs()).length;
 await upload(`${FIXTURES}/floor-plan-emaar-collective-2bed.jpg`);
 const readJob = await waitForRead(beforeJobs);
+// Before any reload: this page was loaded over the refused PDF, and a first
+// version kept the panel's wording from that load, so a plan that had just
+// read perfectly was captioned "Attached, but we cannot read it" (PR review).
+await settle();
+const promptAfterRead = await prompts();
+check(
+  "a readable plan that replaces a refused one is called attached, without a reload",
+  promptAfterRead.attached === 1 && promptAfterRead.refused === 0,
+  JSON.stringify(promptAfterRead)
+);
 await page.goto(DETAILS, { waitUntil: "networkidle" });
 const roomsText = await page.locator('[data-testid="detected-rooms"]').innerText().catch(() => "");
 check(

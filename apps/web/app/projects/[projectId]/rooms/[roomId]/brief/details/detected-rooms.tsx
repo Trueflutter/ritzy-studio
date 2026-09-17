@@ -83,6 +83,21 @@ export function DetectedRooms({
     return null;
   }
 
+  // The one read a click pays for, from a failed read or from a plan nobody has
+  // read. A call that throws reaches here as a rejection, and inside a
+  // transition an uncaught one is handed to the error boundary, which would
+  // swap the whole page for an error screen over a retry.
+  const read = () =>
+    startTransition(async () => {
+      setMessage(null);
+      try {
+        const result = await actions.read(roomId);
+        setMessage(result?.message ?? null);
+      } catch {
+        setMessage("We could not reach the reader. Check your connection and try again.");
+      }
+    });
+
   // A refusal carries the design system's error treatment (8.19: a 1px error
   // border on the failed section and the caption in the error colour). Without
   // it a refusal is a neutral grey note carrying the same weight as a hint,
@@ -112,6 +127,17 @@ export function DetectedRooms({
           {action.label}
         </button>
       ) : null}
+      {/* What the last click came to, when the state it leaves behind does not
+          say it: a read that failed before it opened a row leaves the plan
+          exactly as unread as it was. */}
+      {message ? (
+        <p
+          className="mt-3 font-body text-body-s leading-[1.6] text-ink-secondary"
+          role={tone === "error" ? undefined : "status"}
+        >
+          {message}
+        </p>
+      ) : null}
     </div>
   );
 
@@ -126,12 +152,31 @@ export function DetectedRooms({
     );
   }
 
+  if (state === "unreadable") {
+    // Bytes the read could not open as an image, whatever the browser called
+    // them: a document dropped past the file picker, or a file no decoder
+    // recognises. The read writes that onto the plan's row, so this is what
+    // the page says after a reload too, rather than "reading" (PR review).
+    return note(
+      "We could not open that file as an image. A JPG or PNG of the plan works: a screenshot, or a photograph of the page.",
+      undefined,
+      "error"
+    );
+  }
+
   if (state === "too_small") {
     return note(
       `That plan is too small to read the room names and sizes on it. We need about ${PLAN_READABLE_MIN_EDGE_PX} pixels across; a screenshot taken at full size usually is.`,
       undefined,
       "error"
     );
+  }
+
+  if (state === "unread") {
+    // Nothing has read this plan: the upload's call never arrived, or it
+    // threw before it opened a row. Not an error, and not a read in progress
+    // either, which is what this used to claim, for ever (PR review).
+    return note("We have not read this floor plan yet.", { label: "Read the rooms on it", run: read });
   }
 
   if (state === "reading") {
@@ -141,17 +186,7 @@ export function DetectedRooms({
   if (state === "read_failed") {
     return note(
       "We could not read that floor plan. Nothing else on this page changed.",
-      {
-        label: "Try reading it again",
-      run: () =>
-        startTransition(async () => {
-          setMessage(null);
-          const result = await actions.read(roomId);
-          if (result?.message) {
-            setMessage(result.message);
-          }
-        })
-      },
+      { label: "Try reading it again", run: read },
       "error"
     );
   }

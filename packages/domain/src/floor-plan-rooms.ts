@@ -191,6 +191,16 @@ export type FloorPlanReadAction =
   | "in_flight"
   | "already_read";
 
+// What a plan's row says once the read has looked at the file itself and found
+// no image in it. The browser writes `mime_type` from the file's name, so a PDF
+// saved as `plan.png` arrives declared as an image, and only the bytes can tell.
+// The read writes the truth back to the row (PR review), and these are the two
+// truths it can write: a PDF is named, because the screen has a remedy for one,
+// and anything else is bytes of unknown type, which is what
+// `application/octet-stream` means.
+export const PDF_MIME_TYPE = "application/pdf";
+export const UNKNOWN_BYTES_MIME_TYPE = "application/octet-stream";
+
 // Whether this plan is worth a call, and whether it has already had one.
 //
 // Every refusal here is money not spent and, more importantly, a number not
@@ -270,16 +280,31 @@ export function confirmedFloorPlanRoom(value: unknown): ConfirmedFloorPlanRoom |
 //
 // Every one of these is a sentence a shopper reads, and the set is closed on
 // purpose: a plan attached with nothing said about it is the state S5a spent
-// its life removing. The read's own job row carries the state, so this is a
-// pure function of what is attached and what the newest read did with it.
-export type FloorPlanScreenState =
-  | "no_plan"
-  | "pdf"
-  | "too_small"
-  | "reading"
-  | "read_failed"
-  | "no_rooms"
-  | "rooms";
+// its life removing. The rows carry the state, the read's job row and the
+// plan's own asset row, so this is a pure function of what is attached and
+// what the newest read did with it. A list rather than a bare union, so a test
+// can walk every state and a new one cannot be added without it.
+export const FLOOR_PLAN_SCREEN_STATES = [
+  "no_plan",
+  "pdf",
+  "unreadable",
+  "too_small",
+  "unread",
+  "reading",
+  "read_failed",
+  "no_rooms",
+  "rooms"
+] as const;
+
+export type FloorPlanScreenState = (typeof FLOOR_PLAN_SCREEN_STATES)[number];
+
+// The states in which the attached plan cannot be used by anything, whatever
+// she does short of replacing it. One definition, because the upload panel and
+// the refusal beneath it have to agree: the design review found them sixty
+// pixels apart, one saying "attached" and the other saying "cannot read".
+export function floorPlanRefused(state: FloorPlanScreenState): boolean {
+  return state === "pdf" || state === "unreadable" || state === "too_small";
+}
 
 export function floorPlanScreenState({
   asset,
@@ -298,7 +323,11 @@ export function floorPlanScreenState({
     return "no_plan";
   }
   if (action === "unreadable_format") {
-    return "pdf";
+    // A PDF gets its own sentence because it has its own remedy. Anything else
+    // that is not an image, a document dropped past the file picker or bytes
+    // the read could not open, is told what would work instead, not that it
+    // is a PDF.
+    return asset?.mimeType === PDF_MIME_TYPE ? "pdf" : "unreadable";
   }
   if (action === "too_small") {
     return "too_small";
@@ -311,13 +340,18 @@ export function floorPlanScreenState({
   }
 
   // The decision says this plan is worth reading, which means no succeeded or
-  // running job names it. Either the read failed, or the upload's call has not
-  // opened its row yet; both are "we are on it" from the screen's side, and the
-  // failed one carries a retry.
-  // A read that never came back reads as a failure, so the screen offers the
-  // retry rather than saying "in a moment" for ever.
+  // running job names it. A failed one, or a running one that outlived its
+  // call, is a read that did not land, and the screen offers the retry.
   if (newestJob?.assetId === asset?.id && (newestJob?.status === "failed" || floorPlanReadIsStale(newestJob, now))) {
     return "read_failed";
   }
-  return "reading";
+
+  // No read has been made of this plan at all. A first version called this
+  // "reading", on the grounds that the upload's call had not opened its row
+  // yet, but nothing guarantees the call ever arrives: the tab can close, the
+  // connection can drop, the call can throw before its row, and a refusal
+  // that was returned rather than written left no row either. With nothing
+  // running the screen said "Reading your floor plan" for ever and offered
+  // nothing to press (PR review). So it says what is true, and offers the read.
+  return "unread";
 }

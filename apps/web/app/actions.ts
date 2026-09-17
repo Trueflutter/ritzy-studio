@@ -1471,7 +1471,13 @@ export async function readFloorPlanAction(roomId: string) {
   });
 
   revalidatePath(`/projects`, "layout");
-  return outcome.status === "failed" ? { message: outcome.message } : null;
+  // Every other outcome is on a row the refreshed page renders: a read on its
+  // job, a refusal on the plan's own asset row. A failure gets a sentence
+  // rather than the provider's error string, which the job row keeps for
+  // whoever debugs it.
+  return outcome.status === "failed"
+    ? { message: "That did not work. Try again in a moment, or upload the plan again." }
+    : null;
 }
 
 export async function confirmDetectedRoomAction(roomId: string, roomIndex: number) {

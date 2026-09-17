@@ -1,11 +1,15 @@
 import {
+  PDF_MIME_TYPE,
   PLAN_READABLE_MIN_EDGE_PX,
+  UNKNOWN_BYTES_MIME_TYPE,
   boundedDetectedRooms,
   floorPlanReadDecision,
   roomIsDimensioned,
   type ConfirmedFloorPlanRoom,
   type DetectedRoom,
-  type FloorPlanReadAction
+  type FloorPlanAsset,
+  type FloorPlanReadAction,
+  type FloorPlanReadJob
 } from "@ritzy-studio/domain";
 import { readFloorPlanRooms, stageTextConfig } from "@ritzy-studio/ai";
 import { configuredTextModel } from "@ritzy-studio/config";
@@ -88,6 +92,17 @@ export function jobAssetId(job: FloorPlanReadRow | null): string | null {
   return typeof value === "string" ? value : null;
 }
 
+// The rows, in the shape the decision and the screen take. One mapping for
+// the read and for the page, because the defect this closes was the two of
+// them reaching different answers about the same plan (PR review).
+export function floorPlanAssetInput(row: FloorPlanAssetRow | null): FloorPlanAsset | null {
+  return row ? { id: row.id, mimeType: row.mime_type, widthPx: row.width_px, heightPx: row.height_px } : null;
+}
+
+export function floorPlanJobInput(row: FloorPlanReadRow | null): FloorPlanReadJob | null {
+  return row ? { assetId: jobAssetId(row), status: row.status, startedAt: row.created_at } : null;
+}
+
 export async function readFloorPlanForRoom(
   {
     roomId,
@@ -113,12 +128,7 @@ export async function readFloorPlanForRoom(
   const asset = await newestFloorPlanAsset(supabase, roomId);
   const job = await newestFloorPlanReadJob(supabase, roomId);
 
-  const { action } = floorPlanReadDecision({
-    asset: asset
-      ? { id: asset.id, mimeType: asset.mime_type, widthPx: asset.width_px, heightPx: asset.height_px }
-      : null,
-    newestJob: job ? { assetId: jobAssetId(job), status: job.status, startedAt: job.created_at } : null
-  });
+  const { action } = floorPlanReadDecision({ asset: floorPlanAssetInput(asset), newestJob: floorPlanJobInput(job) });
 
   if (action !== "read" || !asset) {
     return { status: "skipped", reason: action };
@@ -133,6 +143,15 @@ export async function readFloorPlanForRoom(
   // thumbnail buys a paid call that criterion 14 says to refuse. The decision
   // above uses the row because it is free; this checks the file (cross-model
   // review).
+  //
+  // And what the file turns out to be is written back to the row. The screen
+  // renders from rows and from nothing else, so a refusal that was only
+  // returned left the page deciding from what the browser had declared: a
+  // readable image with no read against it, which it rendered as "Reading your
+  // floor plan" for ever (PR review). Written, the page reaches the refusal
+  // this did, on every load. So does the concept path, which decides whether to
+  // send a plan by the same column and would otherwise put these bytes in a
+  // paid call.
   const measured = await measurePlan(supabase, asset.storage_path);
   if (measured.outcome === "unreadable") {
     // Bytes no decoder can open are bytes no model can read. A first version
@@ -141,9 +160,11 @@ export async function readFloorPlanForRoom(
     // (cross-model gate, round three). A download that fails is different:
     // that is transient, and refusing it would turn a storage blip into a
     // missing feature.
+    await correctPlanAsset(supabase, asset.id, { mime_type: measured.mimeType });
     return { status: "skipped", reason: "unreadable_format" };
   }
-  if (measured.outcome === "measured" && measured.longestEdge < PLAN_READABLE_MIN_EDGE_PX) {
+  if (measured.outcome === "measured" && Math.max(measured.widthPx, measured.heightPx) < PLAN_READABLE_MIN_EDGE_PX) {
+    await correctPlanAsset(supabase, asset.id, { width_px: measured.widthPx, height_px: measured.heightPx });
     return { status: "skipped", reason: "too_small" };
   }
 
@@ -204,10 +225,10 @@ export async function readFloorPlanForRoom(
 //
 // Two independent halves, because a plan can give one without the other. The
 // dimensions fill the measurement fields, written with the plan as their
-// source. The box crops the drawing for the concept and revision prompts,
-// which assert that what they are shown is this room. A villa brochure gives
-// the second and not the first; an estate agent's plan of one apartment gives
-// both.
+// source. The name tells the concept and revision prompts which room on the
+// drawing is hers (`floorPlanLanguage`; the crop that once did this was
+// withdrawn). A villa brochure gives the second and not the first; an estate
+// agent's plan of one apartment gives both.
 
 export type ConfirmRoomOutcome =
   | {
@@ -342,8 +363,8 @@ async function writeConfirmedRoom(
 // that fails is `unavailable`, which is transient and believed, because
 // refusing it would turn a storage blip into a missing feature.
 type PlanMeasurement =
-  | { outcome: "measured"; longestEdge: number }
-  | { outcome: "unreadable" }
+  | { outcome: "measured"; widthPx: number; heightPx: number }
+  | { outcome: "unreadable"; mimeType: string }
   | { outcome: "unavailable" };
 
 async function measurePlan(supabase: UserSupabaseClient, storagePath: string): Promise<PlanMeasurement> {
@@ -351,12 +372,35 @@ async function measurePlan(supabase: UserSupabaseClient, storagePath: string): P
   if (error || !data) {
     return { outcome: "unavailable" };
   }
+  const bytes = Buffer.from(await data.arrayBuffer());
   try {
     const sharp = (await import("sharp")).default;
-    const meta = await sharp(Buffer.from(await data.arrayBuffer())).metadata();
-    const longestEdge = Math.max(meta.width ?? 0, meta.height ?? 0);
-    return longestEdge > 0 ? { outcome: "measured", longestEdge } : { outcome: "unreadable" };
+    const meta = await sharp(bytes).metadata();
+    // As displayed, which is what the browser records, so a corrected row
+    // agrees with the rows the uploader writes for a photograph turned on its
+    // side.
+    const widthPx = meta.autoOrient?.width ?? meta.width ?? 0;
+    const heightPx = meta.autoOrient?.height ?? meta.height ?? 0;
+    if (widthPx > 0 && heightPx > 0) {
+      return { outcome: "measured", widthPx, heightPx };
+    }
   } catch {
-    return { outcome: "unreadable" };
+    // No decoder recognised the bytes, which is the answer below.
+  }
+  // `%PDF-` opens every PDF.
+  const isPdf = bytes.subarray(0, 5).toString("latin1") === "%PDF-";
+  return { outcome: "unreadable", mimeType: isPdf ? PDF_MIME_TYPE : UNKNOWN_BYTES_MIME_TYPE };
+}
+
+// The plan's row corrected to what the file is. Through the shopper's own
+// client, so RLS stays the authority on whose row this is.
+async function correctPlanAsset(
+  supabase: UserSupabaseClient,
+  assetId: string,
+  truth: { mime_type?: string; width_px?: number; height_px?: number }
+): Promise<void> {
+  const { error } = await supabase.from("room_assets").update(truth).eq("id", assetId);
+  if (error) {
+    throw new Error(error.message);
   }
 }

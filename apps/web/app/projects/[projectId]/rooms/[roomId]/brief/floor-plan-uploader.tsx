@@ -9,7 +9,7 @@ import { createClient } from "@/lib/supabase/client";
 import { readFloorPlanAction } from "@/app/actions";
 import { readImageSize, slugFileName } from "@/lib/upload";
 
-type UploadStatus = "idle" | "uploading" | "complete" | "error";
+type UploadStatus = "idle" | "uploading" | "reading" | "error";
 
 export function FloorPlanUploader({
   existingStoragePath,
@@ -28,24 +28,31 @@ export function FloorPlanUploader({
 }) {
   const [lastFile, setLastFile] = useState<File | null>(null);
   const [status, setStatus] = useState<UploadStatus>("idle");
-  const attachedMessage =
-    planState === "unusable" ? "Attached, but we cannot read it" : "Floor plan attached";
-  const [message, setMessage] = useState(
-    existingStoragePath ? attachedMessage : "Drop a floor plan or click to upload"
-  );
+  const [errorMessage, setErrorMessage] = useState("");
   const [isPending, startTransition] = useTransition();
   const router = useRouter();
+
+  // Once nothing is in flight, what this panel says about the plan comes from
+  // the page, which read it off the rows. A first version kept it in state,
+  // which made it a snapshot of the plan from before the upload: it said
+  // "Floor plan attached" over a plan the read had just refused, and "Attached,
+  // but we cannot read it" over a readable plan that replaced a refused one
+  // (PR review).
+  const settledPrompt = existingStoragePath
+    ? planState === "unusable"
+      ? "Attached, but we cannot read it"
+      : "Floor plan attached"
+    : "Drop a floor plan or click to upload";
 
   async function uploadFile(file: File) {
     if (file.size > 10 * 1024 * 1024) {
       setStatus("error");
-      setMessage("Use a JPG or PNG up to 10 MB.");
+      setErrorMessage("Use a JPG or PNG up to 10 MB.");
       return false;
     }
 
     setLastFile(file);
     setStatus("uploading");
-    setMessage("Uploading floor plan...");
 
     const supabase = createClient();
     const extension = file.name.split(".").pop() ?? "pdf";
@@ -68,7 +75,7 @@ export function FloorPlanUploader({
 
     if (uploadError) {
       setStatus("error");
-      setMessage(uploadError.message);
+      setErrorMessage(uploadError.message);
       return false;
     }
 
@@ -89,7 +96,7 @@ export function FloorPlanUploader({
 
     if (rowError) {
       setStatus("error");
-      setMessage(rowError.message);
+      setErrorMessage(rowError.message);
       return false;
     }
 
@@ -104,26 +111,44 @@ export function FloorPlanUploader({
       );
     }
 
-    setStatus("complete");
-    setMessage("Floor plan attached");
-
     // The read is triggered here, by the upload, and never by a render: a page
     // that read on load would spend on every visit. The same shape the
     // inspiration images use (S5b).
+    //
+    // Its answer is not used here. By the time the call returns, every outcome
+    // is on a row, a read on its job and a refusal on the plan's own row, so
+    // the refreshed page says it. A call that throws opened no row, and the page
+    // offers to read the plan rather than claiming it is being read.
     if (file.type.startsWith("image/")) {
-      setMessage("Reading your floor plan...");
-      const result = await readFloorPlanAction(roomId);
-      setMessage(result?.message ?? attachedMessage);
+      setStatus("reading");
+      await readFloorPlanAction(roomId).catch(() => null);
     }
 
-    startTransition(() => router.refresh());
+    // Idle inside the transition, so the in-flight wording holds until the
+    // refreshed page arrives instead of the settled wording from before it.
+    startTransition(() => {
+      setStatus("idle");
+      router.refresh();
+    });
     return true;
   }
+
+  const prompt =
+    status === "error"
+      ? "floor plan could not upload"
+      : status === "uploading"
+        ? "Uploading floor plan..."
+        : status === "reading"
+          ? "Reading your floor plan..."
+          : settledPrompt;
 
   return (
     <ImageDropzone
       accept="image/jpeg,image/png"
-      busy={status === "uploading" || isPending}
+      // Busy while the read runs too. A second plan dropped mid-read throws
+      // away a read already paid for, and the two uploads would take turns
+      // saying what is in flight.
+      busy={status === "uploading" || status === "reading" || isPending}
       description={
         existingStoragePath
           ? "Drop another file here to replace it."
@@ -131,7 +156,7 @@ export function FloorPlanUploader({
       }
       error={
         status === "error"
-          ? { message, onRetry: lastFile ? () => void uploadFile(lastFile) : undefined }
+          ? { message: errorMessage, onRetry: lastFile ? () => void uploadFile(lastFile) : undefined }
           : null
       }
       // PDF is off the list until the slice that can rasterise one: advertising
@@ -151,7 +176,7 @@ export function FloorPlanUploader({
           void uploadFile(file);
         }
       }}
-      prompt={status === "error" ? "floor plan could not upload" : message}
+      prompt={prompt}
     />
   );
 }

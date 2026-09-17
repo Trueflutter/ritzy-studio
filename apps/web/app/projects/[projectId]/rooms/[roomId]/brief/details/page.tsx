@@ -2,6 +2,7 @@ import { ButtonLink, SubmitButton } from "@ritzy-studio/ui";
 import {
   measurementAssumptionNotes,
   confirmedFloorPlanRoom,
+  floorPlanRefused,
   floorPlanScreenState,
   parseSpatialIntent,
   spatialLayoutModeForRoomType
@@ -12,7 +13,8 @@ import { confirmDetectedRoomAction, readFloorPlanAction, saveDesignBriefAction }
 import { briefNumberAttributes, briefTextAttributes, colourNotesDefault } from "@/lib/brief-fields";
 import {
   detectedRoomsOnJob,
-  jobAssetId,
+  floorPlanAssetInput,
+  floorPlanJobInput,
   newestFloorPlanReadJob
 } from "@/lib/services/floor-plan-read";
 import { structuredBriefJson } from "@/lib/services/sourcing-support";
@@ -93,14 +95,11 @@ export default async function BriefDetailsPage({
   // cannot discard an answer already bought.
   const floorPlanReadJob = await newestFloorPlanReadJob(supabase, roomId);
   const detectedRooms = detectedRoomsOnJob(floorPlanReadJob);
-  const floorPlanAsset = floorPlan
-    ? { id: floorPlan.id, mimeType: floorPlan.mime_type, widthPx: floorPlan.width_px, heightPx: floorPlan.height_px }
-    : null;
+  // Mapped the way the read maps them, so the page and the read cannot reach
+  // different answers about the same plan (PR review).
   const floorPlanState = floorPlanScreenState({
-    asset: floorPlanAsset,
-    newestJob: floorPlanReadJob
-      ? { assetId: jobAssetId(floorPlanReadJob), status: floorPlanReadJob.status, startedAt: floorPlanReadJob.created_at }
-      : null,
+    asset: floorPlanAssetInput(floorPlan),
+    newestJob: floorPlanJobInput(floorPlanReadJob),
     roomCount: detectedRooms.length
   });
   // Gated on the attached plan, the way the concept path gates it: a room she
@@ -445,7 +444,7 @@ export default async function BriefDetailsPage({
             <div className="mt-5">
               <FloorPlanUploader
                 existingStoragePath={floorPlan?.storage_path}
-                planState={floorPlanState === "pdf" || floorPlanState === "too_small" ? "unusable" : "usable"}
+                planState={floorPlanRefused(floorPlanState) ? "unusable" : "usable"}
                 roomId={roomId}
                 userId={user.id}
               />

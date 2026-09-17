@@ -5,15 +5,21 @@ import { renderToStaticMarkup } from "react-dom/server";
 
 (globalThis as { React?: unknown }).React = React;
 
-import type { ConfirmedFloorPlanRoom, DetectedRoom, FloorPlanScreenState } from "@ritzy-studio/domain";
+import {
+  FLOOR_PLAN_SCREEN_STATES,
+  floorPlanRefused,
+  type ConfirmedFloorPlanRoom,
+  type DetectedRoom,
+  type FloorPlanScreenState
+} from "@ritzy-studio/domain";
 
 import { DetectedRooms } from "./projects/[projectId]/rooms/[roomId]/brief/details/detected-rooms";
 
 // S5b: every state this block can be in says something. A plan attached with
 // nothing said about it is the silence S5a spent its life removing, and here
-// there are six ways to arrive at it: a PDF, a plan too small to read, a read
-// in flight, a read that failed, a read that found nothing, and a read that
-// found rooms.
+// there are eight ways to arrive at it: a PDF, a file that is not an image, a
+// plan too small to read, a plan nothing has read, a read in flight, a read
+// that failed, a read that found nothing, and a read that found rooms.
 
 const room = (over: Partial<DetectedRoom> = {}): DetectedRoom => ({
   label: "Living Room",
@@ -56,15 +62,46 @@ const pdf = render("pdf");
 assert.match(pdf, /PDF, which we cannot read yet/);
 assert.match(pdf, /picture of it/, "and what to upload instead");
 
-// Both refusals carry the design system's error treatment (8.19). Rendered as
+// The refusals carry the design system's error treatment (8.19). Rendered as
 // a neutral grey note they read as the quieter of two contradictory claims,
 // under a panel heading that says the plan is attached (design review).
-for (const [state, markup] of [["pdf", pdf], ["too small", render("too_small")], ["read failed", render("read_failed")]] as const) {
+for (const [state, markup] of [
+  ["pdf", pdf],
+  ["unreadable", render("unreadable")],
+  ["too small", render("too_small")],
+  ["read failed", render("read_failed")]
+] as const) {
   assert.match(markup, /border-t-error/, `${state} is marked as a failure, not as a note`);
   assert.match(markup, /text-error/, `${state} states what failed in the error colour`);
 }
 assert.equal(/border-t-error/.test(render("no_rooms")), false, "a plan with no rooms on it is not a failure");
 assert.equal(/border-t-error/.test(render("reading")), false, "and neither is a read in progress");
+assert.equal(/border-t-error/.test(render("unread")), false, "or a plan nothing has read yet");
+
+// A file that is not an image, whatever it was called. It is not told it is a
+// PDF, and it is told what would work (PR review).
+const unreadable = render("unreadable");
+assert.match(unreadable, /could not open that file as an image/);
+assert.match(unreadable, /JPG or PNG of the plan works/);
+assert.equal(/PDF, which/.test(unreadable), false);
+
+// Every refusal names its remedy. Reading the same file again cannot succeed,
+// so the way on is a different file, and the refusal has to say which.
+for (const state of FLOOR_PLAN_SCREEN_STATES.filter(floorPlanRefused)) {
+  assert.match(render(state), /picture of it|JPG or PNG|screenshot/, `${state} says what to upload instead`);
+}
+
+// Only a read in progress may say one is in progress. A first version said it
+// over a plan nothing was reading, for ever, with nothing to press (PR review).
+for (const state of FLOOR_PLAN_SCREEN_STATES) {
+  const markup = render(state, { rooms: [room()], planUrl: "https://example.test/plan.png" });
+  assert.equal(/Reading your floor plan/.test(markup), state === "reading", `${state}: claims a read in progress`);
+}
+
+// A plan nothing has read offers the read, and says what is true meanwhile.
+const unread = render("unread");
+assert.match(unread, /have not read this floor plan yet/);
+assert.match(unread, /<button[^>]*>Read the rooms on it<\/button>/, "a control, not a sentence about one");
 
 const small = render("too_small");
 assert.match(small, /too small to read the room names/);
@@ -126,7 +163,7 @@ assert.match(none, /still type the measurements/, "and the form is not blocked b
 // Every control in this block sits inside the details form, so a bare button
 // would submit the brief and generate the clarifying questions instead of
 // confirming a room.
-for (const state of ["read_failed", "rooms"] as const) {
+for (const state of ["unread", "read_failed", "rooms"] as const) {
   const markup = render(state, { rooms: [room()], planUrl: "https://example.test/plan.png" });
   const buttons = markup.match(/<button[^>]*>/g) ?? [];
   assert.ok(buttons.length > 0, `${state} renders a control`);
