@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
 
+import { floorPlanReadResponseSchema } from "@ritzy-studio/prompts";
+
 import {
   cameraReadContent,
+  floorPlanLanguage,
+  floorPlanReadContent,
+  normalizeFloorPlanRead,
   finalGroundedRenderReferences,
   finalRenderViewReferences,
   normalizeCameraRead,
@@ -196,3 +201,96 @@ import {
 }
 
 console.log("render review payload tests passed");
+
+// S5b: the floor plan read. Its whole job is small print, so the payload has
+// to carry the plan at HIGH detail: the camera read above sends photographs at
+// "low", which tiles at 512 pixels, and a plan sent that way arrives with its
+// dimension strings a few pixels tall (plan review finding).
+{
+  const content = floorPlanReadContent({ planImageDataUrl: "data:image/jpeg;base64,PLAN" });
+
+  const images = content.filter((part) => part.type === "input_image");
+  assert.equal(images.length, 1, "one plan, one image");
+  assert.equal(images[0].image_url, "data:image/jpeg;base64,PLAN");
+  assert.equal(images[0].detail, "high", "the small print is the point");
+
+  const text = content
+    .filter((part) => part.type === "input_text")
+    .map((part) => part.text)
+    .join("\n");
+  assert.match(text, /centimetres/i, "the column stores centimetres, so the answer is asked for in them");
+}
+
+// The answer is bounded by the domain before anything renders it, and the
+// units the drawing was written in are reported rather than assumed: the
+// bounds catch a millimetre read (5200 for a 5.2 m wall is outside them), but
+// nothing in the numbers themselves reveals a plan read as feet.
+{
+  const answer = {
+    unitRead: "feet_inches",
+    rooms: [
+      { label: "Living Room", level: "main", wallLengthCm: 883.9, roomDepthCm: 469.9, ceilingHeightCm: null, box: { x0: 0.05, y0: 0.1, x1: 0.4, y1: 0.45 } },
+      { label: "Store", level: "main", wallLengthCm: null, roomDepthCm: null, ceilingHeightCm: null, box: null }
+    ]
+  };
+
+  const parsed = floorPlanReadResponseSchema.parse(answer);
+  assert.equal(parsed.unitRead, "feet_inches");
+  assert.equal(parsed.rooms.length, 2);
+
+  const normalized = normalizeFloorPlanRead(parsed);
+  assert.equal(normalized.rooms[0].wallLengthCm, 883.9);
+  assert.equal(normalized.rooms[1].wallLengthCm, null, "a room the plan does not dimension keeps its place");
+  assert.equal(normalized.roomsFound, 2, "what the model named, before the bounds and the display cap");
+
+  // A model that cannot tell what the drawing is drawn in reports no
+  // dimensions, whatever numbers it also returned: the cost of getting units
+  // wrong lands on the person who confirms the chip (review finding).
+  const unsure = normalizeFloorPlanRead(
+    floorPlanReadResponseSchema.parse({
+      unitRead: "unknown",
+      rooms: [{ label: "Majlis", level: null, wallLengthCm: 520, roomDepthCm: 410, ceilingHeightCm: null, box: null }]
+    })
+  );
+  assert.equal(unsure.rooms[0].label, "Majlis", "the room is still named");
+  assert.equal(unsure.rooms[0].wallLengthCm, null);
+  assert.equal(unsure.rooms[0].roomDepthCm, null);
+
+  // The strict schema and the zod schema are one pair: a shape the JSON schema
+  // would have refused must not parse either.
+  assert.throws(() => floorPlanReadResponseSchema.parse({ unitRead: "cubits", rooms: [] }));
+  assert.throws(() => floorPlanReadResponseSchema.parse({ rooms: [] }));
+
+  // The bound that matters most, exercised through the real pair rather than
+  // asserted on the domain function alone: a millimetre answer is dropped, not
+  // rendered as a fifty metre wall.
+  const millimetres = normalizeFloorPlanRead(
+    floorPlanReadResponseSchema.parse({
+      unitRead: "millimetres",
+      rooms: [{ label: "Majlis", level: null, wallLengthCm: 52_000, roomDepthCm: 41_000, ceilingHeightCm: null, box: null }]
+    })
+  );
+  assert.equal(millimetres.rooms[0].wallLengthCm, null);
+  assert.equal(millimetres.rooms[0].roomDepthCm, null);
+}
+
+// S5b, cross-model gate: the sentence the concept and revision prompts are
+// given about a floor plan.
+//
+// The crop was withdrawn because the model locates rooms badly, and the room's
+// NAME replaced it. That only works if the name reaches the prompt: it was
+// recorded by the confirmation, returned by `roomImageInputs`, and passed to
+// neither model call, so every plan arrived under the unnamed fallback and the
+// replacement did nothing. Asserted on the emitted sentence rather than on the
+// function that returns the label, which is the seam that stayed green.
+{
+  const named = floorPlanLanguage("Bedroom, Second");
+  assert.match(named, /Bedroom, Second/, "the prompt is told which room on the drawing is hers");
+  assert.match(named, /may show more than the room/, "and that the drawing may be the whole home");
+  assert.equal(named.includes("is the room's floor plan"), false, "it no longer asserts the sheet IS her room");
+
+  const unnamed = floorPlanLanguage(null);
+  assert.match(unnamed, /may show more of the home/);
+  assert.equal(unnamed.includes("undefined"), false, "and an absent name is a different sentence, not a hole in one");
+  assert.equal(floorPlanLanguage("   "), unnamed, "whitespace is not a room name");
+}

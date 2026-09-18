@@ -1,6 +1,9 @@
+import { confirmedFloorPlanRoom } from "@ritzy-studio/domain";
+
 import { visionImageDataUrl } from "@/lib/render-images";
 
 import { storageImageDataUrl } from "./storage-images";
+import { structuredBriefJson } from "./sourcing-support";
 import type { ServiceSupabaseClient, UserSupabaseClient } from "./supabase-clients";
 
 // The room's image inputs for AI calls, assembled ONE way (S2 gauntlet finding):
@@ -20,6 +23,7 @@ export type RoomImageInputs = {
   photoBytes: Buffer | null;
   additionalRoomPhotos: AdditionalRoomPhoto[];
   floorPlanImageUrl: string | null;
+  floorPlanRoomLabel: string | null;
 };
 
 export async function roomImageInputs(
@@ -42,7 +46,8 @@ export async function roomImageInputs(
       signedPhotoUrl: null,
       photoBytes: null,
       additionalRoomPhotos: [],
-      floorPlanImageUrl: null
+      floorPlanImageUrl: null,
+      floorPlanRoomLabel: null
     };
   }
 
@@ -79,12 +84,30 @@ export async function roomImageInputs(
 
   const { data: floorPlanAsset } = await supabase
     .from("room_assets")
-    .select("storage_path, mime_type")
+    .select("id, storage_path, mime_type")
     .eq("room_id", roomId)
     .eq("asset_type", "floor_plan")
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();
+
+  // Since S5b invites whole-home drawings, the prompt can no longer assert
+  // that this sheet IS the room. It carries the name she confirmed instead,
+  // and `floorPlanLanguage` says the rest. Cropping to her room was tried and
+  // withdrawn: the boxes came back plausible and wrong (S5b).
+  const { data: brief } = await supabase
+    .from("design_briefs")
+    .select("structured_json")
+    .eq("room_id", roomId)
+    .order("updated_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const confirmed = confirmedFloorPlanRoom(structuredBriefJson(brief?.structured_json).floorPlan);
+  // The room she picked off a plan she has since replaced says nothing about
+  // the plan attached now.
+  const floorPlanRoomLabel =
+    confirmed && floorPlanAsset?.id && confirmed.assetId === floorPlanAsset.id ? confirmed.label : null;
+
   const floorPlanImageUrl = floorPlanAsset?.mime_type?.startsWith("image/")
     ? await storageImageDataUrl(supabase, "room-assets", floorPlanAsset.storage_path, floorPlanAsset.mime_type)
     : null;
@@ -94,7 +117,8 @@ export async function roomImageInputs(
     signedPhotoUrl: signedPhoto?.signedUrl ?? null,
     photoBytes: !downloadError && photoBlob ? Buffer.from(await photoBlob.arrayBuffer()) : null,
     additionalRoomPhotos,
-    floorPlanImageUrl
+    floorPlanImageUrl,
+    floorPlanRoomLabel
   };
 }
 

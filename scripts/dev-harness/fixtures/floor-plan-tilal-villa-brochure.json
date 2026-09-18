@@ -1,0 +1,40 @@
+{
+  "source": "Tilal Al Furjan, 4 bedroom villa type 4B-D, page 15 of the developer's sales brochure. Developer marketing collateral for a unit type, freely distributed for sales; it names no address and no owner. Kept as the fixture for the commonest artefact a buyer holds: the brochure PDF for the home they bought.",
+  "role": "the S5c case, and the one that shows what rasterisation can and cannot recover. Not read by S5b, which refuses PDFs.",
+  "measuredOn": "2026-09-10, with the real floor_plan_read stage on gpt-5-mini",
+  "structure": {
+    "pages": 1,
+    "levels": 2,
+    "drawingsAreEmbeddedRasters": true,
+    "embeddedImagePx": {
+      "width": 1546,
+      "height": 949
+    },
+    "embeddedPpi": 150,
+    "vectorTextIsChromeOnly": "the brochure headings, the area table and the level captions are live text; every room label and dimension line is inside the JPEG"
+  },
+  "reads": [
+    {
+      "input": "whole page rasterised at 200 dpi, capped at 2048 (1448x2048)",
+      "result": "threw: incomplete response, the model ran past its output budget on a dense sheet"
+    },
+    {
+      "input": "entry level cropped from 300 dpi, capped at 2048 (1116x1614)",
+      "result": "10 of 10 room names correct, boxes plausible, unitRead unknown, no dimensions"
+    },
+    {
+      "input": "entry level cropped from 600 dpi, uncapped (2232x3227)",
+      "result": "same 10 names, still no dimensions: rasterising higher only enlarges the embedded JPEG"
+    },
+    {
+      "input": "entry level cropped from 600 dpi, capped at 3000 (2075x3000)",
+      "result": "11 names including a pool caption, still no dimensions"
+    }
+  ],
+  "conclusion": "The room names are readable and the room locations are usable. The dimension lines sit at about four pixels tall inside the embedded JPEG and cannot be recovered by any rasterisation, because the PDF does not contain them at a higher resolution. This is why confirming a room has two independent halves: the measurements, which this plan cannot give, and the location, which it can.",
+  "forS5c": [
+    "Rasterise per level or per region, not per page: the whole-page read failed outright.",
+    "Do not assume a higher dpi buys legibility. Check the embedded image resolution and rasterise to it rather than past it.",
+    "Expect this class of plan to yield names and boxes only, and make that outcome useful rather than a dead list."
+  ]
+}

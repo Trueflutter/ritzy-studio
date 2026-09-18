@@ -1,13 +1,24 @@
 import { ButtonLink, SubmitButton } from "@ritzy-studio/ui";
 import {
   measurementAssumptionNotes,
+  confirmedFloorPlanRoom,
+  floorPlanRefused,
+  floorPlanScreenState,
   parseSpatialIntent,
   spatialLayoutModeForRoomType
 } from "@ritzy-studio/domain";
 import { notFound, redirect } from "next/navigation";
 
-import { saveDesignBriefAction } from "@/app/actions";
+import { confirmDetectedRoomAction, readFloorPlanAction, saveDesignBriefAction } from "@/app/actions";
 import { briefNumberAttributes, briefTextAttributes, colourNotesDefault } from "@/lib/brief-fields";
+import {
+  detectedRoomsOnJob,
+  floorPlanAssetInput,
+  floorPlanJobInput,
+  newestFloorPlanReadJob
+} from "@/lib/services/floor-plan-read";
+import { structuredBriefJson } from "@/lib/services/sourcing-support";
+import { DetectedRooms } from "./detected-rooms";
 import { createClient } from "@/lib/supabase/server";
 import {
   BriefMessage,
@@ -17,6 +28,7 @@ import {
   refusedFieldsFrom
 } from "../_components/brief-message";
 import { BriefShell } from "../_components/brief-shell";
+import { FloorPlanActivityProvider } from "../floor-plan-activity";
 import { FloorPlanUploader } from "../floor-plan-uploader";
 import { MeasurementAssumptionNotes } from "./measurement-notes";
 
@@ -78,6 +90,29 @@ export default async function BriefDetailsPage({
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();
+
+  // S5b: the rooms the plan named, read from the job row that paid for the
+  // read rather than from the brief document, so a Continue press mid-read
+  // cannot discard an answer already bought.
+  const floorPlanReadJob = await newestFloorPlanReadJob(supabase, roomId);
+  const detectedRooms = detectedRoomsOnJob(floorPlanReadJob);
+  // Mapped the way the read maps them, so the page and the read cannot reach
+  // different answers about the same plan (PR review).
+  const floorPlanState = floorPlanScreenState({
+    asset: floorPlanAssetInput(floorPlan),
+    newestJob: floorPlanJobInput(floorPlanReadJob),
+    roomCount: detectedRooms.length
+  });
+  // Gated on the attached plan, the way the concept path gates it: a room she
+  // picked off a drawing she has since replaced must not be shown as this
+  // room's (review finding).
+  const recordedRoom = confirmedFloorPlanRoom(structuredBriefJson(designBrief?.structured_json).floorPlan);
+  const confirmedRoom = recordedRoom && recordedRoom.assetId === floorPlan?.id ? recordedRoom : null;
+  const planPreviewUrl =
+    floorPlan && floorPlan.mime_type?.startsWith("image/")
+      ? ((await supabase.storage.from("room-assets").createSignedUrl(floorPlan.storage_path, 60 * 60)).data?.signedUrl ??
+        null)
+      : null;
 
   const spatialIntent = parseSpatialIntent(designBrief?.structured_json, room.room_type);
   const layoutMode = spatialLayoutModeForRoomType(room.room_type);
@@ -408,7 +443,25 @@ export default async function BriefDetailsPage({
               </span>
             </p>
             <div className="mt-5">
-              <FloorPlanUploader existingStoragePath={floorPlan?.storage_path} roomId={roomId} userId={user.id} />
+              {/* One provider around both, so the list of rooms knows when the
+                  upload panel is replacing the plan it describes. */}
+              <FloorPlanActivityProvider>
+                <FloorPlanUploader
+                  existingStoragePath={floorPlan?.storage_path}
+                  planState={floorPlanRefused(floorPlanState) ? "unusable" : "usable"}
+                  roomId={roomId}
+                  userId={user.id}
+                />
+                <DetectedRooms
+                  actions={{ confirm: confirmDetectedRoomAction, read: readFloorPlanAction }}
+                  confirmed={confirmedRoom}
+                  planUrl={planPreviewUrl}
+                  readJobId={floorPlanReadJob?.id ?? null}
+                  roomId={roomId}
+                  rooms={detectedRooms}
+                  state={floorPlanState}
+                />
+              </FloorPlanActivityProvider>
             </div>
           </div>
         </div>

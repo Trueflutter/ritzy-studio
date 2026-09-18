@@ -57,6 +57,8 @@ import {
   withoutRefusedFields,
   type BriefRefusal
 } from "@/lib/brief-fields";
+import { writeBriefDocument } from "@/lib/services/brief-document";
+import { confirmDetectedRoom, readFloorPlanForRoom } from "@/lib/services/floor-plan-read";
 import { createClient } from "@/lib/supabase/server";
 import { finalRenderRetryHonoured, finalRenderStaleMs } from "@/lib/render";
 import { localSkuFidelityModeEnabled } from "@/lib/render-flags";
@@ -1050,83 +1052,87 @@ export async function saveDesignBriefAction(formData: FormData) {
     .limit(1)
     .maybeSingle();
 
-  const structuredJson = structuredBriefJson(existingBrief?.structured_json);
+  // Applied to whatever is in the column at write time, not to what was read
+  // at the top of this action. The floor plan confirmation writes the same
+  // document, and the screen lets her press Continue while one is in flight,
+  // so a merge computed once against a stale read drops the other writer's key
+  // whichever way the two interleave (PR review).
+  const mergeStructuredJson = (current: ReturnType<typeof structuredBriefJson>) => {
+    const structuredJson = { ...current };
 
-  if (formData.has("styleSlugs") || formData.has("avoidStyleSlugs")) {
-    structuredJson.visualPreferences = {
-      likedStyleSlugs: parsed.styleSlugs,
-      avoidedStyleSlugs: parsed.avoidStyleSlugs,
-      likedStyles: visualStyleOptions
-        .filter((option) => parsed.styleSlugs.includes(option.slug))
-        .map((option) => ({
-          slug: option.slug,
-          name: option.name,
-          description: option.description,
-          tags: option.tags
-        })),
-      avoidedStyles: visualStyleOptions
-        .filter((option) => parsed.avoidStyleSlugs.includes(option.slug))
-        .map((option) => ({
-          slug: option.slug,
-          name: option.name
-        }))
-    };
-  }
+    if (formData.has("styleSlugs") || formData.has("avoidStyleSlugs")) {
+      structuredJson.visualPreferences = {
+        likedStyleSlugs: parsed.styleSlugs,
+        avoidedStyleSlugs: parsed.avoidStyleSlugs,
+        likedStyles: visualStyleOptions
+          .filter((option) => parsed.styleSlugs.includes(option.slug))
+          .map((option) => ({
+            slug: option.slug,
+            name: option.name,
+            description: option.description,
+            tags: option.tags
+          })),
+        avoidedStyles: visualStyleOptions
+          .filter((option) => parsed.avoidStyleSlugs.includes(option.slug))
+          .map((option) => ({
+            slug: option.slug,
+            name: option.name
+          }))
+      };
+    }
 
-  if (hasMeasurements) {
-    structuredJson.measurements = {
-      wallLengthCm: effectiveMeasurements.wallLengthCm,
-      roomDepthCm: effectiveMeasurements.roomDepthCm,
-      ceilingHeightCm: effectiveMeasurements.ceilingHeightCm,
-      notes: effectiveMeasurements.notes,
-      source: "manual",
-      confidence: "verified"
-    };
-  }
+    if (hasMeasurements) {
+      structuredJson.measurements = {
+        wallLengthCm: effectiveMeasurements.wallLengthCm,
+        roomDepthCm: effectiveMeasurements.roomDepthCm,
+        ceilingHeightCm: effectiveMeasurements.ceilingHeightCm,
+        notes: effectiveMeasurements.notes,
+        source: "manual",
+        confidence: "verified"
+      };
+    }
 
-  if (
-    formData.has("focalPoint") ||
-    formData.has("seatingPriority") ||
-    formData.has("diningSeatCount") ||
-    formData.has("mustKeepClear")
-  ) {
-    const existingIntent =
-      structuredJson.spatialIntent && typeof structuredJson.spatialIntent === "object"
-        ? (structuredJson.spatialIntent as Record<string, unknown>)
-        : {};
-    const diningSeatCountRaw = optionalNumber(formData, "diningSeatCount");
-    structuredJson.spatialIntent = {
-      ...existingIntent,
-      // Both are rendered as selects, so a value outside the list came from a
-      // client that ignored the markup. parseSpatialIntent coerces on read, so
-      // nothing unvalidated reaches a prompt, but the column would still carry
-      // whatever was posted and re-read it on every select for the life of the
-      // room (security review).
-      ...(formData.has("focalPoint")
-        ? { focalPoint: allowedValue(optionalString(formData, "focalPoint"), spatialFocalPointValues) }
-        : {}),
-      ...(formData.has("seatingPriority")
-        ? { seatingPriority: allowedValue(optionalString(formData, "seatingPriority"), spatialSeatingPriorityValues) }
-        : {}),
-      ...(formData.has("diningSeatCount") ? { diningSeatCount: diningSeatCountRaw ?? null } : {}),
-      ...(formData.has("mustKeepClear")
-        ? {
-            // Bounded at the write too: the attribute on the input stops a
-            // shopper, not a client that ignores it, and this value is
-            // re-read by every select on the row (security review).
-            mustKeepClear:
-              optionalString(formData, "mustKeepClear")?.slice(0, BRIEF_FIELD_BOUNDS.mustKeepClear.max) ?? null
-          }
-        : {})
-    };
-  }
+    if (
+      formData.has("focalPoint") ||
+      formData.has("seatingPriority") ||
+      formData.has("diningSeatCount") ||
+      formData.has("mustKeepClear")
+    ) {
+      const existingIntent =
+        structuredJson.spatialIntent && typeof structuredJson.spatialIntent === "object"
+          ? (structuredJson.spatialIntent as Record<string, unknown>)
+          : {};
+      const diningSeatCountRaw = optionalNumber(formData, "diningSeatCount");
+      structuredJson.spatialIntent = {
+        ...existingIntent,
+        // Both are rendered as selects, so a value outside the list came from a
+        // client that ignored the markup. parseSpatialIntent coerces on read, so
+        // nothing unvalidated reaches a prompt, but the column would still carry
+        // whatever was posted and re-read it on every select for the life of the
+        // room (security review).
+        ...(formData.has("focalPoint")
+          ? { focalPoint: allowedValue(optionalString(formData, "focalPoint"), spatialFocalPointValues) }
+          : {}),
+        ...(formData.has("seatingPriority")
+          ? { seatingPriority: allowedValue(optionalString(formData, "seatingPriority"), spatialSeatingPriorityValues) }
+          : {}),
+        ...(formData.has("diningSeatCount") ? { diningSeatCount: diningSeatCountRaw ?? null } : {}),
+        ...(formData.has("mustKeepClear")
+          ? {
+              // Bounded at the write too: the attribute on the input stops a
+              // shopper, not a client that ignores it, and this value is
+              // re-read by every select on the row (security review).
+              mustKeepClear:
+                optionalString(formData, "mustKeepClear")?.slice(0, BRIEF_FIELD_BOUNDS.mustKeepClear.max) ?? null
+            }
+          : {})
+      };
+    }
 
-  const briefPayload: Database["public"]["Tables"]["design_briefs"]["Update"] & {
-    room_id: string;
-  } = {
-    room_id: parsed.roomId,
-    structured_json: structuredJson as Database["public"]["Tables"]["design_briefs"]["Update"]["structured_json"]
+      return structuredJson;
   };
+
+  const briefPayload: Database["public"]["Tables"]["design_briefs"]["Update"] = {};
 
   // Not written when the note itself was refused: the composition would then
   // run without her words and DELETE the note that could not be taken, which
@@ -1160,20 +1166,13 @@ export async function saveDesignBriefAction(formData: FormData) {
   if (avoidNotes !== undefined) briefPayload.avoid_notes = avoidNotes;
   if (inspirationNotes !== undefined) briefPayload.inspiration_notes = inspirationNotes;
 
-  const briefResult = existingBrief
-    ? await supabase
-        .from("design_briefs")
-        .update(briefPayload)
-        .eq("id", existingBrief.id)
-        .select("id")
-        .single()
-    : await supabase.from("design_briefs").insert(briefPayload).select("id").single();
-
-  if (briefResult.error) {
-    throw new Error(briefResult.error.message);
-  }
-
-  const designBriefId = briefResult.data.id;
+  // Through the column's one guarded writer, so a confirmation landing between
+  // this action's read and its write cannot be erased by it, and cannot erase
+  // these answers either (PR review).
+  const { id: designBriefId } = await writeBriefDocument(supabase, parsed.roomId, {
+    columns: briefPayload,
+    merge: mergeStructuredJson
+  });
 
   if (shouldWriteMeasurementRow) {
     const { error: measurementError } = await supabase.from("room_measurements").insert({
@@ -1453,6 +1452,79 @@ export async function analyzeInspirationAction(roomId: string) {
   });
 }
 
+// S5b: the floor plan's three actions. The read is triggered by an upload and
+// never by a render, so opening the details page cannot spend money.
+export async function readFloorPlanAction(roomId: string) {
+  const supabase = await createClient();
+  const {
+    data: { user }
+  } = await supabase.auth.getUser();
+  if (!user) {
+    redirect("/login");
+  }
+
+  const outcome = await readFloorPlanForRoom({
+    roomId,
+    userId: user.id,
+    supabase,
+    serviceSupabase: createServiceClient()
+  });
+
+  revalidatePath(`/projects`, "layout");
+  // Every other outcome is on a row the refreshed page renders: a read on its
+  // job, a refusal on the plan's own asset row. A failure gets a sentence
+  // rather than the provider's error string, which the job row keeps for
+  // whoever debugs it.
+  return outcome.status === "failed"
+    ? { message: "That did not work. Try again in a moment, or upload the plan again." }
+    : null;
+}
+
+export async function confirmDetectedRoomAction(roomId: string, roomIndex: number, readJobId: string) {
+  const supabase = await createClient();
+  const {
+    data: { user }
+  } = await supabase.auth.getUser();
+  if (!user) {
+    redirect("/login");
+  }
+
+  const outcome = await confirmDetectedRoom({ roomId, roomIndex, readJobId, supabase });
+  revalidatePath(`/projects`, "layout");
+
+  // `confirmed` is what lets the screen move the measurement fields: a refused
+  // confirmation wrote nothing, and the fields must not say otherwise. Neither
+  // refusal claims to know what the plan is doing now, because nothing here
+  // does (PR review).
+  if (outcome.status === "stale") {
+    return {
+      confirmed: false,
+      stale: true,
+      message: "That list belongs to a plan you have since replaced, so nothing was changed."
+    };
+  }
+  if (outcome.status === "not_found") {
+    return { confirmed: false, message: "That room is not on the plan we read." };
+  }
+  if (outcome.wroteMeasurements) {
+    return { confirmed: true };
+  }
+
+  // Changing to a room the plan does not size clears the numbers that came
+  // from the room she picked before: leaving them would pair one room's
+  // measurements with another room's name.
+  return outcome.supersededAnotherRoom
+    ? {
+        confirmed: true,
+        cleared: true,
+        message: `The plan gives no size for ${outcome.label}, so the measurements from the room you picked before have been cleared. The design will still read that part of the drawing.`
+      }
+    : {
+        confirmed: true,
+        message: `We could not read a size for ${outcome.label} on the plan, so the fields are still yours to fill. The design will read that part of the drawing.`
+      };
+}
+
 async function ensureInspirationAnalysisBeforeDetails({
   roomId,
   supabase,
@@ -1552,28 +1624,18 @@ async function analyzeAndWriteInspirationForRoom({
 
   try {
     const result = await analyzeInspirationImages({ imageUrls: signedUrls });
-    const { data: existingBrief } = await supabase
-      .from("design_briefs")
-      .select("id, structured_json")
-      .eq("room_id", roomId)
-      .order("updated_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
 
-    const structuredJson = structuredBriefJson(existingBrief?.structured_json);
-    structuredJson.inspirationAnalysis = result.analysis;
-
-    const payload = {
-      room_id: roomId,
-      structured_json: structuredJson as Database["public"]["Tables"]["design_briefs"]["Update"]["structured_json"]
-    };
-
-    const writeResult = existingBrief
-      ? await supabase.from("design_briefs").update(payload).eq("id", existingBrief.id)
-      : await supabase.from("design_briefs").insert(payload);
-
-    if (writeResult.error) {
-      throw new Error(writeResult.error.message);
+    // The THIRD writer of this document, and the one the guard missed. It
+    // reads after a paid call that takes seconds, so its window is the widest
+    // of the three: a confirmation landing while the analysis is in flight was
+    // erased by it (cross-model review). Through the same guarded writer as
+    // the other two, merging only the key it owns.
+    try {
+      await writeBriefDocument(supabase, roomId, {
+        merge: (current) => ({ ...current, inspirationAnalysis: result.analysis })
+      });
+    } catch (writeError) {
+      throw new Error(writeError instanceof Error ? writeError.message : "The inspiration analysis could not be saved.");
     }
 
     await serviceSupabase

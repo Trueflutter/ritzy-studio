@@ -449,6 +449,7 @@ export async function generateInitialConceptForRoom(
       additionalRoomPhotos,
       inspirationImageUrls: signedInspirationUrls,
       floorPlanImageUrl,
+      floorPlanRoomLabel: images.floorPlanRoomLabel,
       spatialIntent: {
         focalPoint: spatialIntent.focalPoint,
         seatingPriority: spatialIntent.seatingPriority,

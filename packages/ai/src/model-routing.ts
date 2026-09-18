@@ -19,7 +19,8 @@ export const TEXT_STAGES = [
   "product_enrichment",
   "anchor_set",
   "camera_read",
-  "view_consistency"
+  "view_consistency",
+  "floor_plan_read"
 ] as const;
 
 export type TextStage = (typeof TEXT_STAGES)[number];
@@ -54,7 +55,11 @@ const STAGE_MODEL_DEFAULTS: Partial<Record<TextStage, string>> = {
   product_verification: "gpt-5.1",
   anchor_set: "gpt-5.1",
   camera_read: "gpt-5-mini",
-  view_consistency: "gpt-5-mini"
+  view_consistency: "gpt-5-mini",
+  // The plan read is one call per uploaded drawing, facts rather than taste,
+  // and it pins the cheapest adequate model for the same reason the two reads
+  // above do. An env override still wins.
+  floor_plan_read: "gpt-5-mini"
 };
 
 export function resolveStageTextModel(stage: TextStage, env: EnvRecord, baseModel: string): string {

@@ -1,7 +1,9 @@
 import { parseServerEnv } from "@ritzy-studio/config";
 import type { Database } from "@ritzy-studio/db";
 import {
+  boundedDetectedRooms,
   buildProductSearchText,
+  type DetectedRoom,
   type RoomCameraRead,
   productEnrichmentInputSchema,
   productEnrichmentResponseSchema,
@@ -75,7 +77,11 @@ import {
   productDesignVerificationResponseSchema,
   anchorSetSelectionPrompt,
   anchorSetSelectionJsonSchema,
-  anchorSetSelectionResponseSchema
+  anchorSetSelectionResponseSchema,
+  floorPlanReadPrompt,
+  floorPlanReadJsonSchema,
+  floorPlanReadResponseSchema,
+  type FloorPlanReadResponse
 } from "@ritzy-studio/prompts";
 import { createHash, createSign } from "node:crypto";
 import { readFile } from "node:fs/promises";
@@ -236,6 +242,10 @@ export type GenerateInitialConceptInput = {
   // Data URL of the uploaded floor plan image, when one exists. Read by the
   // direction model for layout reasoning; never used as a render reference.
   floorPlanImageUrl?: string | null;
+  // The room she confirmed on that drawing, when she has. See
+  // `floorPlanLanguage`: without it the prompt cannot say which part of a
+  // whole-home plan is hers.
+  floorPlanRoomLabel?: string | null;
   styleSlugs?: string[];
   styleNotes?: string | null;
   colorNotes?: string | null;
@@ -2647,7 +2657,7 @@ export async function generateInitialConcept(
             ? [
                 {
                   type: "input_text" as const,
-                  text: "The next image is the room's floor plan. Use it to understand the room's true footprint, door and window positions, and circulation before deciding the furniture layout. Reference it in the layout logic of your generation prompt."
+                  text: floorPlanLanguage(input.floorPlanRoomLabel)
                 },
                 {
                   type: "input_image" as const,
@@ -3315,6 +3325,116 @@ export async function readRoomCameraFacts(input: ReadRoomCameraFactsInput): Prom
   };
 }
 
+// S5b: the floor plan read. One drawing in, the rooms it names out.
+//
+// Sent at HIGH detail, unlike the camera read above: that one asks which room a
+// photograph shows, which survives 512-pixel tiles, while this one asks what is
+// printed in six-point type on a drawing (plan review finding).
+export const FLOOR_PLAN_READ_TIMEOUT_MS = 90_000;
+
+export type ReadFloorPlanRoomsInput = {
+  planImageDataUrl: string;
+  timeoutMs?: number;
+};
+
+export type ReadFloorPlanRoomsResult = {
+  read: NormalizedFloorPlanRead;
+  promptKey: string;
+  promptVersion: string;
+  model: string;
+  textCostUsd: number | null;
+};
+
+export type NormalizedFloorPlanRead = {
+  unitRead: FloorPlanReadResponse["unitRead"];
+  rooms: DetectedRoom[];
+  // How many rooms the model named, before the bounds and the display cap. The
+  // screen compares it with `rooms.length` so a shortened list can say so
+  // rather than looking like the drawing had nothing else on it.
+  roomsFound: number;
+};
+
+// What the concept and revision prompts are told the drawing is.
+//
+// It used to say "the room's floor plan" flatly. S5b invites whole-home
+// drawings, and the boxes that would have let us crop one down to her room
+// came back plausible and wrong, so the sentence has to carry the truth
+// instead: this may be a plan of the whole home, and here is the name she
+// picked out of it. The name is what the read is reliable at (design review).
+export function floorPlanLanguage(roomLabel?: string | null): string {
+  const named = roomLabel?.trim();
+  return named
+    ? `The next image is a floor plan of this home. It may show more than the room you are designing: on this drawing that room is labelled "${named}". Read its footprint, door and window positions and circulation from that part of the plan, and ignore the rest.`
+    : "The next image is a floor plan supplied for this room. It may show more of the home than the room you are designing, so take the footprint, door and window positions and circulation only from the part you can identify as this room, and ignore the rest.";
+}
+
+export function floorPlanReadContent(input: { planImageDataUrl: string }): VisionContentPart[] {
+  return [
+    {
+      type: "input_text",
+      text: "Read this floor plan. Report every named room, its dimensions in centimetres, the level it sits on when the sheet labels levels, and where it sits on the page. Return only the requested JSON."
+    },
+    { type: "input_image", image_url: input.planImageDataUrl, detail: "high" }
+  ];
+}
+
+// The model's answer, put through the domain's bounds before anything renders
+// or writes it. `boundedDetectedRooms` is the one place that decides what a
+// plan is allowed to say, and it drops rather than clamps.
+export function normalizeFloorPlanRead(parsed: FloorPlanReadResponse): NormalizedFloorPlanRead {
+  // A model that cannot tell what the drawing is drawn in was told to report
+  // null dimensions. Enforced here rather than trusted, because the whole cost
+  // of getting units wrong lands on the person who confirms the chip: her room
+  // would be furnished against a number thirty times too large, with the fit
+  // checks passing trivially because the wall is enormous (review finding).
+  const rooms =
+    parsed.unitRead === "unknown"
+      ? parsed.rooms.map((room) => ({ ...room, wallLengthCm: null, roomDepthCm: null, ceilingHeightCm: null }))
+      : parsed.rooms;
+
+  return {
+    unitRead: parsed.unitRead,
+    rooms: boundedDetectedRooms(rooms),
+    roomsFound: parsed.rooms.length
+  };
+}
+
+export async function readFloorPlanRooms(input: ReadFloorPlanRoomsInput): Promise<ReadFloorPlanRoomsResult> {
+  const env = parseServerEnv(process.env);
+  const client = createTextClient(env);
+  const { model: stageModel, requestParams: stageRequestParams } = stageTextConfig("floor_plan_read", env.OPENAI_TEXT_MODEL);
+
+  const response = await client.responses.create(
+    {
+      max_output_tokens: 4000,
+      ...stageRequestParams,
+      input: [
+        { role: "system", content: floorPlanReadPrompt.system },
+        { role: "user", content: floorPlanReadContent(input) }
+      ],
+      text: {
+        format: {
+          type: "json_schema",
+          name: "ritzy_floor_plan_read",
+          schema: floorPlanReadJsonSchema,
+          strict: true
+        }
+      }
+    },
+    { timeout: input.timeoutMs ?? FLOOR_PLAN_READ_TIMEOUT_MS }
+  );
+  assertCompleteResponse(response, "The floor plan read");
+
+  const parsed = floorPlanReadResponseSchema.parse(JSON.parse(response.output_text));
+  return {
+    read: normalizeFloorPlanRead(parsed),
+    promptKey: floorPlanReadPrompt.key,
+    promptVersion: floorPlanReadPrompt.version,
+    model: stageModel,
+    textCostUsd: estimateTextCostUsd(stageModel, response.usage)
+  };
+}
+
 // S4: the cross-view consistency check. A planned view against the final hero
 // and, when it stands where a photograph was taken, against that photograph.
 export const VIEW_CONSISTENCY_TIMEOUT_MS = 45_000;
@@ -3486,7 +3606,7 @@ export async function generateConceptRevision(
             ? [
                 {
                   type: "input_text" as const,
-                  text: "The next image is the room's floor plan. Use it for the room's true footprint and circulation."
+                  text: floorPlanLanguage(input.floorPlanRoomLabel)
                 },
                 {
                   type: "input_image" as const,

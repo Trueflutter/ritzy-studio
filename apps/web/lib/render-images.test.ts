@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 
-import { fetchRemoteImage } from "./render-images";
+import { fetchRemoteImage, planImageOptions, visionImageDataUrl } from "./render-images";
 
 // fetchRemoteImage's contract: policy refusals, HTTP failures, redirect escapes, and
 // mid-body errors all return null (never throw), so one bad reference degrades to
@@ -128,3 +128,47 @@ main().catch((error) => {
   console.error(error);
   process.exit(1);
 });
+
+// S5b: the two downscales, pinned by what they produce rather than by reading
+// the constants back.
+//
+// `visionImageDataUrl` is imported by `render-runner.ts`, which is a high-risk
+// path, so the floor plan read got its own function beside it instead of a
+// parameter. That only holds if nothing quietly moves this one: a plan sent at
+// 1024 arrives with its dimension strings a few pixels tall, and a photograph
+// sent at 2048 costs four times the tiles for nothing.
+async function pinTheDownscales() {
+  const sharp = (await import("sharp")).default;
+  const wide = await sharp({
+    create: { width: 4000, height: 3000, channels: 3, background: { r: 200, g: 190, b: 175 } }
+  })
+    .jpeg()
+    .toBuffer();
+
+  const edgeOf = async (dataUrl: string) => {
+    assert.match(dataUrl, /^data:image\/jpeg;base64,/);
+    const bytes = Buffer.from(dataUrl.split(",")[1], "base64");
+    const meta = await sharp(bytes).metadata();
+    return Math.max(meta.width ?? 0, meta.height ?? 0);
+  };
+
+  assert.equal(await edgeOf(await visionImageDataUrl(wide, "image/jpeg")), 1024, "the shared vision downscale");
+  assert.equal(await edgeOf(await visionImageDataUrl(wide, "image/jpeg", planImageOptions())), 2048, "the floor plan options");
+
+  // Neither enlarges: a small plan stays small, which is why a plan below the
+  // readable floor is refused rather than upscaled into legibility.
+  const small = await sharp({
+    create: { width: 390, height: 578, channels: 3, background: { r: 250, g: 250, b: 250 } }
+  })
+    .jpeg()
+    .toBuffer();
+  assert.equal(await edgeOf(await visionImageDataUrl(small, "image/jpeg", planImageOptions())), 578);
+
+  // Bytes sharp cannot read fall back to the original rather than throwing, so
+  // one unreadable reference never fails a whole render.
+  const broken = Buffer.from([0x00, 0x01, 0x02, 0x03]);
+  assert.match(await visionImageDataUrl(broken, "image/png", planImageOptions()), /^data:image\/png;base64,/);
+
+}
+
+void pinTheDownscales().then(() => console.log("render image downscale pins passed"));

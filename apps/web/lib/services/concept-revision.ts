@@ -169,6 +169,7 @@ export async function reviseConceptForRoom(
       roomPhotoMimeType: roomPhoto.mime_type,
       additionalRoomPhotos: images.additionalRoomPhotos,
       floorPlanImageUrl: images.floorPlanImageUrl,
+      floorPlanRoomLabel: images.floorPlanRoomLabel,
       previousConceptImage: {
         bytes: previousRender.bytes,
         mimeType: previousRender.mimeType,

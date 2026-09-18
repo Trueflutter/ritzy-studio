@@ -43,17 +43,46 @@ function bytesToDataUrl(bytes: Buffer, mimeType: string) {
 // Vision models tile images at ~1k px; sending multi-megabyte originals only
 // adds cost, latency, and gateway cost-estimate rejections. Downscale for
 // vision inputs; image-GENERATION references keep original bytes.
-export async function visionImageDataUrl(bytes: Buffer, mimeType: string) {
+//
+// The options are how the floor plan differs, and they are options rather than
+// a second function on purpose. A plan's value is the text printed on it, so
+// it goes at 2048 and quality 90 where an A3 drawing reduced to 1024 leaves
+// its dimension strings a few pixels tall. A forked copy bought nothing and cost three encode paths
+// that would have to be edited together: add `.rotate()` for EXIF orientation
+// to one and the concept path gets an upright plan while the read gets a
+// sideways one, with no test comparing them (review finding). The defaults are
+// the old behaviour exactly, and `render-images.test.ts` pins them, because
+// `render-runner.ts` and `render-views.ts` import this.
+export const VISION_IMAGE_MAX_EDGE_PX = 1024;
+export const VISION_IMAGE_QUALITY = 78;
+export const PLAN_IMAGE_MAX_EDGE_PX = 2048;
+export const PLAN_IMAGE_QUALITY = 90;
+
+export type VisionImageOptions = {
+  maxEdge?: number;
+  quality?: number;
+};
+
+export async function visionImageDataUrl(
+  bytes: Buffer,
+  mimeType: string,
+  { maxEdge = VISION_IMAGE_MAX_EDGE_PX, quality = VISION_IMAGE_QUALITY }: VisionImageOptions = {}
+) {
   try {
     const resized = await sharp(bytes)
-      .resize(1024, 1024, { fit: "inside", withoutEnlargement: true })
-      .jpeg({ quality: 78 })
+      .resize(maxEdge, maxEdge, { fit: "inside", withoutEnlargement: true })
+      .jpeg({ quality })
       .toBuffer();
     return `data:image/jpeg;base64,${resized.toString("base64")}`;
   } catch {
     return bytesToDataUrl(bytes, mimeType);
   }
 }
+
+export const planImageOptions = (): VisionImageOptions => ({
+  maxEdge: PLAN_IMAGE_MAX_EDGE_PX,
+  quality: PLAN_IMAGE_QUALITY
+});
 
 function remoteImageAllowlist() {
   return buildReferenceHostAllowlist({
